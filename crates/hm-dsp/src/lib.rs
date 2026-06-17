@@ -13,6 +13,15 @@
 
 use hm_core::EngineState;
 
+pub mod biquad;
+pub mod gain;
+pub mod graphic_eq;
+pub mod limiter;
+
+pub use gain::Gain;
+pub use graphic_eq::GraphicEq;
+pub use limiter::Limiter;
+
 /// Immutable per-block parameter snapshot handed to processors.
 ///
 /// The audio thread reads one of these at the top of every block. It is derived
@@ -55,6 +64,20 @@ impl ProcessChain {
     /// Create an empty chain.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Build the standard enhancement chain for the given format using the
+    /// currently-implemented processors, in their canonical order
+    /// (`GraphicEq → Gain → Limiter`). The remaining stages
+    /// (`HeadphoneCorrection`, `BassBoost`, `Spatializer`) slot in at their
+    /// fixed positions in later phases.
+    pub fn standard(sample_rate: f32, channels: usize) -> Self {
+        let mut chain = Self::new();
+        chain.prepare(sample_rate, channels);
+        chain.push(Box::new(GraphicEq::new(sample_rate, channels)));
+        chain.push(Box::new(Gain::new()));
+        chain.push(Box::new(Limiter::new(sample_rate, channels)));
+        chain
     }
 
     /// Append a processor to the end of the chain, preparing it if the chain

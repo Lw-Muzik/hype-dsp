@@ -12,3 +12,4 @@ hm-core = { workspace = true }
 
 [dev-dependencies]
 hound = { workspace = true }
+realfft = { workspace = true }

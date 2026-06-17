@@ -19,6 +19,14 @@ pub enum AudioError {
     #[error("stream error: {0}")]
     Stream(String),
 
+    /// Opening or reading the media file failed.
+    #[error("could not open file: {0}")]
+    Io(String),
+
+    /// Decoding the audio data failed.
+    #[error("decode error: {0}")]
+    Decode(String),
+
     /// The capture surface exists but is not available (e.g. the virtual
     /// device driver is not installed). Surfaced to the UI as a clean state,
     /// never as a crash.
@@ -35,6 +43,8 @@ impl From<AudioError> for hm_core::IpcError {
             AudioError::Host(_) => "audio_host",
             AudioError::UnsupportedFormat(_) => "unsupported_format",
             AudioError::Stream(_) => "stream",
+            AudioError::Io(_) => "io",
+            AudioError::Decode(_) => "decode",
             AudioError::Unavailable(_) => "unavailable",
         };
         hm_core::IpcError::new(code, e.to_string())

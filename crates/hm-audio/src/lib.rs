@@ -9,11 +9,17 @@
 //! helper so the audio backend is proven to link against the platform
 //! (CoreAudio on macOS) before any streaming code is written.
 
+pub mod decode;
 pub mod device;
+pub mod engine;
 pub mod error;
+pub mod sources;
 
+pub use decode::{decode_file, resample_stereo, DecodedAudio};
 pub use device::{list_input_devices, list_output_devices, DeviceInfo};
+pub use engine::{AudioEngine, EngineMeters, Renderer};
 pub use error::AudioError;
+pub use sources::FilePlaybackSource;
 
 use serde::{Deserialize, Serialize};
 

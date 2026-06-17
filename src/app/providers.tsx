@@ -1,29 +1,46 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { appInfo } from "@/lib/ipc";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+import { appInfo, engineGetState, onEngineFrame, onTransport } from "@/lib/ipc";
 import { useUiStore } from "@/stores/ui";
+import { useEngineStore } from "@/stores/engine";
 
 /**
- * App-wide providers and startup effects. Loads `AppInfo` once on mount; a
- * failure here is non-fatal (the UI keeps its sensible defaults). In Phase 2
- * this is where the engine `EngineFrame` channel subscription will live.
+ * App-wide startup effects. Loads `AppInfo` and the engine state, then
+ * subscribes to the real-time engine event stream (meter frames + transport).
+ * Failures are non-fatal — the UI keeps its sensible defaults.
  */
 export function Providers({ children }: { children: ReactNode }) {
   const setAppInfo = useUiStore((s) => s.setAppInfo);
+  const hydrate = useEngineStore((s) => s.hydrate);
+  const applyMeterFrame = useEngineStore((s) => s.applyMeterFrame);
+  const setPlaying = useEngineStore((s) => s.setPlaying);
 
   useEffect(() => {
     let cancelled = false;
+    const unlisteners: UnlistenFn[] = [];
+
     appInfo()
-      .then((info) => {
-        if (!cancelled) setAppInfo(info);
-      })
-      .catch(() => {
-        /* non-fatal: keep defaults */
-      });
+      .then((info) => !cancelled && setAppInfo(info))
+      .catch(() => {});
+
+    engineGetState()
+      .then((state) => !cancelled && hydrate(state))
+      .catch(() => {});
+
+    onEngineFrame((frame) => applyMeterFrame(frame.meters))
+      .then((un) => (cancelled ? un() : unlisteners.push(un)))
+      .catch(() => {});
+
+    onTransport((playing) => setPlaying(playing))
+      .then((un) => (cancelled ? un() : unlisteners.push(un)))
+      .catch(() => {});
+
     return () => {
       cancelled = true;
+      for (const un of unlisteners) un();
     };
-  }, [setAppInfo]);
+  }, [setAppInfo, hydrate, applyMeterFrame, setPlaying]);
 
   return <>{children}</>;
 }

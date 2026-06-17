@@ -65,6 +65,17 @@ pub trait AudioSource: Send {
     fn read(&mut self, out: &mut [f32], channels: usize) -> usize;
     /// Stop producing and release resources.
     fn stop(&mut self);
+
+    /// Seek to a frame index. No-op for non-seekable sources (e.g. radio).
+    fn seek(&mut self, _frame: usize) {}
+    /// Current playback position, in frames.
+    fn position(&self) -> usize {
+        0
+    }
+    /// Total length in frames, if known (0 for open-ended streams).
+    fn total_frames(&self) -> usize {
+        0
+    }
 }
 
 /// A consumer of interleaved `f32` audio frames (typically the output device).

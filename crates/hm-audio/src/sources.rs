@@ -21,13 +21,13 @@ impl FilePlaybackSource {
         }
     }
 
-    fn total_frames(&self) -> usize {
+    fn len_frames(&self) -> usize {
         self.samples.len() / 2
     }
 
     /// Whether playback has reached the end.
     pub fn is_finished(&self) -> bool {
-        self.cursor >= self.total_frames()
+        self.cursor >= self.len_frames()
     }
 }
 
@@ -40,7 +40,7 @@ impl AudioSource for FilePlaybackSource {
         if channels == 0 {
             return 0;
         }
-        let total = self.total_frames();
+        let total = self.len_frames();
         let out_frames = out.len() / channels;
         let mut produced = 0;
         for f in 0..out_frames {
@@ -69,7 +69,19 @@ impl AudioSource for FilePlaybackSource {
     }
 
     fn stop(&mut self) {
-        self.cursor = self.total_frames();
+        self.cursor = self.len_frames();
+    }
+
+    fn seek(&mut self, frame: usize) {
+        self.cursor = frame.min(self.len_frames());
+    }
+
+    fn position(&self) -> usize {
+        self.cursor.min(self.len_frames())
+    }
+
+    fn total_frames(&self) -> usize {
+        self.len_frames()
     }
 }
 

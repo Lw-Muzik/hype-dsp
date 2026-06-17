@@ -18,6 +18,9 @@ thiserror = { workspace = true }
 # Lock-free parameter handoff to the audio callback.
 arc-swap = { workspace = true }
 
-# WAV decode for Phase 2. Compressed formats (mp3/flac/aac/ogg) arrive via
-# symphonia in Phase 5 (the media subsystem).
+# Multi-format decode (mp3/flac/aac/wav/ogg/vorbis/isomp4).
+symphonia = { workspace = true }
+
+[dev-dependencies]
+# Generates WAV fixtures for decode/playback tests.
 hound = { workspace = true }

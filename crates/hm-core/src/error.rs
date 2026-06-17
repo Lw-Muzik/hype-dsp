@@ -33,6 +33,12 @@ impl From<serde_json::Error> for HmError {
     }
 }
 
+impl From<rusqlite::Error> for HmError {
+    fn from(e: rusqlite::Error) -> Self {
+        HmError::Storage(e.to_string())
+    }
+}
+
 /// A flat, serializable error returned to the UI from every Tauri command.
 ///
 /// Commands return `Result<T, IpcError>`; the front end's typed IPC wrappers

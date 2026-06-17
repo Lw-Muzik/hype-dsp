@@ -16,6 +16,7 @@ import type {
   DeviceInfo,
   EngineFrame,
   EngineState,
+  EqPreset,
   IpcError,
 } from "./types";
 
@@ -49,6 +50,44 @@ export function engineSetPower(power: boolean): Promise<void> {
 /** Set master output volume (linear gain). */
 export function engineSetMasterVolume(volume: number): Promise<void> {
   return invoke<void>("engine_set_master_volume", { volume });
+}
+
+/** Apply a manual 31-band EQ edit. */
+export function engineSetEq(
+  bands: number[],
+  preGain: number,
+  enabled: boolean,
+): Promise<void> {
+  return invoke<void>("engine_set_eq", { bands, preGain, enabled });
+}
+
+/** List all presets (built-in first, then custom). */
+export function eqListPresets(): Promise<EqPreset[]> {
+  return invoke<EqPreset[]>("eq_list_presets");
+}
+
+/** Apply a preset to the engine; returns the applied preset. */
+export function eqApplyPreset(id: string): Promise<EqPreset> {
+  return invoke<EqPreset>("eq_apply_preset", { id });
+}
+
+/** Save the current curve as a new custom preset. */
+export function eqSaveCustom(
+  name: string,
+  bands: number[],
+  preGain: number,
+): Promise<EqPreset> {
+  return invoke<EqPreset>("eq_save_custom", { name, bands, preGain });
+}
+
+/** Update an existing custom preset. */
+export function eqUpdate(preset: EqPreset): Promise<void> {
+  return invoke<void>("eq_update", { preset });
+}
+
+/** Delete a custom preset. */
+export function eqDelete(id: string): Promise<void> {
+  return invoke<void>("eq_delete", { id });
 }
 
 /** Decode and play a local file through the chain. */

@@ -14,12 +14,14 @@ pub mod device;
 pub mod engine;
 pub mod error;
 pub mod sources;
+pub mod spectrum;
 
 pub use decode::{decode_file, resample_stereo, DecodedAudio};
 pub use device::{list_input_devices, list_output_devices, DeviceInfo};
 pub use engine::{AudioEngine, EngineMeters, Renderer};
 pub use error::AudioError;
 pub use sources::FilePlaybackSource;
+pub use spectrum::{SpectrumTap, SPECTRUM_BANDS};
 
 use serde::{Deserialize, Serialize};
 

@@ -29,6 +29,21 @@ pub fn engine_set_master_volume(engine: State<'_, AudioEngine>, volume: f32) {
     engine.set_master_volume(volume);
 }
 
+/// Apply a manual 31-band EQ edit (clears the active preset).
+#[tauri::command]
+pub fn engine_set_eq(
+    engine: State<'_, AudioEngine>,
+    bands: Vec<f32>,
+    pre_gain: f32,
+    enabled: bool,
+) -> Result<(), IpcError> {
+    let bands: [f32; hm_core::BAND_COUNT] = bands
+        .try_into()
+        .map_err(|_| IpcError::new("invalid", "expected 31 EQ bands"))?;
+    engine.set_eq(bands, pre_gain, enabled);
+    Ok(())
+}
+
 /// Decode and play a local file through the enhancement chain.
 #[tauri::command]
 pub fn player_play_file(engine: State<'_, AudioEngine>, path: String) -> Result<(), IpcError> {

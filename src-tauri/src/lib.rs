@@ -12,14 +12,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use hm_audio::{AudioEngine, EngineMeters};
-use hm_core::{EngineFrame, MeterFrame};
-use tauri::Emitter;
+use hm_audio::{AudioEngine, EngineMeters, SpectrumTap, SPECTRUM_BANDS};
+use hm_core::{EngineFrame, MeterFrame, PresetStore};
+use tauri::{Emitter, Manager};
 
-/// Emits real-time meter frames to the UI at ~60 fps over the `engine:frame`
-/// event, and play/stop transitions over `engine:transport`. Runs for the app's
-/// lifetime on its own thread; it only reads lock-free telemetry.
-fn forward_frames(app: tauri::AppHandle, meters: Arc<EngineMeters>, playing: Arc<AtomicBool>) {
+/// Emits real-time meter + spectrum frames to the UI at ~60 fps over the
+/// `engine:frame` event, and play/stop transitions over `engine:transport`.
+/// Runs for the app's lifetime on its own thread; it only reads lock-free
+/// telemetry.
+fn forward_frames(
+    app: tauri::AppHandle,
+    meters: Arc<EngineMeters>,
+    spectrum: Arc<SpectrumTap>,
+    playing: Arc<AtomicBool>,
+) {
     let mut last_playing = false;
     loop {
         std::thread::sleep(Duration::from_millis(16));
@@ -28,12 +34,12 @@ fn forward_frames(app: tauri::AppHandle, meters: Arc<EngineMeters>, playing: Arc
         if now_playing != last_playing {
             let _ = app.emit("engine:transport", now_playing);
             if !now_playing {
-                // Settle the meters to idle when playback ends.
+                // Settle meters and spectrum to idle when playback ends.
                 let _ = app.emit(
                     "engine:frame",
                     EngineFrame {
                         meters: MeterFrame::default(),
-                        spectrum: None,
+                        spectrum: Some(vec![0.0; SPECTRUM_BANDS]),
                     },
                 );
             }
@@ -45,7 +51,7 @@ fn forward_frames(app: tauri::AppHandle, meters: Arc<EngineMeters>, playing: Arc
                 "engine:frame",
                 EngineFrame {
                     meters: meters.load(),
-                    spectrum: None,
+                    spectrum: Some(spectrum.load()),
                 },
             );
         }
@@ -56,6 +62,7 @@ fn forward_frames(app: tauri::AppHandle, meters: Arc<EngineMeters>, playing: Arc
 pub fn run() {
     let engine = AudioEngine::new();
     let meters = engine.meters();
+    let spectrum = engine.spectrum();
     let playing = engine.playing_flag();
 
     tauri::Builder::default()
@@ -64,10 +71,25 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(engine)
         .setup(move |app| {
+            // Open the preset store in the app data dir; fall back to an
+            // in-memory store so the app still runs if the disk path fails.
+            let store = app
+                .path()
+                .app_data_dir()
+                .ok()
+                .and_then(|dir| {
+                    std::fs::create_dir_all(&dir).ok()?;
+                    PresetStore::open(&dir.join("hypemuzik.db")).ok()
+                })
+                .or_else(|| PresetStore::open_in_memory().ok());
+            if let Some(store) = store {
+                app.manage(store);
+            }
+
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("hm-frame-forwarder".into())
-                .spawn(move || forward_frames(handle, meters, playing))
+                .spawn(move || forward_frames(handle, meters, spectrum, playing))
                 .ok();
             Ok(())
         })
@@ -78,9 +100,15 @@ pub fn run() {
             commands::engine::engine_get_state,
             commands::engine::engine_set_power,
             commands::engine::engine_set_master_volume,
+            commands::engine::engine_set_eq,
             commands::engine::player_play_file,
             commands::engine::player_stop,
             commands::engine::player_is_playing,
+            commands::presets::eq_list_presets,
+            commands::presets::eq_apply_preset,
+            commands::presets::eq_save_custom,
+            commands::presets::eq_update,
+            commands::presets::eq_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the HypeMuzik application");

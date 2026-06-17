@@ -13,7 +13,7 @@ import { useEngineStore } from "@/stores/engine";
 export function Providers({ children }: { children: ReactNode }) {
   const setAppInfo = useUiStore((s) => s.setAppInfo);
   const hydrate = useEngineStore((s) => s.hydrate);
-  const applyMeterFrame = useEngineStore((s) => s.applyMeterFrame);
+  const applyFrame = useEngineStore((s) => s.applyFrame);
   const setPlaying = useEngineStore((s) => s.setPlaying);
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export function Providers({ children }: { children: ReactNode }) {
       .then((state) => !cancelled && hydrate(state))
       .catch(() => {});
 
-    onEngineFrame((frame) => applyMeterFrame(frame.meters))
+    onEngineFrame((frame) => applyFrame(frame))
       .then((un) => (cancelled ? un() : unlisteners.push(un)))
       .catch(() => {});
 
@@ -40,7 +40,7 @@ export function Providers({ children }: { children: ReactNode }) {
       cancelled = true;
       for (const un of unlisteners) un();
     };
-  }, [setAppInfo, hydrate, applyMeterFrame, setPlaying]);
+  }, [setAppInfo, hydrate, applyFrame, setPlaying]);
 
   return <>{children}</>;
 }

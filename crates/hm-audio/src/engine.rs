@@ -29,6 +29,7 @@ use hm_dsp::ProcessChain;
 use crate::decode::{decode_file, resample_stereo, DecodedAudio};
 use crate::error::AudioError;
 use crate::sources::FilePlaybackSource;
+use crate::spectrum::{Analyzer, SpectrumTap};
 use crate::AudioSource;
 
 /// Lock-free meter telemetry written by the audio callback and read by the
@@ -109,6 +110,7 @@ fn compute_meters(buffer: &[f32], channels: usize) -> MeterFrame {
 pub struct Renderer {
     chain: ProcessChain,
     source: Box<dyn AudioSource>,
+    analyzer: Analyzer,
 }
 
 impl Renderer {
@@ -117,10 +119,12 @@ impl Renderer {
         Self {
             chain: ProcessChain::standard(sample_rate, channels),
             source,
+            analyzer: Analyzer::new(sample_rate),
         }
     }
 
-    /// Fill `out` with the next processed block. Returns `true` when the source
+    /// Fill `out` with the next processed block, updating meters and the
+    /// spectrum from the post-processing output. Returns `true` when the source
     /// is fully exhausted (the block contained no source audio).
     ///
     /// Real-time safe: no allocation, locking, or I/O.
@@ -130,6 +134,7 @@ impl Renderer {
         channels: usize,
         state: &EngineState,
         meters: &EngineMeters,
+        spectrum: &SpectrumTap,
     ) -> bool {
         let produced = self.source.read(out, channels);
 
@@ -146,6 +151,7 @@ impl Renderer {
         }
 
         meters.store(compute_meters(out, channels));
+        self.analyzer.push(out, channels, spectrum);
         produced == 0
     }
 }
@@ -164,6 +170,7 @@ pub struct AudioEngine {
     /// Lock-free snapshot the audio callback reads each block.
     shared: Arc<ArcSwap<EngineState>>,
     meters: Arc<EngineMeters>,
+    spectrum: Arc<SpectrumTap>,
     playing: Arc<AtomicBool>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     _thread: JoinHandle<()>,
@@ -181,16 +188,18 @@ impl AudioEngine {
         let initial = EngineState::default();
         let shared = Arc::new(ArcSwap::from_pointee(initial.clone()));
         let meters = Arc::new(EngineMeters::default());
+        let spectrum = Arc::new(SpectrumTap::default());
         let playing = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
 
         let thread = {
             let shared = shared.clone();
             let meters = meters.clone();
+            let spectrum = spectrum.clone();
             let playing = playing.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
-                .spawn(move || control_loop(rx, shared, meters, playing))
+                .spawn(move || control_loop(rx, shared, meters, spectrum, playing))
                 .expect("failed to spawn hm-audio engine thread")
         };
 
@@ -198,6 +207,7 @@ impl AudioEngine {
             write_state: Mutex::new(initial),
             shared,
             meters,
+            spectrum,
             playing,
             ctrl: Mutex::new(tx),
             _thread: thread,
@@ -235,9 +245,38 @@ impl AudioEngine {
         self.shared.store(Arc::new(new_state));
     }
 
+    /// Apply a manual EQ edit. Clears the active preset (now customized).
+    pub fn set_eq(&self, bands: [f32; hm_core::BAND_COUNT], pre_gain: f32, enabled: bool) {
+        self.update(|s| {
+            s.eq.bands = bands;
+            s.eq.pre_gain = pre_gain;
+            s.eq.enabled = enabled;
+            s.active_preset_id = None;
+        });
+    }
+
+    /// Apply a named preset's curve and mark it active.
+    pub fn apply_eq_preset(
+        &self,
+        bands: [f32; hm_core::BAND_COUNT],
+        pre_gain: f32,
+        preset_id: String,
+    ) {
+        self.update(|s| {
+            s.eq.bands = bands;
+            s.eq.pre_gain = pre_gain;
+            s.active_preset_id = Some(preset_id);
+        });
+    }
+
     /// Shared meter telemetry for the UI-forwarding thread.
     pub fn meters(&self) -> Arc<EngineMeters> {
         self.meters.clone()
+    }
+
+    /// Shared spectrum telemetry for the UI-forwarding thread.
+    pub fn spectrum(&self) -> Arc<SpectrumTap> {
+        self.spectrum.clone()
     }
 
     /// Shared playing flag for the UI-forwarding thread.
@@ -313,6 +352,7 @@ fn control_loop(
     rx: mpsc::Receiver<EngineCommand>,
     shared: Arc<ArcSwap<EngineState>>,
     meters: Arc<EngineMeters>,
+    spectrum: Arc<SpectrumTap>,
     playing: Arc<AtomicBool>,
 ) {
     let setup = output_setup().ok();
@@ -325,6 +365,7 @@ fn control_loop(
             EngineCommand::Play(audio) => {
                 drop(active.take()); // stop & release any current stream first
                 meters.zero();
+                spectrum.zero();
                 let Some((device, config)) = &setup else {
                     playing.store(false, Ordering::Relaxed);
                     continue;
@@ -340,6 +381,7 @@ fn control_loop(
                     source,
                     shared.clone(),
                     meters.clone(),
+                    spectrum.clone(),
                     playing.clone(),
                     channels,
                     sample_rate as f32,
@@ -355,6 +397,7 @@ fn control_loop(
                 drop(active.take());
                 playing.store(false, Ordering::Relaxed);
                 meters.zero();
+                spectrum.zero();
             }
             EngineCommand::Shutdown => break,
         }
@@ -368,6 +411,7 @@ fn build_output_stream(
     source: Box<dyn AudioSource>,
     shared: Arc<ArcSwap<EngineState>>,
     meters: Arc<EngineMeters>,
+    spectrum: Arc<SpectrumTap>,
     playing: Arc<AtomicBool>,
     channels: usize,
     sample_rate: f32,
@@ -379,7 +423,7 @@ fn build_output_stream(
             config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 let state = shared.load_full();
-                let exhausted = renderer.render(data, channels, state.as_ref(), &meters);
+                let exhausted = renderer.render(data, channels, state.as_ref(), &meters, &spectrum);
                 if exhausted {
                     playing.store(false, Ordering::Relaxed);
                 }
@@ -411,11 +455,12 @@ mod tests {
     fn limiter_keeps_engaged_output_below_ceiling() {
         let mut renderer = Renderer::new(constant_source(2.0, 4096), 48_000.0, 2);
         let meters = EngineMeters::default();
+        let spectrum = SpectrumTap::default();
         let state = EngineState::default(); // power on, limiter on, ceiling -0.3 dB
         let ceiling = 10f32.powf(-0.3 / 20.0);
 
         let mut out = vec![0.0f32; 4096 * 2];
-        renderer.render(&mut out, 2, &state, &meters);
+        renderer.render(&mut out, 2, &state, &meters, &spectrum);
 
         let peak = out.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
         assert!(
@@ -430,6 +475,7 @@ mod tests {
     fn power_off_bypasses_the_chain() {
         let mut renderer = Renderer::new(constant_source(2.0, 2048), 48_000.0, 2);
         let meters = EngineMeters::default();
+        let spectrum = SpectrumTap::default();
         // Power off: chain bypassed, no limiting.
         let state = EngineState {
             power: false,
@@ -437,7 +483,7 @@ mod tests {
         };
 
         let mut out = vec![0.0f32; 2048 * 2];
-        renderer.render(&mut out, 2, &state, &meters);
+        renderer.render(&mut out, 2, &state, &meters, &spectrum);
 
         let peak = out.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
         assert!(

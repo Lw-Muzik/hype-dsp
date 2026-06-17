@@ -12,10 +12,13 @@
 
 pub mod error;
 pub mod license;
+pub mod presets;
+pub mod store;
 pub mod types;
 
 pub use error::{HmError, IpcError};
 pub use license::{LicenseError, LicenseService, LicenseStatus};
+pub use store::PresetStore;
 pub use types::*;
 
 /// Human-facing application metadata, surfaced to the UI on startup so the

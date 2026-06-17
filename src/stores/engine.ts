@@ -1,20 +1,21 @@
 import { create } from "zustand";
 import {
+  engineSetEq,
   engineSetMasterVolume,
   engineSetPower,
   playerPlayFile,
   playerStop,
 } from "@/lib/ipc";
 import { BAND_COUNT } from "@/lib/types";
-import type { EngineState, MeterFrame } from "@/lib/types";
+import type { EngineFrame, EngineState, EqPreset, MeterFrame } from "@/lib/types";
 
 /**
  * Front-end mirror of the DSP engine state.
  *
  * `state` is hydrated from the backend and kept in sync: setters update
- * optimistically and dispatch a typed IPC command. `meters` is fed by the real
- * `engine:frame` event (never synthesized); `metersLive` tracks whether
- * playback is active.
+ * optimistically and dispatch a typed IPC command. `meters` and `spectrum` are
+ * fed by the real `engine:frame` event (never synthesized); `metersLive` tracks
+ * whether playback is active.
  */
 
 const defaultEngineState: EngineState = {
@@ -37,62 +38,119 @@ const idleMeters: MeterFrame = { peak: [0, 0], rms: [0, 0] };
 interface EngineStore {
   state: EngineState;
   meters: MeterFrame;
+  spectrum: number[];
   metersLive: boolean;
   playing: boolean;
   nowPlaying: string | null;
 
-  /** Replace the mirrored state (used on startup hydration). */
   hydrate: (state: EngineState) => void;
 
   setPower: (power: boolean) => void;
   setMasterVolume: (masterVolume: number) => void;
 
-  /** Apply a real meter frame from the engine. */
-  applyMeterFrame: (meters: MeterFrame) => void;
-  /** React to a play/stop transition from the engine. */
+  /** Set a single EQ band (dB); clears the active preset (now custom). */
+  setBand: (index: number, valueDb: number) => void;
+  /** Replace all band gains at once (e.g. reset to flat); clears the preset. */
+  setBands: (bands: number[]) => void;
+  /** Set EQ pre-gain (dB). */
+  setPreGain: (preGain: number) => void;
+  /** Enable/disable the EQ stage. */
+  setEqEnabled: (enabled: boolean) => void;
+  /** Mirror an applied preset (the backend command applied it to the engine). */
+  applyPreset: (preset: EqPreset) => void;
+
+  applyFrame: (frame: EngineFrame) => void;
   setPlaying: (playing: boolean) => void;
 
-  /** Decode + play a file; resolves on success, throws the IPC error. */
   play: (path: string, name: string) => Promise<void>;
   stop: () => Promise<void>;
 }
 
-export const useEngineStore = create<EngineStore>((set) => ({
-  state: defaultEngineState,
-  meters: idleMeters,
-  metersLive: false,
-  playing: false,
-  nowPlaying: null,
+export const useEngineStore = create<EngineStore>((set, get) => {
+  const pushEq = (eq: EngineState["eq"]) => {
+    void engineSetEq(eq.bands, eq.preGain, eq.enabled).catch(() => {});
+  };
 
-  hydrate: (state) => set({ state }),
+  return {
+    state: defaultEngineState,
+    meters: idleMeters,
+    spectrum: [],
+    metersLive: false,
+    playing: false,
+    nowPlaying: null,
 
-  setPower: (power) => {
-    set((store) => ({ state: { ...store.state, power } }));
-    void engineSetPower(power).catch(() => {});
-  },
+    hydrate: (state) => set({ state }),
 
-  setMasterVolume: (masterVolume) => {
-    set((store) => ({ state: { ...store.state, masterVolume } }));
-    void engineSetMasterVolume(masterVolume).catch(() => {});
-  },
+    setPower: (power) => {
+      set((s) => ({ state: { ...s.state, power } }));
+      void engineSetPower(power).catch(() => {});
+    },
 
-  applyMeterFrame: (meters) => set({ meters }),
+    setMasterVolume: (masterVolume) => {
+      set((s) => ({ state: { ...s.state, masterVolume } }));
+      void engineSetMasterVolume(masterVolume).catch(() => {});
+    },
 
-  setPlaying: (playing) =>
-    set((store) => ({
-      playing,
-      metersLive: playing,
-      meters: playing ? store.meters : idleMeters,
-      nowPlaying: playing ? store.nowPlaying : null,
-    })),
+    setBand: (index, valueDb) => {
+      const { eq } = get().state;
+      const bands = eq.bands.slice();
+      bands[index] = valueDb;
+      const nextEq = { ...eq, bands };
+      set((s) => ({
+        state: { ...s.state, eq: nextEq, activePresetId: null },
+      }));
+      pushEq(nextEq);
+    },
 
-  play: async (path, name) => {
-    await playerPlayFile(path);
-    set({ nowPlaying: name, playing: true, metersLive: true });
-  },
+    setBands: (bands) => {
+      const nextEq = { ...get().state.eq, bands: bands.slice() };
+      set((s) => ({ state: { ...s.state, eq: nextEq, activePresetId: null } }));
+      pushEq(nextEq);
+    },
 
-  stop: async () => {
-    await playerStop();
-    set({ playing: false, metersLive: false, meters: idleMeters, nowPlaying: null });
-  },
-}));
+    setPreGain: (preGain) => {
+      const nextEq = { ...get().state.eq, preGain };
+      set((s) => ({ state: { ...s.state, eq: nextEq } }));
+      pushEq(nextEq);
+    },
+
+    setEqEnabled: (enabled) => {
+      const nextEq = { ...get().state.eq, enabled };
+      set((s) => ({ state: { ...s.state, eq: nextEq } }));
+      pushEq(nextEq);
+    },
+
+    applyPreset: (preset) =>
+      set((s) => ({
+        state: {
+          ...s.state,
+          eq: { ...s.state.eq, bands: preset.bands.slice(), preGain: preset.preGain },
+          activePresetId: preset.id,
+        },
+      })),
+
+    applyFrame: (frame) =>
+      set({
+        meters: frame.meters,
+        ...(frame.spectrum ? { spectrum: frame.spectrum } : {}),
+      }),
+
+    setPlaying: (playing) =>
+      set((s) => ({
+        playing,
+        metersLive: playing,
+        meters: playing ? s.meters : idleMeters,
+        nowPlaying: playing ? s.nowPlaying : null,
+      })),
+
+    play: async (path, name) => {
+      await playerPlayFile(path);
+      set({ nowPlaying: name, playing: true, metersLive: true });
+    },
+
+    stop: async () => {
+      await playerStop();
+      set({ playing: false, metersLive: false, meters: idleMeters, nowPlaying: null });
+    },
+  };
+});

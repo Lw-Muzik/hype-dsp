@@ -44,7 +44,9 @@ fn plays_a_wav_and_meters_move() {
     write_sine_wav(&path, 2.0, 44_100);
 
     let engine = AudioEngine::new();
-    engine.play_file(&path).expect("play_file should decode and start");
+    engine
+        .play_file(&path)
+        .expect("play_file should decode and start");
 
     let start = Instant::now();
     let mut saw_signal = false;

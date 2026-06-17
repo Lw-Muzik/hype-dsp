@@ -11,6 +11,7 @@ description = "Audio I/O for HypeMuzik: cpal devices, source/sink traits, the re
 hm-core = { workspace = true }
 hm-dsp = { workspace = true }
 cpal = { workspace = true }
+realfft = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 

@@ -1,0 +1,2518 @@
+[
+ {
+  "id": "oratory1990:7Hz Timeless",
+  "brand": "7Hz",
+  "model": "7Hz Timeless",
+  "preamp": -3.9,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -0.1,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 4515.0,
+    "gain": 4.0,
+    "q": 1.92
+   },
+   {
+    "kind": "peaking",
+    "freq": 164.0,
+    "gain": -2.2,
+    "q": 0.87
+   },
+   {
+    "kind": "peaking",
+    "freq": 670.0,
+    "gain": 1.8,
+    "q": 1.01
+   },
+   {
+    "kind": "peaking",
+    "freq": 1958.0,
+    "gain": -1.9,
+    "q": 1.89
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -7.3,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 6184.0,
+    "gain": 2.3,
+    "q": 4.39
+   },
+   {
+    "kind": "peaking",
+    "freq": 34.0,
+    "gain": -0.2,
+    "q": 2.05
+   },
+   {
+    "kind": "peaking",
+    "freq": 63.0,
+    "gain": 0.2,
+    "q": 2.01
+   },
+   {
+    "kind": "peaking",
+    "freq": 3040.0,
+    "gain": 0.5,
+    "q": 5.97
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:AKG K371 (Brainwavz oval earpads)",
+  "brand": "AKG",
+  "model": "AKG K371 (Brainwavz oval earpads)",
+  "preamp": -4.8,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -2.9,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1431.0,
+    "gain": -3.0,
+    "q": 0.89
+   },
+   {
+    "kind": "peaking",
+    "freq": 82.0,
+    "gain": 2.3,
+    "q": 0.46
+   },
+   {
+    "kind": "peaking",
+    "freq": 3557.0,
+    "gain": 5.3,
+    "q": 3.25
+   },
+   {
+    "kind": "peaking",
+    "freq": 31.0,
+    "gain": -2.8,
+    "q": 0.87
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -0.1,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 5353.0,
+    "gain": -4.7,
+    "q": 4.67
+   },
+   {
+    "kind": "peaking",
+    "freq": 4183.0,
+    "gain": 2.0,
+    "q": 5.67
+   },
+   {
+    "kind": "peaking",
+    "freq": 6867.0,
+    "gain": 2.9,
+    "q": 5.92
+   },
+   {
+    "kind": "peaking",
+    "freq": 70.0,
+    "gain": 0.5,
+    "q": 3.4
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:AKG K702 (Brainwavz XL earpads)",
+  "brand": "AKG",
+  "model": "AKG K702 (Brainwavz XL earpads)",
+  "preamp": -6.0,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 3.0,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 175.0,
+    "gain": -4.9,
+    "q": 0.46
+   },
+   {
+    "kind": "peaking",
+    "freq": 716.0,
+    "gain": 6.8,
+    "q": 1.71
+   },
+   {
+    "kind": "peaking",
+    "freq": 3657.0,
+    "gain": 6.6,
+    "q": 2.93
+   },
+   {
+    "kind": "peaking",
+    "freq": 2284.0,
+    "gain": -4.2,
+    "q": 2.08
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -3.6,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 10000.0,
+    "gain": 4.9,
+    "q": 1.41
+   },
+   {
+    "kind": "peaking",
+    "freq": 5331.0,
+    "gain": -3.5,
+    "q": 5.99
+   },
+   {
+    "kind": "peaking",
+    "freq": 43.0,
+    "gain": -0.5,
+    "q": 2.54
+   },
+   {
+    "kind": "peaking",
+    "freq": 1014.0,
+    "gain": -0.9,
+    "q": 5.99
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:AKG K712 (Dekoni sheepskin earpads)",
+  "brand": "AKG",
+  "model": "AKG K712 (Dekoni sheepskin earpads)",
+  "preamp": -5.9,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 4.9,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 180.0,
+    "gain": -4.4,
+    "q": 0.27
+   },
+   {
+    "kind": "peaking",
+    "freq": 3703.0,
+    "gain": 6.3,
+    "q": 3.11
+   },
+   {
+    "kind": "peaking",
+    "freq": 2284.0,
+    "gain": -6.1,
+    "q": 2.35
+   },
+   {
+    "kind": "peaking",
+    "freq": 971.0,
+    "gain": 3.7,
+    "q": 0.55
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -2.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 5526.0,
+    "gain": -3.1,
+    "q": 6.0
+   },
+   {
+    "kind": "peaking",
+    "freq": 112.0,
+    "gain": 1.0,
+    "q": 2.0
+   },
+   {
+    "kind": "peaking",
+    "freq": 237.0,
+    "gain": -0.8,
+    "q": 1.88
+   },
+   {
+    "kind": "peaking",
+    "freq": 52.0,
+    "gain": -0.4,
+    "q": 1.28
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Apple AirPods Max (3rd party pleather earpads)",
+  "brand": "Apple",
+  "model": "Apple AirPods Max (3rd party pleather earpads)",
+  "preamp": -5.7,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -3.2,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 3614.0,
+    "gain": 5.7,
+    "q": 0.96
+   },
+   {
+    "kind": "peaking",
+    "freq": 1103.0,
+    "gain": -12.1,
+    "q": 1.91
+   },
+   {
+    "kind": "peaking",
+    "freq": 1844.0,
+    "gain": 3.8,
+    "q": 1.95
+   },
+   {
+    "kind": "peaking",
+    "freq": 217.0,
+    "gain": -2.2,
+    "q": 2.44
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -5.2,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 7555.0,
+    "gain": 3.3,
+    "q": 2.49
+   },
+   {
+    "kind": "peaking",
+    "freq": 84.0,
+    "gain": 1.3,
+    "q": 1.87
+   },
+   {
+    "kind": "peaking",
+    "freq": 6020.0,
+    "gain": -3.8,
+    "q": 5.98
+   },
+   {
+    "kind": "peaking",
+    "freq": 9505.0,
+    "gain": 2.0,
+    "q": 3.31
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Audio-Technica ATH-M50x (Dekoni sheepskin earpads)",
+  "brand": "Audio-Technica",
+  "model": "Audio-Technica ATH-M50x (Dekoni sheepskin earpads)",
+  "preamp": -5.1,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 2.8,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 129.0,
+    "gain": -6.1,
+    "q": 0.2
+   },
+   {
+    "kind": "peaking",
+    "freq": 1611.0,
+    "gain": 3.7,
+    "q": 0.75
+   },
+   {
+    "kind": "peaking",
+    "freq": 3541.0,
+    "gain": 3.9,
+    "q": 4.98
+   },
+   {
+    "kind": "peaking",
+    "freq": 342.0,
+    "gain": 6.2,
+    "q": 2.33
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -6.9,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 54.0,
+    "gain": -0.9,
+    "q": 1.46
+   },
+   {
+    "kind": "peaking",
+    "freq": 122.0,
+    "gain": 1.3,
+    "q": 1.79
+   },
+   {
+    "kind": "peaking",
+    "freq": 5097.0,
+    "gain": 3.1,
+    "q": 6.0
+   },
+   {
+    "kind": "peaking",
+    "freq": 195.0,
+    "gain": -1.0,
+    "q": 2.45
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Beats Studio3 Wireless",
+  "brand": "Beats",
+  "model": "Beats Studio3 Wireless",
+  "preamp": -6.9,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 7.7,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 327.0,
+    "gain": -5.9,
+    "q": 1.56
+   },
+   {
+    "kind": "peaking",
+    "freq": 5209.0,
+    "gain": 6.7,
+    "q": 2.64
+   },
+   {
+    "kind": "peaking",
+    "freq": 68.0,
+    "gain": -8.1,
+    "q": 0.78
+   },
+   {
+    "kind": "peaking",
+    "freq": 1978.0,
+    "gain": 4.3,
+    "q": 2.19
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -2.5,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 3257.0,
+    "gain": -1.9,
+    "q": 4.42
+   },
+   {
+    "kind": "peaking",
+    "freq": 666.0,
+    "gain": 1.5,
+    "q": 2.52
+   },
+   {
+    "kind": "peaking",
+    "freq": 6665.0,
+    "gain": 1.5,
+    "q": 3.92
+   },
+   {
+    "kind": "peaking",
+    "freq": 428.0,
+    "gain": -1.1,
+    "q": 4.35
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Beyerdynamic DT 1990 (analytic earpads)",
+  "brand": "Beyerdynamic",
+  "model": "Beyerdynamic DT 1990 (analytic earpads)",
+  "preamp": -6.0,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 6.3,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 148.0,
+    "gain": -2.1,
+    "q": 0.34
+   },
+   {
+    "kind": "peaking",
+    "freq": 4154.0,
+    "gain": 4.2,
+    "q": 4.02
+   },
+   {
+    "kind": "peaking",
+    "freq": 857.0,
+    "gain": 1.5,
+    "q": 0.52
+   },
+   {
+    "kind": "peaking",
+    "freq": 254.0,
+    "gain": -0.4,
+    "q": 0.68
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -7.6,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 7370.0,
+    "gain": -3.1,
+    "q": 3.39
+   },
+   {
+    "kind": "peaking",
+    "freq": 10000.0,
+    "gain": -1.4,
+    "q": 4.81
+   },
+   {
+    "kind": "peaking",
+    "freq": 4428.0,
+    "gain": 1.7,
+    "q": 5.06
+   },
+   {
+    "kind": "peaking",
+    "freq": 119.0,
+    "gain": 0.2,
+    "q": 1.75
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Beyerdynamic DT 770 (Alpha earpads)",
+  "brand": "Beyerdynamic",
+  "model": "Beyerdynamic DT 770 (Alpha earpads)",
+  "preamp": -5.7,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -2.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1217.0,
+    "gain": -2.3,
+    "q": 0.65
+   },
+   {
+    "kind": "peaking",
+    "freq": 107.0,
+    "gain": -3.3,
+    "q": 1.3
+   },
+   {
+    "kind": "peaking",
+    "freq": 3631.0,
+    "gain": 6.0,
+    "q": 3.26
+   },
+   {
+    "kind": "peaking",
+    "freq": 7617.0,
+    "gain": 4.3,
+    "q": 2.58
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -8.5,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 10000.0,
+    "gain": 4.5,
+    "q": 1.3
+   },
+   {
+    "kind": "peaking",
+    "freq": 233.0,
+    "gain": 2.6,
+    "q": 2.69
+   },
+   {
+    "kind": "peaking",
+    "freq": 151.0,
+    "gain": -1.7,
+    "q": 3.66
+   },
+   {
+    "kind": "peaking",
+    "freq": 5211.0,
+    "gain": -3.1,
+    "q": 5.79
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Beyerdynamic DT 990 (fresh earpads)",
+  "brand": "Beyerdynamic",
+  "model": "Beyerdynamic DT 990 (fresh earpads)",
+  "preamp": -6.7,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 10.2,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 536.0,
+    "gain": 3.1,
+    "q": 0.49
+   },
+   {
+    "kind": "peaking",
+    "freq": 64.0,
+    "gain": -7.5,
+    "q": 0.37
+   },
+   {
+    "kind": "peaking",
+    "freq": 7739.0,
+    "gain": -4.6,
+    "q": 1.05
+   },
+   {
+    "kind": "peaking",
+    "freq": 633.0,
+    "gain": 0.7,
+    "q": 2.48
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -11.8,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 8968.0,
+    "gain": 4.4,
+    "q": 0.59
+   },
+   {
+    "kind": "peaking",
+    "freq": 5846.0,
+    "gain": -5.4,
+    "q": 5.18
+   },
+   {
+    "kind": "peaking",
+    "freq": 3201.0,
+    "gain": -0.2,
+    "q": 1.07
+   },
+   {
+    "kind": "peaking",
+    "freq": 1131.0,
+    "gain": -1.1,
+    "q": 3.36
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Bose QuietComfort 45",
+  "brand": "Bose",
+  "model": "Bose QuietComfort 45",
+  "preamp": -2.2,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -1.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 161.0,
+    "gain": -2.2,
+    "q": 1.15
+   },
+   {
+    "kind": "peaking",
+    "freq": 5490.0,
+    "gain": -7.7,
+    "q": 2.06
+   },
+   {
+    "kind": "peaking",
+    "freq": 4242.0,
+    "gain": 3.5,
+    "q": 0.24
+   },
+   {
+    "kind": "peaking",
+    "freq": 2328.0,
+    "gain": -5.2,
+    "q": 2.15
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -7.0,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 8352.0,
+    "gain": 2.9,
+    "q": 1.93
+   },
+   {
+    "kind": "peaking",
+    "freq": 390.0,
+    "gain": 0.5,
+    "q": 2.32
+   },
+   {
+    "kind": "peaking",
+    "freq": 6508.0,
+    "gain": -1.0,
+    "q": 5.04
+   },
+   {
+    "kind": "peaking",
+    "freq": 70.0,
+    "gain": -0.1,
+    "q": 1.97
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Dan Clark Audio Aeon 2 Closed (perforated earpads)",
+  "brand": "Dan",
+  "model": "Dan Clark Audio Aeon 2 Closed (perforated earpads)",
+  "preamp": -3.1,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 3.5,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 105.0,
+    "gain": -7.2,
+    "q": 0.87
+   },
+   {
+    "kind": "peaking",
+    "freq": 861.0,
+    "gain": 1.7,
+    "q": 1.45
+   },
+   {
+    "kind": "peaking",
+    "freq": 5895.0,
+    "gain": -3.9,
+    "q": 5.38
+   },
+   {
+    "kind": "peaking",
+    "freq": 171.0,
+    "gain": 4.1,
+    "q": 1.23
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -6.7,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 4014.0,
+    "gain": 2.2,
+    "q": 5.28
+   },
+   {
+    "kind": "peaking",
+    "freq": 3142.0,
+    "gain": -1.5,
+    "q": 4.88
+   },
+   {
+    "kind": "peaking",
+    "freq": 41.0,
+    "gain": -1.0,
+    "q": 3.86
+   },
+   {
+    "kind": "peaking",
+    "freq": 57.0,
+    "gain": 0.5,
+    "q": 2.26
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Etymotic ER2SE",
+  "brand": "Etymotic",
+  "model": "Etymotic ER2SE",
+  "preamp": -6.3,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 6.3,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 7641.0,
+    "gain": 7.2,
+    "q": 0.59
+   },
+   {
+    "kind": "peaking",
+    "freq": 1757.0,
+    "gain": -6.3,
+    "q": 0.29
+   },
+   {
+    "kind": "peaking",
+    "freq": 803.0,
+    "gain": 5.2,
+    "q": 0.92
+   },
+   {
+    "kind": "peaking",
+    "freq": 3742.0,
+    "gain": 1.8,
+    "q": 2.11
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -1.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 74.0,
+    "gain": 0.6,
+    "q": 2.33
+   },
+   {
+    "kind": "peaking",
+    "freq": 185.0,
+    "gain": -0.4,
+    "q": 1.52
+   },
+   {
+    "kind": "peaking",
+    "freq": 1404.0,
+    "gain": -0.4,
+    "q": 3.73
+   },
+   {
+    "kind": "peaking",
+    "freq": 399.0,
+    "gain": 0.3,
+    "q": 2.15
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Focal Clear Mg",
+  "brand": "Focal",
+  "model": "Focal Clear Mg",
+  "preamp": -6.8,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 5.9,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 8641.0,
+    "gain": 6.3,
+    "q": 1.17
+   },
+   {
+    "kind": "peaking",
+    "freq": 1198.0,
+    "gain": -4.0,
+    "q": 1.73
+   },
+   {
+    "kind": "peaking",
+    "freq": 94.0,
+    "gain": -4.2,
+    "q": 0.3
+   },
+   {
+    "kind": "peaking",
+    "freq": 4530.0,
+    "gain": 5.5,
+    "q": 3.15
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -3.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 2223.0,
+    "gain": 1.7,
+    "q": 4.29
+   },
+   {
+    "kind": "peaking",
+    "freq": 3196.0,
+    "gain": -1.7,
+    "q": 3.02
+   },
+   {
+    "kind": "peaking",
+    "freq": 7343.0,
+    "gain": 1.5,
+    "q": 5.95
+   },
+   {
+    "kind": "peaking",
+    "freq": 3986.0,
+    "gain": 1.4,
+    "q": 6.0
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Focal Elex",
+  "brand": "Focal",
+  "model": "Focal Elex",
+  "preamp": -6.4,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 7.9,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 69.0,
+    "gain": -4.2,
+    "q": 0.42
+   },
+   {
+    "kind": "peaking",
+    "freq": 1342.0,
+    "gain": -3.5,
+    "q": 1.72
+   },
+   {
+    "kind": "peaking",
+    "freq": 2225.0,
+    "gain": 2.3,
+    "q": 2.18
+   },
+   {
+    "kind": "peaking",
+    "freq": 9810.0,
+    "gain": 5.5,
+    "q": 1.44
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -1.5,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 4313.0,
+    "gain": 2.9,
+    "q": 5.52
+   },
+   {
+    "kind": "peaking",
+    "freq": 5887.0,
+    "gain": -4.0,
+    "q": 6.0
+   },
+   {
+    "kind": "peaking",
+    "freq": 510.0,
+    "gain": 0.4,
+    "q": 1.87
+   },
+   {
+    "kind": "peaking",
+    "freq": 6750.0,
+    "gain": 2.4,
+    "q": 5.76
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:HIFIMAN Arya Organic",
+  "brand": "HIFIMAN",
+  "model": "HIFIMAN Arya Organic",
+  "preamp": -4.4,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 4.3,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1866.0,
+    "gain": 6.2,
+    "q": 1.75
+   },
+   {
+    "kind": "peaking",
+    "freq": 89.0,
+    "gain": -2.6,
+    "q": 0.82
+   },
+   {
+    "kind": "peaking",
+    "freq": 3082.0,
+    "gain": -2.8,
+    "q": 0.68
+   },
+   {
+    "kind": "peaking",
+    "freq": 404.0,
+    "gain": -0.5,
+    "q": 1.49
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -6.9,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 5536.0,
+    "gain": 2.1,
+    "q": 6.0
+   },
+   {
+    "kind": "peaking",
+    "freq": 2960.0,
+    "gain": -0.6,
+    "q": 4.64
+   },
+   {
+    "kind": "peaking",
+    "freq": 3567.0,
+    "gain": 1.4,
+    "q": 5.97
+   },
+   {
+    "kind": "peaking",
+    "freq": 3221.0,
+    "gain": -0.9,
+    "q": 6.0
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:HIFIMAN HE400se",
+  "brand": "HIFIMAN",
+  "model": "HIFIMAN HE400se",
+  "preamp": -6.0,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 6.7,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1968.0,
+    "gain": 5.1,
+    "q": 2.37
+   },
+   {
+    "kind": "peaking",
+    "freq": 861.0,
+    "gain": -2.3,
+    "q": 1.86
+   },
+   {
+    "kind": "peaking",
+    "freq": 101.0,
+    "gain": -2.4,
+    "q": 0.32
+   },
+   {
+    "kind": "peaking",
+    "freq": 1619.0,
+    "gain": 1.1,
+    "q": 3.53
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -2.6,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 138.0,
+    "gain": 0.7,
+    "q": 1.98
+   },
+   {
+    "kind": "peaking",
+    "freq": 64.0,
+    "gain": -0.7,
+    "q": 1.95
+   },
+   {
+    "kind": "peaking",
+    "freq": 251.0,
+    "gain": -0.4,
+    "q": 2.33
+   },
+   {
+    "kind": "peaking",
+    "freq": 29.0,
+    "gain": 0.5,
+    "q": 2.63
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:HIFIMAN Sundara (Dekoni sheepskin Earpads)",
+  "brand": "HIFIMAN",
+  "model": "HIFIMAN Sundara (Dekoni sheepskin Earpads)",
+  "preamp": -5.2,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 5.3,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1190.0,
+    "gain": -4.8,
+    "q": 1.59
+   },
+   {
+    "kind": "peaking",
+    "freq": 2117.0,
+    "gain": 2.8,
+    "q": 1.71
+   },
+   {
+    "kind": "peaking",
+    "freq": 229.0,
+    "gain": -1.4,
+    "q": 0.74
+   },
+   {
+    "kind": "peaking",
+    "freq": 8007.0,
+    "gain": 2.7,
+    "q": 1.36
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -4.8,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 4252.0,
+    "gain": 2.2,
+    "q": 3.4
+   },
+   {
+    "kind": "peaking",
+    "freq": 3056.0,
+    "gain": -0.9,
+    "q": 3.61
+   },
+   {
+    "kind": "peaking",
+    "freq": 551.0,
+    "gain": 0.9,
+    "q": 4.27
+   },
+   {
+    "kind": "peaking",
+    "freq": 5448.0,
+    "gain": -1.1,
+    "q": 4.94
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Meze 99 Classics (Brainwavz memory foam hybrid earpads)",
+  "brand": "Meze",
+  "model": "Meze 99 Classics (Brainwavz memory foam hybrid earpads)",
+  "preamp": -6.1,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 5.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 300.0,
+    "gain": 5.4,
+    "q": 2.05
+   },
+   {
+    "kind": "peaking",
+    "freq": 54.0,
+    "gain": -6.4,
+    "q": 0.43
+   },
+   {
+    "kind": "peaking",
+    "freq": 6205.0,
+    "gain": -7.9,
+    "q": 1.62
+   },
+   {
+    "kind": "peaking",
+    "freq": 410.0,
+    "gain": 4.4,
+    "q": 2.24
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -5.1,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 3740.0,
+    "gain": 3.6,
+    "q": 5.38
+   },
+   {
+    "kind": "peaking",
+    "freq": 2741.0,
+    "gain": -2.2,
+    "q": 2.99
+   },
+   {
+    "kind": "peaking",
+    "freq": 6932.0,
+    "gain": 2.0,
+    "q": 5.97
+   },
+   {
+    "kind": "peaking",
+    "freq": 1597.0,
+    "gain": 0.7,
+    "q": 2.14
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Moondrop Aria",
+  "brand": "Moondrop",
+  "model": "Moondrop Aria",
+  "preamp": -3.4,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -0.2,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 164.0,
+    "gain": -2.6,
+    "q": 0.92
+   },
+   {
+    "kind": "peaking",
+    "freq": 6460.0,
+    "gain": 3.5,
+    "q": 2.43
+   },
+   {
+    "kind": "peaking",
+    "freq": 659.0,
+    "gain": 1.4,
+    "q": 1.59
+   },
+   {
+    "kind": "peaking",
+    "freq": 3108.0,
+    "gain": 0.5,
+    "q": 1.51
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -5.3,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 8665.0,
+    "gain": 2.1,
+    "q": 2.79
+   },
+   {
+    "kind": "peaking",
+    "freq": 1408.0,
+    "gain": -0.5,
+    "q": 2.3
+   },
+   {
+    "kind": "peaking",
+    "freq": 54.0,
+    "gain": 0.9,
+    "q": 5.32
+   },
+   {
+    "kind": "peaking",
+    "freq": 31.0,
+    "gain": -0.4,
+    "q": 2.21
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Moondrop Blessing 2",
+  "brand": "Moondrop",
+  "model": "Moondrop Blessing 2",
+  "preamp": -3.3,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 3.3,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1788.0,
+    "gain": -3.0,
+    "q": 0.66
+   },
+   {
+    "kind": "peaking",
+    "freq": 820.0,
+    "gain": 2.2,
+    "q": 1.2
+   },
+   {
+    "kind": "peaking",
+    "freq": 183.0,
+    "gain": -1.4,
+    "q": 0.98
+   },
+   {
+    "kind": "peaking",
+    "freq": 4409.0,
+    "gain": 2.4,
+    "q": 0.47
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -4.5,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 4129.0,
+    "gain": 0.9,
+    "q": 3.28
+   },
+   {
+    "kind": "peaking",
+    "freq": 2785.0,
+    "gain": -0.8,
+    "q": 3.98
+   },
+   {
+    "kind": "peaking",
+    "freq": 1939.0,
+    "gain": 0.5,
+    "q": 3.63
+   },
+   {
+    "kind": "peaking",
+    "freq": 1358.0,
+    "gain": -0.4,
+    "q": 4.13
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Moondrop Chu",
+  "brand": "Moondrop",
+  "model": "Moondrop Chu",
+  "preamp": -2.2,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 0.8,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 8728.0,
+    "gain": 2.3,
+    "q": 2.4
+   },
+   {
+    "kind": "peaking",
+    "freq": 660.0,
+    "gain": 1.2,
+    "q": 1.92
+   },
+   {
+    "kind": "peaking",
+    "freq": 165.0,
+    "gain": -1.2,
+    "q": 1.08
+   },
+   {
+    "kind": "peaking",
+    "freq": 69.0,
+    "gain": 1.7,
+    "q": 1.26
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -2.5,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1470.0,
+    "gain": -1.1,
+    "q": 1.68
+   },
+   {
+    "kind": "peaking",
+    "freq": 942.0,
+    "gain": 0.7,
+    "q": 2.78
+   },
+   {
+    "kind": "peaking",
+    "freq": 4153.0,
+    "gain": 0.6,
+    "q": 3.72
+   },
+   {
+    "kind": "peaking",
+    "freq": 2772.0,
+    "gain": -0.5,
+    "q": 3.46
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Philips SHP9500",
+  "brand": "Philips",
+  "model": "Philips SHP9500",
+  "preamp": -6.4,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 6.5,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 5734.0,
+    "gain": -5.7,
+    "q": 2.84
+   },
+   {
+    "kind": "peaking",
+    "freq": 110.0,
+    "gain": -3.0,
+    "q": 0.81
+   },
+   {
+    "kind": "peaking",
+    "freq": 2130.0,
+    "gain": 3.7,
+    "q": 2.76
+   },
+   {
+    "kind": "peaking",
+    "freq": 412.0,
+    "gain": 1.0,
+    "q": 1.39
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -2.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1113.0,
+    "gain": -0.6,
+    "q": 2.07
+   },
+   {
+    "kind": "peaking",
+    "freq": 7370.0,
+    "gain": 2.1,
+    "q": 5.98
+   },
+   {
+    "kind": "peaking",
+    "freq": 4477.0,
+    "gain": -1.7,
+    "q": 6.0
+   },
+   {
+    "kind": "peaking",
+    "freq": 3566.0,
+    "gain": 1.3,
+    "q": 6.0
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Samsung Galaxy Buds Pro",
+  "brand": "Samsung",
+  "model": "Samsung Galaxy Buds Pro",
+  "preamp": -2.9,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 0.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1366.0,
+    "gain": 2.8,
+    "q": 0.97
+   },
+   {
+    "kind": "peaking",
+    "freq": 171.0,
+    "gain": -2.9,
+    "q": 0.65
+   },
+   {
+    "kind": "peaking",
+    "freq": 783.0,
+    "gain": 1.1,
+    "q": 2.15
+   },
+   {
+    "kind": "peaking",
+    "freq": 3330.0,
+    "gain": 0.8,
+    "q": 3.58
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -5.5,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 10000.0,
+    "gain": -0.1,
+    "q": 4.71
+   },
+   {
+    "kind": "peaking",
+    "freq": 8082.0,
+    "gain": -0.6,
+    "q": 3.41
+   },
+   {
+    "kind": "peaking",
+    "freq": 5048.0,
+    "gain": -0.5,
+    "q": 5.12
+   },
+   {
+    "kind": "peaking",
+    "freq": 38.0,
+    "gain": -0.1,
+    "q": 2.07
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sennheiser HD 600",
+  "brand": "Sennheiser",
+  "model": "Sennheiser HD 600",
+  "preamp": -6.3,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 6.5,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 125.0,
+    "gain": -2.7,
+    "q": 0.55
+   },
+   {
+    "kind": "peaking",
+    "freq": 8445.0,
+    "gain": 3.3,
+    "q": 1.61
+   },
+   {
+    "kind": "peaking",
+    "freq": 522.0,
+    "gain": 0.7,
+    "q": 1.02
+   },
+   {
+    "kind": "peaking",
+    "freq": 1298.0,
+    "gain": -1.2,
+    "q": 2.14
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -3.1,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 3158.0,
+    "gain": -1.8,
+    "q": 3.67
+   },
+   {
+    "kind": "peaking",
+    "freq": 2166.0,
+    "gain": 0.9,
+    "q": 3.32
+   },
+   {
+    "kind": "peaking",
+    "freq": 6639.0,
+    "gain": 2.2,
+    "q": 5.82
+   },
+   {
+    "kind": "peaking",
+    "freq": 5433.0,
+    "gain": -1.2,
+    "q": 5.7
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sennheiser HD 650",
+  "brand": "Sennheiser",
+  "model": "Sennheiser HD 650",
+  "preamp": -6.1,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 6.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 8800.0,
+    "gain": 5.1,
+    "q": 1.42
+   },
+   {
+    "kind": "peaking",
+    "freq": 118.0,
+    "gain": -3.1,
+    "q": 0.5
+   },
+   {
+    "kind": "peaking",
+    "freq": 37.0,
+    "gain": 0.7,
+    "q": 3.96
+   },
+   {
+    "kind": "peaking",
+    "freq": 3169.0,
+    "gain": -1.7,
+    "q": 3.89
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -2.1,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1227.0,
+    "gain": -1.2,
+    "q": 2.53
+   },
+   {
+    "kind": "peaking",
+    "freq": 2055.0,
+    "gain": 1.2,
+    "q": 3.23
+   },
+   {
+    "kind": "peaking",
+    "freq": 587.0,
+    "gain": 0.4,
+    "q": 1.19
+   },
+   {
+    "kind": "peaking",
+    "freq": 5332.0,
+    "gain": -1.1,
+    "q": 5.75
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sennheiser HD 660 S",
+  "brand": "Sennheiser",
+  "model": "Sennheiser HD 660 S",
+  "preamp": -6.3,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 6.5,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 7899.0,
+    "gain": 6.5,
+    "q": 0.68
+   },
+   {
+    "kind": "peaking",
+    "freq": 178.0,
+    "gain": -3.2,
+    "q": 0.49
+   },
+   {
+    "kind": "peaking",
+    "freq": 5470.0,
+    "gain": -7.3,
+    "q": 4.4
+   },
+   {
+    "kind": "peaking",
+    "freq": 1222.0,
+    "gain": -2.3,
+    "q": 2.34
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -1.1,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 2250.0,
+    "gain": 1.3,
+    "q": 3.58
+   },
+   {
+    "kind": "peaking",
+    "freq": 3380.0,
+    "gain": -0.9,
+    "q": 2.84
+   },
+   {
+    "kind": "peaking",
+    "freq": 6701.0,
+    "gain": 1.2,
+    "q": 6.0
+   },
+   {
+    "kind": "peaking",
+    "freq": 784.0,
+    "gain": -0.4,
+    "q": 3.52
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sennheiser HD 6XX",
+  "brand": "Sennheiser",
+  "model": "Sennheiser HD 6XX",
+  "preamp": -6.1,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 6.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 8800.0,
+    "gain": 5.1,
+    "q": 1.42
+   },
+   {
+    "kind": "peaking",
+    "freq": 118.0,
+    "gain": -3.1,
+    "q": 0.5
+   },
+   {
+    "kind": "peaking",
+    "freq": 37.0,
+    "gain": 0.7,
+    "q": 3.96
+   },
+   {
+    "kind": "peaking",
+    "freq": 3169.0,
+    "gain": -1.7,
+    "q": 3.89
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -2.1,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1227.0,
+    "gain": -1.2,
+    "q": 2.53
+   },
+   {
+    "kind": "peaking",
+    "freq": 2055.0,
+    "gain": 1.2,
+    "q": 3.23
+   },
+   {
+    "kind": "peaking",
+    "freq": 587.0,
+    "gain": 0.4,
+    "q": 1.19
+   },
+   {
+    "kind": "peaking",
+    "freq": 5332.0,
+    "gain": -1.1,
+    "q": 5.75
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sennheiser HD 800 S (Dekoni fenestrated sheepskin earpads)",
+  "brand": "Sennheiser",
+  "model": "Sennheiser HD 800 S (Dekoni fenestrated sheepskin earpads)",
+  "preamp": -6.0,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 6.1,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1833.0,
+    "gain": 4.5,
+    "q": 2.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 237.0,
+    "gain": -1.3,
+    "q": 1.21
+   },
+   {
+    "kind": "peaking",
+    "freq": 792.0,
+    "gain": -0.7,
+    "q": 1.24
+   },
+   {
+    "kind": "peaking",
+    "freq": 64.0,
+    "gain": 0.8,
+    "q": 2.74
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -9.2,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 4765.0,
+    "gain": -3.0,
+    "q": 5.72
+   },
+   {
+    "kind": "peaking",
+    "freq": 6491.0,
+    "gain": -2.7,
+    "q": 6.0
+   },
+   {
+    "kind": "peaking",
+    "freq": 2957.0,
+    "gain": -1.5,
+    "q": 5.6
+   },
+   {
+    "kind": "peaking",
+    "freq": 3777.0,
+    "gain": 1.9,
+    "q": 5.96
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sennheiser IE 600",
+  "brand": "Sennheiser",
+  "model": "Sennheiser IE 600",
+  "preamp": -5.3,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -2.7,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 4374.0,
+    "gain": 5.0,
+    "q": 1.28
+   },
+   {
+    "kind": "peaking",
+    "freq": 196.0,
+    "gain": -1.9,
+    "q": 1.5
+   },
+   {
+    "kind": "peaking",
+    "freq": 1727.0,
+    "gain": -2.8,
+    "q": 1.16
+   },
+   {
+    "kind": "peaking",
+    "freq": 798.0,
+    "gain": 1.5,
+    "q": 1.45
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -7.6,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 72.0,
+    "gain": 1.4,
+    "q": 1.93
+   },
+   {
+    "kind": "peaking",
+    "freq": 5857.0,
+    "gain": 3.3,
+    "q": 5.8
+   },
+   {
+    "kind": "peaking",
+    "freq": 143.0,
+    "gain": -0.7,
+    "q": 3.18
+   },
+   {
+    "kind": "peaking",
+    "freq": 4796.0,
+    "gain": -0.6,
+    "q": 4.12
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sennheiser IE 900",
+  "brand": "Sennheiser",
+  "model": "Sennheiser IE 900",
+  "preamp": -6.3,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -2.3,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 4081.0,
+    "gain": 5.0,
+    "q": 2.86
+   },
+   {
+    "kind": "peaking",
+    "freq": 204.0,
+    "gain": -2.6,
+    "q": 1.13
+   },
+   {
+    "kind": "peaking",
+    "freq": 1472.0,
+    "gain": -2.7,
+    "q": 2.33
+   },
+   {
+    "kind": "peaking",
+    "freq": 2956.0,
+    "gain": 5.2,
+    "q": 2.42
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -4.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 67.0,
+    "gain": 0.6,
+    "q": 1.76
+   },
+   {
+    "kind": "peaking",
+    "freq": 26.0,
+    "gain": -0.9,
+    "q": 3.19
+   },
+   {
+    "kind": "peaking",
+    "freq": 729.0,
+    "gain": 0.4,
+    "q": 2.54
+   },
+   {
+    "kind": "peaking",
+    "freq": 376.0,
+    "gain": -0.4,
+    "q": 2.69
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Shure SRH840",
+  "brand": "Shure",
+  "model": "Shure SRH840",
+  "preamp": -5.8,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": 6.2,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 107.0,
+    "gain": -8.3,
+    "q": 0.8
+   },
+   {
+    "kind": "peaking",
+    "freq": 279.0,
+    "gain": 2.9,
+    "q": 0.36
+   },
+   {
+    "kind": "peaking",
+    "freq": 58.0,
+    "gain": 2.4,
+    "q": 4.17
+   },
+   {
+    "kind": "peaking",
+    "freq": 5991.0,
+    "gain": -1.8,
+    "q": 2.6
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -2.0,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1946.0,
+    "gain": -0.7,
+    "q": 2.63
+   },
+   {
+    "kind": "peaking",
+    "freq": 39.0,
+    "gain": -0.4,
+    "q": 3.26
+   },
+   {
+    "kind": "peaking",
+    "freq": 261.0,
+    "gain": 0.6,
+    "q": 3.14
+   },
+   {
+    "kind": "peaking",
+    "freq": 332.0,
+    "gain": -0.8,
+    "q": 4.7
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sony WF-1000XM4",
+  "brand": "Sony",
+  "model": "Sony WF-1000XM4",
+  "preamp": -7.5,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -0.6,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 176.0,
+    "gain": -4.2,
+    "q": 0.6
+   },
+   {
+    "kind": "peaking",
+    "freq": 9973.0,
+    "gain": 3.7,
+    "q": 1.01
+   },
+   {
+    "kind": "peaking",
+    "freq": 6316.0,
+    "gain": 4.4,
+    "q": 0.91
+   },
+   {
+    "kind": "peaking",
+    "freq": 498.0,
+    "gain": -1.4,
+    "q": 1.46
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": 3.7,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 1732.0,
+    "gain": 1.2,
+    "q": 2.28
+   },
+   {
+    "kind": "peaking",
+    "freq": 3942.0,
+    "gain": -0.8,
+    "q": 3.1
+   },
+   {
+    "kind": "peaking",
+    "freq": 978.0,
+    "gain": -0.3,
+    "q": 1.49
+   },
+   {
+    "kind": "peaking",
+    "freq": 38.0,
+    "gain": -0.2,
+    "q": 2.02
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sony WH-1000XM3",
+  "brand": "Sony",
+  "model": "Sony WH-1000XM3",
+  "preamp": -5.3,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -4.1,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 143.0,
+    "gain": -5.9,
+    "q": 1.02
+   },
+   {
+    "kind": "peaking",
+    "freq": 1411.0,
+    "gain": 6.2,
+    "q": 1.1
+   },
+   {
+    "kind": "peaking",
+    "freq": 697.0,
+    "gain": -2.8,
+    "q": 0.92
+   },
+   {
+    "kind": "peaking",
+    "freq": 4315.0,
+    "gain": 4.4,
+    "q": 1.98
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": 1.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 9032.0,
+    "gain": -1.5,
+    "q": 2.0
+   },
+   {
+    "kind": "peaking",
+    "freq": 6657.0,
+    "gain": 2.1,
+    "q": 6.0
+   },
+   {
+    "kind": "peaking",
+    "freq": 5637.0,
+    "gain": -1.2,
+    "q": 5.83
+   },
+   {
+    "kind": "peaking",
+    "freq": 55.0,
+    "gain": 0.3,
+    "q": 2.24
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sony WH-1000XM4",
+  "brand": "Sony",
+  "model": "Sony WH-1000XM4",
+  "preamp": -6.1,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -4.2,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 143.0,
+    "gain": -5.2,
+    "q": 1.1
+   },
+   {
+    "kind": "peaking",
+    "freq": 2289.0,
+    "gain": 6.1,
+    "q": 1.57
+   },
+   {
+    "kind": "peaking",
+    "freq": 56.0,
+    "gain": 1.2,
+    "q": 1.19
+   },
+   {
+    "kind": "peaking",
+    "freq": 5144.0,
+    "gain": -3.2,
+    "q": 6.0
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -1.0,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 407.0,
+    "gain": 1.7,
+    "q": 3.14
+   },
+   {
+    "kind": "peaking",
+    "freq": 6715.0,
+    "gain": 3.0,
+    "q": 5.99
+   },
+   {
+    "kind": "peaking",
+    "freq": 1007.0,
+    "gain": 1.0,
+    "q": 3.41
+   },
+   {
+    "kind": "peaking",
+    "freq": 576.0,
+    "gain": -1.2,
+    "q": 3.55
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Sony WH-1000XM5",
+  "brand": "Sony",
+  "model": "Sony WH-1000XM5",
+  "preamp": -6.2,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -3.2,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 2448.0,
+    "gain": 6.9,
+    "q": 2.46
+   },
+   {
+    "kind": "peaking",
+    "freq": 173.0,
+    "gain": -5.6,
+    "q": 0.96
+   },
+   {
+    "kind": "peaking",
+    "freq": 3028.0,
+    "gain": -5.4,
+    "q": 2.03
+   },
+   {
+    "kind": "peaking",
+    "freq": 1327.0,
+    "gain": 3.3,
+    "q": 0.58
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": 4.9,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 6110.0,
+    "gain": -2.3,
+    "q": 5.81
+   },
+   {
+    "kind": "peaking",
+    "freq": 875.0,
+    "gain": -1.2,
+    "q": 4.07
+   },
+   {
+    "kind": "peaking",
+    "freq": 1197.0,
+    "gain": 1.0,
+    "q": 3.28
+   },
+   {
+    "kind": "peaking",
+    "freq": 63.0,
+    "gain": 0.4,
+    "q": 2.13
+   }
+  ]
+ },
+ {
+  "id": "oratory1990:Truthear Hexa",
+  "brand": "Truthear",
+  "model": "Truthear Hexa",
+  "preamp": -3.2,
+  "bands": [
+   {
+    "kind": "lowShelf",
+    "freq": 105.0,
+    "gain": -0.1,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 4844.0,
+    "gain": 3.4,
+    "q": 1.81
+   },
+   {
+    "kind": "peaking",
+    "freq": 199.0,
+    "gain": -1.9,
+    "q": 1.54
+   },
+   {
+    "kind": "peaking",
+    "freq": 62.0,
+    "gain": 1.6,
+    "q": 1.05
+   },
+   {
+    "kind": "peaking",
+    "freq": 3160.0,
+    "gain": -2.1,
+    "q": 3.72
+   },
+   {
+    "kind": "highShelf",
+    "freq": 10000.0,
+    "gain": -4.4,
+    "q": 0.7
+   },
+   {
+    "kind": "peaking",
+    "freq": 707.0,
+    "gain": 1.0,
+    "q": 1.89
+   },
+   {
+    "kind": "peaking",
+    "freq": 6318.0,
+    "gain": 1.6,
+    "q": 5.54
+   },
+   {
+    "kind": "peaking",
+    "freq": 349.0,
+    "gain": -0.5,
+    "q": 2.22
+   },
+   {
+    "kind": "peaking",
+    "freq": 2113.0,
+    "gain": 0.6,
+    "q": 3.41
+   }
+  ]
+ }
+]

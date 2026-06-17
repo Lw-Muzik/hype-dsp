@@ -62,6 +62,64 @@ impl Biquad {
         self.a2 = (a2 / a0) as f32;
     }
 
+    /// Configure as an RBJ low-shelf at `f0`.
+    pub fn set_low_shelf(&mut self, sample_rate: f32, f0: f32, gain_db: f32, q: f32) {
+        let fs = sample_rate as f64;
+        let f0 = (f0 as f64).clamp(1.0, fs * 0.495);
+        let q = (q as f64).max(1e-4);
+        let a = 10f64.powf(gain_db as f64 / 40.0);
+        let w0 = 2.0 * std::f64::consts::PI * f0 / fs;
+        let cos = w0.cos();
+        let alpha = w0.sin() / (2.0 * q);
+        let two_sqrt_a_alpha = 2.0 * a.sqrt() * alpha;
+
+        let b0 = a * ((a + 1.0) - (a - 1.0) * cos + two_sqrt_a_alpha);
+        let b1 = 2.0 * a * ((a - 1.0) - (a + 1.0) * cos);
+        let b2 = a * ((a + 1.0) - (a - 1.0) * cos - two_sqrt_a_alpha);
+        let a0 = (a + 1.0) + (a - 1.0) * cos + two_sqrt_a_alpha;
+        let a1 = -2.0 * ((a - 1.0) + (a + 1.0) * cos);
+        let a2 = (a + 1.0) + (a - 1.0) * cos - two_sqrt_a_alpha;
+        self.assign(b0, b1, b2, a0, a1, a2);
+    }
+
+    /// Configure as an RBJ high-shelf at `f0`.
+    pub fn set_high_shelf(&mut self, sample_rate: f32, f0: f32, gain_db: f32, q: f32) {
+        let fs = sample_rate as f64;
+        let f0 = (f0 as f64).clamp(1.0, fs * 0.495);
+        let q = (q as f64).max(1e-4);
+        let a = 10f64.powf(gain_db as f64 / 40.0);
+        let w0 = 2.0 * std::f64::consts::PI * f0 / fs;
+        let cos = w0.cos();
+        let alpha = w0.sin() / (2.0 * q);
+        let two_sqrt_a_alpha = 2.0 * a.sqrt() * alpha;
+
+        let b0 = a * ((a + 1.0) + (a - 1.0) * cos + two_sqrt_a_alpha);
+        let b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cos);
+        let b2 = a * ((a + 1.0) + (a - 1.0) * cos - two_sqrt_a_alpha);
+        let a0 = (a + 1.0) - (a - 1.0) * cos + two_sqrt_a_alpha;
+        let a1 = 2.0 * ((a - 1.0) - (a + 1.0) * cos);
+        let a2 = (a + 1.0) - (a - 1.0) * cos - two_sqrt_a_alpha;
+        self.assign(b0, b1, b2, a0, a1, a2);
+    }
+
+    /// Configure from an AutoEq-style band kind (`peaking`, `lowShelf`,
+    /// `highShelf`). Unknown kinds become a no-op identity.
+    pub fn set_from_kind(&mut self, kind: &str, sample_rate: f32, f0: f32, gain_db: f32, q: f32) {
+        match kind {
+            "lowShelf" | "low_shelf" | "LSC" => self.set_low_shelf(sample_rate, f0, gain_db, q),
+            "highShelf" | "high_shelf" | "HSC" => self.set_high_shelf(sample_rate, f0, gain_db, q),
+            _ => self.set_peaking(sample_rate, f0, gain_db, q),
+        }
+    }
+
+    fn assign(&mut self, b0: f64, b1: f64, b2: f64, a0: f64, a1: f64, a2: f64) {
+        self.b0 = (b0 / a0) as f32;
+        self.b1 = (b1 / a0) as f32;
+        self.b2 = (b2 / a0) as f32;
+        self.a1 = (a1 / a0) as f32;
+        self.a2 = (a2 / a0) as f32;
+    }
+
     /// Clear the filter state (delay memory).
     pub fn reset(&mut self) {
         self.z1 = 0.0;
@@ -95,5 +153,28 @@ mod tests {
             let y = bq.process_sample(x);
             assert!((y - x).abs() < 1e-5, "expected {x}, got {y}");
         }
+    }
+
+    #[test]
+    fn low_shelf_at_zero_db_is_identity() {
+        let mut bq = Biquad::identity();
+        bq.set_low_shelf(48_000.0, 120.0, 0.0, 0.707);
+        for i in 0..256 {
+            let x = (i as f32 * 0.07).sin();
+            assert!((bq.process_sample(x) - x).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn low_shelf_boost_raises_dc_gain() {
+        // A low shelf boost should amplify a very low-frequency (near-DC) input.
+        let mut bq = Biquad::identity();
+        bq.set_low_shelf(48_000.0, 200.0, 6.0, 0.707);
+        // Settle, then measure steady-state gain on a constant input.
+        let mut y = 0.0;
+        for _ in 0..2000 {
+            y = bq.process_sample(1.0);
+        }
+        assert!(y > 1.5, "expected ~+6 dB (×2) low boost, got {y}");
     }
 }

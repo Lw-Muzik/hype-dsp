@@ -116,6 +116,26 @@ impl Default for OutputState {
     }
 }
 
+/// Per-headphone correction state: a preamp plus parametric bands loaded from
+/// the active [`HeadphoneProfile`]. Empty/disabled when no profile is active.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeadphoneCorrectionState {
+    pub enabled: bool,
+    pub preamp: f32,
+    pub bands: Vec<ParametricBand>,
+}
+
+impl Default for HeadphoneCorrectionState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            preamp: 0.0,
+            bands: Vec::new(),
+        }
+    }
+}
+
 /// The complete, serializable enhancement state mirrored by the Zustand store.
 ///
 /// This is what `engine_get_state` returns and what every `engine_set_*`
@@ -131,6 +151,7 @@ pub struct EngineState {
     pub eq: EqState,
     pub bass: BassBoostState,
     pub spatializer: SpatializerState,
+    pub headphone: HeadphoneCorrectionState,
     pub output: OutputState,
     /// Active preset id, if one is applied.
     pub active_preset_id: Option<String>,
@@ -146,6 +167,7 @@ impl Default for EngineState {
             eq: EqState::default(),
             bass: BassBoostState::default(),
             spatializer: SpatializerState::default(),
+            headphone: HeadphoneCorrectionState::default(),
             output: OutputState::default(),
             active_preset_id: None,
             active_profile_id: None,

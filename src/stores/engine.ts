@@ -5,7 +5,10 @@ import {
   engineSetMasterVolume,
   engineSetPower,
   engineSetSpatializer,
+  playerPause,
   playerPlayFile,
+  playerResume,
+  playerSeek,
   playerStop,
   profileClear,
 } from "@/lib/ipc";
@@ -15,27 +18,16 @@ import type {
   EngineState,
   EqPreset,
   HeadphoneProfile,
+  LibraryTrack,
   MeterFrame,
   SpatialMode,
+  TransportProgress,
 } from "@/lib/types";
-
-/**
- * Front-end mirror of the DSP engine state.
- *
- * `state` is hydrated from the backend and kept in sync: setters update
- * optimistically and dispatch a typed IPC command. `meters` and `spectrum` are
- * fed by the real `engine:frame` event (never synthesized); `metersLive` tracks
- * whether playback is active.
- */
 
 const defaultEngineState: EngineState = {
   power: true,
   masterVolume: 1,
-  eq: {
-    enabled: true,
-    preGain: 0,
-    bands: Array<number>(BAND_COUNT).fill(0),
-  },
+  eq: { enabled: true, preGain: 0, bands: Array<number>(BAND_COUNT).fill(0) },
   bass: { enabled: false, amount: 0, harmonics: false },
   spatializer: { enabled: false, amount: 0.5, mode: "crossfeed" },
   headphone: { enabled: false, preamp: 0, bands: [] },
@@ -46,50 +38,71 @@ const defaultEngineState: EngineState = {
 
 const idleMeters: MeterFrame = { peak: [0, 0], rms: [0, 0] };
 
+/** Synthesize a minimal track for an ad-hoc opened file. */
+function fileTrack(path: string, title: string): LibraryTrack {
+  return { path, title, artist: null, album: null, durationSecs: null };
+}
+
 interface EngineStore {
   state: EngineState;
   meters: MeterFrame;
   spectrum: number[];
   metersLive: boolean;
+
+  // transport
   playing: boolean;
+  paused: boolean;
   nowPlaying: string | null;
+  positionSecs: number;
+  durationSecs: number | null;
+  queue: LibraryTrack[];
+  queueIndex: number;
 
   hydrate: (state: EngineState) => void;
-
   setPower: (power: boolean) => void;
-  setMasterVolume: (masterVolume: number) => void;
-
-  /** Set a single EQ band (dB); clears the active preset (now custom). */
+  setMasterVolume: (v: number) => void;
   setBand: (index: number, valueDb: number) => void;
-  /** Replace all band gains at once (e.g. reset to flat); clears the preset. */
   setBands: (bands: number[]) => void;
-  /** Set EQ pre-gain (dB). */
   setPreGain: (preGain: number) => void;
-  /** Enable/disable the EQ stage. */
   setEqEnabled: (enabled: boolean) => void;
-  /** Mirror an applied preset (the backend command applied it to the engine). */
   applyPreset: (preset: EqPreset) => void;
-
   setBass: (enabled: boolean, amount: number, harmonics: boolean) => void;
-  setSpatializer: (
-    enabled: boolean,
-    amount: number,
-    mode: SpatialMode,
-  ) => void;
-  /** Mirror an applied headphone profile (backend already applied it). */
+  setSpatializer: (enabled: boolean, amount: number, mode: SpatialMode) => void;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
 
   applyFrame: (frame: EngineFrame) => void;
+  applyProgress: (p: TransportProgress) => void;
   setPlaying: (playing: boolean) => void;
 
+  /** Play an ad-hoc file (single-item queue). Throws on IPC error. */
   play: (path: string, name: string) => Promise<void>;
+  /** Play a track list starting at `index`. */
+  playFromList: (tracks: LibraryTrack[], index: number) => void;
+  next: () => void;
+  prev: () => void;
+  togglePause: () => void;
+  seek: (secs: number) => void;
   stop: () => Promise<void>;
 }
 
 export const useEngineStore = create<EngineStore>((set, get) => {
+  // Not part of rendered state: distinguishes user-stop from natural end.
+  let userStopped = false;
+
   const pushEq = (eq: EngineState["eq"]) => {
     void engineSetEq(eq.bands, eq.preGain, eq.enabled).catch(() => {});
+  };
+
+  const startTrack = async (track: LibraryTrack) => {
+    await playerPlayFile(track.path);
+    set({
+      nowPlaying: track.title,
+      playing: true,
+      paused: false,
+      positionSecs: 0,
+      durationSecs: track.durationSecs,
+    });
   };
 
   return {
@@ -98,7 +111,12 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     spectrum: [],
     metersLive: false,
     playing: false,
+    paused: false,
     nowPlaying: null,
+    positionSecs: 0,
+    durationSecs: null,
+    queue: [],
+    queueIndex: -1,
 
     hydrate: (state) => set({ state }),
 
@@ -106,41 +124,32 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       set((s) => ({ state: { ...s.state, power } }));
       void engineSetPower(power).catch(() => {});
     },
-
     setMasterVolume: (masterVolume) => {
       set((s) => ({ state: { ...s.state, masterVolume } }));
       void engineSetMasterVolume(masterVolume).catch(() => {});
     },
-
     setBand: (index, valueDb) => {
-      const { eq } = get().state;
-      const bands = eq.bands.slice();
+      const bands = get().state.eq.bands.slice();
       bands[index] = valueDb;
-      const nextEq = { ...eq, bands };
-      set((s) => ({
-        state: { ...s.state, eq: nextEq, activePresetId: null },
-      }));
+      const nextEq = { ...get().state.eq, bands };
+      set((s) => ({ state: { ...s.state, eq: nextEq, activePresetId: null } }));
       pushEq(nextEq);
     },
-
     setBands: (bands) => {
       const nextEq = { ...get().state.eq, bands: bands.slice() };
       set((s) => ({ state: { ...s.state, eq: nextEq, activePresetId: null } }));
       pushEq(nextEq);
     },
-
     setPreGain: (preGain) => {
       const nextEq = { ...get().state.eq, preGain };
       set((s) => ({ state: { ...s.state, eq: nextEq } }));
       pushEq(nextEq);
     },
-
     setEqEnabled: (enabled) => {
       const nextEq = { ...get().state.eq, enabled };
       set((s) => ({ state: { ...s.state, eq: nextEq } }));
       pushEq(nextEq);
     },
-
     applyPreset: (preset) =>
       set((s) => ({
         state: {
@@ -149,30 +158,22 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           activePresetId: preset.id,
         },
       })),
-
     setBass: (enabled, amount, harmonics) => {
       set((s) => ({ state: { ...s.state, bass: { enabled, amount, harmonics } } }));
       void engineSetBass(enabled, amount, harmonics).catch(() => {});
     },
-
     setSpatializer: (enabled, amount, mode) => {
       set((s) => ({ state: { ...s.state, spatializer: { enabled, amount, mode } } }));
       void engineSetSpatializer(enabled, amount, mode).catch(() => {});
     },
-
     applyProfile: (profile) =>
       set((s) => ({
         state: {
           ...s.state,
-          headphone: {
-            enabled: true,
-            preamp: profile.preamp,
-            bands: profile.bands,
-          },
+          headphone: { enabled: true, preamp: profile.preamp, bands: profile.bands },
           activeProfileId: profile.id,
         },
       })),
-
     clearProfile: () => {
       set((s) => ({
         state: {
@@ -190,22 +191,102 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         ...(frame.spectrum ? { spectrum: frame.spectrum } : {}),
       }),
 
-    setPlaying: (playing) =>
-      set((s) => ({
-        playing,
-        metersLive: playing,
-        meters: playing ? s.meters : idleMeters,
-        nowPlaying: playing ? s.nowPlaying : null,
-      })),
+    applyProgress: (p) =>
+      set({
+        positionSecs: p.positionSecs,
+        durationSecs: p.durationSecs,
+        paused: p.paused,
+      }),
+
+    setPlaying: (playing) => {
+      if (playing) {
+        set({ playing: true, metersLive: true });
+        return;
+      }
+      // Stopped/ended.
+      if (userStopped) {
+        userStopped = false;
+        set({
+          playing: false,
+          metersLive: false,
+          meters: idleMeters,
+          nowPlaying: null,
+          positionSecs: 0,
+        });
+        return;
+      }
+      const { queue, queueIndex } = get();
+      if (queueIndex >= 0 && queueIndex + 1 < queue.length) {
+        get().next();
+        return;
+      }
+      set({
+        playing: false,
+        metersLive: false,
+        meters: idleMeters,
+        nowPlaying: null,
+        positionSecs: 0,
+      });
+    },
 
     play: async (path, name) => {
-      await playerPlayFile(path);
-      set({ nowPlaying: name, playing: true, metersLive: true });
+      set({ queue: [fileTrack(path, name)], queueIndex: 0 });
+      await startTrack(fileTrack(path, name));
+    },
+
+    playFromList: (tracks, index) => {
+      const track = tracks[index];
+      if (!track) return;
+      set({ queue: tracks, queueIndex: index });
+      void startTrack(track).catch(() => {});
+    },
+
+    next: () => {
+      const { queue, queueIndex } = get();
+      const track = queue[queueIndex + 1];
+      if (!track) return;
+      set({ queueIndex: queueIndex + 1 });
+      void startTrack(track).catch(() => {});
+    },
+
+    prev: () => {
+      const { queue, queueIndex } = get();
+      const track = queue[queueIndex - 1];
+      if (!track) return;
+      set({ queueIndex: queueIndex - 1 });
+      void startTrack(track).catch(() => {});
+    },
+
+    togglePause: () => {
+      const { paused, playing } = get();
+      if (!playing) return;
+      if (paused) {
+        set({ paused: false });
+        void playerResume().catch(() => {});
+      } else {
+        set({ paused: true });
+        void playerPause().catch(() => {});
+      }
+    },
+
+    seek: (secs) => {
+      set({ positionSecs: secs });
+      void playerSeek(secs).catch(() => {});
     },
 
     stop: async () => {
+      userStopped = true;
+      set({
+        playing: false,
+        paused: false,
+        metersLive: false,
+        meters: idleMeters,
+        nowPlaying: null,
+        positionSecs: 0,
+        queue: [],
+        queueIndex: -1,
+      });
       await playerStop();
-      set({ playing: false, metersLive: false, meters: idleMeters, nowPlaying: null });
     },
   };
 });

@@ -210,6 +210,26 @@ pub struct HeadphoneProfile {
     pub bands: Vec<ParametricBand>,
 }
 
+/// A scanned local library track.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryTrack {
+    /// Absolute file path (the track's identity).
+    pub path: String,
+    pub title: String,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub duration_secs: Option<f64>,
+}
+
+/// A user playlist (ordered list of track paths, stored separately).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Playlist {
+    pub id: String,
+    pub name: String,
+}
+
 /// An internet radio station entry from the directory.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

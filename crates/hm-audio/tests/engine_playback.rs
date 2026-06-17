@@ -50,7 +50,8 @@ fn plays_a_wav_and_meters_move() {
 
     let start = Instant::now();
     let mut saw_signal = false;
-    while start.elapsed() < Duration::from_millis(1000) {
+    // Generous window: the output device can take a moment to warm up.
+    while start.elapsed() < Duration::from_millis(2500) {
         sleep(Duration::from_millis(20));
         if engine.is_playing() && engine.meters().load().peak[0] > 1e-4 {
             saw_signal = true;

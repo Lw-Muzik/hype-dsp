@@ -108,6 +108,80 @@ fn compute_meters(buffer: &[f32], channels: usize) -> MeterFrame {
     MeterFrame { peak, rms }
 }
 
+/// Lock-free transport position, shared with the UI-forwarding thread. The
+/// audio callback writes position/total; a seek request flows back in.
+pub struct PlaybackPos {
+    position_frames: AtomicU64,
+    total_frames: AtomicU64,
+    sample_rate: AtomicU32,
+    /// Pending seek target in frames, or `-1` for none.
+    seek_to: AtomicI64,
+}
+
+impl Default for PlaybackPos {
+    fn default() -> Self {
+        Self {
+            position_frames: AtomicU64::new(0),
+            total_frames: AtomicU64::new(0),
+            sample_rate: AtomicU32::new(0),
+            seek_to: AtomicI64::new(-1),
+        }
+    }
+}
+
+impl PlaybackPos {
+    fn take_seek(&self) -> Option<usize> {
+        let v = self.seek_to.swap(-1, Ordering::Relaxed);
+        (v >= 0).then_some(v as usize)
+    }
+
+    fn request_seek(&self, frame: usize) {
+        self.seek_to.store(frame as i64, Ordering::Relaxed);
+    }
+
+    fn write(&self, position: usize, total: usize) {
+        self.position_frames
+            .store(position as u64, Ordering::Relaxed);
+        self.total_frames.store(total as u64, Ordering::Relaxed);
+    }
+
+    fn prepare(&self, sample_rate: u32, total: usize) {
+        self.sample_rate.store(sample_rate, Ordering::Relaxed);
+        self.total_frames.store(total as u64, Ordering::Relaxed);
+        self.position_frames.store(0, Ordering::Relaxed);
+        self.seek_to.store(-1, Ordering::Relaxed);
+    }
+
+    fn reset(&self) {
+        self.write(0, 0);
+        self.seek_to.store(-1, Ordering::Relaxed);
+    }
+
+    /// Current position in seconds.
+    pub fn position_secs(&self) -> f64 {
+        let rate = self.sample_rate.load(Ordering::Relaxed);
+        if rate == 0 {
+            return 0.0;
+        }
+        self.position_frames.load(Ordering::Relaxed) as f64 / rate as f64
+    }
+
+    /// Total duration in seconds, if known.
+    pub fn duration_secs(&self) -> Option<f64> {
+        let rate = self.sample_rate.load(Ordering::Relaxed);
+        let total = self.total_frames.load(Ordering::Relaxed);
+        (rate > 0 && total > 0).then(|| total as f64 / rate as f64)
+    }
+
+    /// Request a seek to `secs` (applied on the next audio block).
+    pub fn seek_secs(&self, secs: f64) {
+        let rate = self.sample_rate.load(Ordering::Relaxed);
+        if rate > 0 {
+            self.request_seek((secs.max(0.0) * rate as f64).round() as usize);
+        }
+    }
+}
+
 /// Owns the DSP chain and the active source; renders one block at a time.
 /// Extracted from the cpal callback so it can be unit-tested without a device.
 pub struct Renderer {
@@ -138,8 +212,13 @@ impl Renderer {
         state: &EngineState,
         meters: &EngineMeters,
         spectrum: &SpectrumTap,
+        pos: &PlaybackPos,
     ) -> bool {
+        if let Some(frame) = pos.take_seek() {
+            self.source.seek(frame);
+        }
         let produced = self.source.read(out, channels);
+        pos.write(self.source.position(), self.source.total_frames());
 
         if (state.master_volume - 1.0).abs() > f32::EPSILON {
             for s in out.iter_mut() {
@@ -162,6 +241,8 @@ impl Renderer {
 /// Control messages to the engine thread.
 enum EngineCommand {
     Play(DecodedAudio),
+    Pause,
+    Resume,
     Stop,
     Shutdown,
 }
@@ -174,7 +255,9 @@ pub struct AudioEngine {
     shared: Arc<ArcSwap<EngineState>>,
     meters: Arc<EngineMeters>,
     spectrum: Arc<SpectrumTap>,
+    pos: Arc<PlaybackPos>,
     playing: Arc<AtomicBool>,
+    paused: Arc<AtomicBool>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     _thread: JoinHandle<()>,
 }
@@ -192,17 +275,21 @@ impl AudioEngine {
         let shared = Arc::new(ArcSwap::from_pointee(initial.clone()));
         let meters = Arc::new(EngineMeters::default());
         let spectrum = Arc::new(SpectrumTap::default());
+        let pos = Arc::new(PlaybackPos::default());
         let playing = Arc::new(AtomicBool::new(false));
+        let paused = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
 
         let thread = {
             let shared = shared.clone();
             let meters = meters.clone();
             let spectrum = spectrum.clone();
+            let pos = pos.clone();
             let playing = playing.clone();
+            let paused = paused.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
-                .spawn(move || control_loop(rx, shared, meters, spectrum, playing))
+                .spawn(move || control_loop(rx, shared, meters, spectrum, pos, playing, paused))
                 .expect("failed to spawn hm-audio engine thread")
         };
 
@@ -211,7 +298,9 @@ impl AudioEngine {
             shared,
             meters,
             spectrum,
+            pos,
             playing,
+            paused,
             ctrl: Mutex::new(tx),
             _thread: thread,
         }
@@ -324,6 +413,44 @@ impl AudioEngine {
         self.spectrum.clone()
     }
 
+    /// Shared transport position for the UI-forwarding thread.
+    pub fn pos(&self) -> Arc<PlaybackPos> {
+        self.pos.clone()
+    }
+
+    /// Shared paused flag for the UI-forwarding thread.
+    pub fn paused_flag(&self) -> Arc<AtomicBool> {
+        self.paused.clone()
+    }
+
+    /// Whether playback is paused.
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::Relaxed)
+    }
+
+    /// Seek to `secs` within the current track.
+    pub fn seek(&self, secs: f64) {
+        self.pos.seek_secs(secs);
+    }
+
+    /// Pause playback (keeps position).
+    pub fn pause(&self) {
+        let _ = self
+            .ctrl
+            .lock()
+            .expect("engine ctrl poisoned")
+            .send(EngineCommand::Pause);
+    }
+
+    /// Resume playback.
+    pub fn resume(&self) {
+        let _ = self
+            .ctrl
+            .lock()
+            .expect("engine ctrl poisoned")
+            .send(EngineCommand::Resume);
+    }
+
     /// Shared playing flag for the UI-forwarding thread.
     pub fn playing_flag(&self) -> Arc<AtomicBool> {
         self.playing.clone()
@@ -393,12 +520,15 @@ fn pick_f32_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig,
 }
 
 /// The engine control thread: owns the (`!Send`) cpal stream for its lifetime.
+#[allow(clippy::too_many_arguments)]
 fn control_loop(
     rx: mpsc::Receiver<EngineCommand>,
     shared: Arc<ArcSwap<EngineState>>,
     meters: Arc<EngineMeters>,
     spectrum: Arc<SpectrumTap>,
+    pos: Arc<PlaybackPos>,
     playing: Arc<AtomicBool>,
+    paused: Arc<AtomicBool>,
 ) {
     let setup = output_setup().ok();
     // The active stream is held only to keep audio flowing (RAII); replacing or
@@ -411,6 +541,7 @@ fn control_loop(
                 drop(active.take()); // stop & release any current stream first
                 meters.zero();
                 spectrum.zero();
+                paused.store(false, Ordering::Relaxed);
                 let Some((device, config)) = &setup else {
                     playing.store(false, Ordering::Relaxed);
                     continue;
@@ -418,6 +549,7 @@ fn control_loop(
                 let sample_rate = config.sample_rate;
                 let channels = config.channels as usize;
                 let resampled = resample_stereo(&audio.samples, audio.sample_rate, sample_rate);
+                pos.prepare(sample_rate, resampled.len() / 2);
                 let source = Box::new(FilePlaybackSource::new(resampled));
 
                 match build_output_stream(
@@ -427,6 +559,7 @@ fn control_loop(
                     shared.clone(),
                     meters.clone(),
                     spectrum.clone(),
+                    pos.clone(),
                     playing.clone(),
                     channels,
                     sample_rate as f32,
@@ -438,11 +571,27 @@ fn control_loop(
                     _ => playing.store(false, Ordering::Relaxed),
                 }
             }
+            EngineCommand::Pause => {
+                if let Some(s) = &active {
+                    if s.pause().is_ok() {
+                        paused.store(true, Ordering::Relaxed);
+                    }
+                }
+            }
+            EngineCommand::Resume => {
+                if let Some(s) = &active {
+                    if s.play().is_ok() {
+                        paused.store(false, Ordering::Relaxed);
+                    }
+                }
+            }
             EngineCommand::Stop => {
                 drop(active.take());
                 playing.store(false, Ordering::Relaxed);
+                paused.store(false, Ordering::Relaxed);
                 meters.zero();
                 spectrum.zero();
+                pos.reset();
             }
             EngineCommand::Shutdown => break,
         }
@@ -457,6 +606,7 @@ fn build_output_stream(
     shared: Arc<ArcSwap<EngineState>>,
     meters: Arc<EngineMeters>,
     spectrum: Arc<SpectrumTap>,
+    pos: Arc<PlaybackPos>,
     playing: Arc<AtomicBool>,
     channels: usize,
     sample_rate: f32,
@@ -468,7 +618,8 @@ fn build_output_stream(
             config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 let state = shared.load_full();
-                let exhausted = renderer.render(data, channels, state.as_ref(), &meters, &spectrum);
+                let exhausted =
+                    renderer.render(data, channels, state.as_ref(), &meters, &spectrum, &pos);
                 if exhausted {
                     playing.store(false, Ordering::Relaxed);
                 }
@@ -501,11 +652,12 @@ mod tests {
         let mut renderer = Renderer::new(constant_source(2.0, 4096), 48_000.0, 2);
         let meters = EngineMeters::default();
         let spectrum = SpectrumTap::default();
+        let pos = PlaybackPos::default();
         let state = EngineState::default(); // power on, limiter on, ceiling -0.3 dB
         let ceiling = 10f32.powf(-0.3 / 20.0);
 
         let mut out = vec![0.0f32; 4096 * 2];
-        renderer.render(&mut out, 2, &state, &meters, &spectrum);
+        renderer.render(&mut out, 2, &state, &meters, &spectrum, &pos);
 
         let peak = out.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
         assert!(
@@ -521,6 +673,7 @@ mod tests {
         let mut renderer = Renderer::new(constant_source(2.0, 2048), 48_000.0, 2);
         let meters = EngineMeters::default();
         let spectrum = SpectrumTap::default();
+        let pos = PlaybackPos::default();
         // Power off: chain bypassed, no limiting.
         let state = EngineState {
             power: false,
@@ -528,7 +681,7 @@ mod tests {
         };
 
         let mut out = vec![0.0f32; 2048 * 2];
-        renderer.render(&mut out, 2, &state, &meters, &spectrum);
+        renderer.render(&mut out, 2, &state, &meters, &spectrum, &pos);
 
         let peak = out.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
         assert!(

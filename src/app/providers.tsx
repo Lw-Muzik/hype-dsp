@@ -1,7 +1,13 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { appInfo, engineGetState, onEngineFrame, onTransport } from "@/lib/ipc";
+import {
+  appInfo,
+  engineGetState,
+  onEngineFrame,
+  onProgress,
+  onTransport,
+} from "@/lib/ipc";
 import { useUiStore } from "@/stores/ui";
 import { useEngineStore } from "@/stores/engine";
 
@@ -14,6 +20,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const setAppInfo = useUiStore((s) => s.setAppInfo);
   const hydrate = useEngineStore((s) => s.hydrate);
   const applyFrame = useEngineStore((s) => s.applyFrame);
+  const applyProgress = useEngineStore((s) => s.applyProgress);
   const setPlaying = useEngineStore((s) => s.setPlaying);
 
   useEffect(() => {
@@ -36,11 +43,15 @@ export function Providers({ children }: { children: ReactNode }) {
       .then((un) => (cancelled ? un() : unlisteners.push(un)))
       .catch(() => {});
 
+    onProgress((p) => applyProgress(p))
+      .then((un) => (cancelled ? un() : unlisteners.push(un)))
+      .catch(() => {});
+
     return () => {
       cancelled = true;
       for (const un of unlisteners) un();
     };
-  }, [setAppInfo, hydrate, applyFrame, setPlaying]);
+  }, [setAppInfo, hydrate, applyFrame, applyProgress, setPlaying]);
 
   return <>{children}</>;
 }

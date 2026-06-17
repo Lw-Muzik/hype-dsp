@@ -8,5 +8,6 @@
 pub mod app;
 pub mod audio;
 pub mod engine;
+pub mod library;
 pub mod presets;
 pub mod profiles;

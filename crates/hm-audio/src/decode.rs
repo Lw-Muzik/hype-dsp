@@ -30,7 +30,12 @@ fn open_format(path: &Path) -> Result<Box<dyn FormatReader>, AudioError> {
         hint.with_extension(ext);
     }
     symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| AudioError::Decode(e.to_string()))
 }
 
@@ -94,7 +99,7 @@ pub fn decode_file(path: &Path) -> Result<DecodedAudio, AudioError> {
 /// Probe a file's duration in seconds without fully decoding it (for the
 /// library scan). Returns `None` if unknown.
 pub fn probe_duration(path: &Path) -> Option<f64> {
-    let mut format = open_format(path).ok()?;
+    let format = open_format(path).ok()?;
     let track = format.default_track(TrackType::Audio)?;
     let params = track.codec_params.as_ref()?.audio()?;
     let rate = params.sample_rate? as f64;

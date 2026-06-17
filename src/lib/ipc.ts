@@ -19,7 +19,10 @@ import type {
   EqPreset,
   HeadphoneProfile,
   IpcError,
+  LibraryTrack,
+  Playlist,
   SpatialMode,
+  TransportProgress,
 } from "./types";
 
 /* ----------------------------------------------------------------- commands */
@@ -135,9 +138,79 @@ export function playerStop(): Promise<void> {
   return invoke<void>("player_stop");
 }
 
+/** Pause playback (keeps position). */
+export function playerPause(): Promise<void> {
+  return invoke<void>("player_pause");
+}
+
+/** Resume playback. */
+export function playerResume(): Promise<void> {
+  return invoke<void>("player_resume");
+}
+
+/** Seek to `secs` within the current track. */
+export function playerSeek(secs: number): Promise<void> {
+  return invoke<void>("player_seek", { secs });
+}
+
 /** Whether audio is currently playing. */
 export function playerIsPlaying(): Promise<boolean> {
   return invoke<boolean>("player_is_playing");
+}
+
+/* --------------------------------------------------------------- library */
+
+/** Recursively scan a folder into the library; returns tracks added. */
+export function libraryScan(dir: string): Promise<number> {
+  return invoke<number>("library_scan", { dir });
+}
+
+/** List all library tracks. */
+export function libraryList(): Promise<LibraryTrack[]> {
+  return invoke<LibraryTrack[]>("library_list");
+}
+
+/** Remove a track from the library. */
+export function libraryRemove(path: string): Promise<void> {
+  return invoke<void>("library_remove", { path });
+}
+
+export function playlistList(): Promise<Playlist[]> {
+  return invoke<Playlist[]>("playlist_list");
+}
+export function playlistCreate(name: string): Promise<Playlist> {
+  return invoke<Playlist>("playlist_create", { name });
+}
+export function playlistRename(id: string, name: string): Promise<void> {
+  return invoke<void>("playlist_rename", { id, name });
+}
+export function playlistDelete(id: string): Promise<void> {
+  return invoke<void>("playlist_delete", { id });
+}
+export function playlistTracks(id: string): Promise<LibraryTrack[]> {
+  return invoke<LibraryTrack[]>("playlist_tracks", { id });
+}
+export function playlistAdd(id: string, path: string): Promise<void> {
+  return invoke<void>("playlist_add", { id, path });
+}
+export function playlistRemove(id: string, path: string): Promise<void> {
+  return invoke<void>("playlist_remove", { id, path });
+}
+export function playlistReorder(id: string, paths: string[]): Promise<void> {
+  return invoke<void>("playlist_reorder", { id, paths });
+}
+
+/** Open a native folder picker; returns the chosen directory. */
+export async function pickFolder(): Promise<string | null> {
+  const selected = await open({ directory: true, multiple: false });
+  return typeof selected === "string" ? selected : null;
+}
+
+/** Subscribe to transport progress (~10 fps while playing). */
+export function onProgress(
+  handler: (p: TransportProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<TransportProgress>("engine:progress", (e) => handler(e.payload));
 }
 
 /* ------------------------------------------------------------------- events */

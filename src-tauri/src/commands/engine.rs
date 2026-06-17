@@ -78,6 +78,24 @@ pub fn player_stop(engine: State<'_, AudioEngine>) {
     engine.stop();
 }
 
+/// Pause playback (keeps position).
+#[tauri::command]
+pub fn player_pause(engine: State<'_, AudioEngine>) {
+    engine.pause();
+}
+
+/// Resume playback.
+#[tauri::command]
+pub fn player_resume(engine: State<'_, AudioEngine>) {
+    engine.resume();
+}
+
+/// Seek to `secs` within the current track.
+#[tauri::command]
+pub fn player_seek(engine: State<'_, AudioEngine>, secs: f64) {
+    engine.seek(secs);
+}
+
 /// Whether audio is currently playing.
 #[tauri::command]
 pub fn player_is_playing(engine: State<'_, AudioEngine>) -> bool {

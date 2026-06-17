@@ -128,6 +128,25 @@ export interface EngineFrame {
   spectrum: number[] | null;
 }
 
+export interface LibraryTrack {
+  path: string;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  durationSecs: number | null;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+}
+
+export interface TransportProgress {
+  positionSecs: number;
+  durationSecs: number | null;
+  paused: boolean;
+}
+
 export interface DeviceInfo {
   name: string;
   isDefault: boolean;

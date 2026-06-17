@@ -12,3 +12,12 @@ export function formatDb(db: number): string {
   const sign = db > 0 ? "+" : "";
   return `${sign}${db.toFixed(1)}`;
 }
+
+/** Format seconds as m:ss (or --:-- when unknown). */
+export function formatTime(secs: number | null | undefined): string {
+  if (secs == null || !Number.isFinite(secs) || secs < 0) return "--:--";
+  const total = Math.floor(secs);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}

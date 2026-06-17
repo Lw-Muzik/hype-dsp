@@ -13,12 +13,14 @@
 pub mod error;
 pub mod headphones;
 pub mod license;
+pub mod media_store;
 pub mod presets;
 pub mod store;
 pub mod types;
 
 pub use error::{HmError, IpcError};
 pub use license::{LicenseError, LicenseService, LicenseStatus};
+pub use media_store::MediaStore;
 pub use store::PresetStore;
 pub use types::*;
 

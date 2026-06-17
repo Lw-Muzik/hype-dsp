@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AppInfo } from "@/lib/types";
+import type { AppInfo, LicenseStatus } from "@/lib/types";
 
 /** Top-level navigable views (one window, six destinations). */
 export type Route =
@@ -22,6 +22,10 @@ interface UiState {
   /** App metadata, loaded once from the backend on startup. */
   appInfo: AppInfo | null;
   setAppInfo: (info: AppInfo) => void;
+
+  /** Licensing status (mock). */
+  license: LicenseStatus | null;
+  setLicense: (license: LicenseStatus) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -34,4 +38,7 @@ export const useUiStore = create<UiState>((set) => ({
 
   appInfo: null,
   setAppInfo: (appInfo) => set({ appInfo }),
+
+  license: null,
+  setLicense: (license) => set({ license }),
 }));

@@ -1733,6 +1733,7 @@ dependencies = [
  "hm-audio",
  "hm-core",
  "hm-media",
+ "hm-platform",
  "serde",
  "serde_json",
  "tauri",

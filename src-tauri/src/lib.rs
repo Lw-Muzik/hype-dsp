@@ -12,8 +12,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use std::sync::Mutex;
+
 use hm_audio::{AudioEngine, EngineMeters, PlaybackPos, SpectrumTap, SPECTRUM_BANDS};
-use hm_core::{EngineFrame, MediaStore, MeterFrame, PresetStore};
+use hm_core::{EngineFrame, LicenseMock, MediaStore, MeterFrame, PresetStore};
 use serde::Serialize;
 use tauri::{Emitter, Manager};
 
@@ -127,6 +129,19 @@ pub fn run() {
                 app.manage(media);
             }
 
+            // License mock (persists trial/key to disk).
+            if let Ok(dir) = app.path().app_data_dir() {
+                let _ = std::fs::create_dir_all(&dir);
+                app.manage(LicenseMock::open(dir.join("license.json")));
+            } else {
+                app.manage(LicenseMock::open(
+                    std::env::temp_dir().join("hm_license.json"),
+                ));
+            }
+
+            // Per-app mixer controller (real on Windows; unsupported stub on macOS).
+            app.manage::<commands::mixer::Mixer>(Mutex::new(hm_platform::default_controller()));
+
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("hm-frame-forwarder".into())
@@ -146,6 +161,8 @@ pub fn run() {
             commands::engine::engine_set_spatializer,
             commands::engine::player_play_file,
             commands::engine::player_play_radio,
+            commands::engine::player_play_capture,
+            commands::engine::capture_virtual_available,
             commands::engine::player_stop,
             commands::engine::player_pause,
             commands::engine::player_resume,
@@ -174,6 +191,12 @@ pub fn run() {
             commands::radio::radio_favorites_list,
             commands::radio::radio_favorite_add,
             commands::radio::radio_favorite_remove,
+            commands::mixer::mixer_list_sessions,
+            commands::mixer::mixer_set_volume,
+            commands::mixer::mixer_set_muted,
+            commands::license::license_status,
+            commands::license::license_activate,
+            commands::license::license_deactivate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the HypeMuzik application");

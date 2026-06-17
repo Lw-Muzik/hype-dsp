@@ -78,6 +78,27 @@ pub fn player_play_radio(engine: State<'_, AudioEngine>, url: String) -> Result<
     engine.play_radio(url).map_err(Into::into)
 }
 
+/// Capture the default input device through the chain (driver-free stand-in).
+#[tauri::command]
+pub fn player_play_capture(engine: State<'_, AudioEngine>) -> Result<(), IpcError> {
+    if hm_audio::list_input_devices()
+        .map(|d| d.is_empty())
+        .unwrap_or(true)
+    {
+        return Err(IpcError::new(
+            "unavailable",
+            "No audio input device available.",
+        ));
+    }
+    engine.play_capture().map_err(Into::into)
+}
+
+/// Whether true system-wide capture (a signed virtual device) is installed.
+#[tauri::command]
+pub fn capture_virtual_available() -> bool {
+    hm_audio::virtual_device_available()
+}
+
 /// Stop playback.
 #[tauri::command]
 pub fn player_stop(engine: State<'_, AudioEngine>) {

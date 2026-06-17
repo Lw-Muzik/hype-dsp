@@ -20,6 +20,8 @@ import type {
   HeadphoneProfile,
   IpcError,
   LibraryTrack,
+  LicenseStatus,
+  MixerSnapshot,
   Playlist,
   RadioStation,
   SpatialMode,
@@ -159,9 +161,43 @@ export function playerSeek(secs: number): Promise<void> {
   return invoke<void>("player_seek", { secs });
 }
 
+/** Capture the default input device through the chain (dev stand-in). */
+export function playerPlayCapture(): Promise<void> {
+  return invoke<void>("player_play_capture");
+}
+
+/** Whether true system-wide capture (a signed virtual device) is installed. */
+export function captureVirtualAvailable(): Promise<boolean> {
+  return invoke<boolean>("capture_virtual_available");
+}
+
 /** Whether audio is currently playing. */
 export function playerIsPlaying(): Promise<boolean> {
   return invoke<boolean>("player_is_playing");
+}
+
+/* ----------------------------------------------------------------- mixer */
+
+export function mixerListSessions(): Promise<MixerSnapshot> {
+  return invoke<MixerSnapshot>("mixer_list_sessions");
+}
+export function mixerSetVolume(id: string, gain: number): Promise<void> {
+  return invoke<void>("mixer_set_volume", { id, gain });
+}
+export function mixerSetMuted(id: string, muted: boolean): Promise<void> {
+  return invoke<void>("mixer_set_muted", { id, muted });
+}
+
+/* --------------------------------------------------------------- license */
+
+export function licenseStatus(): Promise<LicenseStatus> {
+  return invoke<LicenseStatus>("license_status");
+}
+export function licenseActivate(key: string): Promise<LicenseStatus> {
+  return invoke<LicenseStatus>("license_activate", { key });
+}
+export function licenseDeactivate(): Promise<void> {
+  return invoke<void>("license_deactivate");
 }
 
 /* --------------------------------------------------------------- library */

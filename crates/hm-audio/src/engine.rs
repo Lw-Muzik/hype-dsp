@@ -29,6 +29,7 @@ use hm_core::{
 };
 use hm_dsp::ProcessChain;
 
+use crate::capture::LoopbackCaptureSource;
 use crate::decode::{decode_file, resample_stereo, DecodedAudio};
 use crate::error::AudioError;
 use crate::sources::FilePlaybackSource;
@@ -244,6 +245,7 @@ impl Renderer {
 enum EngineCommand {
     Play(DecodedAudio),
     PlayRadio(String),
+    PlayCapture,
     Pause,
     Resume,
     Stop,
@@ -484,6 +486,15 @@ impl AudioEngine {
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
+    /// Capture the default input device through the chain (driver-free stand-in).
+    pub fn play_capture(&self) -> Result<(), AudioError> {
+        self.ctrl
+            .lock()
+            .expect("engine ctrl poisoned")
+            .send(EngineCommand::PlayCapture)
+            .map_err(|_| AudioError::Stream("engine thread stopped".into()))
+    }
+
     /// Stop playback.
     pub fn stop(&self) {
         let _ = self
@@ -614,6 +625,40 @@ fn control_loop(
                         active = Some(s);
                     }
                     _ => playing.store(false, Ordering::Relaxed),
+                }
+            }
+            EngineCommand::PlayCapture => {
+                drop(active.take());
+                meters.zero();
+                spectrum.zero();
+                paused.store(false, Ordering::Relaxed);
+                let Some((device, config)) = &setup else {
+                    playing.store(false, Ordering::Relaxed);
+                    continue;
+                };
+                let sample_rate = config.sample_rate;
+                let channels = config.channels as usize;
+                pos.prepare(sample_rate, 0); // live capture: no duration
+                match LoopbackCaptureSource::new(sample_rate) {
+                    Ok(source) => match build_output_stream(
+                        device,
+                        *config,
+                        Box::new(source),
+                        shared.clone(),
+                        meters.clone(),
+                        spectrum.clone(),
+                        pos.clone(),
+                        playing.clone(),
+                        channels,
+                        sample_rate as f32,
+                    ) {
+                        Ok(s) if s.play().is_ok() => {
+                            playing.store(true, Ordering::Relaxed);
+                            active = Some(s);
+                        }
+                        _ => playing.store(false, Ordering::Relaxed),
+                    },
+                    Err(_) => playing.store(false, Ordering::Relaxed),
                 }
             }
             EngineCommand::Pause => {

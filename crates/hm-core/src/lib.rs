@@ -19,7 +19,7 @@ pub mod store;
 pub mod types;
 
 pub use error::{HmError, IpcError};
-pub use license::{LicenseError, LicenseService, LicenseStatus};
+pub use license::{LicenseError, LicenseMock, LicenseService, LicenseStatus};
 pub use media_store::MediaStore;
 pub use store::PresetStore;
 pub use types::*;

@@ -115,6 +115,12 @@ export type LicenseStatus =
   | { kind: "licensed" }
   | { kind: "expired" };
 
+export interface MixerSnapshot {
+  supported: boolean;
+  unavailableReason: string | null;
+  sessions: AppSession[];
+}
+
 export interface MeterFrame {
   /** Peak magnitude per channel [left, right], linear. */
   peak: [number, number];

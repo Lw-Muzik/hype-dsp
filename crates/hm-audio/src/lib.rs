@@ -9,6 +9,7 @@
 //! helper so the audio backend is proven to link against the platform
 //! (CoreAudio on macOS) before any streaming code is written.
 
+pub mod capture;
 pub mod decode;
 pub mod device;
 pub mod engine;
@@ -17,6 +18,7 @@ pub mod sources;
 pub mod spectrum;
 pub mod streaming;
 
+pub use capture::{virtual_device_available, LoopbackCaptureSource, VirtualDeviceSource};
 pub use decode::{decode_file, probe_duration, resample_stereo, DecodedAudio};
 pub use device::{list_input_devices, list_output_devices, DeviceInfo};
 pub use engine::{AudioEngine, EngineMeters, PlaybackPos, Renderer};

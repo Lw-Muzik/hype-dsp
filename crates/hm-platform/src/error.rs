@@ -16,3 +16,15 @@ pub enum PlatformError {
     #[error("platform audio error: {0}")]
     Os(String),
 }
+
+/// Flatten into the IPC error shape (defined here where `PlatformError` is local).
+impl From<PlatformError> for hm_core::IpcError {
+    fn from(e: PlatformError) -> Self {
+        let code = match &e {
+            PlatformError::Unsupported(_) => "unsupported",
+            PlatformError::SessionNotFound(_) => "session_not_found",
+            PlatformError::Os(_) => "platform_os",
+        };
+        hm_core::IpcError::new(code, e.to_string())
+    }
+}

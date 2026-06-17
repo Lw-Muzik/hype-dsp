@@ -31,3 +31,4 @@ thiserror = { workspace = true }
 hm-core = { workspace = true }
 hm-audio = { workspace = true }
 hm-media = { workspace = true }
+hm-platform = { workspace = true }

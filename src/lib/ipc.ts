@@ -21,6 +21,7 @@ import type {
   IpcError,
   LibraryTrack,
   Playlist,
+  RadioStation,
   SpatialMode,
   TransportProgress,
 } from "./types";
@@ -133,6 +134,11 @@ export function playerPlayFile(path: string): Promise<void> {
   return invoke<void>("player_play_file", { path });
 }
 
+/** Stream and play an internet radio URL. */
+export function playerPlayRadio(url: string): Promise<void> {
+  return invoke<void>("player_play_radio", { url });
+}
+
 /** Stop playback. */
 export function playerStop(): Promise<void> {
   return invoke<void>("player_stop");
@@ -198,6 +204,22 @@ export function playlistRemove(id: string, path: string): Promise<void> {
 }
 export function playlistReorder(id: string, paths: string[]): Promise<void> {
   return invoke<void>("playlist_reorder", { id, paths });
+}
+
+/* ----------------------------------------------------------------- radio */
+
+/** Search the radio directory (falls back to the bundled seed offline). */
+export function radioSearch(query: string): Promise<RadioStation[]> {
+  return invoke<RadioStation[]>("radio_search", { query });
+}
+export function radioFavoritesList(): Promise<RadioStation[]> {
+  return invoke<RadioStation[]>("radio_favorites_list");
+}
+export function radioFavoriteAdd(station: RadioStation): Promise<void> {
+  return invoke<void>("radio_favorite_add", { station });
+}
+export function radioFavoriteRemove(id: string): Promise<void> {
+  return invoke<void>("radio_favorite_remove", { id });
 }
 
 /** Open a native folder picker; returns the chosen directory. */

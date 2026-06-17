@@ -21,6 +21,10 @@ arc-swap = { workspace = true }
 # Multi-format decode (mp3/flac/aac/wav/ogg/vorbis/isomp4).
 symphonia = { workspace = true }
 
+# Internet radio streaming: blocking HTTP + lock-free SPSC ring to the callback.
+reqwest = { workspace = true }
+rtrb = { workspace = true }
+
 [dev-dependencies]
 # Generates WAV fixtures for decode/playback tests.
 hound = { workspace = true }

@@ -33,10 +33,11 @@ rustfft = "6.4.1"
 realfft = "3.5.0"
 arc-swap = "1.9.1"
 triple_buffer = "9.0.0"
+rtrb = "0.3.4"
 
 # Media / network
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "time"] }
-reqwest = { version = "0.13.4", default-features = false, features = ["rustls-tls", "stream", "json"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "blocking", "json"] }
 
 # Persistence
 rusqlite = { version = "0.40.1", features = ["bundled"] }

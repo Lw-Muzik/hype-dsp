@@ -7,6 +7,7 @@ import {
   engineSetSpatializer,
   playerPause,
   playerPlayFile,
+  playerPlayRadio,
   playerResume,
   playerSeek,
   playerStop,
@@ -20,6 +21,7 @@ import type {
   HeadphoneProfile,
   LibraryTrack,
   MeterFrame,
+  RadioStation,
   SpatialMode,
   TransportProgress,
 } from "@/lib/types";
@@ -79,6 +81,8 @@ interface EngineStore {
   play: (path: string, name: string) => Promise<void>;
   /** Play a track list starting at `index`. */
   playFromList: (tracks: LibraryTrack[], index: number) => void;
+  /** Stream an internet radio station (live; no queue/duration). */
+  playRadio: (station: RadioStation) => void;
   next: () => void;
   prev: () => void;
   togglePause: () => void;
@@ -239,6 +243,19 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       if (!track) return;
       set({ queue: tracks, queueIndex: index });
       void startTrack(track).catch(() => {});
+    },
+
+    playRadio: (station) => {
+      set({
+        nowPlaying: station.name,
+        playing: true,
+        paused: false,
+        positionSecs: 0,
+        durationSecs: null,
+        queue: [],
+        queueIndex: -1,
+      });
+      void playerPlayRadio(station.url).catch(() => {});
     },
 
     next: () => {

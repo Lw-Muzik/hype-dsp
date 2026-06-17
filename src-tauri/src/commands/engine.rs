@@ -72,6 +72,12 @@ pub fn player_play_file(engine: State<'_, AudioEngine>, path: String) -> Result<
     engine.play_file(&PathBuf::from(path)).map_err(Into::into)
 }
 
+/// Stream and play an internet radio URL through the chain.
+#[tauri::command]
+pub fn player_play_radio(engine: State<'_, AudioEngine>, url: String) -> Result<(), IpcError> {
+    engine.play_radio(url).map_err(Into::into)
+}
+
 /// Stop playback.
 #[tauri::command]
 pub fn player_stop(engine: State<'_, AudioEngine>) {

@@ -11,3 +11,4 @@ pub mod engine;
 pub mod library;
 pub mod presets;
 pub mod profiles;
+pub mod radio;

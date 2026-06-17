@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::Connection;
 
 use crate::error::HmError;
-use crate::{LibraryTrack, Playlist};
+use crate::{LibraryTrack, Playlist, RadioStation};
 
 fn now_millis() -> i64 {
     SystemTime::now()
@@ -50,6 +50,15 @@ impl MediaStore {
                 position    INTEGER NOT NULL,
                 track_path  TEXT NOT NULL,
                 PRIMARY KEY (playlist_id, position)
+            );
+            CREATE TABLE IF NOT EXISTS radio_favorites (
+                id       TEXT PRIMARY KEY,
+                name     TEXT NOT NULL,
+                url      TEXT NOT NULL,
+                genre    TEXT,
+                country  TEXT,
+                favicon  TEXT,
+                added_at INTEGER NOT NULL
             );",
         )?;
         Ok(Self {
@@ -205,6 +214,44 @@ impl MediaStore {
             )?;
         }
         tx.commit()?;
+        Ok(())
+    }
+}
+
+impl MediaStore {
+    /// Favorited radio stations.
+    pub fn list_favorites(&self) -> Result<Vec<RadioStation>, HmError> {
+        let conn = self.conn.lock().expect("media store poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, name, url, genre, country, favicon FROM radio_favorites
+             ORDER BY name COLLATE NOCASE",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(RadioStation {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                url: r.get(2)?,
+                genre: r.get(3)?,
+                country: r.get(4)?,
+                favicon: r.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn add_favorite(&self, s: &RadioStation) -> Result<(), HmError> {
+        let conn = self.conn.lock().expect("media store poisoned");
+        conn.execute(
+            "INSERT OR REPLACE INTO radio_favorites (id, name, url, genre, country, favicon, added_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![s.id, s.name, s.url, s.genre, s.country, s.favicon, now_millis()],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_favorite(&self, id: &str) -> Result<(), HmError> {
+        let conn = self.conn.lock().expect("media store poisoned");
+        conn.execute("DELETE FROM radio_favorites WHERE id = ?1", [id])?;
         Ok(())
     }
 }

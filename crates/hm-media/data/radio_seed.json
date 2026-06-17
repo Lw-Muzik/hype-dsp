@@ -1,0 +1,242 @@
+[
+ {
+  "id": "042d3140-227c-4fac-9387-4903b692d5f2",
+  "name": "RTL",
+  "url": "https://live.m6radio.quortex.io/webM89Hc99XApzgfhXNX8ASN5/grouprtl/national/short/audio-64000/index.m3u8",
+  "genre": "g\u00e9n\u00e9raliste",
+  "country": "France",
+  "favicon": "https://duckduckgo.com/i/035a5e15d396c67a.png"
+ },
+ {
+  "id": "da5f481e-f7d6-49b3-b213-514027740d39",
+  "name": "RMC",
+  "url": "https://hls-rmc.nextradiotv.com/no_ssai/128k/media.m3u8",
+  "genre": "infos",
+  "country": "France",
+  "favicon": "https://yt3.ggpht.com/-56JILsUfbls/AAAAAAAAAAI/AAAAAAAAAAA/47vJXr02s6k/s900-c-k-no-mo-rj-c0xffffff/photo.jpg"
+ },
+ {
+  "id": "1cfb151d-a341-11e9-a787-52543be04c81",
+  "name": "France Info",
+  "url": "http://direct.franceinfo.fr/live/franceinfo-midfi.mp3",
+  "genre": null,
+  "country": "France",
+  "favicon": "https://www.francetvinfo.fr/assets/common/images/pwa/ios/120-5487caf3.png"
+ },
+ {
+  "id": "dfcef843-6bf9-40f6-b3fe-2b224df86e48",
+  "name": "Europe 1",
+  "url": "https://stream.europe1.fr/europe1.aac",
+  "genre": "aac",
+  "country": "France",
+  "favicon": "https://www.europe1.fr/build/e1/images/favicon-120x120.png"
+ },
+ {
+  "id": "33960c43-0464-44b4-abfa-73591ebf647f",
+  "name": "France Inter",
+  "url": "https://stream.radiofrance.fr/franceinter/franceinter_hifi.m3u8?id=radiofrance",
+  "genre": null,
+  "country": "France",
+  "favicon": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/France_Inter_logo_2021.svg/1200px-France_Inter_logo_2021.svg.png"
+ },
+ {
+  "id": "9f756e2d-8e9b-45f5-8fc1-61573e23036b",
+  "name": "FUN Radio",
+  "url": "http://icecast.funradio.fr/fun-1-44-128",
+  "genre": "dance",
+  "country": "France",
+  "favicon": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/Logo_Fun_Radio_%282021%29.svg/langfr-1280px-Logo_Fun_Radio_%282021%29.svg.png"
+ },
+ {
+  "id": "d1a54d2e-623e-4970-ab11-35f7b56c5ec3",
+  "name": "Classic Vinyl HD",
+  "url": "https://icecast.walmradio.com:8443/classic",
+  "genre": "1930",
+  "country": "The United States Of America",
+  "favicon": "https://icecast.walmradio.com:8443/classic.jpg"
+ },
+ {
+  "id": "98adecf7-2683-4408-9be7-02d3f9098eb8",
+  "name": "BBC World Service",
+  "url": "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service",
+  "genre": "news",
+  "country": "The United Kingdom Of Great Britain And Northern Ireland",
+  "favicon": "http://cdn-profiles.tunein.com/s24948/images/logoq.jpg?t=1"
+ },
+ {
+  "id": "7a3a3989-8f26-44f7-9ae5-fa91e5cf4f9d",
+  "name": "RMC FR",
+  "url": "https://audio.bfmtv.com/rmcradio_128.mp3",
+  "genre": "france",
+  "country": "France",
+  "favicon": "https://i1.wp.com/www.mediasportif.fr/wp-content/uploads/2014/05/Radio-RMC.jpg"
+ },
+ {
+  "id": "78012206-1aa1-11e9-a80b-52543be04c81",
+  "name": "MANGORADIO",
+  "url": "https://mangoradio.stream.laut.fm/mangoradio",
+  "genre": "music",
+  "country": "Germany",
+  "favicon": "https://mangoradio.de/wp-content/uploads/cropped-Logo-192x192.webp"
+ },
+ {
+  "id": "1c3e8be2-5b14-4933-bad3-87cbc227cba4",
+  "name": "Deutschlandfunk | DLF | MP3 128k",
+  "url": "https://st01.sslstream.dlf.de/dlf/01/128/mp3/stream.mp3?aggregator=web",
+  "genre": "culture",
+  "country": "Germany",
+  "favicon": "https://www.deutschlandfunk.de/static/img/deutschlandfunk/icons/apple-touch-icon-128x128.png"
+ },
+ {
+  "id": "2dffb353-5341-4438-b67b-83de8c3efbab",
+  "name": "RFM",
+  "url": "http://stream.rfm.fr/rfm.mp3",
+  "genre": null,
+  "country": "France",
+  "favicon": "http://cdn-rfm.lanmedia.fr/apple-touch-icon-120x120.png"
+ },
+ {
+  "id": "d28420a4-eccf-47a2-ace1-088c7e7cb7e0",
+  "name": "101 SMOOTH JAZZ",
+  "url": "http://jking.cdnstream1.com/b22139_128mp3",
+  "genre": "easy listening",
+  "country": "The United States Of America",
+  "favicon": "http://101smoothjazz.com/favicon.ico"
+ },
+ {
+  "id": "240d28b9-7858-48d2-a816-9cf8e1875fe8",
+  "name": "SWR3",
+  "url": "https://liveradio.swr.de/sw282p3/swr3/play.mp3",
+  "genre": "news",
+  "country": "Germany",
+  "favicon": "https://swr3.de/assets/swr3/icons/apple-touch-icon.png"
+ },
+ {
+  "id": "d39ab442-6c34-4097-afd0-e298ac21e50c",
+  "name": "Nostalgie HQ",
+  "url": "https://streaming.nrjaudio.fm/oua8a3w2dqao?origine=playernostalgie&aw_0_req.userConsentV2=&aw_0_1st.station=",
+  "genre": null,
+  "country": "France",
+  "favicon": "https://img.nrj.fr/J6jlakQsQ2siRzCzCI_2IDCQj1E=/80x80/https%3A%2F%2Fplayers.nrjaudio.fm%2Flive-metadata%2Fplayer%2Fimg%2Fplayer-files%2Fnosta%2Flogos%2F640x640%2FP_Nostalgie_Premium_Logo_2023.png"
+ },
+ {
+  "id": "9617a958-0601-11e8-ae97-52543be04c81",
+  "name": "Radio Paradise Main Mix (EU) 320k AAC",
+  "url": "http://stream-uk1.radioparadise.com/aac-320",
+  "genre": "california",
+  "country": "The United States Of America",
+  "favicon": "https://radioparadise.com/apple-touch-icon.png"
+ },
+ {
+  "id": "034d52a3-30dc-4017-8495-004cd65383b1",
+  "name": "RTL2",
+  "url": "http://streamer-02.rtl.fr/rtl2-1-44-128",
+  "genre": "pop",
+  "country": "France",
+  "favicon": "https://upload.wikimedia.org/wikipedia/fr/5/51/RTL2.png"
+ },
+ {
+  "id": "36eba167-5c51-4421-98f0-d2cda24be928",
+  "name": "Nrj Hits",
+  "url": "https://streaming.nrjaudio.fm/ou7xugf3s5gi?origine=playernrj&aw_0_req.userConsentV2=&aw_0_1st.station=NRJ-Hits",
+  "genre": "hits",
+  "country": "France",
+  "favicon": "https://img.nrj.fr/8loJFyDgG_Gm_fgnk1fhkYIewhI=/medias%2F2021%2F06%2Flogo-nrj_60db2627d4729.svg"
+ },
+ {
+  "id": "9611ecb1-0601-11e8-ae97-52543be04c81",
+  "name": "esRadio",
+  "url": "http://livestreaming.esradio.fm/stream64.mp3",
+  "genre": "news",
+  "country": "Spain",
+  "favicon": null
+ },
+ {
+  "id": "fd059cc5-b538-41c1-ae76-b8778a84c3db",
+  "name": "Radio 538",
+  "url": "http://playerservices.streamtheworld.com/api/livestream-redirect/RADIO538.mp3",
+  "genre": null,
+  "country": "The Netherlands",
+  "favicon": "https://www.538.nl/favicon.ico"
+ },
+ {
+  "id": "960c37c6-0601-11e8-ae97-52543be04c81",
+  "name": "Cadena 100",
+  "url": "http://cadena100-streamers-mp3.flumotion.com/cope/cadena100.mp3",
+  "genre": "music",
+  "country": "Spain",
+  "favicon": "https://www.cadena100.es/estaticos/apple-touch-icon-192x192.png"
+ },
+ {
+  "id": "96126f56-0601-11e8-ae97-52543be04c81",
+  "name": "NPO Radio 1",
+  "url": "http://icecast.omroep.nl/radio1-bb-mp3",
+  "genre": "news",
+  "country": "The Netherlands",
+  "favicon": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/NPO_Radio_1_logo_2014.svg/640px-NPO_Radio_1_logo_2014.svg.png"
+ },
+ {
+  "id": "1b762b21-2ec6-412a-a231-fa34a96f4f99",
+  "name": "80s80s Radio",
+  "url": "http://regiocast.streamabc.net/regc-80s80smweb2517500-mp3-192-1672667?sABC=69687n9o%230%23r30o443r1929r059s085628511796n57%23&aw_0_1st.playerid=&amsparams=playerid:;skey:1768454811",
+  "genre": "80s",
+  "country": "Germany",
+  "favicon": "https://upload.80s80s.de/production/static/1697296555757/icons/icon_512.ewwAEi8A30w.png"
+ },
+ {
+  "id": "9606f727-0601-11e8-ae97-52543be04c81",
+  "name": "1LIVE",
+  "url": "http://wdr-1live-live.icecast.wdr.de/wdr/1live/live/mp3/128/stream.mp3",
+  "genre": "ard",
+  "country": "Germany",
+  "favicon": "https://www1.wdr.de/radio/1live/resources/img/favicon/apple-touch-icon.png"
+ },
+ {
+  "id": "ea8059be-d119-4de3-b27b-0d9bd6aedb17",
+  "name": "Adroit Jazz Underground",
+  "url": "https://icecast.walmradio.com:8443/jazz",
+  "genre": "avant-garde",
+  "country": "The United States Of America",
+  "favicon": "https://icecast.walmradio.com:8443/jazz.jpg"
+ },
+ {
+  "id": "962cc6df-0601-11e8-ae97-52543be04c81",
+  "name": "Dance Wave!",
+  "url": "https://dancewave.online/dance.mp3",
+  "genre": "club dance electronic house trance",
+  "country": "Hungary",
+  "favicon": "https://dancewave.online/dw_logo.png"
+ },
+ {
+  "id": "c76686ca-a8b9-4db9-9839-1470c9599623",
+  "name": "102.7 KIIS FM",
+  "url": "https://stream.revma.ihrhls.com/zc185",
+  "genre": "pop",
+  "country": "The United States Of America",
+  "favicon": "https://i.iheart.com/v3/re/assets.brands/2ebe753539305728784b0f3b178eae45?ops=new(),flood(%22white%22),swap(),merge(%22over%22),gravity(%22center%22),contain(167,167),quality(80),format(%22png%22)"
+ },
+ {
+  "id": "216ee092-939d-43b6-8562-c646f73ad89f",
+  "name": "Radio Italia Solo Musica Italiana",
+  "url": "https://radioitaliasmi.akamaized.net/hls/live/2093120/RISMI/stream01/streamPlaylist.m3u8",
+  "genre": "italian pop",
+  "country": "Italy",
+  "favicon": "https://www.radioitalia.it/images/logo-radioitalia.png"
+ },
+ {
+  "id": "692a3b69-0f68-11ea-a87e-52543be04c81",
+  "name": "Cadena SER Espa\u00f1a",
+  "url": "http://playerservices.streamtheworld.com/api/livestream-redirect/CADENASER.mp3",
+  "genre": "cultural news",
+  "country": "Spain",
+  "favicon": "https://cadenaser00.epimg.net/favicon.png"
+ },
+ {
+  "id": "6efe216d-bf7e-11e9-8502-52543be04c81",
+  "name": "LBC UK",
+  "url": "http://media-ice.musicradio.com/LBCUK",
+  "genre": "news talk",
+  "country": "The United Kingdom Of Great Britain And Northern Ireland",
+  "favicon": "https://cdn-radiotime-logos.tunein.com/s220687q.png"
+ }
+]

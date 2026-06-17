@@ -30,3 +30,4 @@ thiserror = { workspace = true }
 # Internal crates wired into the app.
 hm-core = { workspace = true }
 hm-audio = { workspace = true }
+hm-media = { workspace = true }

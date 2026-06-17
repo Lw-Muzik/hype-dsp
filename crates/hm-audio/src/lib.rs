@@ -15,6 +15,7 @@ pub mod engine;
 pub mod error;
 pub mod sources;
 pub mod spectrum;
+pub mod streaming;
 
 pub use decode::{decode_file, probe_duration, resample_stereo, DecodedAudio};
 pub use device::{list_input_devices, list_output_devices, DeviceInfo};
@@ -22,6 +23,7 @@ pub use engine::{AudioEngine, EngineMeters, PlaybackPos, Renderer};
 pub use error::AudioError;
 pub use sources::FilePlaybackSource;
 pub use spectrum::{SpectrumTap, SPECTRUM_BANDS};
+pub use streaming::RadioStreamSource;
 
 use serde::{Deserialize, Serialize};
 
@@ -75,6 +77,12 @@ pub trait AudioSource: Send {
     /// Total length in frames, if known (0 for open-ended streams).
     fn total_frames(&self) -> usize {
         0
+    }
+
+    /// Whether this is a live/open-ended source (e.g. radio). Live sources never
+    /// signal end-of-stream on underflow — they output silence while buffering.
+    fn is_live(&self) -> bool {
+        false
     }
 }
 

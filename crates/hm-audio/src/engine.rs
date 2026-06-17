@@ -33,6 +33,7 @@ use crate::decode::{decode_file, resample_stereo, DecodedAudio};
 use crate::error::AudioError;
 use crate::sources::FilePlaybackSource;
 use crate::spectrum::{Analyzer, SpectrumTap};
+use crate::streaming::RadioStreamSource;
 use crate::AudioSource;
 
 /// Lock-free meter telemetry written by the audio callback and read by the
@@ -234,13 +235,15 @@ impl Renderer {
 
         meters.store(compute_meters(out, channels));
         self.analyzer.push(out, channels, spectrum);
-        produced == 0
+        // Live sources (radio) never signal EOF on underflow.
+        produced == 0 && !self.source.is_live()
     }
 }
 
 /// Control messages to the engine thread.
 enum EngineCommand {
     Play(DecodedAudio),
+    PlayRadio(String),
     Pause,
     Resume,
     Stop,
@@ -472,6 +475,15 @@ impl AudioEngine {
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
+    /// Stream and play an internet radio URL through the chain.
+    pub fn play_radio(&self, url: String) -> Result<(), AudioError> {
+        self.ctrl
+            .lock()
+            .expect("engine ctrl poisoned")
+            .send(EngineCommand::PlayRadio(url))
+            .map_err(|_| AudioError::Stream("engine thread stopped".into()))
+    }
+
     /// Stop playback.
     pub fn stop(&self) {
         let _ = self
@@ -551,6 +563,39 @@ fn control_loop(
                 let resampled = resample_stereo(&audio.samples, audio.sample_rate, sample_rate);
                 pos.prepare(sample_rate, resampled.len() / 2);
                 let source = Box::new(FilePlaybackSource::new(resampled));
+
+                match build_output_stream(
+                    device,
+                    *config,
+                    source,
+                    shared.clone(),
+                    meters.clone(),
+                    spectrum.clone(),
+                    pos.clone(),
+                    playing.clone(),
+                    channels,
+                    sample_rate as f32,
+                ) {
+                    Ok(s) if s.play().is_ok() => {
+                        playing.store(true, Ordering::Relaxed);
+                        active = Some(s);
+                    }
+                    _ => playing.store(false, Ordering::Relaxed),
+                }
+            }
+            EngineCommand::PlayRadio(url) => {
+                drop(active.take());
+                meters.zero();
+                spectrum.zero();
+                paused.store(false, Ordering::Relaxed);
+                let Some((device, config)) = &setup else {
+                    playing.store(false, Ordering::Relaxed);
+                    continue;
+                };
+                let sample_rate = config.sample_rate;
+                let channels = config.channels as usize;
+                pos.prepare(sample_rate, 0); // live stream: no known duration
+                let source = Box::new(RadioStreamSource::new(url, sample_rate));
 
                 match build_output_stream(
                     device,

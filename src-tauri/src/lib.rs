@@ -145,6 +145,7 @@ pub fn run() {
             commands::engine::engine_set_bass,
             commands::engine::engine_set_spatializer,
             commands::engine::player_play_file,
+            commands::engine::player_play_radio,
             commands::engine::player_stop,
             commands::engine::player_pause,
             commands::engine::player_resume,
@@ -169,6 +170,10 @@ pub fn run() {
             commands::library::playlist_add,
             commands::library::playlist_remove,
             commands::library::playlist_reorder,
+            commands::radio::radio_search,
+            commands::radio::radio_favorites_list,
+            commands::radio::radio_favorite_add,
+            commands::radio::radio_favorite_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the HypeMuzik application");

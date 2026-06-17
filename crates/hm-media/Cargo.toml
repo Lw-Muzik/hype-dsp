@@ -11,5 +11,7 @@ description = "Local player and internet radio for HypeMuzik, routed through the
 hm-core = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
-# Decode (symphonia), async/streaming (tokio + reqwest) are added in Phase 5
-# alongside the player and radio implementations.
+serde_json = { workspace = true }
+
+# Radio directory: radio-browser API over blocking HTTP.
+reqwest = { workspace = true }

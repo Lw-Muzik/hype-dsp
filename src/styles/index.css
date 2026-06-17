@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens (Tailwind v4, CSS-first via @theme).
+ * Dark-first. Components reference these as utilities — bg-surface,
+ * text-text-muted, border-border, bg-accent — never raw hex.
+ */
+@theme {
+  --color-surface: #0a0b0e;
+  --color-surface-raised: #14161c;
+  --color-surface-overlay: #1b1e26;
+  --color-border: #242833;
+  --color-border-strong: #313643;
+
+  --color-text: #eceef2;
+  --color-text-muted: #9aa1ad;
+  --color-text-faint: #646b78;
+
+  --color-accent: #7c6cff;
+  --color-accent-strong: #9d8bff;
+  --color-accent-muted: #2a2747;
+
+  --color-success: #3fb97a;
+  --color-warning: #e0a23b;
+  --color-danger: #e5564b;
+
+  --font-sans:
+    -apple-system, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  --radius-card: 14px;
+  --radius-control: 10px;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* The shell owns scrolling; prevent the whole window rubber-banding. */
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Visible focus for every interactive control. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Slim, themed scrollbars for scrollable regions. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 999px;
+  border: 2px solid var(--color-surface);
+}
+
+/* Honor reduced-motion: collapse all animation/transition timing. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

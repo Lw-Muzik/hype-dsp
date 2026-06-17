@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/hm-dsp",
+    "crates/hm-audio",
+    "crates/hm-media",
+    "crates/hm-platform",
+    "crates/hm-core",
+    "src-tauri",
+]
+
+# Shared metadata and dependency versions live here so every crate in the
+# workspace pins the same patch release. Member crates opt in with
+# `dep = { workspace = true }`.
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+authors = ["HypeMuzik"]
+repository = ""
+
+[workspace.dependencies]
+# Shared
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+thiserror = "2.0.18"
+
+# Audio I/O + DSP
+cpal = "0.18.1"
+symphonia = { version = "0.6.0", features = ["mp3", "flac", "aac", "wav", "ogg", "vorbis", "isomp4"] }
+rustfft = "6.4.1"
+realfft = "3.5.0"
+arc-swap = "1.9.1"
+triple_buffer = "9.0.0"
+
+# Media / network
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "time"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls-tls", "stream", "json"] }
+
+# Persistence
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+
+# Dev-only
+hound = "3.5.1"
+
+# Internal crates
+hm-dsp = { path = "crates/hm-dsp" }
+hm-audio = { path = "crates/hm-audio" }
+hm-media = { path = "crates/hm-media" }
+hm-platform = { path = "crates/hm-platform" }
+hm-core = { path = "crates/hm-core" }
+
+# Release profile tuned for real-time audio: optimize hard, keep panic=unwind
+# so a DSP/decode error can be surfaced rather than aborting the whole app.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+# Even in dev, optimize the audio/DSP dependencies so debug builds don't
+# underrun the output callback.
+[profile.dev.package."*"]
+opt-level = 2

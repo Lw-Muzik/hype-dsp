@@ -1,0 +1,18 @@
+[package]
+name = "hm-audio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Audio I/O for HypeMuzik: cpal devices, source/sink traits, the real-time engine."
+
+[dependencies]
+hm-core = { workspace = true }
+hm-dsp = { workspace = true }
+cpal = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+# Lock-free parameter handoff to the audio callback (used by the engine in P2).
+arc-swap = { workspace = true }

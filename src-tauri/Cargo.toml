@@ -1,0 +1,32 @@
+[package]
+name = "hypemuzik"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "HypeMuzik — system-wide audio enhancement desktop app."
+default-run = "hypemuzik"
+
+# The library target hosts the app so the same code can back a future mobile
+# target; the binary is a thin launcher. (Standard Tauri 2 layout.)
+[lib]
+name = "hypemuzik_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.3", features = [] }
+tauri-plugin-opener = "2.5.4"
+tauri-plugin-store = "2.4.3"
+tauri-plugin-dialog = "2.7.1"
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+# Internal crates wired into the app.
+hm-core = { workspace = true }
+hm-audio = { workspace = true }

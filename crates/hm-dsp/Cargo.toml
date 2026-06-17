@@ -1,0 +1,14 @@
+[package]
+name = "hm-dsp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Pure, testable DSP for HypeMuzik: biquads, the process chain, no I/O."
+
+[dependencies]
+hm-core = { workspace = true }
+
+[dev-dependencies]
+hound = { workspace = true }

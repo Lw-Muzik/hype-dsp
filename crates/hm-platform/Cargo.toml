@@ -1,0 +1,15 @@
+[package]
+name = "hm-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Per-app audio mixer and virtual-driver stubs for HypeMuzik (OS cfg-gated)."
+
+[dependencies]
+hm-core = { workspace = true }
+thiserror = { workspace = true }
+
+# Windows per-process volume uses the `windows` crate (IAudioSessionManager2,
+# ISimpleAudioVolume); added behind a cfg(target_os = "windows") gate in Phase 6.

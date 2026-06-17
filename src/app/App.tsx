@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { TrialBanner } from "@/components/TrialBanner";
+import { Toaster } from "@/components/Toaster";
 import { Router } from "@/app/router";
 
 /** The application shell: sidebar + top bar + the active view. */
@@ -15,6 +16,7 @@ export function App() {
           <Router />
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }

@@ -106,14 +106,33 @@ A production backend would implement the same trait against:
 The UI depends only on `LicenseStatus`, so swapping the mock for the real
 service requires no front-end change.
 
-## Build phases
+## Build phases — all complete
 
-0. **Scaffold** (this milestone) — workspace, Tauri shell, nav, empty views,
-   green `cargo check` + `pnpm build`.
-1. DSP core (`GraphicEq`, `Gain`, `Limiter`, `ProcessChain`) + tests.
-2. Audio path + live power/master-volume control + real meters.
-3. EQ UI + presets (SQLite) + spectrum analyzer.
-4. Remaining DSP + headphone profiles (AutoEq dataset + picker).
-5. Media: player (library/playlist) + radio (directory/stream/favorites).
-6. Mixer + licensing mock + capture stand-in + `audio-driver.md`.
-7. Polish: error/empty/loading states, settings, accessibility, docs.
+0. ✅ Scaffold — workspace, Tauri shell, nav, routes.
+1. ✅ DSP core (`GraphicEq`, `Gain`, `Limiter`, `ProcessChain`) + tests.
+2. ✅ Audio path + live power/master-volume + real meters.
+3. ✅ EQ UI + presets (SQLite) + spectrum analyzer.
+4. ✅ Remaining DSP (`BassBoost`, `Spatializer`, `HeadphoneCorrection`) +
+   bundled AutoEq dataset + searchable picker.
+5. ✅ Media: player (library/playlist, symphonia multi-format) + radio
+   (directory/stream/favorites).
+6. ✅ Mixer + licensing mock + capture stand-ins.
+7. ✅ Polish: error/empty/loading states, toasts, accessibility, docs.
+
+## Known limitations / honest boundaries
+
+These are deliberate, documented gaps — not hidden behind fake behavior:
+
+- **True system-wide capture** (intercepting other apps) needs a signed virtual
+  audio driver, which is not shipped. The `AudioSource` abstraction is ready;
+  `VirtualDeviceSource` reports `Unavailable`. The dev stand-in is file/library
+  playback, radio, and input (mic) capture. See [`audio-driver.md`](./audio-driver.md).
+- **Windows per-app mixer** is specified (see `hm_platform::windows_notes`) but
+  shipped as the unsupported stub: the COM implementation could not be
+  compile-verified on the macOS build host. macOS shows a graceful notice.
+- **Output device** follows the system default; in-app output switching is a
+  natural follow-up (the engine rebuilds its stream per playback).
+- **Licensing** is an explicitly-marked local mock (no real DRM/server).
+- Radio streaming uses per-chunk linear resampling; the HRTF spatializer path is
+  scaffolded (no HRIR set bundled); library metadata uses the filename + probed
+  duration (ID3 tag parsing is a follow-up).

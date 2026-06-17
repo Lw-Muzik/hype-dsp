@@ -5,6 +5,7 @@ import {
   engineSetMasterVolume,
   engineSetPower,
   engineSetSpatializer,
+  ipcErrorMessage,
   playerPause,
   playerPlayFile,
   playerPlayRadio,
@@ -13,6 +14,7 @@ import {
   playerStop,
   profileClear,
 } from "@/lib/ipc";
+import { toast } from "@/stores/toast";
 import { BAND_COUNT } from "@/lib/types";
 import type {
   EngineFrame,
@@ -242,7 +244,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       const track = tracks[index];
       if (!track) return;
       set({ queue: tracks, queueIndex: index });
-      void startTrack(track).catch(() => {});
+      void startTrack(track).catch((e) =>
+        toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`),
+      );
     },
 
     playRadio: (station) => {
@@ -255,7 +259,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         queue: [],
         queueIndex: -1,
       });
-      void playerPlayRadio(station.url).catch(() => {});
+      void playerPlayRadio(station.url).catch((e) =>
+        toast.error(`Couldn't stream ${station.name}: ${ipcErrorMessage(e)}`),
+      );
     },
 
     next: () => {
@@ -263,7 +269,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       const track = queue[queueIndex + 1];
       if (!track) return;
       set({ queueIndex: queueIndex + 1 });
-      void startTrack(track).catch(() => {});
+      void startTrack(track).catch((e) =>
+        toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`),
+      );
     },
 
     prev: () => {
@@ -271,7 +279,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       const track = queue[queueIndex - 1];
       if (!track) return;
       set({ queueIndex: queueIndex - 1 });
-      void startTrack(track).catch(() => {});
+      void startTrack(track).catch((e) =>
+        toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`),
+      );
     },
 
     togglePause: () => {

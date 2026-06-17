@@ -18,8 +18,6 @@ export interface NavRoute {
   group: "main" | "system";
   /** One-line summary shown in the view header and empty state. */
   tagline: string;
-  /** Build phase that delivers this view's full functionality. */
-  phase: number;
 }
 
 export const ROUTES: readonly NavRoute[] = [
@@ -29,7 +27,6 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Sparkles,
     group: "main",
     tagline: "Power, master volume, surround and bass at a glance.",
-    phase: 8,
   },
   {
     id: "equalizer",
@@ -37,7 +34,6 @@ export const ROUTES: readonly NavRoute[] = [
     icon: SlidersVertical,
     group: "main",
     tagline: "31-band graphic EQ with a live response curve over the spectrum.",
-    phase: 3,
   },
   {
     id: "mixer",
@@ -45,7 +41,6 @@ export const ROUTES: readonly NavRoute[] = [
     icon: SlidersHorizontal,
     group: "main",
     tagline: "Per-application volume and mute.",
-    phase: 6,
   },
   {
     id: "player",
@@ -53,7 +48,6 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Music2,
     group: "main",
     tagline: "Local library and playlists, played through the enhancement chain.",
-    phase: 5,
   },
   {
     id: "radio",
@@ -61,7 +55,6 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Radio,
     group: "main",
     tagline: "Browse and stream internet radio through the same engine.",
-    phase: 5,
   },
   {
     id: "settings",
@@ -69,7 +62,6 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Settings,
     group: "system",
     tagline: "Audio devices, appearance, and about.",
-    phase: 7,
   },
 ];
 

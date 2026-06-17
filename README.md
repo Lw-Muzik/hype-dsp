@@ -9,11 +9,27 @@ test-backed DSP engine in Rust.
 
 ## Status
 
-**Phase 0 — scaffold.** The app window opens with the full shell (sidebar, top
-bar with power toggle / master volume / idle meters, six feature routes). The
-Cargo workspace and React app build clean; DSP, audio engine, media, mixer, and
-licensing arrive in later phases. See [`docs/architecture.md`](docs/architecture.md)
-for the plan.
+**Feature-complete (Phases 0–7).** A runnable app with a real, test-backed DSP
+chain and live UI:
+
+- **DSP engine** (`hm-dsp`) — 31-band graphic EQ, bass boost, spatializer
+  (crossfeed/widening), per-headphone correction, makeup gain, and a look-ahead
+  brickwall limiter, in the fixed chain
+  `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Gain → Limiter`.
+- **Real-time audio** (`hm-audio`) — cpal output engine with lock-free parameter
+  passing, real meters + a 64-band FFT spectrum, seek/pause/progress.
+- **Equalizer** — 31-band editor with a live response curve over the spectrum,
+  12 built-in genre presets + custom presets (SQLite).
+- **Headphone profiles** — 37 genuine AutoEq (oratory1990) curves, searchable.
+- **Player** — multi-format decode (mp3/flac/aac/wav/ogg) via symphonia, a
+  scanned library, and playlists.
+- **Radio** — radio-browser directory + favorites + **live streaming** through
+  the chain.
+- **Mixer** — per-app volume (native on Windows; a graceful notice on macOS).
+- **Licensing** — an explicitly-marked local trial/activation **mock**.
+
+See [`docs/architecture.md`](docs/architecture.md) for the design and the
+honest boundaries below.
 
 ## Prerequisites
 

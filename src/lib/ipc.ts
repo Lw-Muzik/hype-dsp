@@ -17,7 +17,9 @@ import type {
   EngineFrame,
   EngineState,
   EqPreset,
+  HeadphoneProfile,
   IpcError,
+  SpatialMode,
 } from "./types";
 
 /* ----------------------------------------------------------------- commands */
@@ -59,6 +61,39 @@ export function engineSetEq(
   enabled: boolean,
 ): Promise<void> {
   return invoke<void>("engine_set_eq", { bands, preGain, enabled });
+}
+
+/** Configure the bass boost stage. */
+export function engineSetBass(
+  enabled: boolean,
+  amount: number,
+  harmonics: boolean,
+): Promise<void> {
+  return invoke<void>("engine_set_bass", { enabled, amount, harmonics });
+}
+
+/** Configure the spatializer (surround) stage. */
+export function engineSetSpatializer(
+  enabled: boolean,
+  amount: number,
+  mode: SpatialMode,
+): Promise<void> {
+  return invoke<void>("engine_set_spatializer", { enabled, amount, mode });
+}
+
+/** All bundled headphone correction profiles. */
+export function profileList(): Promise<HeadphoneProfile[]> {
+  return invoke<HeadphoneProfile[]>("profile_list");
+}
+
+/** Apply a headphone profile; returns it. */
+export function profileSetActive(id: string): Promise<HeadphoneProfile> {
+  return invoke<HeadphoneProfile>("profile_set_active", { id });
+}
+
+/** Clear the active headphone correction. */
+export function profileClear(): Promise<void> {
+  return invoke<void>("profile_clear");
 }
 
 /** List all presets (built-in first, then custom). */

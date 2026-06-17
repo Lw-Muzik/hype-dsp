@@ -11,6 +11,7 @@
 //! it must change on the other — they are a single contract expressed twice.
 
 pub mod error;
+pub mod headphones;
 pub mod license;
 pub mod presets;
 pub mod store;

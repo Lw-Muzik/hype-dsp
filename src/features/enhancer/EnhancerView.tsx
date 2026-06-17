@@ -1,25 +1,31 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CircleAlert,
   FileAudio,
   FolderOpen,
-  Power,
-  Sparkles,
+  Headphones,
+  Speaker,
   Square,
-  Volume2,
+  Waves,
 } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { Switch } from "@/components/Switch";
+import { Slider } from "@/components/Slider";
+import { Combobox } from "@/components/Combobox";
+import type { ComboItem } from "@/components/Combobox";
 import { useEngineStore } from "@/stores/engine";
-import { ipcErrorMessage, pickAudioFile } from "@/lib/ipc";
+import {
+  ipcErrorMessage,
+  pickAudioFile,
+  profileList,
+  profileSetActive,
+} from "@/lib/ipc";
+import type { HeadphoneProfile, SpatialMode } from "@/lib/types";
+import { cn } from "@/lib/cn";
 
-/**
- * Enhancer — the Phase 2 surface. Plays a local file through the live DSP chain
- * so power/master-volume changes are audible. The full at-a-glance enhancer
- * (surround/bass dials, big meters) fills in over later phases.
- */
 export function EnhancerView() {
   const route = routeById("enhancer");
 
@@ -27,11 +33,34 @@ export function EnhancerView() {
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
   const play = useEngineStore((s) => s.play);
   const stop = useEngineStore((s) => s.stop);
-  const power = useEngineStore((s) => s.state.power);
-  const masterVolume = useEngineStore((s) => s.state.masterVolume);
+  const bass = useEngineStore((s) => s.state.bass);
+  const spatializer = useEngineStore((s) => s.state.spatializer);
+  const headphone = useEngineStore((s) => s.state.headphone);
+  const activeProfileId = useEngineStore((s) => s.state.activeProfileId);
+  const setBass = useEngineStore((s) => s.setBass);
+  const setSpatializer = useEngineStore((s) => s.setSpatializer);
+  const applyProfile = useEngineStore((s) => s.applyProfile);
+  const clearProfile = useEngineStore((s) => s.clearProfile);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [profiles, setProfiles] = useState<HeadphoneProfile[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    profileList()
+      .then((list) => !cancelled && setProfiles(list))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const profileItems: ComboItem[] = useMemo(
+    () => profiles.map((p) => ({ id: p.id, label: p.model, sublabel: p.brand })),
+    [profiles],
+  );
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? null;
 
   const handleOpen = async () => {
     setError(null);
@@ -48,18 +77,28 @@ export function EnhancerView() {
     }
   };
 
+  const selectProfile = (id: string) => {
+    profileSetActive(id)
+      .then((p) => applyProfile(p))
+      .catch(() => {});
+  };
+
   return (
     <div className="mx-auto w-full max-w-5xl">
       <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="flex flex-col gap-4">
+        {/* Audio source */}
         <Card title="Audio source" icon={FileAudio}>
-          <div className="flex flex-col gap-4">
-            <div className="flex min-h-[44px] items-center gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-h-[40px] items-center gap-3">
               {nowPlaying ? (
                 <>
                   <span
-                    className={cnDot(playing)}
+                    className={cn(
+                      "size-2.5 shrink-0 rounded-full",
+                      playing ? "bg-success" : "bg-text-faint",
+                    )}
                     aria-hidden="true"
                   />
                   <div className="min-w-0">
@@ -71,11 +110,10 @@ export function EnhancerView() {
                 </>
               ) : (
                 <p className="text-sm text-text-muted">
-                  No file loaded. Open a .wav to hear the engine.
+                  Open a .wav to hear the chain. (More formats in Phase 5.)
                 </p>
               )}
             </div>
-
             <div className="flex items-center gap-2">
               <Button variant="primary" onClick={handleOpen} disabled={busy}>
                 <FolderOpen className="size-4" aria-hidden="true" />
@@ -88,62 +126,154 @@ export function EnhancerView() {
                 </Button>
               )}
             </div>
-
-            {error && (
-              <div className="flex items-start gap-2 rounded-control border border-danger/30 bg-danger/10 px-3 py-2 text-sm">
-                <CircleAlert
-                  className="mt-0.5 size-4 shrink-0 text-danger"
-                  aria-hidden="true"
-                />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <p className="text-xs text-text-faint">
-              Phase 2 plays WAV files. MP3, FLAC, AAC and OGG arrive with the
-              media subsystem in Phase 5.
-            </p>
           </div>
+          {error && (
+            <div className="mt-3 flex items-start gap-2 rounded-control border border-danger/30 bg-danger/10 px-3 py-2 text-sm">
+              <CircleAlert
+                className="mt-0.5 size-4 shrink-0 text-danger"
+                aria-hidden="true"
+              />
+              <span>{error}</span>
+            </div>
+          )}
         </Card>
 
-        <Card title="Enhancement" icon={Sparkles}>
-          <div className="flex flex-col divide-y divide-border">
-            <div className="flex items-center justify-between py-2.5 text-sm">
-              <span className="flex items-center gap-2 text-text-muted">
-                <Power className="size-4" aria-hidden="true" />
-                Power
-              </span>
-              <span
-                className={
-                  power ? "font-medium text-accent-strong" : "text-text-muted"
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Bass */}
+          <Card
+            title="Bass boost"
+            icon={Speaker}
+            actions={
+              <Switch
+                checked={bass.enabled}
+                onChange={(v) => setBass(v, bass.amount, bass.harmonics)}
+                label="Enable bass boost"
+              />
+            }
+          >
+            <div className={cn("flex flex-col gap-4", !bass.enabled && "opacity-60")}>
+              <div className="flex items-center gap-3">
+                <span className="w-16 shrink-0 text-sm text-text-muted">Amount</span>
+                <Slider
+                  label="Bass amount"
+                  min={0}
+                  max={12}
+                  step={0.5}
+                  value={bass.amount}
+                  onChange={(v) => setBass(bass.enabled, v, bass.harmonics)}
+                  formatValue={(v) => `${v.toFixed(1)} decibels`}
+                />
+                <span className="w-12 text-right text-xs tabular-nums text-text-muted">
+                  {bass.amount.toFixed(1)} dB
+                </span>
+              </div>
+              <label className="flex items-center justify-between text-sm">
+                <span className="text-text-muted">
+                  Harmonic enhancement
+                  <span className="ml-1 text-text-faint">(small drivers)</span>
+                </span>
+                <Switch
+                  checked={bass.harmonics}
+                  onChange={(v) => setBass(bass.enabled, bass.amount, v)}
+                  label="Harmonic enhancement"
+                />
+              </label>
+            </div>
+          </Card>
+
+          {/* Surround */}
+          <Card
+            title="Surround"
+            icon={Waves}
+            actions={
+              <Switch
+                checked={spatializer.enabled}
+                onChange={(v) =>
+                  setSpatializer(v, spatializer.amount, spatializer.mode)
                 }
-              >
-                {power ? "Engaged" : "Bypassed"}
-              </span>
+                label="Enable surround"
+              />
+            }
+          >
+            <div
+              className={cn(
+                "flex flex-col gap-4",
+                !spatializer.enabled && "opacity-60",
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <span className="w-16 shrink-0 text-sm text-text-muted">Amount</span>
+                <Slider
+                  label="Surround amount"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={spatializer.amount}
+                  onChange={(v) =>
+                    setSpatializer(spatializer.enabled, v, spatializer.mode)
+                  }
+                  formatValue={(v) => `${Math.round(v * 100)} percent`}
+                />
+                <span className="w-12 text-right text-xs tabular-nums text-text-muted">
+                  {Math.round(spatializer.amount * 100)}%
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {(["crossfeed", "hrtf"] as const).map((m: SpatialMode) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() =>
+                      setSpatializer(spatializer.enabled, spatializer.amount, m)
+                    }
+                    className={cn(
+                      "rounded-control border px-3 py-1.5 text-sm capitalize transition-colors",
+                      spatializer.mode === m
+                        ? "border-accent/40 bg-accent-muted text-accent-strong"
+                        : "border-border text-text-muted hover:text-text",
+                    )}
+                  >
+                    {m === "hrtf" ? "HRTF" : "Crossfeed"}
+                  </button>
+                ))}
+              </div>
+              {spatializer.mode === "hrtf" && (
+                <p className="text-xs text-text-faint">
+                  HRTF uses the crossfeed/widening baseline until an HRIR set is
+                  loaded (scaffolded for later).
+                </p>
+              )}
             </div>
-            <div className="flex items-center justify-between py-2.5 text-sm">
-              <span className="flex items-center gap-2 text-text-muted">
-                <Volume2 className="size-4" aria-hidden="true" />
-                Master volume
-              </span>
-              <span className="font-medium tabular-nums">
-                {Math.round(masterVolume * 100)}%
-              </span>
-            </div>
+          </Card>
+        </div>
+
+        {/* Headphone correction */}
+        <Card title="Headphone correction" icon={Headphones}>
+          <div className="flex flex-col gap-3">
+            <Combobox
+              items={profileItems}
+              value={activeProfileId}
+              onSelect={selectProfile}
+              onClear={clearProfile}
+              placeholder="Select your headphones…"
+              searchPlaceholder="Search headphones…"
+              emptyText="No matching headphones"
+            />
+            {headphone.enabled && activeProfile ? (
+              <p className="text-xs text-text-muted">
+                Correcting for <span className="text-text">{activeProfile.model}</span>{" "}
+                — {headphone.bands.length} bands, preamp{" "}
+                {headphone.preamp.toFixed(1)} dB.
+              </p>
+            ) : (
+              <p className="text-xs text-text-faint">
+                Genuine AutoEq (oratory1990) correction curves for{" "}
+                {profiles.length} popular models.
+              </p>
+            )}
           </div>
-          <p className="mt-3 text-xs text-text-faint">
-            Power and master volume are live (top bar). The 31-band EQ, bass,
-            and surround dials fill in across Phases 3–4.
-          </p>
         </Card>
       </div>
     </div>
   );
-}
-
-function cnDot(active: boolean): string {
-  return [
-    "size-2.5 shrink-0 rounded-full",
-    active ? "bg-success" : "bg-text-faint",
-  ].join(" ");
 }

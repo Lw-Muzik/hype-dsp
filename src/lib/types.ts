@@ -50,6 +50,12 @@ export interface OutputState {
   ceilingDb: number;
 }
 
+export interface HeadphoneCorrectionState {
+  enabled: boolean;
+  preamp: number;
+  bands: ParametricBand[];
+}
+
 export interface EngineState {
   power: boolean;
   /** Linear master gain (1.0 = unity, > 1.0 = boost). */
@@ -57,6 +63,7 @@ export interface EngineState {
   eq: EqState;
   bass: BassBoostState;
   spatializer: SpatializerState;
+  headphone: HeadphoneCorrectionState;
   output: OutputState;
   activePresetId: string | null;
   activeProfileId: string | null;

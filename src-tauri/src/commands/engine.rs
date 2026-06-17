@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use hm_audio::AudioEngine;
-use hm_core::{EngineState, IpcError};
+use hm_core::{EngineState, IpcError, SpatialMode};
 use tauri::State;
 
 /// Current engine state (mirrored by the Zustand store on startup).
@@ -42,6 +42,28 @@ pub fn engine_set_eq(
         .map_err(|_| IpcError::new("invalid", "expected 31 EQ bands"))?;
     engine.set_eq(bands, pre_gain, enabled);
     Ok(())
+}
+
+/// Configure the bass boost stage.
+#[tauri::command]
+pub fn engine_set_bass(
+    engine: State<'_, AudioEngine>,
+    enabled: bool,
+    amount: f32,
+    harmonics: bool,
+) {
+    engine.set_bass(enabled, amount, harmonics);
+}
+
+/// Configure the spatializer (surround) stage.
+#[tauri::command]
+pub fn engine_set_spatializer(
+    engine: State<'_, AudioEngine>,
+    enabled: bool,
+    amount: f32,
+    mode: SpatialMode,
+) {
+    engine.set_spatializer(enabled, amount, mode);
 }
 
 /// Decode and play a local file through the enhancement chain.

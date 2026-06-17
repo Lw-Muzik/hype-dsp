@@ -23,7 +23,10 @@ use std::thread::JoinHandle;
 
 use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use hm_core::{EngineState, MeterFrame};
+use hm_core::{
+    BassBoostState, EngineState, HeadphoneCorrectionState, MeterFrame, ParametricBand, SpatialMode,
+    SpatializerState,
+};
 use hm_dsp::ProcessChain;
 
 use crate::decode::{decode_file, resample_stereo, DecodedAudio};
@@ -266,6 +269,48 @@ impl AudioEngine {
             s.eq.bands = bands;
             s.eq.pre_gain = pre_gain;
             s.active_preset_id = Some(preset_id);
+        });
+    }
+
+    /// Configure the bass boost stage.
+    pub fn set_bass(&self, enabled: bool, amount: f32, harmonics: bool) {
+        self.update(|s| {
+            s.bass = BassBoostState {
+                enabled,
+                amount,
+                harmonics,
+            };
+        });
+    }
+
+    /// Configure the spatializer stage.
+    pub fn set_spatializer(&self, enabled: bool, amount: f32, mode: SpatialMode) {
+        self.update(|s| {
+            s.spatializer = SpatializerState {
+                enabled,
+                amount: amount.clamp(0.0, 1.0),
+                mode,
+            };
+        });
+    }
+
+    /// Load a headphone profile's correction into the chain and mark it active.
+    pub fn set_headphone(&self, bands: Vec<ParametricBand>, preamp: f32, profile_id: String) {
+        self.update(|s| {
+            s.headphone = HeadphoneCorrectionState {
+                enabled: true,
+                preamp,
+                bands,
+            };
+            s.active_profile_id = Some(profile_id);
+        });
+    }
+
+    /// Clear any active headphone correction.
+    pub fn clear_headphone(&self) {
+        self.update(|s| {
+            s.headphone = HeadphoneCorrectionState::default();
+            s.active_profile_id = None;
         });
     }
 

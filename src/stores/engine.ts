@@ -1,13 +1,23 @@
 import { create } from "zustand";
 import {
+  engineSetBass,
   engineSetEq,
   engineSetMasterVolume,
   engineSetPower,
+  engineSetSpatializer,
   playerPlayFile,
   playerStop,
+  profileClear,
 } from "@/lib/ipc";
 import { BAND_COUNT } from "@/lib/types";
-import type { EngineFrame, EngineState, EqPreset, MeterFrame } from "@/lib/types";
+import type {
+  EngineFrame,
+  EngineState,
+  EqPreset,
+  HeadphoneProfile,
+  MeterFrame,
+  SpatialMode,
+} from "@/lib/types";
 
 /**
  * Front-end mirror of the DSP engine state.
@@ -28,6 +38,7 @@ const defaultEngineState: EngineState = {
   },
   bass: { enabled: false, amount: 0, harmonics: false },
   spatializer: { enabled: false, amount: 0.5, mode: "crossfeed" },
+  headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
   activePresetId: null,
   activeProfileId: null,
@@ -58,6 +69,16 @@ interface EngineStore {
   setEqEnabled: (enabled: boolean) => void;
   /** Mirror an applied preset (the backend command applied it to the engine). */
   applyPreset: (preset: EqPreset) => void;
+
+  setBass: (enabled: boolean, amount: number, harmonics: boolean) => void;
+  setSpatializer: (
+    enabled: boolean,
+    amount: number,
+    mode: SpatialMode,
+  ) => void;
+  /** Mirror an applied headphone profile (backend already applied it). */
+  applyProfile: (profile: HeadphoneProfile) => void;
+  clearProfile: () => void;
 
   applyFrame: (frame: EngineFrame) => void;
   setPlaying: (playing: boolean) => void;
@@ -128,6 +149,40 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           activePresetId: preset.id,
         },
       })),
+
+    setBass: (enabled, amount, harmonics) => {
+      set((s) => ({ state: { ...s.state, bass: { enabled, amount, harmonics } } }));
+      void engineSetBass(enabled, amount, harmonics).catch(() => {});
+    },
+
+    setSpatializer: (enabled, amount, mode) => {
+      set((s) => ({ state: { ...s.state, spatializer: { enabled, amount, mode } } }));
+      void engineSetSpatializer(enabled, amount, mode).catch(() => {});
+    },
+
+    applyProfile: (profile) =>
+      set((s) => ({
+        state: {
+          ...s.state,
+          headphone: {
+            enabled: true,
+            preamp: profile.preamp,
+            bands: profile.bands,
+          },
+          activeProfileId: profile.id,
+        },
+      })),
+
+    clearProfile: () => {
+      set((s) => ({
+        state: {
+          ...s.state,
+          headphone: { enabled: false, preamp: 0, bands: [] },
+          activeProfileId: null,
+        },
+      }));
+      void profileClear().catch(() => {});
+    },
 
     applyFrame: (frame) =>
       set({

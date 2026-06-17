@@ -13,14 +13,20 @@
 
 use hm_core::EngineState;
 
+pub mod bass_boost;
 pub mod biquad;
 pub mod gain;
 pub mod graphic_eq;
+pub mod headphone;
 pub mod limiter;
+pub mod spatializer;
 
+pub use bass_boost::BassBoost;
 pub use gain::Gain;
 pub use graphic_eq::GraphicEq;
+pub use headphone::HeadphoneCorrection;
 pub use limiter::Limiter;
+pub use spatializer::Spatializer;
 
 /// Immutable per-block parameter snapshot handed to processors.
 ///
@@ -66,15 +72,17 @@ impl ProcessChain {
         Self::default()
     }
 
-    /// Build the standard enhancement chain for the given format using the
-    /// currently-implemented processors, in their canonical order
-    /// (`GraphicEq → Gain → Limiter`). The remaining stages
-    /// (`HeadphoneCorrection`, `BassBoost`, `Spatializer`) slot in at their
-    /// fixed positions in later phases.
+    /// Build the standard enhancement chain for the given format, in the
+    /// canonical fixed order:
+    /// `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Gain →
+    /// Limiter`.
     pub fn standard(sample_rate: f32, channels: usize) -> Self {
         let mut chain = Self::new();
         chain.prepare(sample_rate, channels);
+        chain.push(Box::new(HeadphoneCorrection::new(sample_rate, channels)));
         chain.push(Box::new(GraphicEq::new(sample_rate, channels)));
+        chain.push(Box::new(BassBoost::new(sample_rate, channels)));
+        chain.push(Box::new(Spatializer::new(sample_rate, channels)));
         chain.push(Box::new(Gain::new()));
         chain.push(Box::new(Limiter::new(sample_rate, channels)));
         chain

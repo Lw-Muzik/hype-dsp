@@ -101,6 +101,8 @@ pub fn run() {
             commands::engine::engine_set_power,
             commands::engine::engine_set_master_volume,
             commands::engine::engine_set_eq,
+            commands::engine::engine_set_bass,
+            commands::engine::engine_set_spatializer,
             commands::engine::player_play_file,
             commands::engine::player_stop,
             commands::engine::player_is_playing,
@@ -109,6 +111,9 @@ pub fn run() {
             commands::presets::eq_save_custom,
             commands::presets::eq_update,
             commands::presets::eq_delete,
+            commands::profiles::profile_list,
+            commands::profiles::profile_set_active,
+            commands::profiles::profile_clear,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the HypeMuzik application");

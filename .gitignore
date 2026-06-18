@@ -29,5 +29,13 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
+# Signing material — NEVER commit certs / private keys
+*.p12
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.pem
+*.key
+
 # Local cache
 .eslintcache

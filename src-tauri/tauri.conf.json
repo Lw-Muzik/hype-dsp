@@ -40,7 +40,6 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "signingIdentity": "Apple Development: Bruno Mugamba (6TG7V357X5)",
       "hardenedRuntime": true,
       "entitlements": "entitlements.plist"
     }

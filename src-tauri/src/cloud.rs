@@ -26,17 +26,34 @@ const REDIRECT_URI: &str = "http://localhost:53682";
 const LOOPBACK_ADDR: &str = "127.0.0.1:53682";
 const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
 
+// Defaults reuse the Hype **mobile** app's existing OAuth apps so the desktop
+// needs no extra credentials (env vars still override). Caveats, because the
+// desktop uses a loopback + PKCE flow rather than the phone's native one:
+//   * Dropbox: works with just the app key, but `http://localhost:53682` must be
+//     added to this app's Redirect URIs in the Dropbox App Console (one-time).
+//   * Google: the desktop code-exchange needs a *client secret*, which the
+//     mobile app doesn't have (it uses native sign-in). Provide one via
+//     HM_GDRIVE_CLIENT_SECRET (create a "Desktop app" OAuth client in the same
+//     Google Cloud project, or add the loopback redirect to a web client).
+// See docs/cloud-setup.md.
+const DEFAULT_GOOGLE_CLIENT_ID: &str =
+    "618382337035-9nt8g6k40j6cvbfuekvt2iqliocrb52a.apps.googleusercontent.com";
+const DEFAULT_DROPBOX_APP_KEY: &str = "1d0mou7l0x19mas";
+
 fn env_or(name: &str, default: &str) -> String {
-    std::env::var(name).unwrap_or_else(|_| default.to_string())
+    match std::env::var(name) {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => default.to_string(),
+    }
 }
 fn google_client_id() -> String {
-    env_or("HM_GDRIVE_CLIENT_ID", "")
+    env_or("HM_GDRIVE_CLIENT_ID", DEFAULT_GOOGLE_CLIENT_ID)
 }
 fn google_client_secret() -> String {
     env_or("HM_GDRIVE_CLIENT_SECRET", "")
 }
 fn dropbox_app_key() -> String {
-    env_or("HM_DROPBOX_APP_KEY", "")
+    env_or("HM_DROPBOX_APP_KEY", DEFAULT_DROPBOX_APP_KEY)
 }
 
 // -------------------------------------------------------------------- types
@@ -134,7 +151,10 @@ impl CloudState {
         CloudStatus {
             google_connected: s.google.is_some(),
             dropbox_connected: s.dropbox.is_some(),
-            google_configured: !google_client_id().is_empty(),
+            // Google's desktop flow also needs a client secret (the mobile app
+            // doesn't have one), so require it before offering "Connect".
+            google_configured: !google_client_id().is_empty()
+                && !google_client_secret().is_empty(),
             dropbox_configured: !dropbox_app_key().is_empty(),
         }
     }

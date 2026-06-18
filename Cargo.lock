@@ -1680,6 +1680,7 @@ dependencies = [
  "objc2-core-audio-types",
  "objc2-core-foundation",
  "objc2-foundation",
+ "rtrb",
  "thiserror 2.0.18",
  "windows 0.58.0",
 ]

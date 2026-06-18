@@ -22,6 +22,7 @@ objc2-core-audio = { version = "0.3", features = [
     "std",
 ] }
 objc2-core-audio-types = "0.3"
+rtrb = { workspace = true }
 objc2-core-foundation = { version = "0.3", features = ["CFString", "CFBase"] }
 objc2-foundation = { version = "0.3", features = [
     "NSString",

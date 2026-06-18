@@ -31,24 +31,26 @@ use objc2_app_kit::{
     NSBitmapImageFileType, NSBitmapImageRep, NSBitmapImageRepPropertyKey, NSRunningApplication,
 };
 use objc2_core_audio::{
-    kAudioAggregateDeviceIsPrivateKey, kAudioAggregateDeviceMainSubDeviceKey,
-    kAudioAggregateDeviceNameKey, kAudioAggregateDeviceSubDeviceListKey,
+    kAudioAggregateDeviceIsPrivateKey, kAudioAggregateDeviceNameKey,
     kAudioAggregateDeviceTapListKey, kAudioAggregateDeviceUIDKey,
-    kAudioDevicePropertyDeviceUID, kAudioHardwarePropertyDefaultOutputDevice,
+    kAudioDevicePropertyNominalSampleRate, kAudioHardwarePropertyDefaultOutputDevice,
     kAudioHardwarePropertyProcessObjectList, kAudioObjectPropertyElementMain,
     kAudioObjectPropertyScopeGlobal, kAudioObjectSystemObject, kAudioProcessPropertyBundleID,
-    kAudioProcessPropertyIsRunningOutput, kAudioProcessPropertyPID, kAudioSubDeviceUIDKey,
-    kAudioSubTapUIDKey, kAudioTapPropertyUID, AudioDeviceCreateIOProcID, AudioDeviceIOProcID,
-    AudioDeviceStart, AudioDeviceStop, AudioHardwareCreateAggregateDevice,
-    AudioHardwareCreateProcessTap, AudioHardwareDestroyAggregateDevice,
-    AudioHardwareDestroyProcessTap, AudioObjectGetPropertyData, AudioObjectGetPropertyDataSize,
-    AudioObjectID, AudioObjectPropertyAddress, CATapDescription, CATapMuteBehavior,
+    kAudioProcessPropertyIsRunningOutput, kAudioProcessPropertyPID, kAudioSubTapUIDKey,
+    kAudioTapPropertyFormat, kAudioTapPropertyUID, AudioDeviceCreateIOProcID,
+    AudioDeviceDestroyIOProcID, AudioDeviceIOProcID, AudioDeviceStart, AudioDeviceStop,
+    AudioHardwareCreateAggregateDevice, AudioHardwareCreateProcessTap,
+    AudioHardwareDestroyAggregateDevice, AudioHardwareDestroyProcessTap, AudioObjectGetPropertyData,
+    AudioObjectGetPropertyDataSize, AudioObjectID, AudioObjectPropertyAddress, CATapDescription,
+    CATapMuteBehavior,
 };
-use objc2_core_audio_types::{AudioBufferList, AudioTimeStamp};
+use objc2_core_audio_types::{AudioBufferList, AudioStreamBasicDescription, AudioTimeStamp};
 use objc2_core_foundation::{CFDictionary, CFRetained, CFString};
 use objc2_foundation::{
     NSDictionary, NSMutableArray, NSMutableDictionary, NSNumber, NSObject, NSString,
 };
+
+use rtrb::{Consumer, Producer, RingBuffer};
 
 use hm_core::AppSession;
 
@@ -143,13 +145,36 @@ fn is_running_output(obj: AudioObjectID) -> bool {
     get_scalar::<u32>(obj, kAudioProcessPropertyIsRunningOutput) == Some(1)
 }
 
-fn default_output_uid() -> Option<String> {
-    let dev: AudioObjectID =
-        get_scalar(kAudioObjectSystemObject as AudioObjectID, kAudioHardwarePropertyDefaultOutputDevice)?;
-    if dev == 0 {
-        return None;
-    }
-    get_cfstring(dev, kAudioDevicePropertyDeviceUID)
+/// The current default output device's AudioObjectID.
+fn default_output_device() -> Option<AudioObjectID> {
+    let dev: AudioObjectID = get_scalar(
+        kAudioObjectSystemObject as AudioObjectID,
+        kAudioHardwarePropertyDefaultOutputDevice,
+    )?;
+    (dev != 0).then_some(dev)
+}
+
+/// A device's nominal sample rate (Hz).
+fn device_sample_rate(dev: AudioObjectID) -> Option<f32> {
+    get_scalar::<f64>(dev, kAudioDevicePropertyNominalSampleRate).map(|r| r as f32)
+}
+
+/// A process tap's capture sample rate (Hz), read from its stream format.
+fn tap_sample_rate(tap_id: AudioObjectID) -> Option<f32> {
+    let address = addr(kAudioTapPropertyFormat);
+    let mut asbd: AudioStreamBasicDescription = unsafe { std::mem::zeroed() };
+    let mut size = size_of::<AudioStreamBasicDescription>() as u32;
+    let status = unsafe {
+        AudioObjectGetPropertyData(
+            tap_id,
+            NonNull::from(&address),
+            0,
+            std::ptr::null(),
+            NonNull::from(&mut size),
+            NonNull::new(&mut asbd as *mut _ as *mut c_void)?,
+        )
+    };
+    (status == 0 && asbd.mSampleRate > 0.0).then_some(asbd.mSampleRate as f32)
 }
 
 /// The PID macOS holds *responsible* for `pid` — for a browser/XPC audio helper
@@ -233,16 +258,80 @@ fn tap_uid_string(tap_id: AudioObjectID) -> Option<String> {
 
 // ---------------------------------------------------------------- per-app engine
 
-/// IO-callback context: the live gain (f32 bits) the app is re-rendered at.
-struct TapCtx {
-    gain: AtomicU32,
+/// Capture IO-proc context: pushes the tapped (muted) app audio into the ring.
+struct CaptureCtx {
+    producer: Producer<f32>,
 }
 
-/// IO proc: re-render the tapped (muted) app into the device output at `gain`.
-unsafe extern "C-unwind" fn io_proc(
+/// Render IO-proc context: pulls from the ring, resamples to the output device
+/// rate, applies the live gain, and writes the result to the output device.
+struct RenderCtx {
+    consumer: Consumer<f32>,
+    gain: AtomicU32,
+    /// capture_rate / output_rate — input frames consumed per output frame.
+    ratio: f32,
+    pos: f32,
+    cur: [f32; 2],
+    nxt: [f32; 2],
+    primed: bool,
+}
+
+/// Capture proc: read the tap's interleaved stereo input and push L/R pairs into
+/// the ring (dropping whole frames if full, so channels stay aligned).
+unsafe extern "C-unwind" fn capture_proc(
     _device: AudioObjectID,
     _now: NonNull<AudioTimeStamp>,
     input_data: NonNull<AudioBufferList>,
+    _input_time: NonNull<AudioTimeStamp>,
+    _output_data: NonNull<AudioBufferList>,
+    _output_time: NonNull<AudioTimeStamp>,
+    client_data: *mut c_void,
+) -> i32 {
+    if client_data.is_null() {
+        return 0;
+    }
+    let ctx = &mut *(client_data as *mut CaptureCtx);
+    let list = input_data.as_ref();
+    if list.mNumberBuffers == 0 {
+        return 0;
+    }
+    let buffers = std::slice::from_raw_parts(list.mBuffers.as_ptr(), list.mNumberBuffers as usize);
+    let inp = &buffers[0];
+    if inp.mData.is_null() {
+        return 0;
+    }
+    let in_ch = inp.mNumberChannels.max(1) as usize;
+    let count = inp.mDataByteSize as usize / size_of::<f32>();
+    let samples = std::slice::from_raw_parts(inp.mData as *const f32, count);
+    for frame in samples.chunks(in_ch) {
+        if ctx.producer.slots() < 2 {
+            break;
+        }
+        let l = frame.first().copied().unwrap_or(0.0);
+        let r = frame.get(1).copied().unwrap_or(l);
+        let _ = ctx.producer.push(l);
+        let _ = ctx.producer.push(r);
+    }
+    0
+}
+
+#[inline]
+unsafe fn pop_frame(consumer: &mut Consumer<f32>) -> Option<[f32; 2]> {
+    if consumer.slots() >= 2 {
+        Some([consumer.pop().unwrap_or(0.0), consumer.pop().unwrap_or(0.0)])
+    } else {
+        None
+    }
+}
+
+/// Render proc on the real output device: resample the ring to the device rate,
+/// scale by gain, and write into the device output (the HAL mixes this with
+/// every other app — and the source app itself is muted by the tap, so there is
+/// no doubling).
+unsafe extern "C-unwind" fn render_proc(
+    _device: AudioObjectID,
+    _now: NonNull<AudioTimeStamp>,
+    _input_data: NonNull<AudioBufferList>,
     _input_time: NonNull<AudioTimeStamp>,
     output_data: NonNull<AudioBufferList>,
     _output_time: NonNull<AudioTimeStamp>,
@@ -251,15 +340,13 @@ unsafe extern "C-unwind" fn io_proc(
     if client_data.is_null() {
         return 0;
     }
-    let ctx = &*(client_data as *mut TapCtx);
+    let ctx = &mut *(client_data as *mut RenderCtx);
     let gain = f32::from_bits(ctx.gain.load(Ordering::Relaxed));
 
-    let inputs = input_data.as_ref();
-    let outputs = output_data.as_ref();
-    if outputs.mNumberBuffers == 0 {
+    let out_list = output_data.as_ptr();
+    if (*out_list).mNumberBuffers == 0 {
         return 0;
     }
-    let out_list = output_data.as_ptr();
     let out_buffers = std::slice::from_raw_parts_mut(
         (*out_list).mBuffers.as_mut_ptr(),
         (*out_list).mNumberBuffers as usize,
@@ -271,52 +358,61 @@ unsafe extern "C-unwind" fn io_proc(
         return 0;
     }
     let out_samples = std::slice::from_raw_parts_mut(out.mData as *mut f32, out_count);
-    // Start from silence so any unfilled frames/channels are quiet.
     out_samples.iter_mut().for_each(|s| *s = 0.0);
 
-    if inputs.mNumberBuffers == 0 {
-        return 0;
+    if !ctx.primed {
+        // Build a little latency before starting so the resampler has data.
+        if ctx.consumer.slots() < 8 {
+            return 0;
+        }
+        ctx.cur = pop_frame(&mut ctx.consumer).unwrap_or([0.0; 2]);
+        ctx.nxt = pop_frame(&mut ctx.consumer).unwrap_or(ctx.cur);
+        ctx.pos = 0.0;
+        ctx.primed = true;
     }
-    let in_buffers =
-        std::slice::from_raw_parts(inputs.mBuffers.as_ptr(), inputs.mNumberBuffers as usize);
-    let inp = &in_buffers[0];
-    if inp.mData.is_null() {
-        return 0;
-    }
-    let in_ch = inp.mNumberChannels.max(1) as usize;
-    let in_count = inp.mDataByteSize as usize / size_of::<f32>();
-    let in_samples = std::slice::from_raw_parts(inp.mData as *const f32, in_count);
 
-    let out_frames = out_count / out_ch;
-    let in_frames = in_count / in_ch;
-    let frames = out_frames.min(in_frames);
+    let frames = out_count / out_ch;
     for f in 0..frames {
-        let l = in_samples[f * in_ch];
-        let r = in_samples[f * in_ch + (in_ch.min(2) - 1)];
+        let l = ctx.cur[0] + (ctx.nxt[0] - ctx.cur[0]) * ctx.pos;
+        let r = ctx.cur[1] + (ctx.nxt[1] - ctx.cur[1]) * ctx.pos;
         out_samples[f * out_ch] = l * gain;
         if out_ch >= 2 {
             out_samples[f * out_ch + 1] = r * gain;
+        }
+        ctx.pos += ctx.ratio;
+        while ctx.pos >= 1.0 {
+            ctx.cur = ctx.nxt;
+            ctx.nxt = pop_frame(&mut ctx.consumer).unwrap_or(ctx.cur);
+            ctx.pos -= 1.0;
         }
     }
     0
 }
 
-/// One running attenuation engine for an app (tap + aggregate + IO proc).
+/// One running per-app attenuation engine: a **muted** capture-only tap (which
+/// silences the app's own output) plus a render proc on the real output device
+/// that replays the app at the chosen gain. Mute lives in a capture-only
+/// aggregate exactly like the system-wide tap, so the app is truly silenced (no
+/// doubling) and only the gain-scaled replay is heard.
 struct AppTap {
     tap_id: AudioObjectID,
-    aggregate_id: AudioObjectID,
-    proc_id: AudioDeviceIOProcID,
-    ctx: *mut TapCtx,
+    capture_aggregate: AudioObjectID,
+    capture_proc: AudioDeviceIOProcID,
+    capture_ctx: *mut CaptureCtx,
+    output_device: AudioObjectID,
+    render_proc: AudioDeviceIOProcID,
+    render_ctx: *mut RenderCtx,
     started: bool,
 }
 
-// Core Audio object IDs + the boxed ctx are only touched on create/drop/set.
+// Core Audio IDs + the boxed contexts are only touched on create/drop/set-gain.
 unsafe impl Send for AppTap {}
 
 impl AppTap {
     fn new(processes: &[AudioObjectID], gain: f32) -> Result<Self, PlatformError> {
-        let output_uid = default_output_uid()
+        let output_device = default_output_device()
             .ok_or_else(|| PlatformError::Unsupported("no default output device".into()))?;
+        let output_rate = device_sample_rate(output_device).unwrap_or(48_000.0);
 
         // Muted mixdown tap over the app's process(es).
         let procs = NSMutableArray::<NSNumber>::new();
@@ -324,10 +420,8 @@ impl AppTap {
             procs.addObject(&NSNumber::new_u32(p));
         }
         let description = unsafe {
-            let d = CATapDescription::initStereoMixdownOfProcesses(
-                CATapDescription::alloc(),
-                &procs,
-            );
+            let d =
+                CATapDescription::initStereoMixdownOfProcesses(CATapDescription::alloc(), &procs);
             d.setMuteBehavior(CATapMuteBehavior::Muted);
             d.setName(&NSString::from_str("HypeMuzik App Tap"));
             d
@@ -348,8 +442,10 @@ impl AppTap {
                 return Err(PlatformError::Unsupported("could not read tap UID".into()));
             }
         };
+        let capture_rate = tap_sample_rate(tap_id).unwrap_or(output_rate);
 
-        let aggregate_id = match create_aggregate(&tap_uid, &output_uid, tap_id) {
+        // Capture-only aggregate (tap only — this is what makes the mute apply).
+        let capture_aggregate = match create_capture_aggregate(&tap_uid, tap_id) {
             Ok(id) => id,
             Err(e) => {
                 unsafe { AudioHardwareDestroyProcessTap(tap_id) };
@@ -357,48 +453,87 @@ impl AppTap {
             }
         };
 
-        let ctx = Box::into_raw(Box::new(TapCtx {
+        let capacity = (output_rate.max(capture_rate) as usize) * 2 * 2;
+        let (producer, consumer) = RingBuffer::<f32>::new(capacity);
+        let capture_ctx = Box::into_raw(Box::new(CaptureCtx { producer }));
+        let render_ctx = Box::into_raw(Box::new(RenderCtx {
+            consumer,
             gain: AtomicU32::new(gain.to_bits()),
+            ratio: capture_rate / output_rate.max(1.0),
+            pos: 0.0,
+            cur: [0.0; 2],
+            nxt: [0.0; 2],
+            primed: false,
         }));
-        let mut proc_id: AudioDeviceIOProcID = None;
+
+        let cleanup = |tap: AudioObjectID, agg: AudioObjectID, cctx: *mut CaptureCtx, rctx: *mut RenderCtx| unsafe {
+            drop(Box::from_raw(cctx));
+            drop(Box::from_raw(rctx));
+            AudioHardwareDestroyAggregateDevice(agg);
+            AudioHardwareDestroyProcessTap(tap);
+        };
+
+        // Capture proc on the tap aggregate.
+        let mut capture_proc_id: AudioDeviceIOProcID = None;
         let status = unsafe {
             AudioDeviceCreateIOProcID(
-                aggregate_id,
-                Some(io_proc),
-                ctx as *mut c_void,
-                NonNull::from(&mut proc_id),
+                capture_aggregate,
+                Some(capture_proc),
+                capture_ctx as *mut c_void,
+                NonNull::from(&mut capture_proc_id),
+            )
+        };
+        if status != 0 {
+            cleanup(tap_id, capture_aggregate, capture_ctx, render_ctx);
+            return Err(PlatformError::Unsupported(format!(
+                "capture IO proc creation failed ({status})"
+            )));
+        }
+
+        // Render proc on the real output device.
+        let mut render_proc_id: AudioDeviceIOProcID = None;
+        let status = unsafe {
+            AudioDeviceCreateIOProcID(
+                output_device,
+                Some(render_proc),
+                render_ctx as *mut c_void,
+                NonNull::from(&mut render_proc_id),
             )
         };
         if status != 0 {
             unsafe {
-                drop(Box::from_raw(ctx));
-                AudioHardwareDestroyAggregateDevice(aggregate_id);
-                AudioHardwareDestroyProcessTap(tap_id);
+                AudioDeviceDestroyIOProcID(capture_aggregate, capture_proc_id);
             }
+            cleanup(tap_id, capture_aggregate, capture_ctx, render_ctx);
             return Err(PlatformError::Unsupported(format!(
-                "IO proc creation failed ({status})"
+                "render IO proc creation failed ({status})"
             )));
         }
 
-        let mut tap = Self {
+        let mut app = Self {
             tap_id,
-            aggregate_id,
-            proc_id,
-            ctx,
+            capture_aggregate,
+            capture_proc: capture_proc_id,
+            capture_ctx,
+            output_device,
+            render_proc: render_proc_id,
+            render_ctx,
             started: false,
         };
-        let status = unsafe { AudioDeviceStart(aggregate_id, proc_id) };
-        if status != 0 {
+
+        let s1 = unsafe { AudioDeviceStart(capture_aggregate, capture_proc_id) };
+        let s2 = unsafe { AudioDeviceStart(output_device, render_proc_id) };
+        if s1 != 0 || s2 != 0 {
             return Err(PlatformError::Unsupported(format!(
-                "could not start app-tap device ({status})"
+                "could not start per-app tap ({s1}/{s2})"
             )));
         }
-        tap.started = true;
-        Ok(tap)
+        app.started = true;
+        Ok(app)
     }
 
     fn set_gain(&self, gain: f32) {
-        unsafe { (*self.ctx).gain.store(gain.to_bits(), Ordering::Relaxed) };
+        unsafe { (*self.render_ctx).gain.store(gain.to_bits(), Ordering::Relaxed) };
     }
 }
 
@@ -406,22 +541,29 @@ impl Drop for AppTap {
     fn drop(&mut self) {
         unsafe {
             if self.started {
-                AudioDeviceStop(self.aggregate_id, self.proc_id);
+                AudioDeviceStop(self.capture_aggregate, self.capture_proc);
+                AudioDeviceStop(self.output_device, self.render_proc);
             }
-            AudioHardwareDestroyAggregateDevice(self.aggregate_id);
+            // The render proc lives on the persistent output device, so it must
+            // be explicitly removed; the capture aggregate is destroyed wholesale.
+            AudioDeviceDestroyIOProcID(self.output_device, self.render_proc);
+            AudioHardwareDestroyAggregateDevice(self.capture_aggregate);
             AudioHardwareDestroyProcessTap(self.tap_id);
-            if !self.ctx.is_null() {
-                drop(Box::from_raw(self.ctx));
+            if !self.capture_ctx.is_null() {
+                drop(Box::from_raw(self.capture_ctx));
+            }
+            if !self.render_ctx.is_null() {
+                drop(Box::from_raw(self.render_ctx));
             }
         }
     }
 }
 
-/// Build a private aggregate device: the muted tap as input, the real default
-/// output as the (clock + main) output sub-device. Its UID is unique per tap.
-fn create_aggregate(
+/// Build a private **capture-only** aggregate device wrapping just the muted tap
+/// (no output sub-device — that is exactly what keeps the per-process mute in
+/// effect, matching the proven system-wide tap).
+fn create_capture_aggregate(
     tap_uid: &str,
-    output_uid: &str,
     tap_id: AudioObjectID,
 ) -> Result<AudioObjectID, PlatformError> {
     fn key(c: &std::ffi::CStr) -> Retained<NSString> {
@@ -433,13 +575,9 @@ fn create_aggregate(
     let k_private = key(kAudioAggregateDeviceIsPrivateKey);
     let k_taps = key(kAudioAggregateDeviceTapListKey);
     let k_subtap = key(kAudioSubTapUIDKey);
-    let k_subdevs = key(kAudioAggregateDeviceSubDeviceListKey);
-    let k_subdev_uid = key(kAudioSubDeviceUIDKey);
-    let k_main = key(kAudioAggregateDeviceMainSubDeviceKey);
 
     let dict = NSMutableDictionary::<NSString, NSObject>::new();
     unsafe {
-        // taps = [ { subTapUID: <tap uid> } ]
         let tap_entry = NSMutableDictionary::<NSString, NSObject>::new();
         tap_entry.setObject_forKey(
             &NSString::from_str(tap_uid),
@@ -447,15 +585,6 @@ fn create_aggregate(
         );
         let taps = NSMutableArray::<NSObject>::new();
         taps.addObject(&tap_entry);
-
-        // subdevices = [ { subDeviceUID: <output uid> } ]
-        let sub_entry = NSMutableDictionary::<NSString, NSObject>::new();
-        sub_entry.setObject_forKey(
-            &NSString::from_str(output_uid),
-            ProtocolObject::from_ref(&*k_subdev_uid),
-        );
-        let subs = NSMutableArray::<NSObject>::new();
-        subs.addObject(&sub_entry);
 
         dict.setObject_forKey(
             &NSString::from_str(&format!("HypeMuzikAppTap-{tap_id}")),
@@ -466,22 +595,16 @@ fn create_aggregate(
             ProtocolObject::from_ref(&*k_name),
         );
         dict.setObject_forKey(&NSNumber::new_bool(true), ProtocolObject::from_ref(&*k_private));
-        dict.setObject_forKey(
-            &NSString::from_str(output_uid),
-            ProtocolObject::from_ref(&*k_main),
-        );
-        dict.setObject_forKey(&subs, ProtocolObject::from_ref(&*k_subdevs));
         dict.setObject_forKey(&taps, ProtocolObject::from_ref(&*k_taps));
     }
 
-    let cf: &CFDictionary =
-        unsafe { &*(Retained::as_ptr(&dict) as *const CFDictionary) };
+    let cf: &CFDictionary = unsafe { &*(Retained::as_ptr(&dict) as *const CFDictionary) };
     let mut aggregate_id: AudioObjectID = 0;
     let status =
         unsafe { AudioHardwareCreateAggregateDevice(cf, NonNull::from(&mut aggregate_id)) };
     if status != 0 || aggregate_id == 0 {
         return Err(PlatformError::Unsupported(format!(
-            "could not create app-tap aggregate device (status {status})"
+            "could not create capture aggregate (status {status})"
         )));
     }
     Ok(aggregate_id)

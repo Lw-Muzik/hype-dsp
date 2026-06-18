@@ -13,3 +13,4 @@ serde_json = { workspace = true }
 reqwest = { workspace = true }
 mdns-sd = { workspace = true }
 getrandom = "0.2"
+base64 = "0.22"

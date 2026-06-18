@@ -21,6 +21,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use base64::Engine as _;
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use serde::{Deserialize, Serialize};
 
@@ -218,7 +219,28 @@ impl LinkState {
         let _ = daemon.shutdown();
         let mut devices: Vec<PhoneDevice> = found.into_values().collect();
         devices.sort_by_key(|d| d.name.to_lowercase());
+        // Silent reconnect: a paired phone may have a new DHCP address.
+        self.update_addresses(&devices);
         Ok(devices)
+    }
+
+    /// Update the stored host/port of any paired device that was just
+    /// rediscovered at a new address (so a changed phone IP self-heals).
+    pub fn update_addresses(&self, discovered: &[PhoneDevice]) {
+        let mut s = self.inner.lock().expect("link poisoned");
+        let mut changed = false;
+        for dev in &mut s.devices {
+            if let Some(found) = discovered.iter().find(|d| d.id == dev.id) {
+                if dev.host != found.host || dev.port != found.port {
+                    dev.host = found.host.clone();
+                    dev.port = found.port;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            self.save(&s);
+        }
     }
 
     /// Run the PIN handshake against a phone and persist the returned token.
@@ -263,6 +285,39 @@ impl LinkState {
             token: parsed.token,
         });
         Ok(device)
+    }
+
+    /// Fetch a track's embedded artwork as a `data:` URI (so it can drop
+    /// straight into an `<img src>`), or `None` if the track has no art or the
+    /// phone is unreachable. Goes through the authenticated client, so no webview
+    /// CSP changes are needed.
+    pub fn artwork_data_uri(&self, device_id: &str, track_id: &str) -> Option<String> {
+        let dev = self.find(device_id).ok()?;
+        let url = format!("http://{}:{}/art/{}", dev.host, dev.port, track_id);
+        let resp = http_client()
+            .ok()?
+            .get(&url)
+            .bearer_auth(&dev.token)
+            .send()
+            .ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("image/jpeg")
+            .to_string();
+        let bytes = resp.bytes().ok()?;
+        if bytes.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "data:{};base64,{}",
+            content_type,
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        ))
     }
 
     /// Fetch the phone's track list.
@@ -495,6 +550,39 @@ mod tests {
         assert_eq!(link.paired().len(), 1, "re-pairing must not duplicate");
         let (_, headers) = link.stream_target("p", "1", "flac").unwrap();
         assert_eq!(headers[0].1, "Bearer new", "token should be the latest");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn discovery_refreshes_a_paired_phones_changed_address() {
+        let path = temp_path("reconnect");
+        let link = LinkState::load(path.clone());
+        link.remember(Paired {
+            id: "p".into(),
+            name: "Phone".into(),
+            host: "192.168.1.5".into(),
+            port: 8080,
+            token: "t".into(),
+        });
+
+        // The phone reappears at a new DHCP address.
+        link.update_addresses(&[PhoneDevice {
+            id: "p".into(),
+            name: "Phone".into(),
+            host: "192.168.1.99".into(),
+            port: 9000,
+        }]);
+        let (url, _) = link.stream_target("p", "1", "mp3").unwrap();
+        assert_eq!(url, "http://192.168.1.99:9000/stream/1.mp3");
+
+        // An unrelated discovered device must not create a pairing.
+        link.update_addresses(&[PhoneDevice {
+            id: "stranger".into(),
+            name: "X".into(),
+            host: "10.0.0.1".into(),
+            port: 1,
+        }]);
+        assert_eq!(link.paired().len(), 1);
         let _ = std::fs::remove_file(path);
     }
 

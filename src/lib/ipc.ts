@@ -177,6 +177,14 @@ export function linkLibrary(deviceId: string): Promise<PhoneTrack[]> {
   return invoke<PhoneTrack[]>("link_library", { deviceId });
 }
 
+/** A track's artwork as a data URI, or null if it has none. */
+export function linkArtwork(
+  deviceId: string,
+  trackId: string,
+): Promise<string | null> {
+  return invoke<string | null>("link_artwork", { deviceId, trackId });
+}
+
 /** Stream one track from the phone through the enhancement chain. */
 export function linkPlay(
   deviceId: string,

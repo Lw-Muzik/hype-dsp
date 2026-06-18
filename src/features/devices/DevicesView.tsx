@@ -16,6 +16,7 @@ import { Button } from "@/components/Button";
 import { useEngineStore } from "@/stores/engine";
 import {
   ipcErrorMessage,
+  linkArtwork,
   linkDiscover,
   linkLibrary,
   linkPair,
@@ -38,6 +39,48 @@ function Thumb({ seed, label }: { seed: string; label: string }) {
       <span className="opacity-80">{coverInitials(label)}</span>
     </div>
   );
+}
+
+// Resolve+dedupe artwork lookups across renders (null = no art / unreachable).
+const artCache = new Map<string, Promise<string | null>>();
+function fetchArt(deviceId: string, trackId: string): Promise<string | null> {
+  const key = `${deviceId}:${trackId}`;
+  let pending = artCache.get(key);
+  if (!pending) {
+    pending = linkArtwork(deviceId, trackId).catch(() => null);
+    artCache.set(key, pending);
+  }
+  return pending;
+}
+
+/** Real embedded artwork for a phone track, falling back to the gradient. */
+function PhoneCover({ deviceId, track }: { deviceId: string; track: PhoneTrack }) {
+  const [uri, setUri] = useState<string | null>(null);
+  useEffect(() => {
+    if (!track.hasArt) {
+      setUri(null);
+      return;
+    }
+    let active = true;
+    void fetchArt(deviceId, track.id).then((u) => {
+      if (active) setUri(u);
+    });
+    return () => {
+      active = false;
+    };
+  }, [deviceId, track.id, track.hasArt]);
+
+  if (uri) {
+    return (
+      <img
+        src={uri}
+        alt=""
+        className="size-11 shrink-0 rounded-md object-cover"
+        aria-hidden="true"
+      />
+    );
+  }
+  return <Thumb seed={track.album?.trim() || track.title} label={track.title} />;
 }
 
 export function DevicesView() {
@@ -390,7 +433,7 @@ function DeviceLibrary({
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <div className="relative">
-                  <Thumb seed={t.album?.trim() || t.title} label={t.title} />
+                  <PhoneCover deviceId={device.id} track={t} />
                   <span className="absolute inset-0 grid place-items-center rounded-md bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
                     <Play className="size-4 text-white" aria-hidden="true" />
                   </span>

@@ -54,6 +54,17 @@ pub fn link_library(
     link.library(&device_id).map_err(|e| IpcError::new("link", e))
 }
 
+/// Fetch a track's embedded artwork as a `data:` URI, or `None` if it has none.
+/// Never errors — a missing cover just falls back to the gradient placeholder.
+#[tauri::command]
+pub fn link_artwork(
+    link: State<'_, LinkState>,
+    device_id: String,
+    track_id: String,
+) -> Option<String> {
+    link.artwork_data_uri(&device_id, &track_id)
+}
+
 /// Stream one track from the phone through the enhancement chain.
 #[tauri::command]
 pub fn link_play(

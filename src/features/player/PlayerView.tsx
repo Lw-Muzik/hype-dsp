@@ -3,6 +3,7 @@ import {
   FolderPlus,
   ListMusic,
   Music2,
+  Play,
   Plus,
   Trash2,
   X,
@@ -25,7 +26,63 @@ import {
 } from "@/lib/ipc";
 import type { LibraryTrack, Playlist } from "@/lib/types";
 import { formatTime } from "@/lib/format";
+import { coverGradient, coverInitials } from "@/lib/cover";
 import { cn } from "@/lib/cn";
+
+/** A square gradient cover (with initials) for a track/album. */
+function Cover({
+  seed,
+  label,
+  className,
+}: {
+  seed: string;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid shrink-0 place-items-center overflow-hidden font-semibold text-white/90",
+        className,
+      )}
+      style={{ background: coverGradient(seed) }}
+      aria-hidden="true"
+    >
+      <span className="opacity-80">{coverInitials(label)}</span>
+    </div>
+  );
+}
+
+interface Album {
+  key: string;
+  name: string;
+  artist: string;
+  tracks: LibraryTrack[];
+  /** Index of the album's first track within the full list. */
+  firstIndex: number;
+}
+
+/** Group a track list into albums, preserving first-seen order. */
+function groupAlbums(tracks: LibraryTrack[]): Album[] {
+  const map = new Map<string, Album>();
+  tracks.forEach((t, i) => {
+    const name = t.album?.trim() || "Singles";
+    const key = name.toLowerCase();
+    const existing = map.get(key);
+    if (existing) {
+      existing.tracks.push(t);
+    } else {
+      map.set(key, {
+        key,
+        name,
+        artist: t.artist?.trim() || "Unknown artist",
+        tracks: [t],
+        firstIndex: i,
+      });
+    }
+  });
+  return [...map.values()];
+}
 
 /** Per-row "add to playlist" popover. */
 function AddToPlaylist({
@@ -154,6 +211,9 @@ export function PlayerView() {
     ? (playlists.find((p) => p.id === collection)?.name ?? "Playlist")
     : "Library";
 
+  // Albums strip only on the Library (not inside a single playlist).
+  const albums = collection === null ? groupAlbums(tracks) : [];
+
   return (
     <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-4">
       <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
@@ -236,84 +296,121 @@ export function PlayerView() {
                 </p>
               </div>
             ) : (
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-surface-raised text-left text-xs text-text-faint">
-                  <tr className="border-b border-border">
-                    <th className="w-10 py-2 pl-4 font-medium">#</th>
-                    <th className="py-2 font-medium">Title</th>
-                    <th className="hidden py-2 font-medium md:table-cell">Artist</th>
-                    <th className="w-16 py-2 pr-2 text-right font-medium">Time</th>
-                    <th className="w-12 py-2 pr-4" />
-                  </tr>
-                </thead>
-                <tbody>
+              <div className="flex flex-col">
+                {/* Albums strip (Library) */}
+                {albums.length > 1 && (
+                  <section className="border-b border-border px-4 pb-4 pt-3">
+                    <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-text-faint">
+                      Albums
+                    </h4>
+                    <div className="flex gap-5 overflow-x-auto pb-1">
+                      {albums.map((a) => (
+                        <button
+                          key={a.key}
+                          type="button"
+                          onClick={() => playFromList(tracks, a.firstIndex)}
+                          className="group flex w-24 shrink-0 flex-col items-center gap-2 text-center"
+                          title={`${a.name} — ${a.artist}`}
+                        >
+                          <Cover
+                            seed={a.name}
+                            label={a.name}
+                            className="size-24 rounded-full text-lg shadow-md ring-1 ring-white/10 transition-transform group-hover:scale-105"
+                          />
+                          <span className="w-full truncate text-xs font-medium">
+                            {a.name}
+                          </span>
+                          <span className="-mt-1.5 w-full truncate text-[11px] text-text-faint">
+                            {a.artist}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Track list — ranked, with cover art */}
+                <div className="hidden items-center gap-3 px-4 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-text-faint sm:flex">
+                  <span className="w-6 text-right">#</span>
+                  <span className="w-11" />
+                  <span className="flex-1">Song</span>
+                  <span className="w-16 text-right">Time</span>
+                  <span className="w-7" />
+                </div>
+                <ol className="flex flex-col px-2 pb-2">
                   {tracks.map((t, i) => {
                     const isPlaying = t.path === playingPath;
                     return (
-                      <tr
+                      <li
                         key={t.path}
                         onClick={() => playFromList(tracks, i)}
                         className={cn(
-                          "cursor-pointer border-b border-border/60 transition-colors hover:bg-surface-overlay",
+                          "group flex cursor-pointer items-center gap-3 rounded-control px-2 py-1.5 transition-colors hover:bg-surface-overlay",
                           isPlaying && "bg-accent-muted/40",
                         )}
                       >
-                        <td className="py-2 pl-4 text-text-faint tabular-nums">
-                          {isPlaying ? (
-                            <span className="text-accent-strong">▶</span>
-                          ) : (
-                            i + 1
+                        <span
+                          className={cn(
+                            "w-6 text-right text-xs tabular-nums",
+                            isPlaying ? "text-accent-strong" : "text-text-faint",
                           )}
-                        </td>
-                        <td className="min-w-0 py-2">
-                          <span
+                        >
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <div className="relative">
+                          <Cover
+                            seed={t.album?.trim() || t.title}
+                            label={t.title}
+                            className="size-11 rounded-md text-sm"
+                          />
+                          <span className="absolute inset-0 grid place-items-center rounded-md bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+                            <Play className="size-4 text-white" aria-hidden="true" />
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p
                             className={cn(
-                              "block truncate",
+                              "truncate text-sm font-medium",
                               isPlaying && "text-accent-strong",
                             )}
                           >
                             {t.title}
-                          </span>
-                        </td>
-                        <td className="hidden truncate py-2 text-text-muted md:table-cell">
-                          {t.artist ?? "—"}
-                        </td>
-                        <td className="py-2 pr-2 text-right tabular-nums text-text-muted">
+                          </p>
+                          <p className="truncate text-xs text-text-muted">
+                            {t.artist ?? "—"}
+                          </p>
+                        </div>
+                        <span className="w-16 shrink-0 text-right text-xs tabular-nums text-text-muted">
                           {formatTime(t.durationSecs)}
-                        </td>
-                        <td className="py-2 pr-4">
-                          <div
-                            className="flex justify-end"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {collection ? (
-                              <button
-                                type="button"
-                                aria-label="Remove from playlist"
-                                onClick={() =>
-                                  playlistRemove(collection, t.path)
-                                    .then(refreshTracks)
-                                    .catch(() => {})
-                                }
-                                className="flex size-7 items-center justify-center rounded-control text-text-faint hover:bg-surface hover:text-danger"
-                              >
-                                <X className="size-4" aria-hidden="true" />
-                              </button>
-                            ) : (
-                              <AddToPlaylist
-                                playlists={playlists}
-                                onAdd={(id) =>
-                                  void playlistAdd(id, t.path).catch(() => {})
-                                }
-                              />
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                        </span>
+                        <div onClick={(e) => e.stopPropagation()}>
+                          {collection ? (
+                            <button
+                              type="button"
+                              aria-label="Remove from playlist"
+                              onClick={() =>
+                                playlistRemove(collection, t.path)
+                                  .then(refreshTracks)
+                                  .catch(() => {})
+                              }
+                              className="flex size-7 items-center justify-center rounded-control text-text-faint hover:bg-surface hover:text-danger"
+                            >
+                              <X className="size-4" aria-hidden="true" />
+                            </button>
+                          ) : (
+                            <AddToPlaylist
+                              playlists={playlists}
+                              onAdd={(id) =>
+                                void playlistAdd(id, t.path).catch(() => {})
+                              }
+                            />
+                          )}
+                        </div>
+                      </li>
                     );
                   })}
-                </tbody>
-              </table>
+                </ol>
+              </div>
             )}
           </div>
         </div>

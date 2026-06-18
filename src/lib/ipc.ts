@@ -13,7 +13,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AppInfo,
-  CloudFile,
+  CloudEntry,
   CloudProvider,
   CloudStatus,
   DeviceInfo,
@@ -129,9 +129,12 @@ export function cloudDisconnect(provider: CloudProvider): Promise<void> {
   return invoke<void>("cloud_disconnect", { provider });
 }
 
-/** List the audio files in a connected account. */
-export function cloudList(provider: CloudProvider): Promise<CloudFile[]> {
-  return invoke<CloudFile[]>("cloud_list", { provider });
+/** List one cloud folder's contents (subfolders + audio); "" = account root. */
+export function cloudList(
+  provider: CloudProvider,
+  folder: string,
+): Promise<CloudEntry[]> {
+  return invoke<CloudEntry[]>("cloud_list", { provider, folder });
 }
 
 /** Stream a cloud file through the enhancement chain. */

@@ -20,7 +20,7 @@ import {
 import { toast } from "@/stores/toast";
 import { BAND_COUNT } from "@/lib/types";
 import type {
-  CloudFile,
+  CloudEntry,
   EngineFrame,
   EngineState,
   EqPreset,
@@ -117,7 +117,7 @@ interface EngineStore {
   /** Stream an internet radio station (live; no queue/duration). */
   playRadio: (station: RadioStation) => void;
   /** Stream a cloud file (Drive/Dropbox) through the chain. */
-  playCloud: (file: CloudFile) => void;
+  playCloud: (file: CloudEntry) => void;
   next: () => void;
   prev: () => void;
   togglePause: () => void;

@@ -4,7 +4,7 @@ use hm_audio::AudioEngine;
 use hm_core::IpcError;
 use tauri::State;
 
-use crate::cloud::{CloudFile, CloudProvider, CloudState, CloudStatus};
+use crate::cloud::{CloudEntry, CloudProvider, CloudState, CloudStatus};
 
 /// Which providers are configured (have credentials) and connected.
 #[tauri::command]
@@ -27,13 +27,17 @@ pub fn cloud_disconnect(cloud: State<'_, CloudState>, provider: CloudProvider) {
     cloud.disconnect(provider);
 }
 
-/// List the audio files in the connected account.
+/// List the contents of one cloud folder (subfolders + audio files). `folder`
+/// is the provider handle, or "" for the account root.
 #[tauri::command]
 pub fn cloud_list(
     cloud: State<'_, CloudState>,
     provider: CloudProvider,
-) -> Result<Vec<CloudFile>, IpcError> {
-    cloud.list(provider).map_err(|e| IpcError::new("cloud", e))
+    folder: String,
+) -> Result<Vec<CloudEntry>, IpcError> {
+    cloud
+        .list(provider, &folder)
+        .map_err(|e| IpcError::new("cloud", e))
 }
 
 /// Resolve a streamable URL for the file and play it through the chain.

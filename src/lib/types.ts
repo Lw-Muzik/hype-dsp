@@ -229,11 +229,13 @@ export interface IpcError {
 
 export type CloudProvider = "googleDrive" | "dropbox";
 
-export interface CloudFile {
+/** A folder or audio file inside a cloud account (browsed folder-by-folder). */
+export interface CloudEntry {
   provider: CloudProvider;
+  /** Folder/file handle: Drive object id, or Dropbox path. */
   id: string;
   name: string;
-  folder: string;
+  isFolder: boolean;
   size: number;
 }
 

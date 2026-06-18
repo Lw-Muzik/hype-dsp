@@ -48,15 +48,17 @@ pub enum CloudProvider {
     Dropbox,
 }
 
-/// An audio file discovered in a cloud account (mirrors the front-end type).
+/// An entry in a cloud folder — a subfolder or an audio file (mirrors the
+/// front-end type). Browsed folder-by-folder, like a normal file browser.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CloudFile {
+pub struct CloudEntry {
     pub provider: CloudProvider,
-    /// Drive: file id. Dropbox: lowercased path.
+    /// Folder/file handle to navigate or stream. Drive: object id (folders too).
+    /// Dropbox: lowercased path.
     pub id: String,
     pub name: String,
-    pub folder: String,
+    pub is_folder: bool,
     pub size: u64,
 }
 
@@ -186,13 +188,21 @@ impl CloudState {
         Ok(())
     }
 
-    /// List audio files in the connected account.
-    pub fn list(&self, provider: CloudProvider) -> Result<Vec<CloudFile>, String> {
+    /// List the contents of one folder (subfolders + audio files). `folder` is
+    /// the provider handle, or "" for the account root.
+    pub fn list(&self, provider: CloudProvider, folder: &str) -> Result<Vec<CloudEntry>, String> {
         let access = self.access_token(provider)?;
-        match provider {
-            CloudProvider::GoogleDrive => drive_list(&access),
-            CloudProvider::Dropbox => dropbox_list(&access),
-        }
+        let mut entries = match provider {
+            CloudProvider::GoogleDrive => drive_browse(&access, folder)?,
+            CloudProvider::Dropbox => dropbox_browse(&access, folder)?,
+        };
+        // Folders first, then files; alphabetical within each.
+        entries.sort_by(|a, b| {
+            b.is_folder
+                .cmp(&a.is_folder)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
+        Ok(entries)
     }
 
     /// Resolve a streamable `(url, headers)` for a file.
@@ -479,31 +489,34 @@ fn refresh_tokens(provider: CloudProvider, refresh: &str) -> Result<Tokens, Stri
 
 // --------------------------------------------------------------- Google Drive
 
-fn drive_list(access: &str) -> Result<Vec<CloudFile>, String> {
-    const MIMES: [&str; 8] = [
-        "audio/mpeg",
-        "audio/mp4",
-        "audio/x-m4a",
-        "audio/flac",
-        "audio/wav",
-        "audio/ogg",
-        "audio/aac",
-        "audio/x-ms-wma",
-    ];
+const DRIVE_FOLDER_MIME: &str = "application/vnd.google-apps.folder";
+const DRIVE_AUDIO_MIMES: [&str; 8] = [
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/flac",
+    "audio/wav",
+    "audio/ogg",
+    "audio/aac",
+    "audio/x-ms-wma",
+];
+
+/// List one Drive folder: its subfolders + audio files (non-recursive).
+fn drive_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String> {
+    let parent = if folder.is_empty() { "root" } else { folder };
     let client = http_client()?;
-    let mime_query = MIMES
-        .iter()
-        .map(|m| format!("mimeType='{m}'"))
+    let kinds = std::iter::once(format!("mimeType='{DRIVE_FOLDER_MIME}'"))
+        .chain(DRIVE_AUDIO_MIMES.iter().map(|m| format!("mimeType='{m}'")))
         .collect::<Vec<_>>()
         .join(" or ");
-    let query = format!("({mime_query}) and trashed=false");
+    let query = format!("'{parent}' in parents and trashed=false and ({kinds})");
+    let fields = "nextPageToken,files(id,name,mimeType,size)";
 
-    let fields = "nextPageToken,files(id,name,size,parents)";
-    let mut files = Vec::new();
+    let mut entries = Vec::new();
     let mut page_token: Option<String> = None;
     loop {
         let mut url = format!(
-            "https://www.googleapis.com/drive/v3/files?q={}&fields={}&pageSize=200",
+            "https://www.googleapis.com/drive/v3/files?q={}&fields={}&pageSize=200&orderBy=folder,name",
             pct_encode(&query),
             pct_encode(fields),
         );
@@ -525,12 +538,13 @@ fn drive_list(access: &str) -> Result<Vec<CloudFile>, String> {
             if id.is_empty() || name.is_empty() {
                 continue;
             }
+            let is_folder = f["mimeType"].as_str() == Some(DRIVE_FOLDER_MIME);
             let size = f["size"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0);
-            files.push(CloudFile {
+            entries.push(CloudEntry {
                 provider: CloudProvider::GoogleDrive,
                 id,
                 name,
-                folder: "Drive".into(),
+                is_folder,
                 size,
             });
         }
@@ -539,7 +553,7 @@ fn drive_list(access: &str) -> Result<Vec<CloudFile>, String> {
             None => break,
         }
     }
-    Ok(files)
+    Ok(entries)
 }
 
 // ------------------------------------------------------------------- Dropbox
@@ -551,14 +565,16 @@ fn dropbox_is_audio(name: &str) -> bool {
     )
 }
 
-fn dropbox_list(access: &str) -> Result<Vec<CloudFile>, String> {
+/// List one Dropbox folder: its subfolders + audio files (non-recursive).
+/// `folder` is the path ("" = root).
+fn dropbox_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String> {
     let client = http_client()?;
-    let mut files = Vec::new();
+    let mut entries = Vec::new();
 
     let mut resp = client
         .post("https://api.dropboxapi.com/2/files/list_folder")
         .bearer_auth(access)
-        .json(&serde_json::json!({ "path": "", "recursive": true, "limit": 2000 }))
+        .json(&serde_json::json!({ "path": folder, "recursive": false, "limit": 2000 }))
         .send()
         .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
@@ -568,27 +584,29 @@ fn dropbox_list(access: &str) -> Result<Vec<CloudFile>, String> {
     loop {
         let data: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
         for entry in data["entries"].as_array().unwrap_or(&Vec::new()) {
-            if entry[".tag"].as_str() != Some("file") {
-                continue;
-            }
+            let tag = entry[".tag"].as_str().unwrap_or("");
             let name = entry["name"].as_str().unwrap_or_default().to_string();
-            if !dropbox_is_audio(&name) {
+            let path = entry["path_lower"].as_str().unwrap_or_default().to_string();
+            if path.is_empty() || name.is_empty() {
                 continue;
             }
-            let path = entry["path_lower"].as_str().unwrap_or_default().to_string();
-            let folder = path
-                .rfind('/')
-                .map(|i| &path[..i])
-                .filter(|s| !s.is_empty())
-                .unwrap_or("/")
-                .to_string();
-            files.push(CloudFile {
-                provider: CloudProvider::Dropbox,
-                id: path,
-                name,
-                folder,
-                size: entry["size"].as_u64().unwrap_or(0),
-            });
+            match tag {
+                "folder" => entries.push(CloudEntry {
+                    provider: CloudProvider::Dropbox,
+                    id: path,
+                    name,
+                    is_folder: true,
+                    size: 0,
+                }),
+                "file" if dropbox_is_audio(&name) => entries.push(CloudEntry {
+                    provider: CloudProvider::Dropbox,
+                    id: path,
+                    name,
+                    is_folder: false,
+                    size: entry["size"].as_u64().unwrap_or(0),
+                }),
+                _ => {}
+            }
         }
         if data["has_more"].as_bool() != Some(true) {
             break;
@@ -607,7 +625,7 @@ fn dropbox_list(access: &str) -> Result<Vec<CloudFile>, String> {
             break;
         }
     }
-    Ok(files)
+    Ok(entries)
 }
 
 fn dropbox_temporary_link(access: &str, path: &str) -> Result<String, String> {

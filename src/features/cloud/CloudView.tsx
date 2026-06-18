@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { CircleAlert, Cloud, HardDrive, Play, RefreshCw } from "lucide-react";
+import {
+  ChevronRight,
+  CircleAlert,
+  Cloud,
+  Folder,
+  HardDrive,
+  Music,
+  RefreshCw,
+} from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
@@ -12,8 +20,9 @@ import {
   cloudStatus,
   ipcErrorMessage,
 } from "@/lib/ipc";
-import type { CloudFile, CloudProvider, CloudStatus } from "@/lib/types";
+import type { CloudEntry, CloudProvider, CloudStatus } from "@/lib/types";
 import { formatBytes } from "@/lib/format";
+import { cn } from "@/lib/cn";
 
 interface ProviderMeta {
   id: CloudProvider;
@@ -37,13 +46,21 @@ const PROVIDERS: readonly ProviderMeta[] = [
   },
 ];
 
+/** A breadcrumb level: which provider folder we're inside. */
+interface Crumb {
+  provider: CloudProvider;
+  id: string; // "" = provider root
+  name: string;
+}
+
 export function CloudView() {
   const route = routeById("cloud");
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
   const playCloud = useEngineStore((s) => s.playCloud);
 
   const [status, setStatus] = useState<CloudStatus | null>(null);
-  const [files, setFiles] = useState<CloudFile[]>([]);
+  const [stack, setStack] = useState<Crumb[]>([]);
+  const [entries, setEntries] = useState<CloudEntry[]>([]);
   const [busy, setBusy] = useState<CloudProvider | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,30 +73,33 @@ export function CloudView() {
     }
   }, []);
 
-  const loadFiles = useCallback(async (s: CloudStatus) => {
-    const active = PROVIDERS.filter((p) => p.connected(s));
-    if (active.length === 0) {
-      setFiles([]);
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus]);
+
+  const here = stack[stack.length - 1];
+
+  // Load the current folder's contents whenever we navigate.
+  const loadFolder = useCallback(async (crumb: Crumb | undefined) => {
+    if (!crumb) {
+      setEntries([]);
       return;
     }
     setLoading(true);
+    setError(null);
     try {
-      const lists = await Promise.all(
-        active.map((p) => cloudList(p.id).catch(() => [] as CloudFile[])),
-      );
-      setFiles(lists.flat());
+      setEntries(await cloudList(crumb.provider, crumb.id));
+    } catch (e) {
+      setError(ipcErrorMessage(e));
+      setEntries([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void refreshStatus();
-  }, [refreshStatus]);
-
-  useEffect(() => {
-    if (status) void loadFiles(status);
-  }, [status, loadFiles]);
+    void loadFolder(here);
+  }, [here, loadFolder]);
 
   const connect = async (provider: CloudProvider) => {
     setError(null);
@@ -96,19 +116,12 @@ export function CloudView() {
 
   const disconnect = async (provider: CloudProvider) => {
     await cloudDisconnect(provider).catch(() => {});
+    // Leave any folder we were browsing in that provider.
+    setStack((s) => (s[0]?.provider === provider ? [] : s));
     await refreshStatus();
   };
 
-  // Group files by their folder for display.
-  const byFolder = new Map<string, CloudFile[]>();
-  for (const f of files) {
-    const k = `${f.provider}:${f.folder}`;
-    (byFolder.get(k) ?? byFolder.set(k, []).get(k)!).push(f);
-  }
-  const folders = [...byFolder.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const anyConnected = status
-    ? PROVIDERS.some((p) => p.connected(status))
-    : false;
+  const connected = status ? PROVIDERS.filter((p) => p.connected(status)) : [];
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -119,30 +132,30 @@ export function CloudView() {
         <Card title="Accounts" icon={Cloud}>
           <div className="flex flex-col gap-3">
             {PROVIDERS.map((p) => {
-              const connected = status ? p.connected(status) : false;
-              const configured = status ? p.configured(status) : true;
+              const isConnected = status ? p.connected(status) : false;
+              const isConfigured = status ? p.configured(status) : true;
               return (
                 <div key={p.id} className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm">
                     <HardDrive className="size-4 text-text-muted" aria-hidden="true" />
                     <span className="font-medium">{p.name}</span>
-                    {connected && (
+                    {isConnected && (
                       <span className="rounded-control bg-success/15 px-2 py-0.5 text-xs text-success">
                         Connected
                       </span>
                     )}
-                    {!configured && (
+                    {!isConfigured && (
                       <span className="text-xs text-text-faint">not configured</span>
                     )}
                   </div>
-                  {connected ? (
+                  {isConnected ? (
                     <Button variant="secondary" onClick={() => void disconnect(p.id)}>
                       Disconnect
                     </Button>
                   ) : (
                     <Button
                       variant="primary"
-                      disabled={!configured || busy !== null}
+                      disabled={!isConfigured || busy !== null}
                       onClick={() => void connect(p.id)}
                     >
                       {busy === p.id ? "Connecting…" : "Connect"}
@@ -166,67 +179,132 @@ export function CloudView() {
           )}
         </Card>
 
-        {/* Library */}
-        {anyConnected && (
+        {/* Browser */}
+        {connected.length > 0 && (
           <Card
-            title="Music"
-            icon={Cloud}
+            title="Browse"
+            icon={Folder}
             actions={
-              <button
-                type="button"
-                aria-label="Refresh"
-                onClick={() => status && void loadFiles(status)}
-                className="text-text-muted transition-colors hover:text-text"
-              >
-                <RefreshCw
-                  className={`size-4 ${loading ? "animate-spin" : ""}`}
-                  aria-hidden="true"
-                />
-              </button>
+              here && (
+                <button
+                  type="button"
+                  aria-label="Refresh"
+                  onClick={() => void loadFolder(here)}
+                  className="text-text-muted transition-colors hover:text-text"
+                >
+                  <RefreshCw
+                    className={cn("size-4", loading && "animate-spin")}
+                    aria-hidden="true"
+                  />
+                </button>
+              )
             }
           >
-            {loading && files.length === 0 ? (
-              <p className="text-sm text-text-muted">Loading your cloud music…</p>
-            ) : files.length === 0 ? (
-              <p className="text-sm text-text-muted">No audio files found.</p>
-            ) : (
-              <div className="flex flex-col gap-4">
-                {folders.map(([key, items]) => (
-                  <div key={key}>
-                    <p className="mb-1 text-xs font-medium uppercase tracking-wider text-text-faint">
-                      {items[0]?.folder ?? ""}
-                    </p>
-                    <ul className="divide-y divide-border">
-                      {items.map((f) => {
-                        const active = nowPlaying === f.name;
-                        return (
-                          <li
-                            key={`${f.provider}:${f.id}`}
-                            className="flex items-center gap-3 py-2"
-                          >
-                            <button
-                              type="button"
-                              aria-label={`Play ${f.name}`}
-                              onClick={() => playCloud(f)}
-                              className="text-text-muted transition-colors hover:text-accent-strong"
-                            >
-                              <Play className="size-4" aria-hidden="true" />
-                            </button>
-                            <span
-                              className={`min-w-0 flex-1 truncate text-sm ${active ? "text-accent-strong" : ""}`}
-                            >
-                              {f.name}
-                            </span>
-                            <span className="shrink-0 text-xs tabular-nums text-text-faint">
-                              {formatBytes(f.size)}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
+            {/* Breadcrumb */}
+            <div className="mb-3 flex flex-wrap items-center gap-1 text-sm">
+              <button
+                type="button"
+                onClick={() => setStack([])}
+                className={cn(
+                  "rounded-control px-1.5 py-0.5 transition-colors hover:text-text",
+                  stack.length === 0 ? "text-text" : "text-text-muted",
+                )}
+              >
+                Cloud
+              </button>
+              {stack.map((c, i) => (
+                <span key={`${c.provider}:${c.id}`} className="flex items-center gap-1">
+                  <ChevronRight className="size-3.5 text-text-faint" aria-hidden="true" />
+                  <button
+                    type="button"
+                    onClick={() => setStack((s) => s.slice(0, i + 1))}
+                    className={cn(
+                      "max-w-[12rem] truncate rounded-control px-1.5 py-0.5 transition-colors hover:text-text",
+                      i === stack.length - 1 ? "text-text" : "text-text-muted",
+                    )}
+                  >
+                    {c.name}
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            {/* At the root: list connected providers as folders. */}
+            {!here ? (
+              <ul className="divide-y divide-border">
+                {connected.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStack([{ provider: p.id, id: "", name: p.name }])
+                      }
+                      className="flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:text-accent-strong"
+                    >
+                      <Folder className="size-4 shrink-0 text-text-muted" aria-hidden="true" />
+                      <span className="flex-1 truncate text-sm font-medium">{p.name}</span>
+                      <ChevronRight className="size-4 text-text-faint" aria-hidden="true" />
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
+            ) : loading && entries.length === 0 ? (
+              <p className="text-sm text-text-muted">Loading…</p>
+            ) : entries.length === 0 ? (
+              <p className="text-sm text-text-muted">This folder has no music.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {entries.map((e) =>
+                  e.isFolder ? (
+                    <li key={`${e.provider}:${e.id}`}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setStack((s) => [
+                            ...s,
+                            { provider: e.provider, id: e.id, name: e.name },
+                          ])
+                        }
+                        className="flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:text-accent-strong"
+                      >
+                        <Folder className="size-4 shrink-0 text-text-muted" aria-hidden="true" />
+                        <span className="flex-1 truncate text-sm">{e.name}</span>
+                        <ChevronRight className="size-4 text-text-faint" aria-hidden="true" />
+                      </button>
+                    </li>
+                  ) : (
+                    <li
+                      key={`${e.provider}:${e.id}`}
+                      className="flex items-center gap-3 py-2"
+                    >
+                      <button
+                        type="button"
+                        aria-label={`Play ${e.name}`}
+                        onClick={() => playCloud(e)}
+                        className={cn(
+                          "transition-colors hover:text-accent-strong",
+                          nowPlaying === e.name ? "text-accent-strong" : "text-text-muted",
+                        )}
+                      >
+                        <Music className="size-4" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => playCloud(e)}
+                        className={cn(
+                          "min-w-0 flex-1 truncate text-left text-sm transition-colors hover:text-text",
+                          nowPlaying === e.name && "text-accent-strong",
+                        )}
+                      >
+                        {e.name}
+                      </button>
+                      <span className="shrink-0 text-xs tabular-nums text-text-faint">
+                        {formatBytes(e.size)}
+                      </span>
+                    </li>
+                  ),
+                )}
+              </ul>
             )}
           </Card>
         )}

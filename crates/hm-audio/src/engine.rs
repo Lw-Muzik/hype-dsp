@@ -35,6 +35,8 @@ use crate::error::AudioError;
 use crate::sources::FilePlaybackSource;
 use crate::spectrum::{Analyzer, SpectrumTap};
 use crate::streaming::RadioStreamSource;
+#[cfg(target_os = "macos")]
+use crate::system_tap::SystemTapSource;
 use crate::AudioSource;
 
 /// Lock-free meter telemetry written by the audio callback and read by the
@@ -246,6 +248,8 @@ enum EngineCommand {
     Play(DecodedAudio),
     PlayRadio(String),
     PlayCapture,
+    /// Play an already-constructed live source (e.g. the macOS system tap).
+    PlaySource(Box<dyn AudioSource>),
     Pause,
     Resume,
     Stop,
@@ -495,6 +499,19 @@ impl AudioEngine {
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
+    /// Equalize **system-wide** audio via a Core Audio process tap (macOS 14.4+).
+    /// Creating the tap triggers the audio-capture permission prompt and returns
+    /// its error synchronously (e.g. permission denied).
+    #[cfg(target_os = "macos")]
+    pub fn play_system_tap(&self) -> Result<(), AudioError> {
+        let source = SystemTapSource::new(48_000)?;
+        self.ctrl
+            .lock()
+            .expect("engine ctrl poisoned")
+            .send(EngineCommand::PlaySource(Box::new(source)))
+            .map_err(|_| AudioError::Stream("engine thread stopped".into()))
+    }
+
     /// Stop playback.
     pub fn stop(&self) {
         let _ = self
@@ -659,6 +676,38 @@ fn control_loop(
                         _ => playing.store(false, Ordering::Relaxed),
                     },
                     Err(_) => playing.store(false, Ordering::Relaxed),
+                }
+            }
+            EngineCommand::PlaySource(source) => {
+                drop(active.take());
+                meters.zero();
+                spectrum.zero();
+                paused.store(false, Ordering::Relaxed);
+                let Some((device, config)) = &setup else {
+                    playing.store(false, Ordering::Relaxed);
+                    continue;
+                };
+                let sample_rate = config.sample_rate;
+                let channels = config.channels as usize;
+                pos.prepare(sample_rate, 0); // live source: no duration
+
+                match build_output_stream(
+                    device,
+                    *config,
+                    source,
+                    shared.clone(),
+                    meters.clone(),
+                    spectrum.clone(),
+                    pos.clone(),
+                    playing.clone(),
+                    channels,
+                    sample_rate as f32,
+                ) {
+                    Ok(s) if s.play().is_ok() => {
+                        playing.store(true, Ordering::Relaxed);
+                        active = Some(s);
+                    }
+                    _ => playing.store(false, Ordering::Relaxed),
                 }
             }
             EngineCommand::Pause => {

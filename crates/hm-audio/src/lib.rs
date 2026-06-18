@@ -17,6 +17,8 @@ pub mod error;
 pub mod sources;
 pub mod spectrum;
 pub mod streaming;
+#[cfg(target_os = "macos")]
+pub mod system_tap;
 
 pub use capture::{virtual_device_available, LoopbackCaptureSource, VirtualDeviceSource};
 pub use decode::{decode_file, probe_duration, resample_stereo, DecodedAudio};

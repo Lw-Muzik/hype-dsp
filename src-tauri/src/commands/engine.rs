@@ -99,6 +99,38 @@ pub fn capture_virtual_available() -> bool {
     hm_audio::virtual_device_available()
 }
 
+/// Whether system-wide capture via Core Audio process taps is available
+/// (macOS 14.4+). The audio-capture permission is requested on first use.
+#[tauri::command]
+pub fn system_audio_available() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        hm_audio::system_tap::available()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+/// Equalize system-wide audio through the chain (macOS process tap). Returns a
+/// clear error if denied/unavailable.
+#[tauri::command]
+pub fn player_play_system_audio(engine: State<'_, AudioEngine>) -> Result<(), IpcError> {
+    #[cfg(target_os = "macos")]
+    {
+        engine.play_system_tap().map_err(Into::into)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = engine;
+        Err(IpcError::new(
+            "unsupported",
+            "System-wide capture via process taps is macOS-only.",
+        ))
+    }
+}
+
 /// Stop playback.
 #[tauri::command]
 pub fn player_stop(engine: State<'_, AudioEngine>) {

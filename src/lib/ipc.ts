@@ -171,6 +171,16 @@ export function captureVirtualAvailable(): Promise<boolean> {
   return invoke<boolean>("capture_virtual_available");
 }
 
+/** Equalize system-wide audio via a Core Audio process tap (macOS 14.4+). */
+export function playerPlaySystemAudio(): Promise<void> {
+  return invoke<void>("player_play_system_audio");
+}
+
+/** Whether system-wide capture via process taps is available (macOS 14.4+). */
+export function systemAudioAvailable(): Promise<boolean> {
+  return invoke<boolean>("system_audio_available");
+}
+
 /** Whether audio is currently playing. */
 export function playerIsPlaying(): Promise<boolean> {
   return invoke<boolean>("player_is_playing");

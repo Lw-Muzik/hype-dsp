@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AudioLines, CircleAlert, Info, KeyRound, Speaker } from "lucide-react";
+import { CircleAlert, Info, KeyRound, Speaker, Sparkles } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
@@ -13,6 +13,8 @@ import {
   licenseStatus,
   listOutputDevices,
   playerPlayCapture,
+  playerPlaySystemAudio,
+  systemAudioAvailable,
 } from "@/lib/ipc";
 import type { DeviceInfo } from "@/lib/types";
 
@@ -99,6 +101,7 @@ export function SettingsView() {
   const playing = useEngineStore((s) => s.playing);
   const [devices, setDevices] = useState<DeviceState>({ status: "loading" });
   const [virtualAvailable, setVirtualAvailable] = useState(false);
+  const [systemAvailable, setSystemAvailable] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,6 +117,9 @@ export function SettingsView() {
     captureVirtualAvailable()
       .then((v) => !cancelled && setVirtualAvailable(v))
       .catch(() => {});
+    systemAudioAvailable()
+      .then((v) => !cancelled && setSystemAvailable(v))
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -122,6 +128,10 @@ export function SettingsView() {
   const startCapture = () => {
     setCaptureError(null);
     playerPlayCapture().catch((e) => setCaptureError(ipcErrorMessage(e)));
+  };
+  const startSystemAudio = () => {
+    setCaptureError(null);
+    playerPlaySystemAudio().catch((e) => setCaptureError(ipcErrorMessage(e)));
   };
   const deactivate = () => {
     licenseDeactivate()
@@ -171,41 +181,58 @@ export function SettingsView() {
           </p>
         </Card>
 
-        <Card title="Audio capture" icon={AudioLines}>
+        <Card title="System-wide audio" icon={Sparkles}>
           <div className="flex flex-col gap-3">
+            {systemAvailable && (
+              <div className="flex items-center justify-between gap-3 rounded-control border border-accent/30 bg-accent-muted/40 px-3 py-2.5">
+                <div className="min-w-0 text-sm">
+                  <p className="font-medium text-accent-strong">
+                    Equalize everything you hear
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    Routes all system audio through the chain (Core Audio tap).
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button variant="primary" onClick={startSystemAudio}>
+                    {playing ? "Restart" : "Enable"}
+                  </Button>
+                  {playing && (
+                    <Button variant="secondary" onClick={() => void stop()}>
+                      Stop
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 text-sm">
-                <p className="font-medium">Input capture (dev stand-in)</p>
+                <p className="font-medium">Input capture</p>
                 <p className="text-xs text-text-muted">
-                  Route the default input device through the chain.
+                  Route a microphone / input device through the chain.
                 </p>
               </div>
-              <div className="flex shrink-0 gap-2">
-                <Button variant="secondary" onClick={startCapture}>
-                  Start
-                </Button>
-                {playing && (
-                  <Button variant="ghost" onClick={() => void stop()}>
-                    Stop
-                  </Button>
-                )}
-              </div>
+              <Button variant="secondary" onClick={startCapture}>
+                Start
+              </Button>
             </div>
+
             {captureError && (
               <p className="text-sm text-danger">{captureError}</p>
             )}
+
             <div className="flex items-start gap-2 rounded-control border border-border bg-surface px-3 py-2 text-xs text-text-muted">
               <CircleAlert
                 className="mt-0.5 size-3.5 shrink-0 text-text-faint"
                 aria-hidden="true"
               />
               <span>
-                System-wide capture (intercepting other apps):{" "}
-                <span className="text-text">
-                  {virtualAvailable ? "available" : "not installed"}
-                </span>
-                . It requires a signed virtual audio driver — see
-                docs/audio-driver.md.
+                {systemAvailable
+                  ? "First use prompts for audio-capture permission. While enabled, other apps are muted and you hear HypeMuzik's processed output (the original is re-rendered through the chain). The grant persists only on a code-signed build."
+                  : `System-wide capture is unavailable on this platform${
+                      virtualAvailable ? "" : " (a signed virtual audio driver is not installed)"
+                    } — see docs/audio-driver.md.`}
               </span>
             </div>
           </div>

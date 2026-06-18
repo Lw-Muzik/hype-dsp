@@ -25,6 +25,27 @@ symphonia = { workspace = true }
 reqwest = { workspace = true }
 rtrb = { workspace = true }
 
+# macOS system-wide capture via Core Audio process taps (macOS 14.4+).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-core-audio = { version = "0.3", features = [
+    "AudioHardware",
+    "objc2",
+    "objc2-foundation",
+    "objc2-core-audio-types",
+    "block2",
+    "std",
+] }
+objc2-core-audio-types = "0.3"
+objc2-core-foundation = { version = "0.3", features = [
+    "CFDictionary",
+    "CFString",
+    "CFNumber",
+    "CFArray",
+] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSArray"] }
+
 [dev-dependencies]
 # Generates WAV fixtures for decode/playback tests.
 hound = { workspace = true }

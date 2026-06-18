@@ -154,22 +154,45 @@ unsafe extern "C-unwind" fn io_proc(
     }
     let ctx = &mut *(client_data as *mut TapContext);
     let list = input_data.as_ref();
-    if list.mNumberBuffers == 0 {
+    let n_buffers = list.mNumberBuffers as usize;
+    if n_buffers == 0 {
         return 0;
     }
-    let buffer = &list.mBuffers[0];
-    if buffer.mData.is_null() {
+    // mBuffers is a variable-length array; only `[AudioBuffer; 1]` is declared.
+    let buffers = std::slice::from_raw_parts(list.mBuffers.as_ptr(), n_buffers);
+    let first = &buffers[0];
+    if first.mData.is_null() {
         return 0;
     }
-    let in_ch = buffer.mNumberChannels.max(1) as usize;
-    let sample_count = buffer.mDataByteSize as usize / size_of::<f32>();
-    let samples = std::slice::from_raw_parts(buffer.mData as *const f32, sample_count);
 
-    for frame in samples.chunks(in_ch) {
-        let l = frame.first().copied().unwrap_or(0.0);
-        let r = frame.get(1).copied().unwrap_or(l);
-        let _ = ctx.producer.push(l);
-        let _ = ctx.producer.push(r);
+    if n_buffers >= 2 {
+        // Non-interleaved (planar): buffer[0] = left plane, buffer[1] = right.
+        let frames = first.mDataByteSize as usize / size_of::<f32>();
+        let left = std::slice::from_raw_parts(first.mData as *const f32, frames);
+        let right_buf = &buffers[1];
+        let right = if right_buf.mData.is_null() {
+            left
+        } else {
+            let rn = (right_buf.mDataByteSize as usize / size_of::<f32>()).min(frames);
+            std::slice::from_raw_parts(right_buf.mData as *const f32, rn)
+        };
+        for i in 0..frames {
+            let l = left[i];
+            let r = right.get(i).copied().unwrap_or(l);
+            let _ = ctx.producer.push(l);
+            let _ = ctx.producer.push(r);
+        }
+    } else {
+        // Single buffer: interleaved by channel count.
+        let in_ch = first.mNumberChannels.max(1) as usize;
+        let count = first.mDataByteSize as usize / size_of::<f32>();
+        let samples = std::slice::from_raw_parts(first.mData as *const f32, count);
+        for frame in samples.chunks(in_ch) {
+            let l = frame.first().copied().unwrap_or(0.0);
+            let r = frame.get(1).copied().unwrap_or(l);
+            let _ = ctx.producer.push(l);
+            let _ = ctx.producer.push(r);
+        }
     }
     0
 }

@@ -33,6 +33,9 @@ sha2 = "0.10"
 base64 = "0.22"
 getrandom = "0.2"
 
+# Phone Link: a small control server phones cast to (POST /cast, /transport).
+tiny_http = "0.12"
+
 # Internal crates wired into the app.
 hm-core = { workspace = true }
 hm-audio = { workspace = true }

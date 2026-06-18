@@ -186,6 +186,20 @@ export function linkPlay(
   return invoke<void>("link_play", { deviceId, trackId, ext });
 }
 
+/** Now-playing pushed by a phone casting to this desktop. */
+export interface LinkNowPlaying {
+  title: string;
+  artist: string | null;
+  source: string;
+}
+
+/** Subscribe to cast notifications from a paired phone. */
+export function onLinkNowPlaying(
+  handler: (np: LinkNowPlaying) => void,
+): Promise<UnlistenFn> {
+  return listen<LinkNowPlaying>("link:now_playing", (e) => handler(e.payload));
+}
+
 /** All bundled headphone correction profiles. */
 export function profileList(): Promise<HeadphoneProfile[]> {
   return invoke<HeadphoneProfile[]>("profile_list");

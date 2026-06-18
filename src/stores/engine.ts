@@ -123,6 +123,8 @@ interface EngineStore {
   playCloud: (file: CloudEntry) => void;
   /** Stream a track from a paired phone through the chain. */
   playPhone: (device: PhoneDevice, track: PhoneTrack) => void;
+  /** Reflect a track a phone has cast to this desktop (started server-side). */
+  castIncoming: (title: string, artist: string | null) => void;
   next: () => void;
   prev: () => void;
   togglePause: () => void;
@@ -343,6 +345,18 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       void linkPlay(device.id, track.id, track.ext).catch((e) =>
         toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`),
       );
+    },
+
+    castIncoming: (title, _artist) => {
+      set({
+        nowPlaying: title,
+        playing: true,
+        paused: false,
+        positionSecs: 0,
+        durationSecs: null,
+        queue: [],
+        queueIndex: -1,
+      });
     },
 
     next: () => {

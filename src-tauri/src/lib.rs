@@ -8,6 +8,7 @@
 
 mod cloud;
 mod commands;
+mod control;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -181,6 +182,10 @@ pub fn run() {
                 })
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_paired_devices.json"));
             app.manage(hm_link::LinkState::load(link_path));
+
+            // Phone Link cast: a control server phones can push tracks to, plus
+            // an mDNS advertisement so they can find this desktop.
+            control::start(app.handle().clone());
 
             // Restore the user's saved settings (EQ, bass, surround, volume, …)
             // from disk, then autosave them whenever they change so the next

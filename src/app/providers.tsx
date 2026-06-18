@@ -6,6 +6,7 @@ import {
   engineGetState,
   licenseStatus,
   onEngineFrame,
+  onLinkNowPlaying,
   onProgress,
   onTransport,
 } from "@/lib/ipc";
@@ -24,6 +25,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const applyFrame = useEngineStore((s) => s.applyFrame);
   const applyProgress = useEngineStore((s) => s.applyProgress);
   const setPlaying = useEngineStore((s) => s.setPlaying);
+  const castIncoming = useEngineStore((s) => s.castIncoming);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,11 +55,23 @@ export function Providers({ children }: { children: ReactNode }) {
       .then((un) => (cancelled ? un() : unlisteners.push(un)))
       .catch(() => {});
 
+    onLinkNowPlaying((np) => castIncoming(np.title, np.artist))
+      .then((un) => (cancelled ? un() : unlisteners.push(un)))
+      .catch(() => {});
+
     return () => {
       cancelled = true;
       for (const un of unlisteners) un();
     };
-  }, [setAppInfo, setLicense, hydrate, applyFrame, applyProgress, setPlaying]);
+  }, [
+    setAppInfo,
+    setLicense,
+    hydrate,
+    applyFrame,
+    applyProgress,
+    setPlaying,
+    castIncoming,
+  ]);
 
   return <>{children}</>;
 }

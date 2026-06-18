@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use mdns_sd::{ServiceDaemon, ServiceEvent};
+use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use serde::{Deserialize, Serialize};
 
 /// The mDNS service type both apps advertise / browse.
@@ -234,7 +234,7 @@ impl LinkState {
         let body = serde_json::json!({
             "pin": pin,
             "deviceId": self_id,
-            "deviceName": self_device_name(),
+            "deviceName": device_name(),
         });
         let url = format!("http://{host}:{port}/pair");
         let resp = http_client()?
@@ -293,14 +293,88 @@ impl LinkState {
         ext: &str,
     ) -> Result<(String, Vec<(String, String)>), String> {
         let dev = self.find(device_id)?;
-        let suffix = sanitize_ext(ext);
-        let url = format!(
-            "http://{}:{}/stream/{}{}",
-            dev.host, dev.port, track_id, suffix
-        );
-        let headers = vec![("Authorization".to_string(), format!("Bearer {}", dev.token))];
-        Ok((url, headers))
+        Ok(stream_url(&dev, track_id, ext))
     }
+
+    // ----- cast (push) support -----
+
+    /// Whether `token` belongs to a phone we've paired with. Used to
+    /// authenticate cast/transport requests arriving at the desktop's control
+    /// server (the phone proves who it is by its bearer token).
+    pub fn is_known_token(&self, token: &str) -> bool {
+        if token.is_empty() {
+            return false;
+        }
+        self.inner
+            .lock()
+            .expect("link poisoned")
+            .devices
+            .iter()
+            .any(|d| d.token == token)
+    }
+
+    /// Resolve a stream `(url, headers)` for the phone whose token matches
+    /// `token` — i.e. the phone that is casting to us. `None` if no paired
+    /// phone has that token.
+    pub fn stream_target_for_token(
+        &self,
+        token: &str,
+        track_id: &str,
+        ext: &str,
+    ) -> Option<(String, Vec<(String, String)>)> {
+        if token.is_empty() {
+            return None;
+        }
+        let s = self.inner.lock().expect("link poisoned");
+        let dev = s.devices.iter().find(|d| d.token == token)?;
+        Some(stream_url(dev, track_id, ext))
+    }
+}
+
+/// Build the `(stream url, bearer headers)` for a paired device + track.
+fn stream_url(dev: &Paired, track_id: &str, ext: &str) -> (String, Vec<(String, String)>) {
+    let url = format!(
+        "http://{}:{}/stream/{}{}",
+        dev.host,
+        dev.port,
+        track_id,
+        sanitize_ext(ext)
+    );
+    let headers = vec![("Authorization".to_string(), format!("Bearer {}", dev.token))];
+    (url, headers)
+}
+
+/// Keeps an mDNS advertisement alive; withdraws it on drop.
+pub struct Advertiser {
+    daemon: ServiceDaemon,
+    fullname: String,
+}
+
+impl Drop for Advertiser {
+    fn drop(&mut self) {
+        let _ = self.daemon.unregister(&self.fullname);
+        let _ = self.daemon.shutdown();
+    }
+}
+
+/// Advertise this desktop as a Phone-Link **player** so phones can discover it
+/// and cast to its control server on `port`. Hold the returned [`Advertiser`]
+/// for as long as the advertisement should be visible.
+pub fn advertise_player(name: &str, id: &str, port: u16) -> Result<Advertiser, String> {
+    let daemon = ServiceDaemon::new().map_err(|e| e.to_string())?;
+    let mut props = HashMap::new();
+    props.insert("role".to_string(), "player".to_string());
+    props.insert("id".to_string(), id.to_string());
+    props.insert("name".to_string(), name.to_string());
+    props.insert("v".to_string(), "1".to_string());
+
+    let host = format!("hypemuzik-{id}.local.");
+    let service = ServiceInfo::new(SERVICE_TYPE, name, &host, "", port, props)
+        .map_err(|e| e.to_string())?
+        .enable_addr_auto();
+    let fullname = service.get_fullname().to_string();
+    daemon.register(service).map_err(|e| e.to_string())?;
+    Ok(Advertiser { daemon, fullname })
 }
 
 // ------------------------------------------------------------------ helpers
@@ -337,8 +411,8 @@ fn http_client() -> Result<reqwest::blocking::Client, String> {
         .map_err(|e| e.to_string())
 }
 
-/// A friendly name for this desktop, shown on the phone during pairing.
-fn self_device_name() -> String {
+/// A friendly name for this desktop, shown on the phone during pairing/cast.
+pub fn device_name() -> String {
     std::process::Command::new("hostname")
         .output()
         .ok()
@@ -421,6 +495,30 @@ mod tests {
         assert_eq!(link.paired().len(), 1, "re-pairing must not duplicate");
         let (_, headers) = link.stream_target("p", "1", "flac").unwrap();
         assert_eq!(headers[0].1, "Bearer new", "token should be the latest");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn token_resolution_authenticates_and_streams_casts() {
+        let path = temp_path("token");
+        let link = LinkState::load(path.clone());
+        link.remember(Paired {
+            id: "p".into(),
+            name: "Phone".into(),
+            host: "10.0.0.9".into(),
+            port: 7000,
+            token: "abc".into(),
+        });
+
+        assert!(link.is_known_token("abc"));
+        assert!(!link.is_known_token("nope"));
+        assert!(!link.is_known_token(""), "empty token is never known");
+
+        let (url, headers) = link.stream_target_for_token("abc", "12", "mp3").unwrap();
+        assert_eq!(url, "http://10.0.0.9:7000/stream/12.mp3");
+        assert_eq!(headers[0].1, "Bearer abc");
+        assert!(link.stream_target_for_token("nope", "12", "mp3").is_none());
+        assert!(link.stream_target_for_token("", "12", "mp3").is_none());
         let _ = std::fs::remove_file(path);
     }
 

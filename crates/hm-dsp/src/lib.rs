@@ -20,6 +20,7 @@ pub mod gain;
 pub mod graphic_eq;
 pub mod headphone;
 pub mod limiter;
+mod reverb;
 pub mod spatializer;
 pub mod surround3d;
 

@@ -15,7 +15,7 @@ use std::time::Duration;
 use std::sync::Mutex;
 
 use hm_audio::{AudioEngine, EngineMeters, PlaybackPos, SpectrumTap, SPECTRUM_BANDS};
-use hm_core::{EngineFrame, LicenseMock, MediaStore, MeterFrame, PresetStore};
+use hm_core::{EngineFrame, EngineState, LicenseMock, MediaStore, MeterFrame, PresetStore};
 use serde::Serialize;
 use tauri::menu::{Menu, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
@@ -158,6 +158,43 @@ pub fn run() {
 
             // Per-app mixer controller (real on Windows; unsupported stub on macOS).
             app.manage::<commands::mixer::Mixer>(Mutex::new(hm_platform::default_controller()));
+
+            // Restore the user's saved settings (EQ, bass, surround, volume, …)
+            // from disk, then autosave them whenever they change so the next
+            // launch comes up exactly as they left it.
+            if let Ok(dir) = app.path().app_data_dir() {
+                let _ = std::fs::create_dir_all(&dir);
+                let path = dir.join("engine-state.json");
+                let engine = app.state::<AudioEngine>();
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    if let Ok(state) = serde_json::from_str::<EngineState>(&text) {
+                        engine.set_state(state);
+                    }
+                }
+                let snapshot = engine.state_handle();
+                std::thread::Builder::new()
+                    .name("hm-autosave".into())
+                    .spawn(move || {
+                        let mut last: Option<EngineState> = None;
+                        loop {
+                            std::thread::sleep(Duration::from_secs(2));
+                            let current = (*snapshot.load_full()).clone();
+                            if last.as_ref() == Some(&current) {
+                                continue;
+                            }
+                            if let Ok(json) = serde_json::to_string_pretty(&current) {
+                                // Write-then-rename so a crash can't leave a
+                                // half-written settings file.
+                                let tmp = path.with_extension("json.tmp");
+                                if std::fs::write(&tmp, &json).is_ok() {
+                                    let _ = std::fs::rename(&tmp, &path);
+                                }
+                            }
+                            last = Some(current);
+                        }
+                    })
+                    .ok();
+            }
 
             let handle = app.handle().clone();
             std::thread::Builder::new()

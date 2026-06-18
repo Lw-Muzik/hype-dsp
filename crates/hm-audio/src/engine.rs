@@ -379,6 +379,12 @@ impl AudioEngine {
             .clone()
     }
 
+    /// A shared handle to the live state snapshot, for off-thread observers
+    /// (e.g. an autosave loop that persists settings when they change).
+    pub fn state_handle(&self) -> Arc<ArcSwap<EngineState>> {
+        self.shared.clone()
+    }
+
     fn update(&self, f: impl FnOnce(&mut EngineState)) {
         let mut guard = self.write_state.lock().expect("engine state poisoned");
         f(&mut guard);

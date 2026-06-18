@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ChevronLeft,
+  ChevronRight,
   FolderPlus,
   ListMusic,
   Music2,
   Play,
   Plus,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -82,6 +85,172 @@ function groupAlbums(tracks: LibraryTrack[]): Album[] {
     }
   });
   return [...map.values()];
+}
+
+/** A spotlighted album/track for the hero carousel. */
+interface Featured {
+  key: string;
+  title: string;
+  artist: string;
+  subtitle: string;
+  seed: string;
+  /** Index into the full track list to start playback from. */
+  index: number;
+}
+
+/**
+ * Pick what to spotlight: real albums when the library has a few, otherwise
+ * the first handful of tracks (so a flat, tag-less library still gets a hero).
+ */
+function pickFeatured(albums: Album[], tracks: LibraryTrack[]): Featured[] {
+  const realAlbums = albums.filter((a) => a.key !== "singles");
+  if (realAlbums.length >= 2) {
+    return realAlbums.slice(0, 6).map((a) => ({
+      key: `a:${a.key}`,
+      title: a.name,
+      artist: a.artist,
+      subtitle: `${a.tracks.length} track${a.tracks.length === 1 ? "" : "s"}`,
+      seed: a.name,
+      index: a.firstIndex,
+    }));
+  }
+  return tracks.slice(0, 6).map((t, i) => ({
+    key: `t:${t.path}`,
+    title: t.title,
+    artist: t.artist?.trim() || "Unknown artist",
+    subtitle: t.album?.trim() || "Single",
+    seed: t.album?.trim() || t.title,
+    index: i,
+  }));
+}
+
+/** Big auto-rotating spotlight at the top of the Library. */
+function FeaturedHero({
+  items,
+  onPlay,
+}: {
+  items: Featured[];
+  onPlay: (f: Featured) => void;
+}) {
+  const [active, setActive] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const count = items.length;
+  const reduceMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Keep the active index valid as the library changes underneath us.
+  useEffect(() => {
+    setActive((a) => (a < count ? a : 0));
+  }, [count]);
+
+  // Gently auto-advance — unless hovered, reduced-motion, or a single item.
+  useEffect(() => {
+    if (paused || reduceMotion || count <= 1) return;
+    const id = setInterval(() => setActive((a) => (a + 1) % count), 6000);
+    return () => clearInterval(id);
+  }, [paused, reduceMotion, count]);
+
+  if (count === 0) return null;
+  const f = items[active] ?? items[0]!;
+
+  return (
+    <section
+      className="px-4 pt-4"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <div className="group/hero relative h-44 overflow-hidden rounded-card">
+        {/* Cross-fading gradient backdrops */}
+        {items.map((it, i) => (
+          <div
+            key={it.key}
+            className={cn(
+              "absolute inset-0 transition-opacity duration-700",
+              i === active ? "opacity-100" : "opacity-0",
+            )}
+            style={{ background: coverGradient(it.seed) }}
+            aria-hidden="true"
+          />
+        ))}
+        <div
+          className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-transparent"
+          aria-hidden="true"
+        />
+        <span
+          className="pointer-events-none absolute -right-3 top-1/2 -translate-y-1/2 select-none text-[8rem] font-bold leading-none text-white/10"
+          aria-hidden="true"
+        >
+          {coverInitials(f.seed)}
+        </span>
+
+        {/* Content */}
+        <div className="relative flex h-full flex-col justify-between p-5">
+          <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white backdrop-blur">
+            <Sparkles className="size-3" aria-hidden="true" />
+            Featured
+          </span>
+          <div className="min-w-0">
+            <h2 className="truncate text-2xl font-bold text-white">{f.title}</h2>
+            <p className="mt-0.5 truncate text-sm text-white/80">
+              {f.artist} · {f.subtitle}
+            </p>
+            <button
+              type="button"
+              onClick={() => onPlay(f)}
+              className="mt-3 inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-surface shadow-lg transition-transform hover:scale-105 active:scale-100"
+            >
+              <Play className="size-4 fill-current" aria-hidden="true" />
+              Play
+            </button>
+          </div>
+        </div>
+
+        {/* Prev / next (revealed on hover) */}
+        {count > 1 && (
+          <>
+            <button
+              type="button"
+              aria-label="Previous featured"
+              onClick={() => setActive((a) => (a - 1 + count) % count)}
+              className="absolute left-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover/hero:opacity-100"
+            >
+              <ChevronLeft className="size-5" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              aria-label="Next featured"
+              onClick={() => setActive((a) => (a + 1) % count)}
+              className="absolute right-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover/hero:opacity-100"
+            >
+              <ChevronRight className="size-5" aria-hidden="true" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Dots */}
+      {count > 1 && (
+        <div className="mt-2 flex justify-center gap-1.5">
+          {items.map((it, i) => (
+            <button
+              key={it.key}
+              type="button"
+              aria-label={`Show featured item ${i + 1}`}
+              aria-current={i === active}
+              onClick={() => setActive(i)}
+              className={cn(
+                "h-1.5 rounded-full transition-all",
+                i === active
+                  ? "w-5 bg-accent"
+                  : "w-1.5 bg-border-strong hover:bg-text-faint",
+              )}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 /** Per-row "add to playlist" popover. */
@@ -211,8 +380,9 @@ export function PlayerView() {
     ? (playlists.find((p) => p.id === collection)?.name ?? "Playlist")
     : "Library";
 
-  // Albums strip only on the Library (not inside a single playlist).
+  // Albums strip + featured hero only on the Library (not inside a playlist).
   const albums = collection === null ? groupAlbums(tracks) : [];
+  const featured = collection === null ? pickFeatured(albums, tracks) : [];
 
   return (
     <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-4">
@@ -297,6 +467,14 @@ export function PlayerView() {
               </div>
             ) : (
               <div className="flex flex-col">
+                {/* Featured spotlight (Library) */}
+                {featured.length > 0 && (
+                  <FeaturedHero
+                    items={featured}
+                    onPlay={(f) => playFromList(tracks, f.index)}
+                  />
+                )}
+
                 {/* Albums strip (Library) */}
                 {albums.length > 1 && (
                   <section className="border-b border-border px-4 pb-4 pt-3">

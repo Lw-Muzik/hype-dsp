@@ -1,0 +1,42 @@
+name: CI
+
+# Fast per-push compile + lint of the Rust crates on all three platforms.
+# This is how the cfg-gated platform code (macOS Core Audio, Windows WASAPI,
+# Linux PulseAudio) gets verified without cutting a release. The tauri binary
+# crate (`hypemuzik`) is excluded so the frontend build isn't required here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux audio/UI dev headers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libwebkit2gtk-4.1-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          key: ${{ matrix.os }}-ci
+
+      - name: Clippy (libs, excluding the tauri binary)
+        run: cargo clippy --workspace --exclude hypemuzik --all-targets

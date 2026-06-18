@@ -17,8 +17,17 @@ use hm_core::AppSession;
 pub mod error;
 pub use error::PlatformError;
 
+// Shared helpers (base64 / data URIs) for the platforms that build icons.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod util;
+
 #[cfg(target_os = "macos")]
 mod macos;
+
+// Mounted as `win` (not `windows`) so it can't shadow the `windows` crate.
+#[cfg(target_os = "windows")]
+#[path = "windows.rs"]
+mod win;
 
 /// Lists and controls per-application audio sessions.
 pub trait SessionController: Send {
@@ -82,38 +91,19 @@ pub fn default_controller() -> Box<dyn SessionController> {
 
 /// The per-app mixer controller for the current platform.
 ///
-/// Windows supports this natively; see [`windows_notes`] for the implementation
-/// plan. It is scaffolded as unsupported here because this build was produced
-/// on macOS and the COM code could not be compile-verified.
+/// Windows uses WASAPI audio sessions (`IAudioSessionManager2` /
+/// `ISimpleAudioVolume`) natively — see [`win`]. Built/verified by CI on
+/// Windows, not on the macOS dev host.
 #[cfg(target_os = "windows")]
 pub fn default_controller() -> Box<dyn SessionController> {
-    Box::new(UnsupportedSessionController::new(
-        "Windows per-app volume implementation pending (IAudioSessionManager2).",
-    ))
+    Box::new(win::WindowsSessionController::new())
 }
 
+/// Linux (PulseAudio/PipeWire sink-input volume) is a future phase; until then
+/// it degrades to a clear notice.
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn default_controller() -> Box<dyn SessionController> {
     Box::new(UnsupportedSessionController::new(
-        "Per-application volume isn't supported on this platform.",
+        "Per-application volume isn't supported on this platform yet.",
     ))
 }
-
-/// Production plan for the **Windows** per-app mixer (Module 3).
-///
-/// Windows exposes per-process volume natively; a real `SessionController`
-/// there would, via the `windows` crate:
-///
-/// 1. `CoInitializeEx`, then `CoCreateInstance::<IMMDeviceEnumerator>(MMDeviceEnumerator)`.
-/// 2. `GetDefaultAudioEndpoint(eRender, eMultimedia)` → `IMMDevice`.
-/// 3. `device.Activate::<IAudioSessionManager2>(CLSCTX_ALL)`.
-/// 4. `GetSessionEnumerator()` → iterate `IAudioSessionControl`, cast each to
-///    `IAudioSessionControl2` for `GetProcessId` / `GetSessionIdentifier`, and
-///    resolve the process name via `OpenProcess` + `QueryFullProcessImageName`.
-/// 5. Cast each control to `ISimpleAudioVolume` for
-///    `SetMasterVolume` / `SetMute` (per-app volume) and `GetMasterVolume`.
-///
-/// All calls are `unsafe` COM and must be serialized (apartment-threaded), so
-/// the controller is held behind a `Mutex`. This was not compiled here (macOS
-/// host); it needs a Windows build to verify.
-pub mod windows_notes {}

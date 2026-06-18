@@ -190,31 +190,6 @@ fn running_app_identity(pid: i32) -> Option<(String, String)> {
     Some((id, name))
 }
 
-/// Standard base64 (no line breaks) for inlining icon PNGs as data URIs.
-fn base64(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(T[(n >> 18 & 63) as usize] as char);
-        out.push(T[(n >> 12 & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            T[(n >> 6 & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            T[(n & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    out
-}
-
 /// The app icon for `pid` as a PNG `data:` URI, via `NSRunningApplication`.
 fn icon_data_uri(pid: i32) -> Option<String> {
     let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?;
@@ -223,7 +198,7 @@ fn icon_data_uri(pid: i32) -> Option<String> {
     let rep = NSBitmapImageRep::imageRepWithData(&tiff)?;
     let props = NSDictionary::<NSBitmapImageRepPropertyKey, AnyObject>::new();
     let png = unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &props) }?;
-    Some(format!("data:image/png;base64,{}", base64(&png.to_vec())))
+    Some(crate::util::png_data_uri(&png.to_vec()))
 }
 
 /// `(stable id, display name)` for an audio process object: responsible app
@@ -664,17 +639,6 @@ impl SessionController for MacosSessionController {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn base64_matches_rfc4648() {
-        assert_eq!(base64(b""), "");
-        assert_eq!(base64(b"f"), "Zg==");
-        assert_eq!(base64(b"fo"), "Zm8=");
-        assert_eq!(base64(b"foo"), "Zm9v");
-        assert_eq!(base64(b"Man"), "TWFu");
-        assert_eq!(base64(b"hello"), "aGVsbG8=");
-        assert_eq!(base64(&[0u8, 255, 128]), "AP+A");
-    }
 
     #[test]
     fn friendly_name_strips_bundle_prefix() {

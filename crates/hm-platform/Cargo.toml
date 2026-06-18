@@ -38,5 +38,13 @@ objc2-app-kit = { version = "0.3", features = [
     "NSBitmapImageRep",
 ] }
 
-# Windows per-process volume uses the `windows` crate (IAudioSessionManager2,
-# ISimpleAudioVolume); added behind a cfg(target_os = "windows") gate in Phase 4.
+# Windows per-app mixer: WASAPI session volume (IAudioSessionManager2 /
+# ISimpleAudioVolume) + process-name resolution. Icon extraction (Shell/GDI +
+# png) is added once the WASAPI core is CI-verified.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_System_Threading",
+] }

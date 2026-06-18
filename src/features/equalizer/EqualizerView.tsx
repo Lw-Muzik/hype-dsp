@@ -127,7 +127,7 @@ export function EqualizerView() {
                 value={preGain}
                 onChange={setPreGain}
                 formatValue={(v) => `${formatDb(v)} decibels`}
-                className="max-w-xs"
+                className="flex-1 max-w-xs"
               />
               <span className="w-14 text-right text-xs tabular-nums text-text-muted">
                 {formatDb(preGain)} dB

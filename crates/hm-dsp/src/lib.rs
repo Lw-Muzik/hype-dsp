@@ -6,7 +6,7 @@
 //! checks, limiter ceiling checks — see Phase 1).
 //!
 //! The runtime chain processes audio in a fixed order:
-//! `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Gain → Limiter`.
+//! `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D → Gain → Limiter`.
 //! Each stage implements [`AudioProcessor`]; [`ProcessChain`] owns the ordered
 //! list and runs them in place. Phase 0 establishes these interfaces and an
 //! empty (identity) chain; the processors themselves arrive in Phase 1.
@@ -15,11 +15,13 @@ use hm_core::EngineState;
 
 pub mod bass_boost;
 pub mod biquad;
+mod delay;
 pub mod gain;
 pub mod graphic_eq;
 pub mod headphone;
 pub mod limiter;
 pub mod spatializer;
+pub mod surround3d;
 
 pub use bass_boost::BassBoost;
 pub use gain::Gain;
@@ -27,6 +29,7 @@ pub use graphic_eq::GraphicEq;
 pub use headphone::HeadphoneCorrection;
 pub use limiter::Limiter;
 pub use spatializer::Spatializer;
+pub use surround3d::Surround3D;
 
 /// Immutable per-block parameter snapshot handed to processors.
 ///
@@ -83,6 +86,7 @@ impl ProcessChain {
         chain.push(Box::new(GraphicEq::new(sample_rate, channels)));
         chain.push(Box::new(BassBoost::new(sample_rate, channels)));
         chain.push(Box::new(Spatializer::new(sample_rate, channels)));
+        chain.push(Box::new(Surround3D::new(sample_rate, channels)));
         chain.push(Box::new(Gain::new()));
         chain.push(Box::new(Limiter::new(sample_rate, channels)));
         chain

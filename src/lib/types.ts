@@ -44,6 +44,25 @@ export interface SpatializerState {
   mode: SpatialMode;
 }
 
+/** On/off state for each virtual loudspeaker in the 3D Surround ring. */
+export interface SurroundSpeakers {
+  frontL: boolean;
+  frontR: boolean;
+  sideL: boolean;
+  sideR: boolean;
+  surroundL: boolean;
+  surroundR: boolean;
+}
+
+export interface Surround3DState {
+  enabled: boolean;
+  /** 0.0 = dry, 1.0 = full virtual-surround. */
+  intensity: number;
+  /** LFE / subwoofer level, 0.0–1.0. */
+  subwoofer: number;
+  speakers: SurroundSpeakers;
+}
+
 export interface OutputState {
   gainDb: number;
   limiterEnabled: boolean;
@@ -63,6 +82,7 @@ export interface EngineState {
   eq: EqState;
   bass: BassBoostState;
   spatializer: SpatializerState;
+  surround3d: Surround3DState;
   headphone: HeadphoneCorrectionState;
   output: OutputState;
   activePresetId: string | null;

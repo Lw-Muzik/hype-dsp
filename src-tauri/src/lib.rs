@@ -159,6 +159,7 @@ pub fn run() {
             commands::engine::engine_set_eq,
             commands::engine::engine_set_bass,
             commands::engine::engine_set_spatializer,
+            commands::engine::engine_set_surround3d,
             commands::engine::player_play_file,
             commands::engine::player_play_radio,
             commands::engine::player_play_capture,

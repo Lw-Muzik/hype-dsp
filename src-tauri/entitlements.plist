@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required so the hardened runtime lets us open audio input / system-audio
+         taps. Without this the Core Audio process tap returns silence. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- Tauri bundles dynamic libraries that aren't signed by the same Team ID;
+         allow them under the hardened runtime. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

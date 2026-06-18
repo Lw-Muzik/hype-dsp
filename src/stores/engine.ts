@@ -5,6 +5,7 @@ import {
   engineSetMasterVolume,
   engineSetPower,
   engineSetSpatializer,
+  engineSetSurround3d,
   ipcErrorMessage,
   playerPause,
   playerPlayFile,
@@ -25,6 +26,7 @@ import type {
   MeterFrame,
   RadioStation,
   SpatialMode,
+  Surround3DState,
   TransportProgress,
 } from "@/lib/types";
 
@@ -34,6 +36,19 @@ const defaultEngineState: EngineState = {
   eq: { enabled: true, preGain: 0, bands: Array<number>(BAND_COUNT).fill(0) },
   bass: { enabled: false, amount: 0, harmonics: false },
   spatializer: { enabled: false, amount: 0.5, mode: "crossfeed" },
+  surround3d: {
+    enabled: false,
+    intensity: 0.5,
+    subwoofer: 0.25,
+    speakers: {
+      frontL: true,
+      frontR: true,
+      sideL: true,
+      sideR: true,
+      surroundL: true,
+      surroundR: true,
+    },
+  },
   headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
   activePresetId: null,
@@ -72,6 +87,7 @@ interface EngineStore {
   applyPreset: (preset: EqPreset) => void;
   setBass: (enabled: boolean, amount: number, harmonics: boolean) => void;
   setSpatializer: (enabled: boolean, amount: number, mode: SpatialMode) => void;
+  setSurround3d: (next: Surround3DState) => void;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
 
@@ -171,6 +187,15 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setSpatializer: (enabled, amount, mode) => {
       set((s) => ({ state: { ...s.state, spatializer: { enabled, amount, mode } } }));
       void engineSetSpatializer(enabled, amount, mode).catch(() => {});
+    },
+    setSurround3d: (next) => {
+      set((s) => ({ state: { ...s.state, surround3d: next } }));
+      void engineSetSurround3d(
+        next.enabled,
+        next.intensity,
+        next.subwoofer,
+        next.speakers,
+      ).catch(() => {});
     },
     applyProfile: (profile) =>
       set((s) => ({

@@ -94,6 +94,58 @@ impl Default for SpatializerState {
     }
 }
 
+/// On/off state for each virtual loudspeaker in the 3D Surround ring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurroundSpeakers {
+    pub front_l: bool,
+    pub front_r: bool,
+    /// The ±90° side ("tweeter") pair.
+    pub side_l: bool,
+    pub side_r: bool,
+    /// The ±135° rear pair.
+    pub surround_l: bool,
+    pub surround_r: bool,
+}
+
+impl Default for SurroundSpeakers {
+    fn default() -> Self {
+        Self {
+            front_l: true,
+            front_r: true,
+            side_l: true,
+            side_r: true,
+            surround_l: true,
+            surround_r: true,
+        }
+    }
+}
+
+/// Virtual-surround-over-headphones ("3D Surround") stage state: a ring of
+/// virtual loudspeakers rendered binaurally. Distinct from [`SpatializerState`],
+/// which is the lightweight crossfeed/HRTF widener.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Surround3DState {
+    pub enabled: bool,
+    /// Overall wet/dry of the virtual-surround effect (0.0 = dry … 1.0 = full).
+    pub intensity: f32,
+    /// LFE / subwoofer level (0.0 … 1.0).
+    pub subwoofer: f32,
+    pub speakers: SurroundSpeakers,
+}
+
+impl Default for Surround3DState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            intensity: 0.5,
+            subwoofer: 0.25,
+            speakers: SurroundSpeakers::default(),
+        }
+    }
+}
+
 /// Makeup gain followed by the look-ahead brickwall limiter that keeps boosted
 /// volume from clipping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -151,6 +203,7 @@ pub struct EngineState {
     pub eq: EqState,
     pub bass: BassBoostState,
     pub spatializer: SpatializerState,
+    pub surround3d: Surround3DState,
     pub headphone: HeadphoneCorrectionState,
     pub output: OutputState,
     /// Active preset id, if one is applied.
@@ -167,6 +220,7 @@ impl Default for EngineState {
             eq: EqState::default(),
             bass: BassBoostState::default(),
             spatializer: SpatializerState::default(),
+            surround3d: Surround3DState::default(),
             headphone: HeadphoneCorrectionState::default(),
             output: OutputState::default(),
             active_preset_id: None,

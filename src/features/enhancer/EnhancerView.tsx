@@ -4,6 +4,7 @@ import {
   FileAudio,
   FolderOpen,
   Headphones,
+  Orbit,
   Speaker,
   Square,
   Waves,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/ipc";
 import type { HeadphoneProfile, SpatialMode } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { Surround3DPanel } from "./Surround3DPanel";
 
 export function EnhancerView() {
   const route = routeById("enhancer");
@@ -35,16 +37,21 @@ export function EnhancerView() {
   const stop = useEngineStore((s) => s.stop);
   const bass = useEngineStore((s) => s.state.bass);
   const spatializer = useEngineStore((s) => s.state.spatializer);
+  const surround3d = useEngineStore((s) => s.state.surround3d);
   const headphone = useEngineStore((s) => s.state.headphone);
   const activeProfileId = useEngineStore((s) => s.state.activeProfileId);
   const setBass = useEngineStore((s) => s.setBass);
   const setSpatializer = useEngineStore((s) => s.setSpatializer);
+  const setSurround3d = useEngineStore((s) => s.setSurround3d);
   const applyProfile = useEngineStore((s) => s.applyProfile);
   const clearProfile = useEngineStore((s) => s.clearProfile);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [profiles, setProfiles] = useState<HeadphoneProfile[]>([]);
+  const [surroundOpen, setSurroundOpen] = useState(false);
+
+  const activeSpeakers = Object.values(surround3d.speakers).filter(Boolean).length;
 
   useEffect(() => {
     let cancelled = false;
@@ -162,6 +169,7 @@ export function EnhancerView() {
                   value={bass.amount}
                   onChange={(v) => setBass(bass.enabled, v, bass.harmonics)}
                   formatValue={(v) => `${v.toFixed(1)} decibels`}
+                  className="flex-1"
                 />
                 <span className="w-12 text-right text-xs tabular-nums text-text-muted">
                   {bass.amount.toFixed(1)} dB
@@ -213,6 +221,7 @@ export function EnhancerView() {
                     setSpatializer(spatializer.enabled, v, spatializer.mode)
                   }
                   formatValue={(v) => `${Math.round(v * 100)} percent`}
+                  className="flex-1"
                 />
                 <span className="w-12 text-right text-xs tabular-nums text-text-muted">
                   {Math.round(spatializer.amount * 100)}%
@@ -237,15 +246,44 @@ export function EnhancerView() {
                   </button>
                 ))}
               </div>
-              {spatializer.mode === "hrtf" && (
-                <p className="text-xs text-text-faint">
-                  HRTF uses the crossfeed/widening baseline until an HRIR set is
-                  loaded (scaffolded for later).
-                </p>
-              )}
+              <p className="text-xs text-text-faint">
+                {spatializer.mode === "hrtf"
+                  ? "HRTF: a parametric virtual-speaker model (inter-aural delay, level, pinna notch + widening) — places the image in front of and outside your head."
+                  : "Crossfeed: a Bauer-style blend (delayed, head-shadowed bleed of the opposite channel) that relaxes hard-panned mixes on headphones."}
+              </p>
             </div>
           </Card>
         </div>
+
+        {/* 3D Surround */}
+        <Card
+          title="3D Surround"
+          icon={Orbit}
+          actions={
+            <Switch
+              checked={surround3d.enabled}
+              onChange={(v) => setSurround3d({ ...surround3d, enabled: v })}
+              label="Enable 3D Surround"
+            />
+          }
+        >
+          <div
+            className={cn(
+              "flex flex-wrap items-center justify-between gap-4",
+              !surround3d.enabled && "opacity-60",
+            )}
+          >
+            <p className="text-sm text-text-muted">
+              Virtual {activeSpeakers}-speaker ring rendered binaurally —{" "}
+              {Math.round(surround3d.intensity * 100)}% intensity, subwoofer{" "}
+              {Math.round(surround3d.subwoofer * 100)}%.
+            </p>
+            <Button variant="secondary" onClick={() => setSurroundOpen(true)}>
+              <Orbit className="size-4" aria-hidden="true" />
+              Configure speakers
+            </Button>
+          </div>
+        </Card>
 
         {/* Headphone correction */}
         <Card title="Headphone correction" icon={Headphones}>
@@ -274,6 +312,11 @@ export function EnhancerView() {
           </div>
         </Card>
       </div>
+
+      <Surround3DPanel
+        open={surroundOpen}
+        onClose={() => setSurroundOpen(false)}
+      />
     </div>
   );
 }

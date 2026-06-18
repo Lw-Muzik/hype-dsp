@@ -121,6 +121,10 @@ export function Slider({
       onKeyDown={onKeyDown}
       className={cn(
         "group relative flex h-5 cursor-pointer items-center",
+        // Without an explicit width the track collapses to ~0px, which both
+        // hides the control and makes `getBoundingClientRect().width === 0`
+        // (so pointer drags are ignored). Default to filling the row.
+        !className && "flex-1",
         disabled && "cursor-not-allowed opacity-50",
         className,
       )}

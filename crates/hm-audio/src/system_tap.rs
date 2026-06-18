@@ -40,6 +40,7 @@ use objc2_foundation::{NSMutableArray, NSMutableDictionary, NSNumber, NSObject, 
 use rtrb::RingBuffer;
 
 use crate::error::AudioError;
+use crate::resampler::StereoResampler;
 use crate::{AudioSource, StreamFormat};
 
 /// IO callback context (heap-owned, freed on drop).
@@ -57,6 +58,10 @@ pub struct SystemTapSource {
     proc_id: AudioDeviceIOProcID,
     ctx: *mut TapContext,
     started: AtomicBool,
+    /// Tap capture rate (Hz), read from the tap format at construction.
+    capture_rate: u32,
+    /// Converts the tap's capture rate to the output device rate.
+    resampler: StereoResampler,
 }
 
 // The CoreAudio object IDs and the boxed context are only touched on
@@ -306,6 +311,11 @@ impl SystemTapSource {
             )));
         }
 
+        let capture_rate = if fmt.mSampleRate > 0.0 {
+            fmt.mSampleRate as u32
+        } else {
+            device_rate
+        };
         let source = Self {
             consumer,
             position_frames: Arc::new(AtomicU64::new(0)),
@@ -314,6 +324,8 @@ impl SystemTapSource {
             proc_id,
             ctx,
             started: AtomicBool::new(false),
+            capture_rate,
+            resampler: StereoResampler::new(),
         };
 
         let status = unsafe { AudioDeviceStart(aggregate_id, proc_id) };
@@ -398,7 +410,13 @@ impl Drop for SystemTapSource {
 }
 
 impl AudioSource for SystemTapSource {
-    fn start(&mut self, _format: StreamFormat) -> Result<(), AudioError> {
+    fn start(&mut self, format: StreamFormat) -> Result<(), AudioError> {
+        let out_rate = format.sample_rate.max(1);
+        self.resampler.set_ratio(self.capture_rate, out_rate);
+        crate::diag::log(&format!(
+            "SystemTapSource::start: capture_rate={} out_rate={}",
+            self.capture_rate, out_rate
+        ));
         Ok(())
     }
 
@@ -407,27 +425,47 @@ impl AudioSource for SystemTapSource {
             return 0;
         }
         let frames = out.len() / channels;
+
+        // Hold off until a little audio is buffered, so the resampler can prime
+        // and we don't start on an empty ring.
+        if self.consumer.slots() < 4 && self.position_frames.load(Ordering::Relaxed) == 0 {
+            for s in out.iter_mut() {
+                *s = 0.0;
+            }
+            return 0;
+        }
+
+        // Split-borrow the two fields the resampler needs so the pull closure can
+        // capture the ring consumer independently of `&mut self.resampler`.
+        let rs = &mut self.resampler;
+        let consumer = &mut self.consumer;
+
         let mut produced = 0;
         for f in 0..frames {
             let base = f * channels;
-            if self.consumer.slots() >= 2 {
-                let l = self.consumer.pop().unwrap_or(0.0);
-                let r = self.consumer.pop().unwrap_or(0.0);
-                produced += 1;
-                if channels == 1 {
-                    out[base] = 0.5 * (l + r);
-                } else {
-                    out[base] = l;
-                    out[base + 1] = r;
-                    for ch in out.iter_mut().take(base + channels).skip(base + 2) {
-                        *ch = 0.0;
+            let (l, r) = rs
+                .next_frame(|| {
+                    if consumer.slots() >= 2 {
+                        Some((
+                            consumer.pop().unwrap_or(0.0),
+                            consumer.pop().unwrap_or(0.0),
+                        ))
+                    } else {
+                        None
                     }
-                }
+                })
+                .unwrap_or((0.0, 0.0));
+
+            if channels == 1 {
+                out[base] = 0.5 * (l + r);
             } else {
-                for ch in out.iter_mut().take(base + channels).skip(base) {
+                out[base] = l;
+                out[base + 1] = r;
+                for ch in out.iter_mut().take(base + channels).skip(base + 2) {
                     *ch = 0.0;
                 }
             }
+            produced += 1;
         }
         self.position_frames
             .fetch_add(produced as u64, Ordering::Relaxed);

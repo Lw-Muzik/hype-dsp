@@ -25,6 +25,7 @@ import type {
   Playlist,
   RadioStation,
   SpatialMode,
+  SurroundSpeakers,
   TransportProgress,
 } from "./types";
 
@@ -85,6 +86,21 @@ export function engineSetSpatializer(
   mode: SpatialMode,
 ): Promise<void> {
   return invoke<void>("engine_set_spatializer", { enabled, amount, mode });
+}
+
+/** Configure the 3D-surround (virtual-speaker) stage. */
+export function engineSetSurround3d(
+  enabled: boolean,
+  intensity: number,
+  subwoofer: number,
+  speakers: SurroundSpeakers,
+): Promise<void> {
+  return invoke<void>("engine_set_surround3d", {
+    enabled,
+    intensity,
+    subwoofer,
+    speakers,
+  });
 }
 
 /** All bundled headphone correction profiles. */

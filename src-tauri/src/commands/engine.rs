@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use hm_audio::AudioEngine;
-use hm_core::{EngineState, IpcError, SpatialMode};
+use hm_core::{EngineState, IpcError, SpatialMode, SurroundSpeakers};
 use tauri::State;
 
 /// Current engine state (mirrored by the Zustand store on startup).
@@ -64,6 +64,18 @@ pub fn engine_set_spatializer(
     mode: SpatialMode,
 ) {
     engine.set_spatializer(enabled, amount, mode);
+}
+
+/// Configure the 3D-surround (virtual-speaker) stage.
+#[tauri::command]
+pub fn engine_set_surround3d(
+    engine: State<'_, AudioEngine>,
+    enabled: bool,
+    intensity: f32,
+    subwoofer: f32,
+    speakers: SurroundSpeakers,
+) {
+    engine.set_surround3d(enabled, intensity, subwoofer, speakers);
 }
 
 /// Decode and play a local file through the enhancement chain.

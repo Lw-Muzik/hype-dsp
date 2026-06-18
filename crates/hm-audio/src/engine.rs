@@ -25,7 +25,7 @@ use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hm_core::{
     BassBoostState, EngineState, HeadphoneCorrectionState, MeterFrame, ParametricBand, SpatialMode,
-    SpatializerState,
+    SpatializerState, Surround3DState, SurroundSpeakers,
 };
 use hm_dsp::ProcessChain;
 
@@ -37,7 +37,7 @@ use crate::spectrum::{Analyzer, SpectrumTap};
 use crate::streaming::RadioStreamSource;
 #[cfg(target_os = "macos")]
 use crate::system_tap::SystemTapSource;
-use crate::AudioSource;
+use crate::{AudioSource, StreamFormat};
 
 /// Lock-free meter telemetry written by the audio callback and read by the
 /// UI-forwarding thread. Each `f32` is stored as its bit pattern in an atomic.
@@ -217,7 +217,13 @@ pub struct Renderer {
 
 impl Renderer {
     /// Create a renderer for the given source and output format.
-    pub fn new(source: Box<dyn AudioSource>, sample_rate: f32, channels: usize) -> Self {
+    pub fn new(mut source: Box<dyn AudioSource>, sample_rate: f32, channels: usize) -> Self {
+        // Tell the source the real output format so rate-dependent sources (e.g.
+        // the system tap) can configure their resampler. Errors are non-fatal.
+        let _ = source.start(StreamFormat {
+            sample_rate: sample_rate as u32,
+            channels: channels as u16,
+        });
         Self {
             chain: ProcessChain::standard(sample_rate, channels),
             source,
@@ -438,6 +444,24 @@ impl AudioEngine {
                 enabled,
                 amount: amount.clamp(0.0, 1.0),
                 mode,
+            };
+        });
+    }
+
+    /// Configure the 3D-surround (virtual-speaker) stage.
+    pub fn set_surround3d(
+        &self,
+        enabled: bool,
+        intensity: f32,
+        subwoofer: f32,
+        speakers: SurroundSpeakers,
+    ) {
+        self.update(|s| {
+            s.surround3d = Surround3DState {
+                enabled,
+                intensity: intensity.clamp(0.0, 1.0),
+                subwoofer: subwoofer.clamp(0.0, 1.0),
+                speakers,
             };
         });
     }

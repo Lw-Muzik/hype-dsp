@@ -35,6 +35,12 @@ pub struct RadioStreamSource {
 impl RadioStreamSource {
     /// Start streaming `url`, producing stereo at `device_rate`.
     pub fn new(url: String, device_rate: u32) -> Self {
+        Self::with_headers(url, Vec::new(), device_rate)
+    }
+
+    /// Start streaming `url` with extra HTTP request headers (e.g. an
+    /// `Authorization: Bearer …` for a Google Drive `alt=media` URL).
+    pub fn with_headers(url: String, headers: Vec<(String, String)>, device_rate: u32) -> Self {
         // ~8 seconds of stereo headroom.
         let capacity = (device_rate.max(8_000) as usize) * 2 * 8;
         let (producer, consumer) = RingBuffer::<f32>::new(capacity);
@@ -45,7 +51,7 @@ impl RadioStreamSource {
             let running = running.clone();
             std::thread::Builder::new()
                 .name("hm-radio-decode".into())
-                .spawn(move || decode_stream(&url, device_rate, producer, &running))
+                .spawn(move || decode_stream(&url, &headers, device_rate, producer, &running))
                 .expect("failed to spawn radio decode thread")
         };
 
@@ -115,7 +121,13 @@ impl AudioSource for RadioStreamSource {
     }
 }
 
-fn decode_stream(url: &str, device_rate: u32, mut producer: Producer<f32>, running: &AtomicBool) {
+fn decode_stream(
+    url: &str,
+    headers: &[(String, String)],
+    device_rate: u32,
+    mut producer: Producer<f32>,
+    running: &AtomicBool,
+) {
     let client = match reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(12))
         .build()
@@ -123,7 +135,11 @@ fn decode_stream(url: &str, device_rate: u32, mut producer: Producer<f32>, runni
         Ok(c) => c,
         Err(_) => return,
     };
-    let response = match client.get(url).send() {
+    let mut req = client.get(url);
+    for (k, v) in headers {
+        req = req.header(k.as_str(), v.as_str());
+    }
+    let response = match req.send() {
         Ok(r) if r.status().is_success() => r,
         _ => return,
     };

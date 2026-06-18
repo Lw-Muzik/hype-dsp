@@ -21,3 +21,16 @@ export function formatTime(secs: number | null | undefined): string {
   const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
+
+/** Human-readable byte size, e.g. 4.2 MB. */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let v = bytes;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}

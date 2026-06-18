@@ -6,6 +6,7 @@
 //! audio engine, media, persistence) lives in the workspace crates; this layer
 //! is the thin, well-documented bridge between Rust and React.
 
+mod cloud;
 mod commands;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -159,6 +160,17 @@ pub fn run() {
             // Per-app mixer controller (real on Windows; unsupported stub on macOS).
             app.manage::<commands::mixer::Mixer>(Mutex::new(hm_platform::default_controller()));
 
+            // Cloud music (Google Drive / Dropbox) token store.
+            let cloud_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("cloud-tokens.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_cloud.json"));
+            app.manage(cloud::CloudState::load(cloud_path));
+
             // Restore the user's saved settings (EQ, bass, surround, volume, …)
             // from disk, then autosave them whenever they change so the next
             // launch comes up exactly as they left it.
@@ -215,6 +227,11 @@ pub fn run() {
             commands::engine::engine_set_spatializer,
             commands::engine::engine_set_surround3d,
             commands::engine::engine_set_room,
+            commands::cloud::cloud_status,
+            commands::cloud::cloud_connect,
+            commands::cloud::cloud_disconnect,
+            commands::cloud::cloud_list,
+            commands::cloud::cloud_play,
             commands::engine::player_play_file,
             commands::engine::player_play_radio,
             commands::engine::player_play_capture,

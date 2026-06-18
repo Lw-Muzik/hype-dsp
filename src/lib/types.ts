@@ -226,3 +226,21 @@ export interface IpcError {
   code: string;
   message: string;
 }
+
+export type CloudProvider = "googleDrive" | "dropbox";
+
+export interface CloudFile {
+  provider: CloudProvider;
+  id: string;
+  name: string;
+  folder: string;
+  size: number;
+}
+
+export interface CloudStatus {
+  googleConnected: boolean;
+  dropboxConnected: boolean;
+  /** Whether OAuth credentials are configured for the provider. */
+  googleConfigured: boolean;
+  dropboxConfigured: boolean;
+}

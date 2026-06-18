@@ -302,7 +302,8 @@ impl Renderer {
 /// Control messages to the engine thread.
 enum EngineCommand {
     Play(DecodedAudio),
-    PlayRadio(String),
+    /// Stream a URL (radio, or a cloud file) with optional HTTP headers.
+    PlayRadio(String, Vec<(String, String)>),
     PlayCapture,
     /// Play an already-constructed live source (e.g. the macOS system tap).
     PlaySource(Box<dyn AudioSource>),
@@ -577,7 +578,17 @@ impl AudioEngine {
         self.ctrl
             .lock()
             .expect("engine ctrl poisoned")
-            .send(EngineCommand::PlayRadio(url))
+            .send(EngineCommand::PlayRadio(url, Vec::new()))
+            .map_err(|_| AudioError::Stream("engine thread stopped".into()))
+    }
+
+    /// Stream and play a URL with extra HTTP headers (e.g. a cloud file that
+    /// needs an `Authorization: Bearer …`), through the chain.
+    pub fn play_stream(&self, url: String, headers: Vec<(String, String)>) -> Result<(), AudioError> {
+        self.ctrl
+            .lock()
+            .expect("engine ctrl poisoned")
+            .send(EngineCommand::PlayRadio(url, headers))
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
@@ -702,7 +713,7 @@ fn control_loop(
                     _ => playing.store(false, Ordering::Relaxed),
                 }
             }
-            EngineCommand::PlayRadio(url) => {
+            EngineCommand::PlayRadio(url, headers) => {
                 drop(active.take());
                 meters.zero();
                 spectrum.zero();
@@ -714,7 +725,7 @@ fn control_loop(
                 let sample_rate = config.sample_rate;
                 let channels = config.channels as usize;
                 pos.prepare(sample_rate, 0); // live stream: no known duration
-                let source = Box::new(RadioStreamSource::new(url, sample_rate));
+                let source = Box::new(RadioStreamSource::with_headers(url, headers, sample_rate));
 
                 match build_output_stream(
                     device,

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  cloudPlay,
   engineSetBass,
   engineSetEq,
   engineSetMasterVolume,
@@ -19,6 +20,7 @@ import {
 import { toast } from "@/stores/toast";
 import { BAND_COUNT } from "@/lib/types";
 import type {
+  CloudFile,
   EngineFrame,
   EngineState,
   EqPreset,
@@ -114,6 +116,8 @@ interface EngineStore {
   playFromList: (tracks: LibraryTrack[], index: number) => void;
   /** Stream an internet radio station (live; no queue/duration). */
   playRadio: (station: RadioStation) => void;
+  /** Stream a cloud file (Drive/Dropbox) through the chain. */
+  playCloud: (file: CloudFile) => void;
   next: () => void;
   prev: () => void;
   togglePause: () => void;
@@ -303,6 +307,21 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       });
       void playerPlayRadio(station.url).catch((e) =>
         toast.error(`Couldn't stream ${station.name}: ${ipcErrorMessage(e)}`),
+      );
+    },
+
+    playCloud: (file) => {
+      set({
+        nowPlaying: file.name,
+        playing: true,
+        paused: false,
+        positionSecs: 0,
+        durationSecs: null,
+        queue: [],
+        queueIndex: -1,
+      });
+      void cloudPlay(file.provider, file.id).catch((e) =>
+        toast.error(`Couldn't play ${file.name}: ${ipcErrorMessage(e)}`),
       );
     },
 

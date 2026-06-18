@@ -1,4 +1,5 @@
 import {
+  Cloud,
   Music2,
   Radio,
   Settings,
@@ -55,6 +56,13 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Radio,
     group: "main",
     tagline: "Browse and stream internet radio through the same engine.",
+  },
+  {
+    id: "cloud",
+    label: "Cloud",
+    icon: Cloud,
+    group: "main",
+    tagline: "Stream your music from Google Drive and Dropbox.",
   },
   {
     id: "settings",

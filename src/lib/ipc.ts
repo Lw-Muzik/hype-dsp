@@ -13,6 +13,9 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AppInfo,
+  CloudFile,
+  CloudProvider,
+  CloudStatus,
   DeviceInfo,
   EngineFrame,
   EngineState,
@@ -107,6 +110,33 @@ export function engineSetSurround3d(
 /** Configure the room-reverb ("room effects") stage. */
 export function engineSetRoom(room: RoomState): Promise<void> {
   return invoke<void>("engine_set_room", { room });
+}
+
+/* ------------------------------------------------------------ cloud music */
+
+/** Which cloud providers are configured and connected. */
+export function cloudStatus(): Promise<CloudStatus> {
+  return invoke<CloudStatus>("cloud_status");
+}
+
+/** Run the OAuth flow for a provider (opens the browser). */
+export function cloudConnect(provider: CloudProvider): Promise<void> {
+  return invoke<void>("cloud_connect", { provider });
+}
+
+/** Forget a provider's stored tokens. */
+export function cloudDisconnect(provider: CloudProvider): Promise<void> {
+  return invoke<void>("cloud_disconnect", { provider });
+}
+
+/** List the audio files in a connected account. */
+export function cloudList(provider: CloudProvider): Promise<CloudFile[]> {
+  return invoke<CloudFile[]>("cloud_list", { provider });
+}
+
+/** Stream a cloud file through the enhancement chain. */
+export function cloudPlay(provider: CloudProvider, fileId: string): Promise<void> {
+  return invoke<void>("cloud_play", { provider, fileId });
 }
 
 /** All bundled headphone correction profiles. */

@@ -16,12 +16,13 @@
         "label": "main",
         "title": "HypeMuzik",
         "width": 1180,
-        "height": 760,
+        "height": 1060,
         "minWidth": 940,
         "minHeight": 600,
-        "resizable": false,
+        "resizable": true,
         "fullscreen": false,
         "center": true,
+        "theme": "Dark",
         "backgroundColor": "#0A0B0E"
       }
     ],

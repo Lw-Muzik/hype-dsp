@@ -17,6 +17,7 @@ use std::sync::Mutex;
 use hm_audio::{AudioEngine, EngineMeters, PlaybackPos, SpectrumTap, SPECTRUM_BANDS};
 use hm_core::{EngineFrame, LicenseMock, MediaStore, MeterFrame, PresetStore};
 use serde::Serialize;
+use tauri::menu::{Menu, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
 
 /// Transport progress payload (`engine:progress`).
@@ -98,6 +99,22 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
+        // Replace the default File/Edit/View/Window/Help menu with just the
+        // standard app menu (About/Quit), so ⌘Q still works on macOS.
+        .menu(|handle| {
+            let app_menu = Submenu::with_items(
+                handle,
+                "HypeMuzik",
+                true,
+                &[
+                    &PredefinedMenuItem::about(handle, None, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::hide(handle, None)?,
+                    &PredefinedMenuItem::quit(handle, None)?,
+                ],
+            )?;
+            Menu::with_items(handle, &[&app_menu])
+        })
         .manage(engine)
         .setup(move |app| {
             // Open the preset store in the app data dir; fall back to an

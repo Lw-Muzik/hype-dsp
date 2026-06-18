@@ -32,3 +32,7 @@ hm-core = { workspace = true }
 hm-audio = { workspace = true }
 hm-media = { workspace = true }
 hm-platform = { workspace = true }
+
+
+[target."cfg(target_os = \"macos\")".dependencies]
+objc2-app-kit = { version = "0.3.2", features = ["NSColor", "NSWindow", "objc2-core-foundation"] }

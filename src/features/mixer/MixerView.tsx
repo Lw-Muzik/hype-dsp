@@ -66,7 +66,22 @@ export function MixerView() {
           <ul className="divide-y divide-border">
             {(snap?.sessions ?? []).map((s) => (
               <li key={s.id} className="flex items-center gap-3 py-3">
-                <span className="w-40 shrink-0 truncate text-sm font-medium">
+                {s.icon ? (
+                  <img
+                    src={s.icon}
+                    alt=""
+                    aria-hidden="true"
+                    className="size-7 shrink-0 rounded-md"
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="grid size-7 shrink-0 place-items-center rounded-md bg-surface-overlay"
+                  >
+                    <Volume2 className="size-4 text-text-faint" />
+                  </span>
+                )}
+                <span className="w-36 shrink-0 truncate text-sm font-medium">
                   {s.name}
                 </span>
                 <button

@@ -27,10 +27,16 @@ objc2-foundation = { version = "0.3", features = [
     "NSString",
     "NSArray",
     "NSDictionary",
+    "NSData",
 ] }
-# App identity: NSRunningApplication (localized name / bundle id). Icons add
-# NSImage/NSBitmapImageRep features in the next step.
-objc2-app-kit = { version = "0.3", features = ["NSRunningApplication"] }
+# App identity + icons: NSRunningApplication (name/bundle/icon),
+# NSImage/NSBitmapImageRep (icon → PNG bytes).
+objc2-app-kit = { version = "0.3", features = [
+    "NSRunningApplication",
+    "NSImage",
+    "NSImageRep",
+    "NSBitmapImageRep",
+] }
 
 # Windows per-process volume uses the `windows` crate (IAudioSessionManager2,
 # ISimpleAudioVolume); added behind a cfg(target_os = "windows") gate in Phase 4.

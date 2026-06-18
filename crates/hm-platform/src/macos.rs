@@ -25,9 +25,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
 use objc2::rc::Retained;
-use objc2::runtime::ProtocolObject;
+use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::AllocAnyThread;
-use objc2_app_kit::NSRunningApplication;
+use objc2_app_kit::{
+    NSBitmapImageFileType, NSBitmapImageRep, NSBitmapImageRepPropertyKey, NSRunningApplication,
+};
 use objc2_core_audio::{
     kAudioAggregateDeviceIsPrivateKey, kAudioAggregateDeviceMainSubDeviceKey,
     kAudioAggregateDeviceNameKey, kAudioAggregateDeviceSubDeviceListKey,
@@ -44,7 +46,9 @@ use objc2_core_audio::{
 };
 use objc2_core_audio_types::{AudioBufferList, AudioTimeStamp};
 use objc2_core_foundation::{CFDictionary, CFRetained, CFString};
-use objc2_foundation::{NSMutableArray, NSMutableDictionary, NSNumber, NSObject, NSString};
+use objc2_foundation::{
+    NSDictionary, NSMutableArray, NSMutableDictionary, NSNumber, NSObject, NSString,
+};
 
 use hm_core::AppSession;
 
@@ -184,6 +188,42 @@ fn running_app_identity(pid: i32) -> Option<(String, String)> {
         .or(bundle)
         .unwrap_or_else(|| format!("PID {pid}"));
     Some((id, name))
+}
+
+/// Standard base64 (no line breaks) for inlining icon PNGs as data URIs.
+fn base64(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(T[(n >> 18 & 63) as usize] as char);
+        out.push(T[(n >> 12 & 63) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            T[(n >> 6 & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            T[(n & 63) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+/// The app icon for `pid` as a PNG `data:` URI, via `NSRunningApplication`.
+fn icon_data_uri(pid: i32) -> Option<String> {
+    let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?;
+    let image = app.icon()?;
+    let tiff = image.TIFFRepresentation()?;
+    let rep = NSBitmapImageRep::imageRepWithData(&tiff)?;
+    let props = NSDictionary::<NSBitmapImageRepPropertyKey, AnyObject>::new();
+    let png = unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &props) }?;
+    Some(format!("data:image/png;base64,{}", base64(&png.to_vec())))
 }
 
 /// `(stable id, display name)` for an audio process object: responsible app
@@ -509,11 +549,25 @@ impl Desired {
 pub struct MacosSessionController {
     desired: Mutex<HashMap<String, Desired>>,
     engines: Mutex<HashMap<String, AppTap>>,
+    /// Per-app icon (PNG data URI), resolved once and cached.
+    icon_cache: Mutex<HashMap<String, Option<String>>>,
 }
 
 impl MacosSessionController {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Cached PNG-data-URI icon for an app id (resolved via its responsible app).
+    fn icon_for(&self, id: &str, obj: AudioObjectID) -> Option<String> {
+        let mut cache = self.icon_cache.lock().expect("mixer icons poisoned");
+        if let Some(cached) = cache.get(id) {
+            return cached.clone();
+        }
+        let pid = get_scalar::<i32>(obj, kAudioProcessPropertyPID).unwrap_or(0);
+        let uri = icon_data_uri(responsible_pid(pid)).or_else(|| icon_data_uri(pid));
+        cache.insert(id.to_string(), uri.clone());
+        uri
     }
 
     /// Bring the running engine for `id` in line with its desired state.
@@ -563,16 +617,21 @@ impl SessionController for MacosSessionController {
                 continue;
             }
             let (id, name) = app_identity(obj);
-            seen.entry(id.clone()).or_insert_with(|| {
-                let d = desired.get(&id).copied().unwrap_or_default();
+            if seen.contains_key(&id) {
+                continue;
+            }
+            let d = desired.get(&id).copied().unwrap_or_default();
+            let icon = self.icon_for(&id, obj);
+            seen.insert(
+                id.clone(),
                 AppSession {
                     id,
                     name,
-                    icon: None,
+                    icon,
                     volume: d.volume,
                     muted: d.muted,
-                }
-            });
+                },
+            );
         }
         let mut sessions: Vec<AppSession> = seen.into_values().collect();
         sessions.sort_by_key(|s| s.name.to_lowercase());
@@ -605,6 +664,17 @@ impl SessionController for MacosSessionController {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base64_matches_rfc4648() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"f"), "Zg==");
+        assert_eq!(base64(b"fo"), "Zm8=");
+        assert_eq!(base64(b"foo"), "Zm9v");
+        assert_eq!(base64(b"Man"), "TWFu");
+        assert_eq!(base64(b"hello"), "aGVsbG8=");
+        assert_eq!(base64(&[0u8, 255, 128]), "AP+A");
+    }
 
     #[test]
     fn friendly_name_strips_bundle_prefix() {

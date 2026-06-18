@@ -20,7 +20,7 @@
 use std::ffi::c_void;
 use std::mem::size_of;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use objc2::runtime::ProtocolObject;
@@ -45,6 +45,7 @@ use crate::{AudioSource, StreamFormat};
 /// IO callback context (heap-owned, freed on drop).
 struct TapContext {
     producer: rtrb::Producer<f32>,
+    dbg_calls: AtomicU32,
 }
 
 /// A live system-audio source backed by a Core Audio tap + aggregate device.
@@ -165,8 +166,28 @@ unsafe extern "C-unwind" fn io_proc(
         return 0;
     }
 
+    // --- DIAGNOSTIC (temporary): log the first few callbacks' buffer layout ---
+    if crate::diag::first_n(&ctx.dbg_calls, 6) {
+        let f32s = first.mDataByteSize as usize / size_of::<f32>();
+        let s = std::slice::from_raw_parts(first.mData as *const f32, f32s);
+        let peak = s.iter().fold(0.0_f32, |m, v| m.max(v.abs()));
+        let b1ch = if n_buffers >= 2 {
+            buffers[1].mNumberChannels as i32
+        } else {
+            -1
+        };
+        crate::diag::log(&format!(
+            "io_proc: n_buffers={} buf0.ch={} buf0.bytes={} buf1.ch={} buf0_peak={:.4}",
+            n_buffers, first.mNumberChannels, first.mDataByteSize, b1ch, peak,
+        ));
+    }
+
+    // Verified layout: a single interleaved packed-float stereo buffer
+    // (n_buffers=1, mChannelsPerFrame=2). We still handle a planar fallback, but
+    // in BOTH paths L and R are pushed as a pair only when two ring slots are
+    // free — so a full ring drops whole frames and never desyncs the channels.
     if n_buffers >= 2 {
-        // Non-interleaved (planar): buffer[0] = left plane, buffer[1] = right.
+        // Defensive: non-interleaved planes (not observed from the tap).
         let frames = first.mDataByteSize as usize / size_of::<f32>();
         let left = std::slice::from_raw_parts(first.mData as *const f32, frames);
         let right_buf = &buffers[1];
@@ -177,6 +198,9 @@ unsafe extern "C-unwind" fn io_proc(
             std::slice::from_raw_parts(right_buf.mData as *const f32, rn)
         };
         for i in 0..frames {
+            if ctx.producer.slots() < 2 {
+                break; // ring full: drop remaining frames, stay channel-aligned
+            }
             let l = left[i];
             let r = right.get(i).copied().unwrap_or(l);
             let _ = ctx.producer.push(l);
@@ -188,6 +212,9 @@ unsafe extern "C-unwind" fn io_proc(
         let count = first.mDataByteSize as usize / size_of::<f32>();
         let samples = std::slice::from_raw_parts(first.mData as *const f32, count);
         for frame in samples.chunks(in_ch) {
+            if ctx.producer.slots() < 2 {
+                break; // ring full: drop remaining frames, stay channel-aligned
+            }
             let l = frame.first().copied().unwrap_or(0.0);
             let r = frame.get(1).copied().unwrap_or(l);
             let _ = ctx.producer.push(l);
@@ -201,6 +228,9 @@ impl SystemTapSource {
     /// Build the tap + aggregate device and start capture. May trigger the
     /// audio-capture permission prompt on first use.
     pub fn new(device_rate: u32) -> Result<Self, AudioError> {
+        crate::diag::log(&format!(
+            "=== SystemTapSource::new(device_rate={device_rate}) ==="
+        ));
         let own = own_process_object()?;
 
         // Global tap that mutes everything except us.
@@ -227,7 +257,19 @@ impl SystemTapSource {
         }
 
         let uid = tap_uid_string(tap_id)?;
-        let _format = tap_format(tap_id)?;
+        let fmt = tap_format(tap_id)?;
+        crate::diag::log(&format!(
+            "tap_format: sr={} ch/frame={} bytes/frame={} bytes/packet={} frames/packet={} \
+             bits/ch={} flags={:#010x} (NonInterleaved bit 0x20={})",
+            fmt.mSampleRate,
+            fmt.mChannelsPerFrame,
+            fmt.mBytesPerFrame,
+            fmt.mBytesPerPacket,
+            fmt.mFramesPerPacket,
+            fmt.mBitsPerChannel,
+            fmt.mFormatFlags,
+            (fmt.mFormatFlags & 0x20) != 0,
+        ));
 
         let aggregate_id = match create_aggregate(&uid) {
             Ok(id) => id,
@@ -239,7 +281,10 @@ impl SystemTapSource {
 
         let capacity = (device_rate.max(8_000) as usize) * 2 * 2;
         let (producer, consumer) = RingBuffer::<f32>::new(capacity);
-        let ctx = Box::into_raw(Box::new(TapContext { producer }));
+        let ctx = Box::into_raw(Box::new(TapContext {
+            producer,
+            dbg_calls: AtomicU32::new(0),
+        }));
 
         let mut proc_id: AudioDeviceIOProcID = None;
         let status = unsafe {
@@ -278,6 +323,7 @@ impl SystemTapSource {
             )));
         }
         source.started.store(true, Ordering::Relaxed);
+        crate::diag::log("SystemTapSource: AudioDeviceStart OK — tap running");
         Ok(source)
     }
 }

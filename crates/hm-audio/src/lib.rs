@@ -11,6 +11,7 @@
 
 pub mod capture;
 pub mod decode;
+pub(crate) mod diag;
 pub mod device;
 pub mod engine;
 pub mod error;

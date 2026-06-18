@@ -24,7 +24,7 @@ export function Logo({ size = 28 }: { size?: number }) {
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="var(--color-accent-strong)" />
-          <stop offset="1" stopColor="var(--color-accent)" />
+          <stop offset="1" stopColor="var(--color-success)" />
         </linearGradient>
       </defs>
     </svg>

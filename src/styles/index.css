@@ -16,12 +16,13 @@
   --color-text-muted: #9aa1ad;
   --color-text-faint: #646b78;
 
-  --color-accent: #7c6cff;
-  --color-accent-strong: #9d8bff;
-  --color-accent-muted: #2a2747;
+  /* Brand palette from the app icon: golden-amber note + vivid green. */
+  --color-accent: #f5b40f;
+  --color-accent-strong: #ffca42;
+  --color-accent-muted: #2d2611;
 
-  --color-success: #3fb97a;
-  --color-warning: #e0a23b;
+  --color-success: #34c13a;
+  --color-warning: #ef8b3c;
   --color-danger: #e5564b;
 
   --font-sans:

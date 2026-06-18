@@ -171,6 +171,17 @@ pub fn run() {
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_cloud.json"));
             app.manage(cloud::CloudState::load(cloud_path));
 
+            // Phone Link (stream the phone's library over the LAN) pairing store.
+            let link_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("paired-devices.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_paired_devices.json"));
+            app.manage(hm_link::LinkState::load(link_path));
+
             // Restore the user's saved settings (EQ, bass, surround, volume, …)
             // from disk, then autosave them whenever they change so the next
             // launch comes up exactly as they left it.
@@ -232,6 +243,12 @@ pub fn run() {
             commands::cloud::cloud_disconnect,
             commands::cloud::cloud_list,
             commands::cloud::cloud_play,
+            commands::link::link_discover,
+            commands::link::link_paired,
+            commands::link::link_pair,
+            commands::link::link_unpair,
+            commands::link::link_library,
+            commands::link::link_play,
             commands::engine::player_play_file,
             commands::engine::player_play_radio,
             commands::engine::player_play_capture,

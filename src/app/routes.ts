@@ -5,6 +5,7 @@ import {
   Settings,
   SlidersHorizontal,
   SlidersVertical,
+  Smartphone,
   Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -63,6 +64,13 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Cloud,
     group: "main",
     tagline: "Stream your music from Google Drive and Dropbox.",
+  },
+  {
+    id: "phone",
+    label: "Phone",
+    icon: Smartphone,
+    group: "main",
+    tagline: "Stream the music on your phone, played through the desktop.",
   },
   {
     id: "settings",

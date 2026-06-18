@@ -38,6 +38,7 @@ hm-core = { workspace = true }
 hm-audio = { workspace = true }
 hm-media = { workspace = true }
 hm-platform = { workspace = true }
+hm-link = { workspace = true }
 
 
 [target."cfg(target_os = \"macos\")".dependencies]

@@ -25,6 +25,8 @@ import type {
   LibraryTrack,
   LicenseStatus,
   MixerSnapshot,
+  PhoneDevice,
+  PhoneTrack,
   Playlist,
   RadioStation,
   RoomState,
@@ -140,6 +142,48 @@ export function cloudList(
 /** Stream a cloud file through the enhancement chain. */
 export function cloudPlay(provider: CloudProvider, fileId: string): Promise<void> {
   return invoke<void>("cloud_play", { provider, fileId });
+}
+
+/* ------------------------------------------------------------- Phone Link */
+
+/** Browse the LAN (~2.5 s) for phones sharing their library. */
+export function linkDiscover(): Promise<PhoneDevice[]> {
+  return invoke<PhoneDevice[]>("link_discover");
+}
+
+/** Phones we've already paired with (silent reconnect). */
+export function linkPaired(): Promise<PhoneDevice[]> {
+  return invoke<PhoneDevice[]>("link_paired");
+}
+
+/** Pair with a phone using the 6-digit PIN it's showing. */
+export function linkPair(
+  host: string,
+  port: number,
+  name: string,
+  deviceId: string,
+  pin: string,
+): Promise<PhoneDevice> {
+  return invoke<PhoneDevice>("link_pair", { host, port, name, deviceId, pin });
+}
+
+/** Forget a paired phone. */
+export function linkUnpair(deviceId: string): Promise<void> {
+  return invoke<void>("link_unpair", { deviceId });
+}
+
+/** Fetch a paired phone's track list. */
+export function linkLibrary(deviceId: string): Promise<PhoneTrack[]> {
+  return invoke<PhoneTrack[]>("link_library", { deviceId });
+}
+
+/** Stream one track from the phone through the enhancement chain. */
+export function linkPlay(
+  deviceId: string,
+  trackId: string,
+  ext: string,
+): Promise<void> {
+  return invoke<void>("link_play", { deviceId, trackId, ext });
 }
 
 /** All bundled headphone correction profiles. */

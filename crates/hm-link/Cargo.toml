@@ -1,0 +1,15 @@
+[package]
+name = "hm-link"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Phone Link — LAN discovery, PIN pairing, and stream-URL resolution for streaming the phone's library through the desktop."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+mdns-sd = { workspace = true }
+getrandom = "0.2"

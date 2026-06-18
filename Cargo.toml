@@ -5,6 +5,7 @@ members = [
     "crates/hm-audio",
     "crates/hm-media",
     "crates/hm-platform",
+    "crates/hm-link",
     "crates/hm-core",
     "src-tauri",
 ]
@@ -38,6 +39,7 @@ rtrb = "0.3.4"
 # Media / network
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "time"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "blocking", "json"] }
+mdns-sd = "0.13"
 
 # Persistence
 rusqlite = { version = "0.40.1", features = ["bundled"] }
@@ -50,6 +52,7 @@ hm-dsp = { path = "crates/hm-dsp" }
 hm-audio = { path = "crates/hm-audio" }
 hm-media = { path = "crates/hm-media" }
 hm-platform = { path = "crates/hm-platform" }
+hm-link = { path = "crates/hm-link" }
 hm-core = { path = "crates/hm-core" }
 
 # Release profile tuned for real-time audio: optimize hard, keep panic=unwind

@@ -10,6 +10,7 @@ pub mod audio;
 pub mod cloud;
 pub mod engine;
 pub mod library;
+pub mod link;
 pub mod license;
 pub mod mixer;
 pub mod presets;

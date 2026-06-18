@@ -9,6 +9,7 @@ import {
   engineSetSpatializer,
   engineSetSurround3d,
   ipcErrorMessage,
+  linkPlay,
   playerPause,
   playerPlayFile,
   playerPlayRadio,
@@ -27,6 +28,8 @@ import type {
   HeadphoneProfile,
   LibraryTrack,
   MeterFrame,
+  PhoneDevice,
+  PhoneTrack,
   RadioStation,
   RoomState,
   SpatialMode,
@@ -118,6 +121,8 @@ interface EngineStore {
   playRadio: (station: RadioStation) => void;
   /** Stream a cloud file (Drive/Dropbox) through the chain. */
   playCloud: (file: CloudEntry) => void;
+  /** Stream a track from a paired phone through the chain. */
+  playPhone: (device: PhoneDevice, track: PhoneTrack) => void;
   next: () => void;
   prev: () => void;
   togglePause: () => void;
@@ -322,6 +327,21 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       });
       void cloudPlay(file.provider, file.id).catch((e) =>
         toast.error(`Couldn't play ${file.name}: ${ipcErrorMessage(e)}`),
+      );
+    },
+
+    playPhone: (device, track) => {
+      set({
+        nowPlaying: track.title,
+        playing: true,
+        paused: false,
+        positionSecs: 0,
+        durationSecs: null,
+        queue: [],
+        queueIndex: -1,
+      });
+      void linkPlay(device.id, track.id, track.ext).catch((e) =>
+        toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`),
       );
     },
 

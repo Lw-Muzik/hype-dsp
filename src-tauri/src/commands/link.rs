@@ -1,0 +1,70 @@
+//! Phone Link commands: discover phones on the LAN, pair via PIN, browse the
+//! phone's library, and stream a track through the DSP chain.
+//!
+//! The heavy lifting (mDNS, pairing handshake, token store, URL resolution)
+//! lives in the pure `hm-link` crate; these commands are the thin bridge that
+//! also routes the resolved stream URL into the audio engine.
+
+use std::time::Duration;
+
+use hm_audio::AudioEngine;
+use hm_core::IpcError;
+use hm_link::{LinkState, PhoneDevice, PhoneTrack};
+use tauri::State;
+
+/// Browse the LAN (~2.5 s) for phones sharing their library.
+#[tauri::command]
+pub fn link_discover(link: State<'_, LinkState>) -> Result<Vec<PhoneDevice>, IpcError> {
+    link.discover(Duration::from_millis(2500))
+        .map_err(|e| IpcError::new("link", e))
+}
+
+/// Phones we've already paired with (silent reconnect — no PIN needed).
+#[tauri::command]
+pub fn link_paired(link: State<'_, LinkState>) -> Vec<PhoneDevice> {
+    link.paired()
+}
+
+/// Pair with a phone using the 6-digit PIN it's showing.
+#[tauri::command]
+pub fn link_pair(
+    link: State<'_, LinkState>,
+    host: String,
+    port: u16,
+    name: String,
+    device_id: String,
+    pin: String,
+) -> Result<PhoneDevice, IpcError> {
+    link.pair(&host, port, &name, &device_id, &pin)
+        .map_err(|e| IpcError::new("link", e))
+}
+
+/// Forget a paired phone.
+#[tauri::command]
+pub fn link_unpair(link: State<'_, LinkState>, device_id: String) {
+    link.unpair(&device_id);
+}
+
+/// Fetch a paired phone's track list.
+#[tauri::command]
+pub fn link_library(
+    link: State<'_, LinkState>,
+    device_id: String,
+) -> Result<Vec<PhoneTrack>, IpcError> {
+    link.library(&device_id).map_err(|e| IpcError::new("link", e))
+}
+
+/// Stream one track from the phone through the enhancement chain.
+#[tauri::command]
+pub fn link_play(
+    link: State<'_, LinkState>,
+    engine: State<'_, AudioEngine>,
+    device_id: String,
+    track_id: String,
+    ext: String,
+) -> Result<(), IpcError> {
+    let (url, headers) = link
+        .stream_target(&device_id, &track_id, &ext)
+        .map_err(|e| IpcError::new("link", e))?;
+    engine.play_stream(url, headers).map_err(Into::into)
+}

@@ -9,6 +9,7 @@ export type Route =
   | "player"
   | "radio"
   | "cloud"
+  | "phone"
   | "settings";
 
 interface UiState {

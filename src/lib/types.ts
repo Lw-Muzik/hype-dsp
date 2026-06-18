@@ -246,3 +246,27 @@ export interface CloudStatus {
   googleConfigured: boolean;
   dropboxConfigured: boolean;
 }
+
+/* ------------------------------------------------------------- Phone Link */
+
+/** A phone discovered on the LAN, or one we've already paired with. */
+export interface PhoneDevice {
+  /** Stable per-install id advertised by the phone. */
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+}
+
+/** One track in a paired phone's library. */
+export interface PhoneTrack {
+  /** On-device song id (used to request the stream). */
+  id: string;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  durationMs: number | null;
+  /** File extension, e.g. "mp3" — appended to the stream URL. */
+  ext: string;
+  hasArt: boolean;
+}

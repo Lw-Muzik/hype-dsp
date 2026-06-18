@@ -23,7 +23,14 @@ objc2-core-audio = { version = "0.3", features = [
 ] }
 objc2-core-audio-types = "0.3"
 objc2-core-foundation = { version = "0.3", features = ["CFString", "CFBase"] }
-objc2-foundation = { version = "0.3", features = ["NSString"] }
+objc2-foundation = { version = "0.3", features = [
+    "NSString",
+    "NSArray",
+    "NSDictionary",
+] }
+# App identity: NSRunningApplication (localized name / bundle id). Icons add
+# NSImage/NSBitmapImageRep features in the next step.
+objc2-app-kit = { version = "0.3", features = ["NSRunningApplication"] }
 
 # Windows per-process volume uses the `windows` crate (IAudioSessionManager2,
 # ISimpleAudioVolume); added behind a cfg(target_os = "windows") gate in Phase 4.

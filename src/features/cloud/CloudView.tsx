@@ -53,7 +53,7 @@ interface Crumb {
   name: string;
 }
 
-export function CloudView() {
+export function CloudView({ embedded = false }: { embedded?: boolean }) {
   const route = routeById("cloud");
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
   const playCloud = useEngineStore((s) => s.playCloud);
@@ -123,11 +123,8 @@ export function CloudView() {
 
   const connected = status ? PROVIDERS.filter((p) => p.connected(status)) : [];
 
-  return (
-    <div className="mx-auto w-full max-w-3xl">
-      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
-
-      <div className="flex flex-col gap-4">
+  const content = (
+    <div className="flex flex-col gap-4">
         {/* Accounts */}
         <Card title="Accounts" icon={Cloud}>
           <div className="flex flex-col gap-3">
@@ -308,7 +305,18 @@ export function CloudView() {
             )}
           </Card>
         )}
-      </div>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">{content}</div>
+    );
+  }
+  return (
+    <div className="mx-auto w-full max-w-3xl">
+      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
+      {content}
     </div>
   );
 }

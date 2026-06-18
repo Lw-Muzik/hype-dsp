@@ -2,19 +2,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Cloud,
   FolderPlus,
   ListMusic,
   Music2,
   Play,
   Plus,
+  Smartphone,
   Sparkles,
   Trash2,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
-import { TransportBar } from "@/features/player/TransportBar";
+import { DevicesView } from "@/features/devices/DevicesView";
+import { CloudView } from "@/features/cloud/CloudView";
 import { useEngineStore } from "@/stores/engine";
 import {
   libraryList,
@@ -308,8 +312,8 @@ function AddToPlaylist({
   );
 }
 
-export function PlayerView() {
-  const route = routeById("player");
+/** The Library source: local scanned library + playlists, rich UI. */
+function LibraryPanel() {
   const playFromList = useEngineStore((s) => s.playFromList);
   const queue = useEngineStore((s) => s.queue);
   const queueIndex = useEngineStore((s) => s.queueIndex);
@@ -385,12 +389,7 @@ export function PlayerView() {
   const featured = collection === null ? pickFeatured(albums, tracks) : [];
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-4">
-      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
-
-      <TransportBar />
-
-      <div className="flex min-h-0 flex-1 gap-4">
+    <div className="flex min-h-0 flex-1 gap-4">
         {/* Collections sidebar */}
         <aside className="flex w-52 shrink-0 flex-col gap-1">
           <CollectionItem
@@ -593,6 +592,60 @@ export function PlayerView() {
           </div>
         </div>
       </div>
+  );
+}
+
+/** Source switcher (Library / Phone / Cloud) for the Player hub. */
+const SOURCES: { id: PlayerSource; label: string; icon: LucideIcon }[] = [
+  { id: "library", label: "Library", icon: Music2 },
+  { id: "phone", label: "Phone", icon: Smartphone },
+  { id: "cloud", label: "Cloud", icon: Cloud },
+];
+
+type PlayerSource = "library" | "phone" | "cloud";
+
+/**
+ * The unified music hub: one Player home with a Library / Phone / Cloud source
+ * switcher, each rendered with the same rich UI and the shared now-playing bar.
+ */
+export function PlayerView() {
+  const route = routeById("player");
+  const [source, setSource] = useState<PlayerSource>("library");
+
+  return (
+    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-4">
+      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
+
+      <div className="flex items-center gap-1 self-start rounded-control border border-border bg-surface-raised p-1">
+        {SOURCES.map((s) => {
+          const Icon = s.icon;
+          const active = source === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSource(s.id)}
+              className={cn(
+                "flex items-center gap-2 rounded-[7px] px-3.5 py-1.5 text-sm font-medium transition-colors",
+                active
+                  ? "bg-accent text-surface"
+                  : "text-text-muted hover:text-text",
+              )}
+            >
+              <Icon className="size-4" aria-hidden="true" />
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {source === "library" ? (
+        <LibraryPanel />
+      ) : source === "phone" ? (
+        <DevicesView embedded />
+      ) : (
+        <CloudView embedded />
+      )}
     </div>
   );
 }

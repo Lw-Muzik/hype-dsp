@@ -83,7 +83,7 @@ function PhoneCover({ deviceId, track }: { deviceId: string; track: PhoneTrack }
   return <Thumb seed={track.album?.trim() || track.title} label={track.title} />;
 }
 
-export function DevicesView() {
+export function DevicesView({ embedded = false }: { embedded?: boolean }) {
   const route = routeById("phone");
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
   const playPhone = useEngineStore((s) => s.playPhone);
@@ -201,21 +201,17 @@ export function DevicesView() {
     </div>
   );
 
-  return (
-    <div className="mx-auto w-full max-w-3xl">
-      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
-
-      {open ? (
-        <DeviceLibrary
-          device={open}
-          tracks={tracks}
-          loading={loading}
-          nowPlaying={nowPlaying}
-          onBack={back}
-          onPlay={(t) => playPhone(open, t)}
-          banner={errorBanner}
-        />
-      ) : (
+  const content = open ? (
+    <DeviceLibrary
+      device={open}
+      tracks={tracks}
+      loading={loading}
+      nowPlaying={nowPlaying}
+      onBack={back}
+      onPlay={(t) => playPhone(open, t)}
+      banner={errorBanner}
+    />
+  ) : (
         <div className="flex flex-col gap-4">
           <Card
             title="Phones on your network"
@@ -314,7 +310,17 @@ export function DevicesView() {
             the desktop’s enhancement chain. Same Wi‑Fi only.
           </p>
         </div>
-      )}
+  );
+
+  if (embedded) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">{content}</div>
+    );
+  }
+  return (
+    <div className="mx-auto w-full max-w-3xl">
+      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
+      {content}
     </div>
   );
 }

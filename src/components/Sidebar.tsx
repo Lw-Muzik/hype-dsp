@@ -12,8 +12,8 @@ export function Sidebar() {
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
 
-  const main = ROUTES.filter((r) => r.group === "main");
-  const system = ROUTES.filter((r) => r.group === "system");
+  const main = ROUTES.filter((r) => r.group === "main" && !r.hidden);
+  const system = ROUTES.filter((r) => r.group === "system" && !r.hidden);
 
   return (
     <aside

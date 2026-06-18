@@ -20,6 +20,9 @@ export interface NavRoute {
   group: "main" | "system";
   /** One-line summary shown in the view header and empty state. */
   tagline: string;
+  /** Hidden from the sidebar (reachable only inside another view, e.g. the
+   * Player hub hosts Phone + Cloud as sources). */
+  hidden?: boolean;
 }
 
 export const ROUTES: readonly NavRoute[] = [
@@ -64,6 +67,7 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Cloud,
     group: "main",
     tagline: "Stream your music from Google Drive and Dropbox.",
+    hidden: true, // hosted inside the Player hub as a source
   },
   {
     id: "phone",
@@ -71,6 +75,7 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Smartphone,
     group: "main",
     tagline: "Stream the music on your phone, played through the desktop.",
+    hidden: true, // hosted inside the Player hub as a source
   },
   {
     id: "settings",

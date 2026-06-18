@@ -1,31 +1,64 @@
-# Production virtual audio driver — requirements
+# System-wide audio capture & processing — requirements
 
-> **Status: design / not built.** True system-wide audio capture requires a
-> signed, OS-installed virtual audio device. None is produced in this codebase.
-> `hm-platform`'s `VirtualDeviceSource` is a stub that reports `Unavailable`;
-> the app degrades to file playback and default-device/loopback capture (see
-> `hm-audio`) as the driver-free development stand-in.
+> **Status: design / not built.** True system-wide processing (EQ'ing other
+> apps) requires routing system audio through something HypeMuzik controls. It
+> **cannot be silently auto-enabled** — macOS requires either an explicit audio
+> capture permission grant (process taps) or installing a signed driver and
+> switching the output device. `hm-platform`'s `VirtualDeviceSource` is the stub
+> for this; the driver-free dev stand-in is file/library/radio playback and
+> input (mic) capture.
 
-## What "system-wide capture" actually needs
+## What "system-wide" actually needs
 
-To intercept the audio of arbitrary apps (Spotify, a browser, a game), the OS
-must route their output through a device we control. That device is a kernel- or
-HAL-level component the OS loads at boot, and modern OSes refuse to load
-unsigned ones.
+To intercept the audio of arbitrary apps (Spotify, a browser, a game), their
+output must flow through a tap or device we own, where we can process it and
+write it back. macOS offers two real paths.
 
-### macOS
+### macOS — Option A (recommended on 14.4+): Core Audio process taps
 
-- **CoreAudio AudioServerPlugin (HAL plugin)** implementing a virtual output
-  device, installed under `/Library/Audio/Plug-Ins/HAL/`.
-- The plugin presents a virtual device the user (or the app) selects as the
-  system output; audio written to it is mirrored to a tap we read from.
-- **Code signing + notarization** with an Apple Developer ID; hardened runtime.
-  Installation requires admin rights (a privileged helper or installer pkg).
-- A lighter alternative for *capture only* (not routing) is **ScreenCaptureKit**
-  (macOS 13+), which can tap system/process audio with user consent — usable for
-  monitoring but not for inserting processing into the playback path.
-- Note: `cpal` cannot tap system **output** on macOS natively; its loopback
-  stand-in captures an **input** device. Output loopback needs one of the above.
+Since **macOS 14.2 / 14.4**, the public **Core Audio tap** API lets an app tap
+the system (or specific processes) at the post-mix bus and — crucially — **mute
+the original output** so the app can re-render processed audio inline. This is
+exactly a system-wide EQ, with **no driver to build, sign, or install**. Modern
+EQ apps (e.g. iQualize) work this way.
+
+Flow: `CATapDescription` (system tap, mute behavior = muted) →
+`AudioHardwareCreateProcessTap` → `AudioHardwareCreateAggregateDevice` with the
+tap in `kAudioAggregateDeviceTapListKey` (private aggregate that also includes
+the real output sub-device) → an IO callback on the aggregate reads the tapped
+(now-muted-at-source) audio, runs it through the `ProcessChain`, and writes it
+to the output sub-device.
+
+Requirements:
+- macOS 14.4+ (the user's machine is 26.x — fully supported).
+- `NSAudioCaptureUsageDescription` in `Info.plist` + a one-time **user
+  permission prompt** (audio capture / TCC). Cannot be bypassed silently.
+- The app must be **code-signed** (Developer ID) for the permission to stick.
+- Native Core Audio code (C/Obj-C/Swift) — in this Rust/Tauri app, via
+  `coreaudio-sys`/`objc2` FFI or a small Swift sidecar. The API is powerful but
+  sparsely documented; Apple's `AudioCap` sample is the reference.
+
+This is the path to implement for HypeMuzik on modern macOS. It replaces the
+`LoopbackCaptureSource` stand-in with a real `SystemTapSource` feeding the
+existing chain.
+
+### macOS — Option B (legacy / broad compatibility): virtual audio driver
+
+The classic approach (eqMac, BlackHole, Loopback): ship a **user-space
+AudioServerPlugin** (based on Apple's NullAudio sample) — a loopback device
+installed under `/Library/Audio/Plug-Ins/HAL/`. The user (or app) sets it as the
+system default output; the driver diverts system audio to its input stream,
+which the app reads, processes, and sends to the real device. Runs in user space
+(not a kext), but still needs **Developer ID signing + notarization** and an
+**elevated installer**, and the user must switch their output device. Use this
+only to support macOS < 14.4.
+
+> `ScreenCaptureKit` (macOS 13+) can *capture* system/process audio but cannot
+> re-insert processing into the playback path, so it is not usable for an inline
+> EQ on its own.
+>
+> `cpal` cannot tap system **output** on macOS; its stand-in captures an
+> **input** device (mic). Output interception needs Option A or B above.
 
 ### Windows
 

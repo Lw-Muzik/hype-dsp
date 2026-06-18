@@ -17,6 +17,9 @@ use hm_core::AppSession;
 pub mod error;
 pub use error::PlatformError;
 
+#[cfg(target_os = "macos")]
+mod macos;
+
 /// Lists and controls per-application audio sessions.
 pub trait SessionController: Send {
     /// Whether per-app control is available on this platform/build.
@@ -69,12 +72,12 @@ impl SessionController for UnsupportedSessionController {
 }
 
 /// The per-app mixer controller for the current platform.
+///
+/// macOS lists audio apps via Core Audio process enumeration (Phase 1); the
+/// tap-based attenuation engine arrives in Phases 2–3.
 #[cfg(target_os = "macos")]
 pub fn default_controller() -> Box<dyn SessionController> {
-    Box::new(UnsupportedSessionController::new(
-        "Per-application volume isn't available on macOS — it requires process-tap \
-         interception (a system extension), which HypeMuzik does not install.",
-    ))
+    Box::new(macos::MacosSessionController::new())
 }
 
 /// The per-app mixer controller for the current platform.

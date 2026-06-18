@@ -25,7 +25,7 @@ use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hm_core::{
     BassBoostState, EngineState, HeadphoneCorrectionState, MeterFrame, ParametricBand, RoomState,
-    SpatialMode, SpatializerState, Surround3DState, SurroundSpeakers,
+    SpatialMode, SpatializerState, Surround3DState, SurroundSpeakers, TrackMeta,
 };
 use hm_dsp::ProcessChain;
 
@@ -324,8 +324,28 @@ pub struct AudioEngine {
     pos: Arc<PlaybackPos>,
     playing: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
+    /// Current track's now-playing metadata (tags + cover), for the UI.
+    track_meta: Arc<ArcSwap<TrackMeta>>,
+    /// Bumped whenever `track_meta` changes, so observers can detect new tracks.
+    meta_version: Arc<AtomicU64>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     _thread: JoinHandle<()>,
+}
+
+/// A write handle to the engine's now-playing metadata slot, handed to a stream
+/// decode thread so it can publish tags + cover art once it has probed.
+#[derive(Clone)]
+pub struct MetaSink {
+    meta: Arc<ArcSwap<TrackMeta>>,
+    version: Arc<AtomicU64>,
+}
+
+impl MetaSink {
+    /// Publish freshly-extracted metadata for the current track.
+    pub fn set(&self, meta: TrackMeta) {
+        self.meta.store(Arc::new(meta));
+        self.version.fetch_add(1, Ordering::Release);
+    }
 }
 
 impl Default for AudioEngine {
@@ -344,6 +364,8 @@ impl AudioEngine {
         let pos = Arc::new(PlaybackPos::default());
         let playing = Arc::new(AtomicBool::new(false));
         let paused = Arc::new(AtomicBool::new(false));
+        let track_meta = Arc::new(ArcSwap::from_pointee(TrackMeta::default()));
+        let meta_version = Arc::new(AtomicU64::new(0));
         let (tx, rx) = mpsc::channel();
 
         let thread = {
@@ -353,9 +375,23 @@ impl AudioEngine {
             let pos = pos.clone();
             let playing = playing.clone();
             let paused = paused.clone();
+            let track_meta = track_meta.clone();
+            let meta_version = meta_version.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
-                .spawn(move || control_loop(rx, shared, meters, spectrum, pos, playing, paused))
+                .spawn(move || {
+                    control_loop(ControlCtx {
+                        rx,
+                        shared,
+                        meters,
+                        spectrum,
+                        pos,
+                        playing,
+                        paused,
+                        track_meta,
+                        meta_version,
+                    })
+                })
                 .expect("failed to spawn hm-audio engine thread")
         };
 
@@ -367,9 +403,20 @@ impl AudioEngine {
             pos,
             playing,
             paused,
+            track_meta,
+            meta_version,
             ctrl: Mutex::new(tx),
             _thread: thread,
         }
+    }
+
+    /// Shared handles to the now-playing metadata + its version counter, for the
+    /// frame-forwarder to emit `engine:now_playing` when a new track starts.
+    pub fn track_meta_handle(&self) -> Arc<ArcSwap<TrackMeta>> {
+        self.track_meta.clone()
+    }
+    pub fn meta_version_handle(&self) -> Arc<AtomicU64> {
+        self.meta_version.clone()
     }
 
     /// Current engine state.
@@ -663,7 +710,9 @@ fn pick_f32_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig,
 
 /// The engine control thread: owns the (`!Send`) cpal stream for its lifetime.
 #[allow(clippy::too_many_arguments)]
-fn control_loop(
+/// Everything the engine control thread needs (grouped to keep the signature
+/// readable and lock-free handles cloned once).
+struct ControlCtx {
     rx: mpsc::Receiver<EngineCommand>,
     shared: Arc<ArcSwap<EngineState>>,
     meters: Arc<EngineMeters>,
@@ -671,7 +720,22 @@ fn control_loop(
     pos: Arc<PlaybackPos>,
     playing: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
-) {
+    track_meta: Arc<ArcSwap<TrackMeta>>,
+    meta_version: Arc<AtomicU64>,
+}
+
+fn control_loop(ctx: ControlCtx) {
+    let ControlCtx {
+        rx,
+        shared,
+        meters,
+        spectrum,
+        pos,
+        playing,
+        paused,
+        track_meta,
+        meta_version,
+    } = ctx;
     let setup = output_setup().ok();
     // The active stream is held only to keep audio flowing (RAII); replacing or
     // taking it drops the previous one, stopping its callback.
@@ -693,6 +757,9 @@ fn control_loop(
                 let resampled = resample_stereo(&audio.samples, audio.sample_rate, sample_rate);
                 pos.prepare(sample_rate, resampled.len() / 2);
                 let source = Box::new(FilePlaybackSource::new(resampled));
+                // Publish the file's tags + cover for the now-playing UI.
+                track_meta.store(Arc::new(audio.meta));
+                meta_version.fetch_add(1, Ordering::Release);
 
                 match build_output_stream(
                     device,
@@ -725,7 +792,17 @@ fn control_loop(
                 let sample_rate = config.sample_rate;
                 let channels = config.channels as usize;
                 pos.prepare(sample_rate, 0); // live stream: no known duration
-                let source = Box::new(RadioStreamSource::with_headers(url, headers, sample_rate));
+                // The stream thread publishes tags + cover once it has probed.
+                let sink = MetaSink {
+                    meta: track_meta.clone(),
+                    version: meta_version.clone(),
+                };
+                let source = Box::new(RadioStreamSource::with_headers(
+                    url,
+                    headers,
+                    sample_rate,
+                    Some(sink),
+                ));
 
                 match build_output_stream(
                     device,

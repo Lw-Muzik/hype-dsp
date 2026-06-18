@@ -211,6 +211,15 @@ export interface TransportProgress {
   paused: boolean;
 }
 
+/** Now-playing metadata extracted from the decoded track (tags + cover art). */
+export interface TrackMeta {
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  /** Embedded cover art as a data URI, if present. */
+  cover: string | null;
+}
+
 export interface DeviceInfo {
   name: string;
   isDefault: boolean;

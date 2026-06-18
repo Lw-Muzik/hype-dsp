@@ -14,12 +14,17 @@ use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 
-use crate::error::AudioError;
+use hm_core::TrackMeta;
 
-/// Decoded PCM: interleaved **stereo** `f32` at `sample_rate`.
+use crate::error::AudioError;
+use crate::meta::extract_metadata;
+
+/// Decoded PCM: interleaved **stereo** `f32` at `sample_rate`, plus the track's
+/// now-playing metadata (tags + cover art).
 pub struct DecodedAudio {
     pub samples: Vec<f32>,
     pub sample_rate: u32,
+    pub meta: TrackMeta,
 }
 
 fn open_format(path: &Path) -> Result<Box<dyn FormatReader>, AudioError> {
@@ -46,6 +51,8 @@ fn is_eof(e: &SymError) -> bool {
 /// Decode an audio file to interleaved stereo `f32`.
 pub fn decode_file(path: &Path) -> Result<DecodedAudio, AudioError> {
     let mut format = open_format(path)?;
+    // Tags + cover are available right after probing (front-loaded ID3/Vorbis).
+    let meta = extract_metadata(&mut *format);
     let track = format
         .default_track(TrackType::Audio)
         .ok_or_else(|| AudioError::Decode("no audio track in file".into()))?;
@@ -93,6 +100,7 @@ pub fn decode_file(path: &Path) -> Result<DecodedAudio, AudioError> {
     Ok(DecodedAudio {
         samples,
         sample_rate,
+        meta,
     })
 }
 

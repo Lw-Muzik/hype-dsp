@@ -32,6 +32,7 @@ import type {
   RoomState,
   SpatialMode,
   SurroundSpeakers,
+  TrackMeta,
   TransportProgress,
 } from "./types";
 
@@ -416,6 +417,13 @@ export function onTransport(
   handler: (playing: boolean) => void,
 ): Promise<UnlistenFn> {
   return listen<boolean>("engine:transport", (event) => handler(event.payload));
+}
+
+/** Subscribe to decoded now-playing metadata (tags + cover art) per track. */
+export function onNowPlaying(
+  handler: (meta: TrackMeta) => void,
+): Promise<UnlistenFn> {
+  return listen<TrackMeta>("engine:now_playing", (event) => handler(event.payload));
 }
 
 /* ------------------------------------------------------------------ dialogs */

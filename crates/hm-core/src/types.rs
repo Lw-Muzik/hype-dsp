@@ -324,6 +324,19 @@ pub struct Playlist {
     pub name: String,
 }
 
+/// Now-playing metadata extracted from the decoded track's tags (ID3 / Vorbis
+/// comments / MP4 atoms) and embedded cover art. Surfaced to the UI's docked
+/// now-playing bar. The same path serves local files, cloud, and phone streams.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackMeta {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    /// Embedded front-cover art as a `data:` URI (base64), if present.
+    pub cover: Option<String>,
+}
+
 /// An internet radio station entry from the directory.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

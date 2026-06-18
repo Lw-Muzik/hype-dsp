@@ -26,6 +26,7 @@ tauri-plugin-dialog = "2.7.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+arc-swap = { workspace = true }
 
 # Cloud (Google Drive / Dropbox) — REST + desktop OAuth (loopback + PKCE).
 reqwest = { workspace = true }

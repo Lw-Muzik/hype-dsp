@@ -35,12 +35,19 @@ pub struct RadioStreamSource {
 impl RadioStreamSource {
     /// Start streaming `url`, producing stereo at `device_rate`.
     pub fn new(url: String, device_rate: u32) -> Self {
-        Self::with_headers(url, Vec::new(), device_rate)
+        Self::with_headers(url, Vec::new(), device_rate, None)
     }
 
     /// Start streaming `url` with extra HTTP request headers (e.g. an
-    /// `Authorization: Bearer …` for a Google Drive `alt=media` URL).
-    pub fn with_headers(url: String, headers: Vec<(String, String)>, device_rate: u32) -> Self {
+    /// `Authorization: Bearer …` for a Google Drive `alt=media` URL). When a
+    /// [`MetaSink`] is provided, tags + cover art are published to it once the
+    /// stream has been probed.
+    pub fn with_headers(
+        url: String,
+        headers: Vec<(String, String)>,
+        device_rate: u32,
+        meta_sink: Option<crate::engine::MetaSink>,
+    ) -> Self {
         // ~8 seconds of stereo headroom.
         let capacity = (device_rate.max(8_000) as usize) * 2 * 8;
         let (producer, consumer) = RingBuffer::<f32>::new(capacity);
@@ -51,7 +58,9 @@ impl RadioStreamSource {
             let running = running.clone();
             std::thread::Builder::new()
                 .name("hm-radio-decode".into())
-                .spawn(move || decode_stream(&url, &headers, device_rate, producer, &running))
+                .spawn(move || {
+                    decode_stream(&url, &headers, device_rate, producer, &running, meta_sink)
+                })
                 .expect("failed to spawn radio decode thread")
         };
 
@@ -127,6 +136,7 @@ fn decode_stream(
     device_rate: u32,
     mut producer: Producer<f32>,
     running: &AtomicBool,
+    meta_sink: Option<crate::engine::MetaSink>,
 ) {
     let client = match reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(12))
@@ -160,6 +170,10 @@ fn decode_stream(
     ) else {
         return;
     };
+    // Publish tags + cover art for the now-playing UI (covers cloud + phone too).
+    if let Some(sink) = &meta_sink {
+        sink.set(crate::meta::extract_metadata(&mut *format));
+    }
     let Some(track) = format.default_track(TrackType::Audio) else {
         return;
     };

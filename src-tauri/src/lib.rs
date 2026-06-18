@@ -10,14 +10,15 @@ mod cloud;
 mod commands;
 mod control;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use std::sync::Mutex;
 
+use arc_swap::ArcSwap;
 use hm_audio::{AudioEngine, EngineMeters, PlaybackPos, SpectrumTap, SPECTRUM_BANDS};
-use hm_core::{EngineFrame, EngineState, LicenseMock, MediaStore, MeterFrame, PresetStore};
+use hm_core::{EngineFrame, EngineState, LicenseMock, MediaStore, MeterFrame, PresetStore, TrackMeta};
 use serde::Serialize;
 use tauri::menu::{Menu, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
@@ -35,6 +36,7 @@ struct Progress {
 /// `engine:frame` event, and play/stop transitions over `engine:transport`.
 /// Runs for the app's lifetime on its own thread; it only reads lock-free
 /// telemetry.
+#[allow(clippy::too_many_arguments)]
 fn forward_frames(
     app: tauri::AppHandle,
     meters: Arc<EngineMeters>,
@@ -42,13 +44,24 @@ fn forward_frames(
     pos: Arc<PlaybackPos>,
     playing: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
+    track_meta: Arc<ArcSwap<TrackMeta>>,
+    meta_version: Arc<AtomicU64>,
 ) {
     let mut last_playing = false;
+    let mut last_meta_version = 0u64;
     let mut tick: u32 = 0;
     loop {
         std::thread::sleep(Duration::from_millis(16));
         tick = tick.wrapping_add(1);
         let now_playing = playing.load(Ordering::Relaxed);
+
+        // Emit the decoded track's tags + cover art when a new track starts.
+        let version = meta_version.load(Ordering::Acquire);
+        if version != last_meta_version {
+            last_meta_version = version;
+            let meta = (*track_meta.load_full()).clone();
+            let _ = app.emit("engine:now_playing", meta);
+        }
 
         if now_playing != last_playing {
             let _ = app.emit("engine:transport", now_playing);
@@ -96,6 +109,8 @@ pub fn run() {
     let pos = engine.pos();
     let playing = engine.playing_flag();
     let paused = engine.paused_flag();
+    let track_meta = engine.track_meta_handle();
+    let meta_version = engine.meta_version_handle();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -227,7 +242,11 @@ pub fn run() {
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("hm-frame-forwarder".into())
-                .spawn(move || forward_frames(handle, meters, spectrum, pos, playing, paused))
+                .spawn(move || {
+                    forward_frames(
+                        handle, meters, spectrum, pos, playing, paused, track_meta, meta_version,
+                    )
+                })
                 .ok();
             Ok(())
         })

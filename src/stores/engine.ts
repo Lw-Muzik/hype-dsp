@@ -34,6 +34,7 @@ import type {
   RoomState,
   SpatialMode,
   Surround3DState,
+  TrackMeta,
   TransportProgress,
 } from "@/lib/types";
 
@@ -79,6 +80,15 @@ function fileTrack(path: string, title: string): LibraryTrack {
   return { path, title, artist: null, album: null, durationSecs: null };
 }
 
+/** An initial now-playing card from what we know before decode fills in tags. */
+function initialMeta(
+  title: string,
+  artist: string | null = null,
+  album: string | null = null,
+): TrackMeta {
+  return { title, artist, album, cover: null };
+}
+
 interface EngineStore {
   state: EngineState;
   meters: MeterFrame;
@@ -89,6 +99,8 @@ interface EngineStore {
   playing: boolean;
   paused: boolean;
   nowPlaying: string | null;
+  /** Rich now-playing metadata (tags + cover) for the docked bar. */
+  nowPlayingMeta: TrackMeta | null;
   positionSecs: number;
   durationSecs: number | null;
   queue: LibraryTrack[];
@@ -112,6 +124,8 @@ interface EngineStore {
   applyFrame: (frame: EngineFrame) => void;
   applyProgress: (p: TransportProgress) => void;
   setPlaying: (playing: boolean) => void;
+  /** Merge decoded engine metadata (tags + cover) into the now-playing card. */
+  applyNowPlaying: (meta: TrackMeta) => void;
 
   /** Play an ad-hoc file (single-item queue). Throws on IPC error. */
   play: (path: string, name: string) => Promise<void>;
@@ -144,6 +158,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     await playerPlayFile(track.path);
     set({
       nowPlaying: track.title,
+      nowPlayingMeta: initialMeta(track.title, track.artist, track.album),
       playing: true,
       paused: false,
       positionSecs: 0,
@@ -159,6 +174,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     playing: false,
     paused: false,
     nowPlaying: null,
+    nowPlayingMeta: null,
     positionSecs: 0,
     durationSecs: null,
     queue: [],
@@ -270,6 +286,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           metersLive: false,
           meters: idleMeters,
           nowPlaying: null,
+          nowPlayingMeta: null,
           positionSecs: 0,
         });
         return;
@@ -284,9 +301,27 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         metersLive: false,
         meters: idleMeters,
         nowPlaying: null,
+        nowPlayingMeta: null,
         positionSecs: 0,
       });
     },
+
+    applyNowPlaying: (meta) =>
+      set((s) => {
+        // Ignore late events after playback stopped.
+        if (!s.nowPlaying && !s.playing) return {};
+        const prev = s.nowPlayingMeta;
+        return {
+          nowPlayingMeta: {
+            title: meta.title ?? prev?.title ?? s.nowPlaying,
+            artist: meta.artist ?? prev?.artist ?? null,
+            album: meta.album ?? prev?.album ?? null,
+            cover: meta.cover ?? prev?.cover ?? null,
+          },
+          // Keep the title string in sync for views that match on it.
+          ...(meta.title ? { nowPlaying: meta.title } : {}),
+        };
+      }),
 
     play: async (path, name) => {
       set({ queue: [fileTrack(path, name)], queueIndex: 0 });
@@ -305,6 +340,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     playRadio: (station) => {
       set({
         nowPlaying: station.name,
+        nowPlayingMeta: initialMeta(station.name),
         playing: true,
         paused: false,
         positionSecs: 0,
@@ -320,6 +356,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     playCloud: (file) => {
       set({
         nowPlaying: file.name,
+        nowPlayingMeta: initialMeta(file.name),
         playing: true,
         paused: false,
         positionSecs: 0,
@@ -335,6 +372,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     playPhone: (device, track) => {
       set({
         nowPlaying: track.title,
+        nowPlayingMeta: initialMeta(track.title, track.artist, track.album),
         playing: true,
         paused: false,
         positionSecs: 0,
@@ -347,9 +385,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       );
     },
 
-    castIncoming: (title, _artist) => {
+    castIncoming: (title, artist) => {
       set({
         nowPlaying: title,
+        nowPlayingMeta: initialMeta(title, artist),
         playing: true,
         paused: false,
         positionSecs: 0,
@@ -404,6 +443,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         metersLive: false,
         meters: idleMeters,
         nowPlaying: null,
+        nowPlayingMeta: null,
         positionSecs: 0,
         queue: [],
         queueIndex: -1,

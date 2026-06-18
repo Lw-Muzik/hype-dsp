@@ -3,7 +3,6 @@ import { Radio, Search, Star } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
-import { TransportBar } from "@/features/player/TransportBar";
 import { useEngineStore } from "@/stores/engine";
 import {
   radioFavoriteAdd,
@@ -60,8 +59,6 @@ export function RadioView() {
   return (
     <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-4">
       <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
-
-      <TransportBar />
 
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1 rounded-control border border-border bg-surface-raised p-1">

@@ -17,7 +17,7 @@
 //! [`stop`]: AudioEngine::stop
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -32,6 +32,7 @@ use hm_dsp::ProcessChain;
 use crate::capture::LoopbackCaptureSource;
 use crate::decode::{decode_file, resample_stereo, DecodedAudio};
 use crate::error::AudioError;
+use crate::queue::QueuePlaybackSource;
 use crate::sources::FilePlaybackSource;
 use crate::spectrum::{Analyzer, SpectrumTap};
 use crate::streaming::RadioStreamSource;
@@ -304,6 +305,13 @@ enum EngineCommand {
     Play(DecodedAudio),
     /// Stream a URL (radio, or a cloud file) with optional HTTP headers.
     PlayRadio(String, Vec<(String, String)>),
+    /// Play a list of file paths gaplessly (decoded on a worker), starting at
+    /// `start`, crossfading by `crossfade_secs` (0 = pure gapless).
+    PlayQueue {
+        paths: Vec<String>,
+        start: usize,
+        crossfade_secs: f32,
+    },
     PlayCapture,
     /// Play an already-constructed live source (e.g. the macOS system tap).
     PlaySource(Box<dyn AudioSource>),
@@ -328,6 +336,8 @@ pub struct AudioEngine {
     track_meta: Arc<ArcSwap<TrackMeta>>,
     /// Bumped whenever `track_meta` changes, so observers can detect new tracks.
     meta_version: Arc<AtomicU64>,
+    /// Absolute queue index the engine is currently playing (gapless/crossfade).
+    queue_index: Arc<AtomicUsize>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     _thread: JoinHandle<()>,
 }
@@ -366,6 +376,7 @@ impl AudioEngine {
         let paused = Arc::new(AtomicBool::new(false));
         let track_meta = Arc::new(ArcSwap::from_pointee(TrackMeta::default()));
         let meta_version = Arc::new(AtomicU64::new(0));
+        let queue_index = Arc::new(AtomicUsize::new(0));
         let (tx, rx) = mpsc::channel();
 
         let thread = {
@@ -377,6 +388,7 @@ impl AudioEngine {
             let paused = paused.clone();
             let track_meta = track_meta.clone();
             let meta_version = meta_version.clone();
+            let queue_index = queue_index.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
                 .spawn(move || {
@@ -390,6 +402,7 @@ impl AudioEngine {
                         paused,
                         track_meta,
                         meta_version,
+                        queue_index,
                     })
                 })
                 .expect("failed to spawn hm-audio engine thread")
@@ -405,6 +418,7 @@ impl AudioEngine {
             paused,
             track_meta,
             meta_version,
+            queue_index,
             ctrl: Mutex::new(tx),
             _thread: thread,
         }
@@ -417,6 +431,10 @@ impl AudioEngine {
     }
     pub fn meta_version_handle(&self) -> Arc<AtomicU64> {
         self.meta_version.clone()
+    }
+    /// The absolute queue index currently playing, for the forwarder to emit.
+    pub fn queue_index_handle(&self) -> Arc<AtomicUsize> {
+        self.queue_index.clone()
     }
 
     /// Current engine state.
@@ -489,6 +507,26 @@ impl AudioEngine {
                 harmonics,
             };
         });
+    }
+
+    /// Update queue-playback behaviour (gapless + crossfade). Takes effect on the
+    /// next queue played.
+    pub fn set_playback(&self, gapless: bool, crossfade_secs: f32) {
+        self.update(|s| {
+            s.playback = hm_core::PlaybackState {
+                gapless,
+                crossfade_secs: crossfade_secs.max(0.0),
+            };
+        });
+    }
+
+    /// The current crossfade duration (seconds); 0 means gapless-only.
+    pub fn crossfade_secs(&self) -> f32 {
+        self.write_state
+            .lock()
+            .expect("engine state poisoned")
+            .playback
+            .crossfade_secs
     }
 
     /// Configure the spatializer stage.
@@ -639,6 +677,25 @@ impl AudioEngine {
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
+    /// Play a list of file paths as a gapless (and optionally crossfading) queue,
+    /// starting at `start`. Tracks decode on a background worker.
+    pub fn play_queue(
+        &self,
+        paths: Vec<String>,
+        start: usize,
+        crossfade_secs: f32,
+    ) -> Result<(), AudioError> {
+        self.ctrl
+            .lock()
+            .expect("engine ctrl poisoned")
+            .send(EngineCommand::PlayQueue {
+                paths,
+                start,
+                crossfade_secs,
+            })
+            .map_err(|_| AudioError::Stream("engine thread stopped".into()))
+    }
+
     /// Capture the default input device through the chain (driver-free stand-in).
     pub fn play_capture(&self) -> Result<(), AudioError> {
         self.ctrl
@@ -722,6 +779,7 @@ struct ControlCtx {
     paused: Arc<AtomicBool>,
     track_meta: Arc<ArcSwap<TrackMeta>>,
     meta_version: Arc<AtomicU64>,
+    queue_index: Arc<AtomicUsize>,
 }
 
 fn control_loop(ctx: ControlCtx) {
@@ -735,6 +793,7 @@ fn control_loop(ctx: ControlCtx) {
         paused,
         track_meta,
         meta_version,
+        queue_index,
     } = ctx;
     let setup = output_setup().ok();
     // The active stream is held only to keep audio flowing (RAII); replacing or
@@ -802,6 +861,54 @@ fn control_loop(ctx: ControlCtx) {
                     headers,
                     sample_rate,
                     Some(sink),
+                ));
+
+                match build_output_stream(
+                    device,
+                    *config,
+                    source,
+                    shared.clone(),
+                    meters.clone(),
+                    spectrum.clone(),
+                    pos.clone(),
+                    playing.clone(),
+                    channels,
+                    sample_rate as f32,
+                ) {
+                    Ok(s) if s.play().is_ok() => {
+                        playing.store(true, Ordering::Relaxed);
+                        active = Some(s);
+                    }
+                    _ => playing.store(false, Ordering::Relaxed),
+                }
+            }
+            EngineCommand::PlayQueue {
+                paths,
+                start,
+                crossfade_secs,
+            } => {
+                drop(active.take());
+                meters.zero();
+                spectrum.zero();
+                paused.store(false, Ordering::Relaxed);
+                let Some((device, config)) = &setup else {
+                    playing.store(false, Ordering::Relaxed);
+                    continue;
+                };
+                let sample_rate = config.sample_rate;
+                let channels = config.channels as usize;
+                pos.prepare(sample_rate, 0); // per-track totals reported by the source
+                let sink = MetaSink {
+                    meta: track_meta.clone(),
+                    version: meta_version.clone(),
+                };
+                let source = Box::new(QueuePlaybackSource::spawn(
+                    paths,
+                    start,
+                    sample_rate,
+                    crossfade_secs,
+                    Some(sink),
+                    Some(queue_index.clone()),
                 ));
 
                 match build_output_stream(

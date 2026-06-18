@@ -206,6 +206,25 @@ impl Default for OutputState {
     }
 }
 
+/// Queue-playback behaviour: gapless transitions and crossfade between tracks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackState {
+    /// Play a track list with no silence between tracks.
+    pub gapless: bool,
+    /// Crossfade duration in seconds (0 = off). Implies gapless when > 0.
+    pub crossfade_secs: f32,
+}
+
+impl Default for PlaybackState {
+    fn default() -> Self {
+        Self {
+            gapless: true,
+            crossfade_secs: 0.0,
+        }
+    }
+}
+
 /// Per-headphone correction state: a preamp plus parametric bands loaded from
 /// the active [`HeadphoneProfile`]. Empty/disabled when no profile is active.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -245,6 +264,7 @@ pub struct EngineState {
     pub room: RoomState,
     pub headphone: HeadphoneCorrectionState,
     pub output: OutputState,
+    pub playback: PlaybackState,
     /// Active preset id, if one is applied.
     pub active_preset_id: Option<String>,
     /// Active headphone profile id, if one is applied.
@@ -263,6 +283,7 @@ impl Default for EngineState {
             room: RoomState::default(),
             headphone: HeadphoneCorrectionState::default(),
             output: OutputState::default(),
+            playback: PlaybackState::default(),
             active_preset_id: None,
             active_profile_id: None,
         }

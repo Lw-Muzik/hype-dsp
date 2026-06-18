@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
-import { CircleAlert, Info, KeyRound, Speaker, Sparkles } from "lucide-react";
+import {
+  CircleAlert,
+  Info,
+  KeyRound,
+  ListMusic,
+  Speaker,
+  Sparkles,
+} from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { Switch } from "@/components/Switch";
+import { Slider } from "@/components/Slider";
 import { useUiStore } from "@/stores/ui";
 import { useEngineStore } from "@/stores/engine";
 import {
@@ -99,6 +108,8 @@ export function SettingsView() {
   const setLicense = useUiStore((s) => s.setLicense);
   const stop = useEngineStore((s) => s.stop);
   const playing = useEngineStore((s) => s.playing);
+  const playback = useEngineStore((s) => s.state.playback);
+  const setPlayback = useEngineStore((s) => s.setPlayback);
   const [devices, setDevices] = useState<DeviceState>({ status: "loading" });
   const [virtualAvailable, setVirtualAvailable] = useState(false);
   const [systemAvailable, setSystemAvailable] = useState(false);
@@ -156,6 +167,48 @@ export function SettingsView() {
               label="Engine schema"
               value={appInfo ? `v${appInfo.engineSchema}` : "—"}
             />
+          </div>
+        </Card>
+
+        <Card
+          title="Playback"
+          icon={ListMusic}
+          actions={
+            <Switch
+              checked={playback.gapless}
+              onChange={(v) => setPlayback(v, playback.crossfadeSecs)}
+              label="Gapless playback"
+            />
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-text-muted">
+              Gapless removes silence between tracks. Crossfade overlaps the end
+              of one track with the start of the next (any crossfade implies
+              gapless). Applies to the next track list you play.
+            </p>
+            <div className="flex items-center gap-3">
+              <span className="w-20 shrink-0 text-sm text-text-muted">
+                Crossfade
+              </span>
+              <Slider
+                label="Crossfade duration"
+                min={0}
+                max={12}
+                step={0.5}
+                value={playback.crossfadeSecs}
+                onChange={(v) => setPlayback(playback.gapless, v)}
+                formatValue={(v) =>
+                  v === 0 ? "off" : `${v.toFixed(1)} seconds`
+                }
+                className="flex-1"
+              />
+              <span className="w-12 text-right text-xs tabular-nums text-text-muted">
+                {playback.crossfadeSecs === 0
+                  ? "Off"
+                  : `${playback.crossfadeSecs.toFixed(1)}s`}
+              </span>
+            </div>
           </div>
         </Card>
 

@@ -106,6 +106,13 @@ export interface OutputState {
   ceilingDb: number;
 }
 
+/** Queue-playback behaviour: gapless transitions + crossfade between tracks. */
+export interface PlaybackState {
+  gapless: boolean;
+  /** Crossfade duration in seconds (0 = off; implies gapless when > 0). */
+  crossfadeSecs: number;
+}
+
 export interface HeadphoneCorrectionState {
   enabled: boolean;
   preamp: number;
@@ -123,6 +130,7 @@ export interface EngineState {
   room: RoomState;
   headphone: HeadphoneCorrectionState;
   output: OutputState;
+  playback: PlaybackState;
   activePresetId: string | null;
   activeProfileId: string | null;
 }

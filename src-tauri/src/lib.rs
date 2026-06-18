@@ -10,7 +10,7 @@ mod cloud;
 mod commands;
 mod control;
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -46,16 +46,26 @@ fn forward_frames(
     paused: Arc<AtomicBool>,
     track_meta: Arc<ArcSwap<TrackMeta>>,
     meta_version: Arc<AtomicU64>,
+    queue_index: Arc<AtomicUsize>,
 ) {
     let mut last_playing = false;
     let mut last_meta_version = 0u64;
+    let mut last_queue_index = usize::MAX;
     let mut tick: u32 = 0;
     loop {
         std::thread::sleep(Duration::from_millis(16));
         tick = tick.wrapping_add(1);
         let now_playing = playing.load(Ordering::Relaxed);
 
-        // Emit the decoded track's tags + cover art when a new track starts.
+        // Follow the gapless queue's current track index FIRST (it resets the
+        // now-playing card for the new track)...
+        let qi = queue_index.load(Ordering::Acquire);
+        if qi != last_queue_index {
+            last_queue_index = qi;
+            let _ = app.emit("engine:queue_index", qi as u32);
+        }
+
+        // ...then the decoded track's tags + cover art refine it.
         let version = meta_version.load(Ordering::Acquire);
         if version != last_meta_version {
             last_meta_version = version;
@@ -111,6 +121,7 @@ pub fn run() {
     let paused = engine.paused_flag();
     let track_meta = engine.track_meta_handle();
     let meta_version = engine.meta_version_handle();
+    let queue_index = engine.queue_index_handle();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -244,7 +255,15 @@ pub fn run() {
                 .name("hm-frame-forwarder".into())
                 .spawn(move || {
                     forward_frames(
-                        handle, meters, spectrum, pos, playing, paused, track_meta, meta_version,
+                        handle,
+                        meters,
+                        spectrum,
+                        pos,
+                        playing,
+                        paused,
+                        track_meta,
+                        meta_version,
+                        queue_index,
                     )
                 })
                 .ok();
@@ -276,6 +295,8 @@ pub fn run() {
             commands::link::link_play,
             commands::engine::player_play_file,
             commands::engine::player_play_radio,
+            commands::engine::player_play_queue,
+            commands::engine::engine_set_playback,
             commands::engine::player_play_capture,
             commands::engine::player_play_system_audio,
             commands::engine::capture_virtual_available,

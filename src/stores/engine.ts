@@ -10,8 +10,10 @@ import {
   engineSetSurround3d,
   ipcErrorMessage,
   linkPlay,
+  engineSetPlayback,
   playerPause,
   playerPlayFile,
+  playerPlayQueue,
   playerPlayRadio,
   playerResume,
   playerSeek,
@@ -69,6 +71,7 @@ const defaultEngineState: EngineState = {
   },
   headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
+  playback: { gapless: true, crossfadeSecs: 0 },
   activePresetId: null,
   activeProfileId: null,
 };
@@ -120,12 +123,15 @@ interface EngineStore {
   setRoom: (next: RoomState) => void;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
+  setPlayback: (gapless: boolean, crossfadeSecs: number) => void;
 
   applyFrame: (frame: EngineFrame) => void;
   applyProgress: (p: TransportProgress) => void;
   setPlaying: (playing: boolean) => void;
   /** Merge decoded engine metadata (tags + cover) into the now-playing card. */
   applyNowPlaying: (meta: TrackMeta) => void;
+  /** Follow the gapless queue's current track index (from the engine). */
+  applyQueueIndex: (index: number) => void;
 
   /** Play an ad-hoc file (single-item queue). Throws on IPC error. */
   play: (path: string, name: string) => Promise<void>;
@@ -164,6 +170,34 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       positionSecs: 0,
       durationSecs: track.durationSecs,
     });
+  };
+
+  /** Play `tracks[index]`, gaplessly (engine owns the queue) when enabled, else
+   *  one track at a time (the store advances on each track end). */
+  const playFrom = (tracks: LibraryTrack[], index: number) => {
+    const track = tracks[index];
+    if (!track) return;
+    set({ queue: tracks, queueIndex: index });
+    const { gapless, crossfadeSecs } = get().state.playback;
+    const onError = (e: unknown) =>
+      toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`);
+
+    if (gapless || crossfadeSecs > 0) {
+      set({
+        nowPlaying: track.title,
+        nowPlayingMeta: initialMeta(track.title, track.artist, track.album),
+        playing: true,
+        paused: false,
+        positionSecs: 0,
+        durationSecs: track.durationSecs,
+      });
+      void playerPlayQueue(
+        tracks.map((t) => t.path),
+        index,
+      ).catch(onError);
+    } else {
+      void startTrack(track).catch(onError);
+    }
   };
 
   return {
@@ -260,6 +294,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       void profileClear().catch(() => {});
     },
 
+    setPlayback: (gapless, crossfadeSecs) => {
+      set((s) => ({ state: { ...s.state, playback: { gapless, crossfadeSecs } } }));
+      void engineSetPlayback(gapless, crossfadeSecs).catch(() => {});
+    },
+
     applyFrame: (frame) =>
       set({
         meters: frame.meters,
@@ -323,19 +362,25 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         };
       }),
 
+    applyQueueIndex: (index) =>
+      set((s) => {
+        const track = s.queue[index];
+        if (!track) return {};
+        // Reset the card for the new track; the now_playing event adds the cover.
+        return {
+          queueIndex: index,
+          nowPlaying: track.title,
+          nowPlayingMeta: initialMeta(track.title, track.artist, track.album),
+          positionSecs: 0,
+        };
+      }),
+
     play: async (path, name) => {
       set({ queue: [fileTrack(path, name)], queueIndex: 0 });
       await startTrack(fileTrack(path, name));
     },
 
-    playFromList: (tracks, index) => {
-      const track = tracks[index];
-      if (!track) return;
-      set({ queue: tracks, queueIndex: index });
-      void startTrack(track).catch((e) =>
-        toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`),
-      );
-    },
+    playFromList: (tracks, index) => playFrom(tracks, index),
 
     playRadio: (station) => {
       set({
@@ -400,22 +445,12 @@ export const useEngineStore = create<EngineStore>((set, get) => {
 
     next: () => {
       const { queue, queueIndex } = get();
-      const track = queue[queueIndex + 1];
-      if (!track) return;
-      set({ queueIndex: queueIndex + 1 });
-      void startTrack(track).catch((e) =>
-        toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`),
-      );
+      if (queueIndex + 1 < queue.length) playFrom(queue, queueIndex + 1);
     },
 
     prev: () => {
       const { queue, queueIndex } = get();
-      const track = queue[queueIndex - 1];
-      if (!track) return;
-      set({ queueIndex: queueIndex - 1 });
-      void startTrack(track).catch((e) =>
-        toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`),
-      );
+      if (queueIndex - 1 >= 0) playFrom(queue, queueIndex - 1);
     },
 
     togglePause: () => {

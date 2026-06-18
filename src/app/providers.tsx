@@ -9,6 +9,7 @@ import {
   onLinkNowPlaying,
   onNowPlaying,
   onProgress,
+  onQueueIndex,
   onTransport,
 } from "@/lib/ipc";
 import { useUiStore } from "@/stores/ui";
@@ -28,6 +29,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const setPlaying = useEngineStore((s) => s.setPlaying);
   const castIncoming = useEngineStore((s) => s.castIncoming);
   const applyNowPlaying = useEngineStore((s) => s.applyNowPlaying);
+  const applyQueueIndex = useEngineStore((s) => s.applyQueueIndex);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +67,10 @@ export function Providers({ children }: { children: ReactNode }) {
       .then((un) => (cancelled ? un() : unlisteners.push(un)))
       .catch(() => {});
 
+    onQueueIndex((index) => applyQueueIndex(index))
+      .then((un) => (cancelled ? un() : unlisteners.push(un)))
+      .catch(() => {});
+
     return () => {
       cancelled = true;
       for (const un of unlisteners) un();
@@ -78,6 +84,7 @@ export function Providers({ children }: { children: ReactNode }) {
     setPlaying,
     castIncoming,
     applyNowPlaying,
+    applyQueueIndex,
   ]);
 
   return <>{children}</>;

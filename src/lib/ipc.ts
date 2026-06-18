@@ -263,6 +263,26 @@ export function playerPlayRadio(url: string): Promise<void> {
   return invoke<void>("player_play_radio", { url });
 }
 
+/** Play a list of local files as a gapless/crossfading queue from `start`. */
+export function playerPlayQueue(paths: string[], start: number): Promise<void> {
+  return invoke<void>("player_play_queue", { paths, start });
+}
+
+/** Update gapless + crossfade playback behaviour. */
+export function engineSetPlayback(
+  gapless: boolean,
+  crossfadeSecs: number,
+): Promise<void> {
+  return invoke<void>("engine_set_playback", { gapless, crossfadeSecs });
+}
+
+/** Subscribe to the gapless queue's current track index. */
+export function onQueueIndex(
+  handler: (index: number) => void,
+): Promise<UnlistenFn> {
+  return listen<number>("engine:queue_index", (e) => handler(e.payload));
+}
+
 /** Stop playback. */
 export function playerStop(): Promise<void> {
   return invoke<void>("player_stop");

@@ -4,6 +4,7 @@ import {
   engineSetEq,
   engineSetMasterVolume,
   engineSetPower,
+  engineSetRoom,
   engineSetSpatializer,
   engineSetSurround3d,
   ipcErrorMessage,
@@ -25,6 +26,7 @@ import type {
   LibraryTrack,
   MeterFrame,
   RadioStation,
+  RoomState,
   SpatialMode,
   Surround3DState,
   TransportProgress,
@@ -48,6 +50,16 @@ const defaultEngineState: EngineState = {
       surroundL: true,
       surroundR: true,
     },
+  },
+  room: {
+    enabled: false,
+    roomSize: 0.4,
+    decay: 0.4,
+    damping: 0.45,
+    preDelay: 8,
+    diffusion: 0.55,
+    wetDry: 0.3,
+    activePresetId: null,
   },
   headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
@@ -88,6 +100,7 @@ interface EngineStore {
   setBass: (enabled: boolean, amount: number, harmonics: boolean) => void;
   setSpatializer: (enabled: boolean, amount: number, mode: SpatialMode) => void;
   setSurround3d: (next: Surround3DState) => void;
+  setRoom: (next: RoomState) => void;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
 
@@ -196,6 +209,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         next.subwoofer,
         next.speakers,
       ).catch(() => {});
+    },
+    setRoom: (next) => {
+      set((s) => ({ state: { ...s.state, room: next } }));
+      void engineSetRoom(next).catch(() => {});
     },
     applyProfile: (profile) =>
       set((s) => ({

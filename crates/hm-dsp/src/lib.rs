@@ -6,7 +6,7 @@
 //! checks, limiter ceiling checks — see Phase 1).
 //!
 //! The runtime chain processes audio in a fixed order:
-//! `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D → Gain → Limiter`.
+//! `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D → RoomEffects → Gain → Limiter`.
 //! Each stage implements [`AudioProcessor`]; [`ProcessChain`] owns the ordered
 //! list and runs them in place. Phase 0 establishes these interfaces and an
 //! empty (identity) chain; the processors themselves arrive in Phase 1.
@@ -21,6 +21,7 @@ pub mod graphic_eq;
 pub mod headphone;
 pub mod limiter;
 mod reverb;
+pub mod room;
 pub mod spatializer;
 pub mod surround3d;
 
@@ -29,6 +30,7 @@ pub use gain::Gain;
 pub use graphic_eq::GraphicEq;
 pub use headphone::HeadphoneCorrection;
 pub use limiter::Limiter;
+pub use room::RoomEffects;
 pub use spatializer::Spatializer;
 pub use surround3d::Surround3D;
 
@@ -88,6 +90,7 @@ impl ProcessChain {
         chain.push(Box::new(BassBoost::new(sample_rate, channels)));
         chain.push(Box::new(Spatializer::new(sample_rate, channels)));
         chain.push(Box::new(Surround3D::new(sample_rate, channels)));
+        chain.push(Box::new(RoomEffects::new(sample_rate, channels)));
         chain.push(Box::new(Gain::new()));
         chain.push(Box::new(Limiter::new(sample_rate, channels)));
         chain

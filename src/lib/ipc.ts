@@ -24,6 +24,7 @@ import type {
   MixerSnapshot,
   Playlist,
   RadioStation,
+  RoomState,
   SpatialMode,
   SurroundSpeakers,
   TransportProgress,
@@ -101,6 +102,11 @@ export function engineSetSurround3d(
     subwoofer,
     speakers,
   });
+}
+
+/** Configure the room-reverb ("room effects") stage. */
+export function engineSetRoom(room: RoomState): Promise<void> {
+  return invoke<void>("engine_set_room", { room });
 }
 
 /** All bundled headphone correction profiles. */

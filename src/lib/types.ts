@@ -63,6 +63,43 @@ export interface Surround3DState {
   speakers: SurroundSpeakers;
 }
 
+/** Room reverb ("room effects"). Scalars are 0–1 except preDelay (ms). */
+export interface RoomState {
+  enabled: boolean;
+  roomSize: number;
+  decay: number;
+  damping: number;
+  preDelay: number;
+  diffusion: number;
+  wetDry: number;
+  activePresetId: string | null;
+}
+
+/** A built-in room reverb preset (mirrors the Hype mobile presets). */
+export interface RoomPreset {
+  id: string;
+  name: string;
+  roomSize: number;
+  decay: number;
+  damping: number;
+  preDelay: number;
+  diffusion: number;
+  wetDry: number;
+}
+
+export const ROOM_PRESETS: readonly RoomPreset[] = [
+  { id: "small", name: "Small Room", roomSize: 0.2, decay: 0.25, damping: 0.6, preDelay: 3, diffusion: 0.5, wetDry: 0.25 },
+  { id: "medium", name: "Medium Room", roomSize: 0.4, decay: 0.4, damping: 0.45, preDelay: 8, diffusion: 0.55, wetDry: 0.3 },
+  { id: "large", name: "Large Room", roomSize: 0.6, decay: 0.55, damping: 0.35, preDelay: 15, diffusion: 0.6, wetDry: 0.35 },
+  { id: "hall", name: "Hall", roomSize: 0.75, decay: 0.65, damping: 0.3, preDelay: 25, diffusion: 0.65, wetDry: 0.4 },
+  { id: "cathedral", name: "Cathedral", roomSize: 0.9, decay: 0.8, damping: 0.5, preDelay: 40, diffusion: 0.7, wetDry: 0.4 },
+  { id: "plate", name: "Plate", roomSize: 0.35, decay: 0.5, damping: 0.1, preDelay: 2, diffusion: 0.8, wetDry: 0.35 },
+  { id: "studio", name: "Studio", roomSize: 0.15, decay: 0.2, damping: 0.65, preDelay: 2, diffusion: 0.4, wetDry: 0.2 },
+  { id: "chamber", name: "Chamber", roomSize: 0.45, decay: 0.45, damping: 0.35, preDelay: 12, diffusion: 0.55, wetDry: 0.3 },
+  { id: "arena", name: "Arena", roomSize: 1.0, decay: 0.9, damping: 0.55, preDelay: 60, diffusion: 0.65, wetDry: 0.35 },
+  { id: "concert", name: "Concert", roomSize: 0.8, decay: 0.7, damping: 0.35, preDelay: 35, diffusion: 0.65, wetDry: 0.4 },
+];
+
 export interface OutputState {
   gainDb: number;
   limiterEnabled: boolean;
@@ -83,6 +120,7 @@ export interface EngineState {
   bass: BassBoostState;
   spatializer: SpatializerState;
   surround3d: Surround3DState;
+  room: RoomState;
   headphone: HeadphoneCorrectionState;
   output: OutputState;
   activePresetId: string | null;

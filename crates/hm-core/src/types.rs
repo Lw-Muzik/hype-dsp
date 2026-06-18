@@ -146,6 +146,44 @@ impl Default for Surround3DState {
     }
 }
 
+/// Room reverb ("room effects") — a Freeverb-style algorithmic reverb, ported
+/// from the Hype mobile app. All scalar params are 0.0–1.0 except `pre_delay`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomState {
+    pub enabled: bool,
+    /// Scales the comb delay lengths (0 = tiny room … 1 = huge).
+    pub room_size: f32,
+    /// Reverb tail length (maps to comb feedback / RT60).
+    pub decay: f32,
+    /// High-frequency absorption (0 = bright … 1 = dark).
+    pub damping: f32,
+    /// Pre-delay before the reverb tail, in milliseconds (0–200).
+    pub pre_delay: f32,
+    /// Echo density via the allpass diffusers (0 = sparse … 1 = dense).
+    pub diffusion: f32,
+    /// Wet/dry mix (0 = dry … 1 = fully wet).
+    pub wet_dry: f32,
+    /// Active room-preset id, if one is applied (for the UI).
+    pub active_preset_id: Option<String>,
+}
+
+impl Default for RoomState {
+    fn default() -> Self {
+        // "Medium Room" values, but off by default.
+        Self {
+            enabled: false,
+            room_size: 0.4,
+            decay: 0.4,
+            damping: 0.45,
+            pre_delay: 8.0,
+            diffusion: 0.55,
+            wet_dry: 0.3,
+            active_preset_id: None,
+        }
+    }
+}
+
 /// Makeup gain followed by the look-ahead brickwall limiter that keeps boosted
 /// volume from clipping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -204,6 +242,7 @@ pub struct EngineState {
     pub bass: BassBoostState,
     pub spatializer: SpatializerState,
     pub surround3d: Surround3DState,
+    pub room: RoomState,
     pub headphone: HeadphoneCorrectionState,
     pub output: OutputState,
     /// Active preset id, if one is applied.
@@ -221,6 +260,7 @@ impl Default for EngineState {
             bass: BassBoostState::default(),
             spatializer: SpatializerState::default(),
             surround3d: Surround3DState::default(),
+            room: RoomState::default(),
             headphone: HeadphoneCorrectionState::default(),
             output: OutputState::default(),
             active_preset_id: None,

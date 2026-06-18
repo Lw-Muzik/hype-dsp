@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use hm_audio::AudioEngine;
-use hm_core::{EngineState, IpcError, SpatialMode, SurroundSpeakers};
+use hm_core::{EngineState, IpcError, RoomState, SpatialMode, SurroundSpeakers};
 use tauri::State;
 
 /// Current engine state (mirrored by the Zustand store on startup).
@@ -76,6 +76,12 @@ pub fn engine_set_surround3d(
     speakers: SurroundSpeakers,
 ) {
     engine.set_surround3d(enabled, intensity, subwoofer, speakers);
+}
+
+/// Configure the room-reverb ("room effects") stage.
+#[tauri::command]
+pub fn engine_set_room(engine: State<'_, AudioEngine>, room: RoomState) {
+    engine.set_room(room);
 }
 
 /// Decode and play a local file through the enhancement chain.

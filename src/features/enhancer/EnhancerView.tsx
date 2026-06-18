@@ -27,6 +27,7 @@ import {
 import type { HeadphoneProfile, SpatialMode } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { Surround3DPanel } from "./Surround3DPanel";
+import { RoomCard } from "./RoomCard";
 
 export function EnhancerView() {
   const route = routeById("enhancer");
@@ -284,6 +285,9 @@ export function EnhancerView() {
             </Button>
           </div>
         </Card>
+
+        {/* Room reverb */}
+        <RoomCard />
 
         {/* Headphone correction */}
         <Card title="Headphone correction" icon={Headphones}>

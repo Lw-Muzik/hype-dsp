@@ -24,8 +24,8 @@ use std::thread::JoinHandle;
 use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hm_core::{
-    BassBoostState, EngineState, HeadphoneCorrectionState, MeterFrame, ParametricBand, SpatialMode,
-    SpatializerState, Surround3DState, SurroundSpeakers,
+    BassBoostState, EngineState, HeadphoneCorrectionState, MeterFrame, ParametricBand, RoomState,
+    SpatialMode, SpatializerState, Surround3DState, SurroundSpeakers,
 };
 use hm_dsp::ProcessChain;
 
@@ -470,6 +470,17 @@ impl AudioEngine {
                 speakers,
             };
         });
+    }
+
+    /// Configure the room-reverb stage (clamps all params to range).
+    pub fn set_room(&self, mut room: RoomState) {
+        room.room_size = room.room_size.clamp(0.0, 1.0);
+        room.decay = room.decay.clamp(0.0, 1.0);
+        room.damping = room.damping.clamp(0.0, 1.0);
+        room.pre_delay = room.pre_delay.clamp(0.0, 200.0);
+        room.diffusion = room.diffusion.clamp(0.0, 1.0);
+        room.wet_dry = room.wet_dry.clamp(0.0, 1.0);
+        self.update(|s| s.room = room);
     }
 
     /// Load a headphone profile's correction into the chain and mark it active.

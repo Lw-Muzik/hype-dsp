@@ -15,9 +15,12 @@ permissions:
 
 # Windows runners intermittently fail crate downloads with "[16] Error in the
 # HTTP2 framing layer" — force cargo onto HTTP/1.1 and retry transient fetches.
+# CMAKE_POLICY_VERSION_MINIMUM lets CMake 4 build SDL2's old CMakeLists (it
+# dropped compat with cmake_minimum_required < 3.5); harmless for projectM.
 env:
   CARGO_HTTP_MULTIPLEXING: "false"
   CARGO_NET_RETRY: "10"
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
 jobs:
   check:
@@ -66,17 +69,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install libprojectM build deps (Linux)
+      # libprojectM (GL/GLEW/GLM) + SDL2-from-source (X11 video backend) deps.
+      - name: Install build deps (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake libgl1-mesa-dev mesa-common-dev libsdl2-dev libglm-dev
+          sudo apt-get install -y cmake libgl1-mesa-dev mesa-common-dev libglm-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxfixes-dev libxss-dev
 
-      - name: Install libprojectM build deps (macOS)
+      - name: Install build deps (macOS)
         if: runner.os == 'macOS'
         run: brew install cmake glew
 
-      - name: Install libprojectM build deps (Windows)
+      - name: Install build deps (Windows)
         if: runner.os == 'Windows'
         run: vcpkg --triplet=x64-windows-static-md install glew
 
@@ -87,5 +93,6 @@ jobs:
           workspaces: ". -> target"
           key: ${{ matrix.os }}-milkdrop
 
-      - name: Build native libprojectM (proof)
-        run: cargo build --release -p hm-visualizer --features milkdrop --examples
+      # Builds libprojectM + SDL2 (from source) and links the sidecar binary.
+      - name: Build the visualizer sidecar
+        run: cargo build --release -p hm-visualizer --features milkdrop

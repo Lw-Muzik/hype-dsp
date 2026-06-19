@@ -18,7 +18,13 @@ license.workspace = true
 # prefix-less name — so we use the default SHARED build there (a correctly-named
 # import lib; the DLL ships alongside the app), as projectM's own CI does.
 [features]
-milkdrop = ["dep:projectm-sys"]
+milkdrop = ["dep:projectm-sys", "dep:sdl2"]
+
+[dependencies]
+# Window + OpenGL context + input. `bundled` builds SDL2 from source (no system
+# dep) and `static-link` folds it into the binary — projectM's own ecosystem
+# uses SDL2, so this is a proven pairing.
+sdl2 = { version = "0.37", optional = true, features = ["bundled", "static-link"] }
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 projectm-sys = { version = "1", optional = true, features = ["static"] }
@@ -26,8 +32,9 @@ projectm-sys = { version = "1", optional = true, features = ["static"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 projectm-sys = { version = "1", optional = true }
 
-# Build-proof binary, compiled only with `--features milkdrop`. Compiling +
-# linking it confirms libprojectM built and links on the target OS.
-[[example]]
-name = "build_proof"
+# The visualizer sidecar binary — compiled only with `--features milkdrop`. The
+# main Tauri app spawns it and pipes PCM to its stdin; it never links libprojectM.
+[[bin]]
+name = "hm-visualizer"
+path = "src/main.rs"
 required-features = ["milkdrop"]

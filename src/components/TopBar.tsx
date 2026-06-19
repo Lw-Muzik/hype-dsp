@@ -5,6 +5,7 @@ import { useEngineStore } from "@/stores/engine";
 import { PowerToggle } from "@/components/PowerToggle";
 import { Slider } from "@/components/Slider";
 import { LevelMeter } from "@/components/LevelMeter";
+import { ScrollingWaveform } from "@/features/player/ScrollingWaveform";
 
 /**
  * Top bar: current view, master volume, live output meters, and the global
@@ -25,12 +26,18 @@ export function TopBar() {
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border bg-surface px-5">
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Icon className="size-4 text-text-muted" aria-hidden="true" />
         <h1 className="truncate text-sm font-medium">{current.label}</h1>
       </div>
 
-      <div className="ml-auto flex items-center gap-5">
+      {/* Live scrolling stereo waveform fills the space between title and
+          controls (renders nothing when no track is playing). */}
+      <div className="hidden h-9 min-w-0 flex-1 sm:block">
+        <ScrollingWaveform />
+      </div>
+
+      <div className="ml-auto flex shrink-0 items-center gap-5">
         <div className="flex items-center gap-2.5">
           <Volume2 className="size-4 text-text-muted" aria-hidden="true" />
           <Slider

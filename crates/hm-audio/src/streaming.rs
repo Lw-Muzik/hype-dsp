@@ -332,56 +332,143 @@ fn stream_worker(
     }
 }
 
-/// Bytes to fetch when reading only a remote file's metadata. ID3v2 / FLAC /
-/// front-loaded MP4 headers (incl. embedded cover art) live in the leading
-/// bytes, so this bounds the download — pre-play metadata never pulls the whole
-/// track.
-const META_PREFIX_BYTES: u64 = 2 * 1024 * 1024;
+/// Leading bytes streamed for the fast metadata path — covers the front-loaded
+/// ID3v2 / FLAC / MP4 headers (incl. a normal embedded cover) of most files.
+const META_PREFIX_SMALL: u64 = 2 * 1024 * 1024;
+/// Larger window buffered for the fallback probe — big enough to hold a whole
+/// typical song so tags at the END (ID3v1, MP4 `moov`-at-end) or past a large
+/// embedded cover are read too. Bounds the download for huge lossless files.
+const META_PREFIX_LARGE: u64 = 24 * 1024 * 1024;
 
-/// Read title/artist/album + embedded cover from a remote audio file by fetching
-/// only its leading [`META_PREFIX_BYTES`], without streaming the whole file — the
-/// desktop counterpart to the mobile app's `MediaMetadataRetriever`-over-URL
-/// cloud metadata. `ext` hints the container (from the file name). Returns
-/// `None` if the file can't be fetched or probed.
+/// Read title/artist/album + embedded cover from a remote audio file without
+/// pulling the whole track — the desktop counterpart to the mobile app's
+/// `MediaMetadataRetriever`-over-URL cloud metadata. `ext` hints the container.
+///
+/// A small leading prefix resolves most files cheaply; when that finds nothing
+/// (tags past the prefix, or only at the end of the file — ID3v1 / `moov`-at-end,
+/// common in re-encoded MP3s), it falls back to buffering a larger chunk and
+/// probing it **seekably**, so end-of-file metadata is read just like a local
+/// file. Returns `None` only if the file can't be fetched/probed at all.
 pub fn fetch_stream_metadata(
     url: &str,
     headers: &[(String, String)],
     ext: Option<&str>,
 ) -> Option<hm_core::TrackMeta> {
-    use std::io::Read;
-
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(6))
-        .timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .ok()?;
+
+    // Fast path: stream just the leading bytes (no buffering).
+    if let Some(meta) = probe_stream(&client, url, headers, ext, META_PREFIX_SMALL) {
+        if meta_useful(&meta) {
+            return Some(meta);
+        }
+    }
+    // Fallback: buffer a larger chunk and probe it seekably so end-of-file tags
+    // are picked up. Cached by the caller, so this only runs once per file.
+    probe_buffered(&client, url, headers, ext, META_PREFIX_LARGE)
+}
+
+fn meta_useful(m: &hm_core::TrackMeta) -> bool {
+    m.title.is_some() || m.artist.is_some() || m.album.is_some() || m.cover.is_some()
+}
+
+fn meta_request(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    headers: &[(String, String)],
+    max_bytes: u64,
+) -> Option<reqwest::blocking::Response> {
     let mut req = client
         .get(url)
-        .header("Range", format!("bytes=0-{}", META_PREFIX_BYTES - 1));
+        .header("Range", format!("bytes=0-{}", max_bytes - 1));
     for (k, v) in headers {
         req = req.header(k.as_str(), v.as_str());
     }
-    let resp = match req.send() {
-        Ok(r) if r.status().is_success() => r,
-        _ => return None,
-    };
+    match req.send() {
+        Ok(r) if r.status().is_success() => Some(r),
+        _ => None,
+    }
+}
 
-    // Cap the read in case the server ignored the Range request.
-    let capped = resp.take(META_PREFIX_BYTES);
-    let mss = MediaSourceStream::new(Box::new(ReadOnlySource::new(capped)), Default::default());
+fn meta_from_format(mss: MediaSourceStream, ext: Option<&str>) -> Option<hm_core::TrackMeta> {
     let mut hint = Hint::new();
     if let Some(ext) = ext {
         hint.with_extension(ext);
     }
     let mut format = symphonia::default::get_probe()
-        .probe(
-            &hint,
-            mss,
-            FormatOptions::default(),
-            MetadataOptions::default(),
-        )
+        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
         .ok()?;
     Some(crate::meta::extract_metadata(&mut *format))
+}
+
+/// Stream the leading `max_bytes` (forward-only, unbuffered) and probe.
+fn probe_stream(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    headers: &[(String, String)],
+    ext: Option<&str>,
+    max_bytes: u64,
+) -> Option<hm_core::TrackMeta> {
+    use std::io::Read;
+    let resp = meta_request(client, url, headers, max_bytes)?;
+    let capped = resp.take(max_bytes); // cap in case the server ignored the Range
+    let mss = MediaSourceStream::new(Box::new(ReadOnlySource::new(capped)), Default::default());
+    meta_from_format(mss, ext)
+}
+
+/// Download up to `max_bytes` into memory and probe it as a **seekable** source,
+/// so symphonia can reach metadata anywhere in the buffer. Falls back to a
+/// manual ID3v1 tail parse for old/re-encoded MP3s that carry only that.
+fn probe_buffered(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    headers: &[(String, String)],
+    ext: Option<&str>,
+    max_bytes: u64,
+) -> Option<hm_core::TrackMeta> {
+    let resp = meta_request(client, url, headers, max_bytes)?;
+    let bytes = resp.bytes().ok()?.to_vec();
+    // Parse the ID3v1 tail first (cheap, borrows) before the buffer is moved into
+    // the seekable source for the richer symphonia probe.
+    let id3v1 = parse_id3v1(&bytes);
+    let cursor = std::io::Cursor::new(bytes);
+    let from_symphonia = meta_from_format(
+        MediaSourceStream::new(Box::new(cursor), Default::default()),
+        ext,
+    );
+    // Prefer symphonia (covers, Unicode, all containers); fall back to ID3v1.
+    match from_symphonia {
+        Some(m) if meta_useful(&m) => Some(m),
+        other => id3v1.or(other),
+    }
+}
+
+/// Parse a 128-byte ID3v1 tail tag (`TAG` + title/artist/album, latin1) if
+/// present. No cover (ID3v1 has none) — just the text, for files that lack any
+/// front tag. Returns `None` when absent or empty.
+fn parse_id3v1(buf: &[u8]) -> Option<hm_core::TrackMeta> {
+    if buf.len() < 128 {
+        return None;
+    }
+    let tag = &buf[buf.len() - 128..];
+    if &tag[0..3] != b"TAG" {
+        return None;
+    }
+    let field = |raw: &[u8]| {
+        let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+        let s = String::from_utf8_lossy(&raw[..end]).trim().to_string();
+        (!s.is_empty()).then_some(s)
+    };
+    let meta = hm_core::TrackMeta {
+        title: field(&tag[3..33]),
+        artist: field(&tag[33..63]),
+        album: field(&tag[63..93]),
+        cover: None,
+    };
+    meta_useful(&meta).then_some(meta)
 }
 
 /// Issue the GET, optionally from `start_byte` via a `Range` header.
@@ -602,6 +689,40 @@ fn push_all(producer: &mut Producer<f32>, samples: &[f32], shared: &StreamShared
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Build a 128-byte ID3v1 tag with the given fields (padded with NULs).
+    fn id3v1(title: &str, artist: &str, album: &str) -> Vec<u8> {
+        let mut tag = vec![0u8; 128];
+        tag[0..3].copy_from_slice(b"TAG");
+        let put = |tag: &mut [u8], off: usize, s: &str| {
+            let b = s.as_bytes();
+            let n = b.len().min(30);
+            tag[off..off + n].copy_from_slice(&b[..n]);
+        };
+        put(&mut tag, 3, title);
+        put(&mut tag, 33, artist);
+        put(&mut tag, 63, album);
+        tag
+    }
+
+    #[test]
+    fn parses_id3v1_tail() {
+        // 64 KB of "audio" followed by an ID3v1 tag.
+        let mut buf = vec![0x55u8; 64 * 1024];
+        buf.extend_from_slice(&id3v1("Get Lucky", "Daft Punk", "Random Access Memories"));
+        let m = parse_id3v1(&buf).expect("tag present");
+        assert_eq!(m.title.as_deref(), Some("Get Lucky"));
+        assert_eq!(m.artist.as_deref(), Some("Daft Punk"));
+        assert_eq!(m.album.as_deref(), Some("Random Access Memories"));
+        assert!(m.cover.is_none());
+    }
+
+    #[test]
+    fn no_id3v1_without_tag() {
+        assert!(parse_id3v1(&vec![0u8; 4096]).is_none()); // no "TAG" marker
+        assert!(parse_id3v1(b"short").is_none()); // < 128 bytes
+        assert!(parse_id3v1(&id3v1("", "", "")).is_none()); // empty fields
+    }
 
     fn shared(total_frames: u64, content_bytes: u64) -> StreamShared {
         StreamShared {

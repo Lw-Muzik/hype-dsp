@@ -40,3 +40,43 @@ jobs:
 
       - name: Clippy (libs, excluding the tauri binary)
         run: cargo clippy --workspace --exclude hypemuzik --all-targets
+
+  # Validates the OPTIONAL native MilkDrop (libprojectM) build on all three
+  # platforms before the renderer is wired in. The `milkdrop` feature compiles
+  # libprojectM v4 from source via CMake (statically). Kept in a separate job so
+  # the native toolchain (CMake / OpenGL / GLEW / vcpkg) is only needed here —
+  # default builds leave the feature off and never touch it. Built in RELEASE so
+  # libprojectM's debug postfix matches projectm-sys's link name (the dev profile
+  # optimizes deps, which otherwise produces a `libprojectM-4.a` vs `-4d` mismatch).
+  milkdrop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libprojectM build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libgl1-mesa-dev mesa-common-dev libsdl2-dev libglm-dev
+
+      - name: Install libprojectM build deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake glew
+
+      - name: Install libprojectM build deps (Windows)
+        if: runner.os == 'Windows'
+        run: vcpkg --triplet=x64-windows-static-md install glew
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          key: ${{ matrix.os }}-milkdrop
+
+      - name: Build native libprojectM (proof)
+        run: cargo build --release -p hm-visualizer --features milkdrop --examples

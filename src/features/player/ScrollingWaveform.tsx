@@ -121,7 +121,7 @@ function WaveformCanvas() {
   }, [paused]);
 
   return (
-    <div className="relative h-9 w-full shrink-0 overflow-hidden border-t border-border bg-[#070809]">
+    <div className="relative size-full overflow-hidden rounded-md bg-black/25 ring-1 ring-white/5">
       <canvas
         ref={canvasRef}
         className="block size-full [filter:blur(0.4px)]"
@@ -132,10 +132,10 @@ function WaveformCanvas() {
 }
 
 /**
- * A VirtualDJ-style scrolling stereo waveform docked above the now-playing bar:
- * left channel sweeps the top in blue, right channel the bottom in red, newest
- * at the right edge. It runs while audio plays and freezes when paused. Renders
- * nothing when no track is loaded.
+ * A VirtualDJ-style scrolling stereo waveform that fills its container (mounted
+ * in the top bar): left channel sweeps the top in blue, right channel the bottom
+ * in red, newest at the right edge. It runs while audio plays and freezes when
+ * paused. Renders nothing when no track is loaded.
  */
 export function ScrollingWaveform() {
   const playing = useEngineStore((s) => s.playing);

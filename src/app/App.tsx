@@ -5,7 +5,6 @@ import { Toaster } from "@/components/Toaster";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
 import { RightSidebar } from "@/components/RightSidebar";
 import { ResizeHandle } from "@/components/ResizeHandle";
-import { ScrollingWaveform } from "@/features/player/ScrollingWaveform";
 import { Router } from "@/app/router";
 
 /** The application shell: sidebar + top bar + the active view + now-playing. */
@@ -24,7 +23,6 @@ export function App() {
           <ResizeHandle side="right" />
           <RightSidebar />
         </div>
-        <ScrollingWaveform />
         <NowPlayingBar />
       </div>
       <Toaster />

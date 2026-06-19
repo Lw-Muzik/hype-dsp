@@ -1,0 +1,26 @@
+[package]
+name = "hm-visualizer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Native MilkDrop (libprojectM v4) visualizer.
+#
+# `projectm-sys` compiles libprojectM from source via CMake and links it
+# STATICALLY (`features = ["static"]`). It's OPTIONAL and OFF by default, so the
+# normal workspace build (and the existing CI clippy job) never needs the native
+# toolchain (CMake / OpenGL / GLEW / vcpkg). Only the dedicated `milkdrop` CI
+# job enables it, to validate the cross-platform native build before the
+# renderer is wired in.
+[dependencies]
+projectm-sys = { version = "1", optional = true, features = ["static"] }
+
+[features]
+milkdrop = ["dep:projectm-sys"]
+
+# Build-proof binary, compiled only with `--features milkdrop`. Compiling +
+# linking it confirms libprojectM built and links on the target OS.
+[[example]]
+name = "build_proof"
+required-features = ["milkdrop"]

@@ -1,21 +1,22 @@
 import { useTrackArtwork } from "@/lib/useTrackArtwork";
+import type { ArtSource } from "@/lib/useTrackArtwork";
 import { coverGradient, coverInitials } from "@/lib/cover";
 import { cn } from "@/lib/cn";
 
 /**
- * A track/album cover: the file's real embedded art when present (lazily
- * fetched by path and cached), otherwise a deterministic gradient with
- * initials. Decorative — the surrounding control carries the accessible name.
+ * A track/album cover: the real embedded art when present (lazily fetched,
+ * source-aware, and cached), otherwise a deterministic gradient with initials.
+ * Decorative — the surrounding control carries the accessible name.
  */
 export function Artwork({
-  path,
+  art,
   seed,
   label,
   className,
   rounded = "rounded-lg",
 }: {
-  /** Local file path to lazy-load embedded art from (omit for non-local). */
-  path?: string | null;
+  /** Where to resolve real cover art from (omit for gradient-only). */
+  art?: ArtSource | null;
   /** Stable seed for the gradient fallback (album or title). */
   seed: string;
   /** Source for the fallback initials (usually the title). */
@@ -24,7 +25,7 @@ export function Artwork({
   /** Tailwind rounding utility (so callers can match the surrounding shape). */
   rounded?: string;
 }) {
-  const cover = useTrackArtwork(path ?? null);
+  const cover = useTrackArtwork(art);
   if (cover) {
     return (
       <img

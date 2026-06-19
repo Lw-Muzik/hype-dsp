@@ -44,7 +44,7 @@ struct LrclibHit {
 
 /// Resolve lyrics for the current track. `path` (when a local file) is checked
 /// first for a sidecar / embedded lyrics; otherwise it falls back to LRCLIB.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lyrics_fetch(
     title: String,
     artist: Option<String>,

@@ -9,6 +9,7 @@ import {
 import { cloudItem, localItem, phoneItem } from "@/stores/engine";
 import type { QueueItem } from "@/stores/engine";
 import { useLibraryStore } from "@/stores/library";
+import type { ArtSource } from "@/lib/useTrackArtwork";
 import type { CloudProvider } from "@/lib/types";
 
 /** A browsable track from any source, ready to enqueue (it's a `QueueItem`). */
@@ -39,6 +40,23 @@ export interface MusicLibrary {
   cloud: SourceState;
   /** Re-scan every source (e.g. after pairing a phone or connecting cloud). */
   reload: () => void;
+}
+
+/** Where to resolve a track's cover art from, by source (local path / phone). */
+export function trackArt(t: MusicTrack): ArtSource {
+  if (t.source === "phone" && t.device && t.phoneTrack) {
+    return {
+      key: t.uid,
+      source: "phone",
+      deviceId: t.device.id,
+      trackId: t.phoneTrack.id,
+      hasArt: t.phoneTrack.hasArt,
+    };
+  }
+  if (t.source === "cloud") {
+    return { key: t.uid, source: "cloud" };
+  }
+  return { key: t.uid, source: "local", path: t.artPath };
 }
 
 /** The immediate parent folder name of a file path (for the Folders facet). */

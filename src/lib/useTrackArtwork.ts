@@ -1,54 +1,79 @@
 import { useEffect, useState } from "react";
-import { libraryArtwork } from "@/lib/ipc";
+import { libraryArtwork, linkArtwork } from "@/lib/ipc";
 
 /**
- * Lazily resolve a local track's embedded cover art (a `data:` URI) by path.
- *
- * The library scan skips artwork to stay fast, so covers are fetched on demand
- * for the rows/cards actually rendered. Results — including "no art" (`null`) —
- * are cached per path for the session, and concurrent requests for the same
- * path are de-duplicated, so scrolling a long list stays cheap.
+ * Where a track's cover art comes from. Local files read embedded art by path;
+ * phone tracks fetch it from the paired device; cloud tracks have no per-track
+ * art endpoint (they fall back to a gradient).
+ */
+export interface ArtSource {
+  /** Stable cache key (the track's uid). */
+  key: string;
+  source: "local" | "phone" | "cloud";
+  /** Local file path. */
+  path?: string | null;
+  /** Phone device + track ids. */
+  deviceId?: string;
+  trackId?: string;
+  /** Whether the phone reports embedded art (skip the fetch if false). */
+  hasArt?: boolean;
+}
+
+/**
+ * Lazily resolve a track's cover art (a `data:` URI), source-aware. Results
+ * (including "no art" = `null`) are cached per track for the session and
+ * in-flight requests de-duplicated, so scrolling a huge grid/list stays cheap.
  */
 const cache = new Map<string, string | null>();
 const inFlight = new Map<string, Promise<string | null>>();
 
-function fetchArtwork(path: string): Promise<string | null> {
-  const existing = inFlight.get(path);
+function resolve(art: ArtSource): Promise<string | null> {
+  if (art.source === "local" && art.path) {
+    return libraryArtwork(art.path);
+  }
+  if (art.source === "phone" && art.hasArt && art.deviceId && art.trackId) {
+    return linkArtwork(art.deviceId, art.trackId);
+  }
+  return Promise.resolve(null);
+}
+
+function fetchArtwork(art: ArtSource): Promise<string | null> {
+  const existing = inFlight.get(art.key);
   if (existing) return existing;
-  const p = libraryArtwork(path)
+  const p = resolve(art)
     .then((v) => v ?? null)
     .catch(() => null)
     .then((v) => {
-      cache.set(path, v);
-      inFlight.delete(path);
+      cache.set(art.key, v);
+      inFlight.delete(art.key);
       return v;
     });
-  inFlight.set(path, p);
+  inFlight.set(art.key, p);
   return p;
 }
 
 /** The track's cover art data URI, or `null` while loading / if it has none. */
-export function useTrackArtwork(path: string | null | undefined): string | null {
+export function useTrackArtwork(art: ArtSource | null | undefined): string | null {
+  const key = art?.key ?? null;
   const [cover, setCover] = useState<string | null>(() =>
-    path ? (cache.get(path) ?? null) : null,
+    key ? (cache.get(key) ?? null) : null,
   );
 
   useEffect(() => {
-    if (!path) {
+    if (!art || !key) {
       setCover(null);
       return;
     }
-    if (cache.has(path)) {
-      setCover(cache.get(path)!);
+    if (cache.has(key)) {
+      setCover(cache.get(key)!);
       return;
     }
-    // Defer the actual file probe slightly: rows the user scrolls straight past
-    // unmount before this fires, so a fast scroll through a huge list never
-    // kicks off thousands of disk reads. Already-cached/in-flight paths still
-    // resolve immediately via fetchArtwork's dedup.
+    // Defer slightly: rows scrolled straight past unmount before this fires, so
+    // a fast scroll never kicks off hundreds of fetches. Cached/in-flight keys
+    // resolve immediately via the dedup above.
     let active = true;
     const timer = window.setTimeout(() => {
-      void fetchArtwork(path).then((v) => {
+      void fetchArtwork(art).then((v) => {
         if (active) setCover(v);
       });
     }, 140);
@@ -56,7 +81,9 @@ export function useTrackArtwork(path: string | null | undefined): string | null 
       active = false;
       window.clearTimeout(timer);
     };
-  }, [path]);
+    // Only re-resolve when the track changes (art content is stable per key).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   return cover;
 }

@@ -14,7 +14,7 @@ pub fn cloud_status(cloud: State<'_, CloudState>) -> CloudStatus {
 
 /// Run the OAuth flow for `provider` (opens the browser; blocks until the user
 /// finishes or it times out).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cloud_connect(cloud: State<'_, CloudState>, provider: CloudProvider) -> Result<(), IpcError> {
     cloud
         .connect(provider)
@@ -29,7 +29,7 @@ pub fn cloud_disconnect(cloud: State<'_, CloudState>, provider: CloudProvider) {
 
 /// List the contents of one cloud folder (subfolders + audio files). `folder`
 /// is the provider handle, or "" for the account root.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cloud_list(
     cloud: State<'_, CloudState>,
     provider: CloudProvider,
@@ -41,7 +41,7 @@ pub fn cloud_list(
 }
 
 /// Resolve a streamable URL for the file and play it through the chain.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cloud_play(
     cloud: State<'_, CloudState>,
     engine: State<'_, AudioEngine>,

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { Artwork } from "@/features/player/Artwork";
+import type { ArtSource } from "@/lib/useTrackArtwork";
 import { cn } from "@/lib/cn";
 
 /** One spotlighted album/track in the deck. */
@@ -8,8 +9,8 @@ export interface DeckItem {
   key: string;
   title: string;
   artist: string;
-  /** Local path for embedded art (optional). */
-  path?: string | null;
+  /** Where to resolve real cover art from (optional). */
+  art?: ArtSource | null;
   /** Gradient seed for the art fallback. */
   seed: string;
   /** Index into the full track list to start playback from. */
@@ -203,7 +204,7 @@ function DeckCard({
       )}
     >
       <Artwork
-        path={item.path}
+        art={item.art}
         seed={item.seed}
         label={item.title}
         rounded="rounded-2xl"

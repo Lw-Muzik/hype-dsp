@@ -5,7 +5,7 @@ use hm_media::radio;
 use tauri::State;
 
 /// Search the radio directory (falls back to the bundled seed when offline).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn radio_search(query: String) -> Vec<RadioStation> {
     radio::search(&query)
 }

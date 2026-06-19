@@ -13,7 +13,7 @@ use hm_link::{LinkState, PhoneDevice, PhoneTrack};
 use tauri::State;
 
 /// Browse the LAN (~2.5 s) for phones sharing their library.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn link_discover(link: State<'_, LinkState>) -> Result<Vec<PhoneDevice>, IpcError> {
     link.discover(Duration::from_millis(2500))
         .map_err(|e| IpcError::new("link", e))
@@ -26,7 +26,7 @@ pub fn link_paired(link: State<'_, LinkState>) -> Vec<PhoneDevice> {
 }
 
 /// Pair with a phone using the 6-digit PIN it's showing.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn link_pair(
     link: State<'_, LinkState>,
     host: String,
@@ -46,7 +46,7 @@ pub fn link_unpair(link: State<'_, LinkState>, device_id: String) {
 }
 
 /// Fetch a paired phone's track list.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn link_library(
     link: State<'_, LinkState>,
     device_id: String,
@@ -56,7 +56,7 @@ pub fn link_library(
 
 /// Fetch a track's embedded artwork as a `data:` URI, or `None` if it has none.
 /// Never errors — a missing cover just falls back to the gradient placeholder.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn link_artwork(
     link: State<'_, LinkState>,
     device_id: String,
@@ -68,7 +68,7 @@ pub fn link_artwork(
 /// Stream one track from the phone through the enhancement chain.
 /// `duration_secs`, when the phone already knows the track length, makes the
 /// stream seekable and shows its duration immediately.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn link_play(
     link: State<'_, LinkState>,
     engine: State<'_, AudioEngine>,

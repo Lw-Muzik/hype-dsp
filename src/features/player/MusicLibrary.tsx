@@ -17,8 +17,9 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
 import { useUiStore } from "@/stores/ui";
-import { useMusicLibrary } from "@/features/player/useMusicLibrary";
+import { trackArt, useMusicLibrary } from "@/features/player/useMusicLibrary";
 import type { MusicTrack } from "@/features/player/useMusicLibrary";
+import type { ArtSource } from "@/lib/useTrackArtwork";
 import { AlbumDeck } from "@/features/player/AlbumDeck";
 import type { DeckItem } from "@/features/player/AlbumDeck";
 import { TrackRow } from "@/features/player/TrackRow";
@@ -45,7 +46,8 @@ interface Group {
   label: string;
   subtitle: string;
   seed: string;
-  artPath: string | null;
+  /** Cover art from the group's first track (for the Albums facet). */
+  art: ArtSource;
   tracks: MusicTrack[];
 }
 
@@ -70,7 +72,7 @@ function groupTracks(tracks: MusicTrack[], facet: Facet): Group[] {
         label,
         subtitle: "",
         seed: facet === "albums" ? label : `${facet}:${label}`,
-        artPath: facet === "albums" ? t.artPath : null,
+        art: trackArt(t),
         tracks: [t],
       });
     }
@@ -93,7 +95,7 @@ function pickDeck(tracks: MusicTrack[]): DeckItem[] {
       key: `a:${a.key}`,
       title: a.label,
       artist: a.subtitle,
-      path: a.artPath,
+      art: a.art,
       seed: a.seed,
       index: tracks.indexOf(a.tracks[0]!),
     }));
@@ -102,7 +104,7 @@ function pickDeck(tracks: MusicTrack[]): DeckItem[] {
     key: `t:${t.uid}`,
     title: t.title,
     artist: t.artist ?? "Unknown artist",
-    path: t.artPath,
+    art: trackArt(t),
     seed: t.album?.trim() || t.title,
     index: i,
   }));
@@ -317,7 +319,7 @@ export function MusicLibrary() {
                       title={t.title}
                       artist={t.artist}
                       durationSecs={t.durationSecs}
-                      artPath={t.artPath}
+                      art={trackArt(t)}
                       seed={t.album?.trim() || t.title}
                       source={t.source}
                       playing={`${t.source}:${t.id}` === playingKey}
@@ -461,7 +463,7 @@ function GroupRow({
     >
       {showArt ? (
         <Artwork
-          path={group.artPath}
+          art={group.art}
           seed={group.seed}
           label={group.label}
           rounded="rounded-md"
@@ -521,7 +523,7 @@ function TrackCard({
     <button type="button" onClick={onPlay} className="group flex h-full w-full flex-col gap-2 text-left">
       <div className={cn("relative", playing && "rounded-xl ring-2 ring-accent")}>
         <Artwork
-          path={track.artPath}
+          art={trackArt(track)}
           seed={track.album?.trim() || track.title}
           label={track.title}
           rounded="rounded-xl"
@@ -569,7 +571,7 @@ function GroupCard({
       <div className="relative">
         {showArt ? (
           <Artwork
-            path={group.artPath}
+            art={group.art}
             seed={group.seed}
             label={group.label}
             rounded="rounded-xl"

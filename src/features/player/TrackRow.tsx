@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 import { Cloud, Play, Smartphone } from "lucide-react";
 import { Artwork } from "@/features/player/Artwork";
+import type { ArtSource } from "@/lib/useTrackArtwork";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 /**
- * One song row: rank, cover art (real ID3 art for local tracks, lazily loaded),
+ * One song row: rank, cover art (real embedded/phone art, lazily loaded),
  * title + artist, a small badge for phone/cloud sources, duration, and an
  * optional trailing action. Clicking the row plays it. Source-agnostic so the
  * unified library can list local, phone, and cloud tracks together.
@@ -15,7 +16,7 @@ export function TrackRow({
   title,
   artist,
   durationSecs,
-  artPath,
+  art,
   seed,
   source = "local",
   playing,
@@ -26,8 +27,8 @@ export function TrackRow({
   title: string;
   artist: string | null;
   durationSecs: number | null;
-  /** Local file path for lazy embedded art (omit for phone/cloud). */
-  artPath?: string | null;
+  /** Where to resolve the cover art from (omit for gradient-only). */
+  art?: ArtSource | null;
   /** Gradient-fallback seed (usually album or title). */
   seed: string;
   source?: "local" | "phone" | "cloud";
@@ -52,7 +53,7 @@ export function TrackRow({
         {String(rank).padStart(2, "0")}
       </span>
       <div className="relative">
-        <Artwork path={artPath} seed={seed} label={title} rounded="rounded-md" className="size-11" />
+        <Artwork art={art} seed={seed} label={title} rounded="rounded-md" className="size-11" />
         <span className="absolute inset-0 grid place-items-center rounded-md bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
           <Play className="size-4 text-white" aria-hidden="true" />
         </span>

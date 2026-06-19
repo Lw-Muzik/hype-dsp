@@ -209,7 +209,7 @@ fn needs_identify(t: &LibraryTrack) -> bool {
 /* ----------------------------------------------------------------- commands */
 
 /// Identify one local track by audio fingerprint and fill in any missing tags.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn identify_track(store: State<'_, MediaStore>, path: String) -> Option<RecognitionResult> {
     let (fingerprint, duration) = fingerprint_file(Path::new(&path))?;
     let mut result = acoustid_lookup(&fingerprint, duration)?;
@@ -223,7 +223,7 @@ pub fn identify_track(store: State<'_, MediaStore>, path: String) -> Option<Reco
 /// Fingerprint + identify every library track that's missing information,
 /// filling tags in place. Rate-limited for AcoustID; emits progress; returns
 /// the number of tracks successfully tagged.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_identify_missing(
     app: tauri::AppHandle,
     store: State<'_, MediaStore>,

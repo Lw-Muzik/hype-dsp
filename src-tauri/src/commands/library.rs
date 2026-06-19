@@ -92,7 +92,7 @@ fn index_paths(app: &tauri::AppHandle, store: &MediaStore, paths: &[PathBuf]) ->
 /// it walks first, then tags + writes in batched transactions, emitting
 /// `library:scan_progress` along the way. Runs off the UI thread (Tauri command
 /// pool). Returns the number of tracks imported.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_scan(
     app: tauri::AppHandle,
     store: State<'_, MediaStore>,
@@ -111,7 +111,7 @@ pub fn library_scan(
 /// rows in place. Use this to backfill tags for a library that was scanned
 /// before tag extraction existed (or after files were re-tagged) without
 /// re-picking folders. Returns the number refreshed.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_refresh_tags(
     app: tauri::AppHandle,
     store: State<'_, MediaStore>,
@@ -138,7 +138,7 @@ pub fn library_remove(store: State<'_, MediaStore>, path: String) -> Result<(), 
 /// A track's embedded cover art as a `data:` URI, or `None` if it has none.
 /// Read on demand (the scan skips artwork to stay fast), so the UI lazy-loads
 /// covers only for the rows/cards it actually shows. Never errors.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_artwork(path: String) -> Option<String> {
     probe_artwork(Path::new(&path))
 }

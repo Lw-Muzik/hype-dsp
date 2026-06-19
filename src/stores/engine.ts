@@ -107,7 +107,7 @@ const idleMeters: MeterFrame = { peak: [0, 0], rms: [0, 0] };
 
 /* --------------------------------------------------------------- queue items */
 
-function localItem(track: LibraryTrack): QueueItem {
+export function localItem(track: LibraryTrack): QueueItem {
   return {
     id: track.path,
     source: "local",
@@ -119,7 +119,7 @@ function localItem(track: LibraryTrack): QueueItem {
   };
 }
 
-function phoneItem(device: PhoneDevice, t: PhoneTrack): QueueItem {
+export function phoneItem(device: PhoneDevice, t: PhoneTrack): QueueItem {
   return {
     id: t.id,
     source: "phone",
@@ -132,7 +132,7 @@ function phoneItem(device: PhoneDevice, t: PhoneTrack): QueueItem {
   };
 }
 
-function cloudItem(file: CloudEntry): QueueItem {
+export function cloudItem(file: CloudEntry): QueueItem {
   return {
     id: file.id,
     source: "cloud",
@@ -247,6 +247,12 @@ interface EngineStore {
   playPhoneList: (device: PhoneDevice, tracks: PhoneTrack[], index: number) => void;
   /** Play a list of cloud files starting at `index`. */
   playCloudList: (files: CloudEntry[], index: number) => void;
+  /** Play a pre-built queue of items (any mix of sources) starting at `index`. */
+  playQueueItems: (items: QueueItem[], index: number) => void;
+  /** Jump to a position in the current play order. */
+  jumpTo: (orderPos: number) => void;
+  /** Remove an item (by its queue index) from the current queue. */
+  removeFromQueue: (queueIndex: number) => void;
   /** Stream an internet radio station (live; no queue/duration). */
   playRadio: (station: RadioStation) => void;
   /** Stream a single cloud file (folder context unknown). */
@@ -319,8 +325,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       toast.error(`Couldn't play ${item.title}: ${ipcErrorMessage(e)}`);
 
     const { gapless, crossfadeSecs } = state.playback;
+    // The engine's gapless queue only works for local files; a queue that mixes
+    // in phone/cloud streams advances track-by-track from the store instead.
+    const allLocal = order.every((i) => queue[i]?.source === "local");
     const useEngineQueue =
-      item.source === "local" && (gapless || crossfadeSecs > 0) && repeat !== "one";
+      item.source === "local" && allLocal && (gapless || crossfadeSecs > 0) && repeat !== "one";
 
     gaplessQueueRunning = useEngineQueue;
 
@@ -581,6 +590,40 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       const target = files[index];
       const start = target ? Math.max(0, audio.findIndex((f) => f.id === target.id)) : 0;
       setQueueAndPlay(audio.map(cloudItem), start);
+    },
+
+    playQueueItems: (items, index) => setQueueAndPlay(items, index),
+
+    jumpTo: (pos) => {
+      const { order } = get();
+      if (pos >= 0 && pos < order.length) startPlayback(pos);
+    },
+
+    removeFromQueue: (qIndex) => {
+      const { queue, order, orderPos } = get();
+      if (qIndex < 0 || qIndex >= queue.length) return;
+      const currentQ = orderPos >= 0 ? order[orderPos]! : -1;
+      const newQueue = queue.filter((_, i) => i !== qIndex);
+      if (newQueue.length === 0) {
+        void get().stop();
+        return;
+      }
+      // Drop the index from the order and renumber entries past it.
+      const newOrder = order
+        .filter((i) => i !== qIndex)
+        .map((i) => (i > qIndex ? i - 1 : i));
+      if (qIndex === currentQ) {
+        // Removed the playing track: play whatever takes its order slot.
+        const pos = Math.min(orderPos, newOrder.length - 1);
+        set({ queue: newQueue, order: newOrder });
+        startPlayback(pos);
+      } else {
+        const newCur = currentQ > qIndex ? currentQ - 1 : currentQ;
+        const newPos = newOrder.indexOf(newCur);
+        set({ queue: newQueue, order: newOrder, orderPos: newPos, queueIndex: newCur });
+        // Keep the engine's gapless list in sync (re-issues from current).
+        if (gaplessQueueRunning) startPlayback(newPos);
+      }
     },
 
     playRadio: (station) => {

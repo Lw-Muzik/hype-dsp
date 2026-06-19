@@ -21,6 +21,11 @@ interface UiState {
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
 
+  /** Whether the play-queue drawer is open. */
+  queueOpen: boolean;
+  toggleQueue: () => void;
+  closeQueue: () => void;
+
   /** App metadata, loaded once from the backend on startup. */
   appInfo: AppInfo | null;
   setAppInfo: (info: AppInfo) => void;
@@ -37,6 +42,10 @@ export const useUiStore = create<UiState>((set) => ({
   sidebarCollapsed: false,
   toggleSidebar: () =>
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
+  queueOpen: false,
+  toggleQueue: () => set((state) => ({ queueOpen: !state.queueOpen })),
+  closeQueue: () => set({ queueOpen: false }),
 
   appInfo: null,
   setAppInfo: (appInfo) => set({ appInfo }),

@@ -3,6 +3,7 @@ import { TopBar } from "@/components/TopBar";
 import { TrialBanner } from "@/components/TrialBanner";
 import { Toaster } from "@/components/Toaster";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
+import { QueueDrawer } from "@/components/QueueDrawer";
 import { Router } from "@/app/router";
 
 /** The application shell: sidebar + top bar + the active view + now-playing. */
@@ -18,6 +19,7 @@ export function App() {
         </main>
         <NowPlayingBar />
       </div>
+      <QueueDrawer />
       <Toaster />
     </div>
   );

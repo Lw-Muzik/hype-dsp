@@ -1,4 +1,5 @@
 import {
+  ListMusic,
   Pause,
   Play,
   Repeat,
@@ -9,6 +10,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
+import { useUiStore } from "@/stores/ui";
 import { Slider } from "@/components/Slider";
 import { formatTime } from "@/lib/format";
 import { coverGradient, coverInitials } from "@/lib/cover";
@@ -58,6 +60,8 @@ export function NowPlayingBar() {
   const orderPos = useEngineStore((s) => s.orderPos);
   const repeat = useEngineStore((s) => s.repeat);
   const shuffle = useEngineStore((s) => s.shuffle);
+  const toggleQueue = useUiStore((s) => s.toggleQueue);
+  const queueOpen = useUiStore((s) => s.queueOpen);
   const togglePause = useEngineStore((s) => s.togglePause);
   const next = useEngineStore((s) => s.next);
   const prev = useEngineStore((s) => s.prev);
@@ -187,8 +191,18 @@ export function NowPlayingBar() {
         </div>
       </div>
 
-      {/* Volume */}
+      {/* Queue + volume */}
       <div className="flex flex-1 items-center justify-end gap-2">
+        <button
+          type="button"
+          aria-label="Show queue"
+          aria-pressed={queueOpen}
+          title="Queue"
+          onClick={toggleQueue}
+          className={cn(iconBtn, queueOpen && "text-accent hover:text-accent")}
+        >
+          <ListMusic className="size-4" aria-hidden="true" />
+        </button>
         <Volume2 className="size-4 shrink-0 text-text-muted" aria-hidden="true" />
         <Slider
           label="Volume"

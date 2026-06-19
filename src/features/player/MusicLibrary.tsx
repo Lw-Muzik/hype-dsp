@@ -1,0 +1,646 @@
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronLeft,
+  Cloud,
+  Disc3,
+  FolderOpen,
+  LayoutGrid,
+  List,
+  ListMusic,
+  Music2,
+  Play,
+  Search,
+  Smartphone,
+  Tag,
+  Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { useEngineStore } from "@/stores/engine";
+import { useUiStore } from "@/stores/ui";
+import { useMusicLibrary } from "@/features/player/useMusicLibrary";
+import type { MusicTrack } from "@/features/player/useMusicLibrary";
+import { AlbumDeck } from "@/features/player/AlbumDeck";
+import type { DeckItem } from "@/features/player/AlbumDeck";
+import { TrackRow } from "@/features/player/TrackRow";
+import { Artwork } from "@/features/player/Artwork";
+import { VirtualList } from "@/components/VirtualList";
+import { VirtualGrid } from "@/components/VirtualGrid";
+import { Button } from "@/components/Button";
+import { cn } from "@/lib/cn";
+
+type SourceFilter = "all" | "local" | "phone" | "cloud";
+type Facet = "songs" | "albums" | "artists" | "folders" | "genres";
+type ViewMode = "list" | "grid";
+
+const FACETS: { id: Facet; label: string; icon: LucideIcon }[] = [
+  { id: "songs", label: "Songs", icon: Music2 },
+  { id: "albums", label: "Albums", icon: Disc3 },
+  { id: "artists", label: "Artists", icon: Users },
+  { id: "folders", label: "Folders", icon: FolderOpen },
+  { id: "genres", label: "Genres", icon: Tag },
+];
+
+interface Group {
+  key: string;
+  label: string;
+  subtitle: string;
+  seed: string;
+  artPath: string | null;
+  tracks: MusicTrack[];
+}
+
+/** Group a track set by the active facet, preserving first-seen order. */
+function groupTracks(tracks: MusicTrack[], facet: Facet): Group[] {
+  const keyer: Record<Exclude<Facet, "songs">, (t: MusicTrack) => string> = {
+    albums: (t) => t.album?.trim() || "Singles",
+    artists: (t) => t.artist?.trim() || "Unknown artist",
+    folders: (t) => t.folder?.trim() || "Other",
+    genres: (t) => t.genre?.trim() || "Unknown genre",
+  };
+  const fn = keyer[facet as Exclude<Facet, "songs">];
+  const map = new Map<string, Group>();
+  for (const t of tracks) {
+    const label = fn(t);
+    const existing = map.get(label.toLowerCase());
+    if (existing) {
+      existing.tracks.push(t);
+    } else {
+      map.set(label.toLowerCase(), {
+        key: label.toLowerCase(),
+        label,
+        subtitle: "",
+        seed: facet === "albums" ? label : `${facet}:${label}`,
+        artPath: facet === "albums" ? t.artPath : null,
+        tracks: [t],
+      });
+    }
+  }
+  const groups = [...map.values()];
+  for (const g of groups) {
+    g.subtitle =
+      facet === "albums"
+        ? (g.tracks[0]?.artist ?? "Unknown artist")
+        : `${g.tracks.length} song${g.tracks.length === 1 ? "" : "s"}`;
+  }
+  return groups.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** Featured deck items for the hero (top albums, else first tracks). */
+function pickDeck(tracks: MusicTrack[]): DeckItem[] {
+  const albums = groupTracks(tracks, "albums").filter((g) => g.key !== "singles");
+  if (albums.length >= 2) {
+    return albums.slice(0, 6).map((a) => ({
+      key: `a:${a.key}`,
+      title: a.label,
+      artist: a.subtitle,
+      path: a.artPath,
+      seed: a.seed,
+      index: tracks.indexOf(a.tracks[0]!),
+    }));
+  }
+  return tracks.slice(0, 6).map((t, i) => ({
+    key: `t:${t.uid}`,
+    title: t.title,
+    artist: t.artist ?? "Unknown artist",
+    path: t.artPath,
+    seed: t.album?.trim() || t.title,
+    index: i,
+  }));
+}
+
+function matches(t: MusicTrack, q: string): boolean {
+  return (
+    t.title.toLowerCase().includes(q) ||
+    (t.artist?.toLowerCase().includes(q) ?? false) ||
+    (t.album?.toLowerCase().includes(q) ?? false) ||
+    (t.folder?.toLowerCase().includes(q) ?? false)
+  );
+}
+
+const ROW_H = 56;
+const GROUP_H = 64;
+// Grid cells: min card width + height reserved for the title/subtitle below art.
+const GRID_MIN_COL = 150;
+const GRID_TEXT_H = 52;
+
+/**
+ * The unified music browser: every source (local library + paired phones +
+ * connected cloud) merged into one collection, browsable by Songs / Albums /
+ * Artists / Folders / Genres, with a global search across all of them and a
+ * source filter. Replaces the old per-source views.
+ */
+export function MusicLibrary() {
+  const { tracks, library, phone, cloud } = useMusicLibrary();
+  const playQueueItems = useEngineStore((s) => s.playQueueItems);
+  const current = useEngineStore((s) =>
+    s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined,
+  );
+  const playingKey = current ? `${current.source}:${current.id}` : null;
+  const setRoute = useUiStore((s) => s.setRoute);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [facet, setFacet] = useState<Facet>("songs");
+  const [view, setView] = useState<ViewMode>("list");
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [drill, setDrill] = useState<{ label: string; tracks: MusicTrack[] } | null>(null);
+
+  // Reset transient view state when the source filter changes.
+  useEffect(() => setDrill(null), [sourceFilter, facet]);
+
+  const filtered = useMemo(
+    () => (sourceFilter === "all" ? tracks : tracks.filter((t) => t.source === sourceFilter)),
+    [tracks, sourceFilter],
+  );
+
+  const q = deferredQuery.trim().toLowerCase();
+  const searching = q.length > 0;
+
+  const searchResults = useMemo(
+    () => (searching ? filtered.filter((t) => matches(t, q)) : []),
+    [filtered, q, searching],
+  );
+
+  const groups = useMemo(
+    () => (!searching && facet !== "songs" && !drill ? groupTracks(filtered, facet) : []),
+    [filtered, facet, searching, drill],
+  );
+
+  const deck = useMemo(
+    () => (!searching && facet === "songs" && !drill ? pickDeck(filtered) : []),
+    [filtered, facet, searching, drill],
+  );
+
+  // The track list currently shown (and what playback enqueues).
+  const shownTracks = searching ? searchResults : drill ? drill.tracks : filtered;
+
+  const playAt = (list: MusicTrack[], index: number) => playQueueItems(list, index);
+
+  // Phone/Cloud selected but not connected → offer to set them up.
+  const needsConnect =
+    (sourceFilter === "phone" && !phone.connected) ||
+    (sourceFilter === "cloud" && !cloud.connected);
+
+  return (
+    <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-2">
+      {/* Source filter + global search */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1 rounded-control border border-border bg-surface-raised p-1">
+          <SourcePill label="All" active={sourceFilter === "all"} onClick={() => setSourceFilter("all")} />
+          <SourcePill
+            icon={Music2}
+            label="Library"
+            count={library.count}
+            active={sourceFilter === "local"}
+            onClick={() => setSourceFilter("local")}
+          />
+          <SourcePill
+            icon={Smartphone}
+            label="Phone"
+            count={phone.connected ? phone.count : undefined}
+            dot={phone.connected}
+            active={sourceFilter === "phone"}
+            onClick={() => setSourceFilter("phone")}
+          />
+          <SourcePill
+            icon={Cloud}
+            label="Cloud"
+            count={cloud.connected ? cloud.count : undefined}
+            dot={cloud.connected}
+            active={sourceFilter === "cloud"}
+            onClick={() => setSourceFilter("cloud")}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <ViewToggle view={view} onChange={setView} />
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-faint"
+              aria-hidden="true"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search everything"
+              aria-label="Search all sources"
+              className="w-56 rounded-control border border-border bg-surface-raised py-1.5 pl-8 pr-3 text-sm outline-none transition-colors focus:border-border-strong placeholder:text-text-faint"
+            />
+          </div>
+        </div>
+      </div>
+
+      {needsConnect ? (
+        <ConnectPrompt
+          kind={sourceFilter === "phone" ? "phone" : "cloud"}
+          onConnect={() => setRoute(sourceFilter === "phone" ? "phone" : "cloud")}
+        />
+      ) : tracks.length === 0 && !library.loading ? (
+        <EmptyAll />
+      ) : (
+        <>
+          {/* Hero deck (Songs facet only) */}
+          {deck.length > 0 && (
+            <AlbumDeck
+              items={deck}
+              onPlay={(i) => {
+                // Deck items index into either album-firsts or the first tracks.
+                playAt(filtered, Math.max(0, i));
+              }}
+            />
+          )}
+
+          {/* Facet tabs + search/drill header */}
+          {searching ? (
+            <SectionHeader title={`Results for “${deferredQuery.trim()}”`} subtitle={`${searchResults.length} songs`} />
+          ) : drill ? (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setDrill(null)}
+                className="flex items-center gap-1 rounded-control border border-border px-2.5 py-1.5 text-sm text-text-muted transition-colors hover:border-border-strong hover:text-text"
+              >
+                <ChevronLeft className="size-4" aria-hidden="true" />
+                Back
+              </button>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{drill.label}</p>
+                <p className="text-xs text-text-muted">{drill.tracks.length} songs</p>
+              </div>
+              <Button
+                variant="primary"
+                onClick={() => playAt(drill.tracks, 0)}
+                className="ml-auto"
+              >
+                <Play className="size-4 fill-current" aria-hidden="true" />
+                Play all
+              </Button>
+            </div>
+          ) : (
+            <FacetTabs facet={facet} onSelect={setFacet} />
+          )}
+
+          {/* Content — re-keyed so it animates in on any view/facet/search change. */}
+          <div
+            key={`${view}|${searching ? "search" : drill ? "drill" : facet}`}
+            className="hm-view-enter"
+          >
+            {searching || drill || facet === "songs" ? (
+              shownTracks.length === 0 ? (
+                <Empty message={searching ? "No matches." : "Nothing here yet."} />
+              ) : view === "grid" ? (
+                <VirtualGrid
+                  items={shownTracks}
+                  minColWidth={GRID_MIN_COL}
+                  textHeight={GRID_TEXT_H}
+                  scrollRef={scrollRef}
+                  ariaLabel="Songs"
+                  getKey={(t) => t.uid}
+                  renderCell={(t, i) => (
+                    <TrackCard
+                      track={t}
+                      playing={`${t.source}:${t.id}` === playingKey}
+                      onPlay={() => playAt(shownTracks, i)}
+                    />
+                  )}
+                />
+              ) : (
+                <VirtualList
+                  items={shownTracks}
+                  rowHeight={ROW_H}
+                  scrollRef={scrollRef}
+                  ariaLabel="Songs"
+                  getKey={(t) => t.uid}
+                  renderRow={(t, i) => (
+                    <TrackRow
+                      rank={i + 1}
+                      title={t.title}
+                      artist={t.artist}
+                      durationSecs={t.durationSecs}
+                      artPath={t.artPath}
+                      seed={t.album?.trim() || t.title}
+                      source={t.source}
+                      playing={`${t.source}:${t.id}` === playingKey}
+                      onPlay={() => playAt(shownTracks, i)}
+                    />
+                  )}
+                />
+              )
+            ) : groups.length === 0 ? (
+              <Empty message="Nothing here yet." />
+            ) : view === "grid" ? (
+              <VirtualGrid
+                items={groups}
+                minColWidth={GRID_MIN_COL}
+                textHeight={GRID_TEXT_H}
+                scrollRef={scrollRef}
+                ariaLabel={facet}
+                getKey={(g) => g.key}
+                renderCell={(g) => (
+                  <GroupCard
+                    group={g}
+                    facetIcon={FACETS.find((f) => f.id === facet)!.icon}
+                    showArt={facet === "albums"}
+                    onOpen={() => setDrill({ label: g.label, tracks: g.tracks })}
+                  />
+                )}
+              />
+            ) : (
+              <VirtualList
+                items={groups}
+                rowHeight={GROUP_H}
+                scrollRef={scrollRef}
+                ariaLabel={facet}
+                getKey={(g) => g.key}
+                renderRow={(g) => (
+                  <GroupRow
+                    group={g}
+                    facetIcon={FACETS.find((f) => f.id === facet)!.icon}
+                    showArt={facet === "albums"}
+                    onOpen={() => setDrill({ label: g.label, tracks: g.tracks })}
+                  />
+                )}
+              />
+            )}
+          </div>
+        </>
+      )}
+
+      {(phone.loading || cloud.loading) && (
+        <p className="px-2 text-center text-xs text-text-faint">Loading other sources…</p>
+      )}
+    </div>
+  );
+}
+
+function SourcePill({
+  icon: Icon,
+  label,
+  count,
+  dot,
+  active,
+  onClick,
+}: {
+  icon?: LucideIcon;
+  label: string;
+  count?: number;
+  dot?: boolean;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 rounded-[7px] px-3 py-1.5 text-sm font-medium transition-colors",
+        active ? "bg-accent text-surface" : "text-text-muted hover:text-text",
+      )}
+    >
+      {Icon && <Icon className="size-4" aria-hidden="true" />}
+      {label}
+      {count != null && (
+        <span className={cn("tabular-nums text-xs", active ? "text-surface/70" : "text-text-faint")}>
+          {count.toLocaleString()}
+        </span>
+      )}
+      {dot === false && <span className="size-1.5 rounded-full bg-text-faint" aria-hidden="true" />}
+    </button>
+  );
+}
+
+function FacetTabs({ facet, onSelect }: { facet: Facet; onSelect: (f: Facet) => void }) {
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Browse by">
+      {FACETS.map((f) => {
+        const Icon = f.icon;
+        const active = f.id === facet;
+        return (
+          <button
+            key={f.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onSelect(f.id)}
+            className={cn(
+              "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
+              active
+                ? "bg-accent text-surface"
+                : "border border-border text-text-muted hover:border-border-strong hover:text-text",
+            )}
+          >
+            <Icon className="size-4" aria-hidden="true" />
+            {f.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function GroupRow({
+  group,
+  facetIcon: Icon,
+  showArt,
+  onOpen,
+}: {
+  group: Group;
+  facetIcon: LucideIcon;
+  showArt: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex h-full w-full items-center gap-3 rounded-control px-2 text-left transition-colors hover:bg-surface-overlay"
+    >
+      {showArt ? (
+        <Artwork
+          path={group.artPath}
+          seed={group.seed}
+          label={group.label}
+          rounded="rounded-md"
+          className="size-12"
+        />
+      ) : (
+        <span className="grid size-12 shrink-0 place-items-center rounded-md bg-surface-overlay text-text-muted">
+          <Icon className="size-5" aria-hidden="true" />
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{group.label}</p>
+        <p className="truncate text-xs text-text-muted">{group.subtitle}</p>
+      </div>
+      <span className="grid size-7 place-items-center rounded-full text-text-faint opacity-0 transition-opacity group-hover:opacity-100">
+        <Play className="size-4 fill-current" aria-hidden="true" />
+      </span>
+    </button>
+  );
+}
+
+function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) => void }) {
+  const btn = (mode: ViewMode, Icon: LucideIcon, label: string) => (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={view === mode}
+      title={label}
+      onClick={() => onChange(mode)}
+      className={cn(
+        "grid size-7 place-items-center rounded-[7px] transition-colors",
+        view === mode ? "bg-accent text-surface" : "text-text-muted hover:text-text",
+      )}
+    >
+      <Icon className="size-4" aria-hidden="true" />
+    </button>
+  );
+  return (
+    <div className="flex items-center gap-0.5 rounded-control border border-border bg-surface-raised p-0.5">
+      {btn("list", List, "List view")}
+      {btn("grid", LayoutGrid, "Grid view")}
+    </div>
+  );
+}
+
+/** A track rendered as a grid card (square cover + title + artist). */
+function TrackCard({
+  track,
+  playing,
+  onPlay,
+}: {
+  track: MusicTrack;
+  playing: boolean;
+  onPlay: () => void;
+}) {
+  return (
+    <button type="button" onClick={onPlay} className="group flex h-full w-full flex-col gap-2 text-left">
+      <div className={cn("relative", playing && "rounded-xl ring-2 ring-accent")}>
+        <Artwork
+          path={track.artPath}
+          seed={track.album?.trim() || track.title}
+          label={track.title}
+          rounded="rounded-xl"
+          className="aspect-square w-full shadow-md ring-1 ring-white/5"
+        />
+        <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="grid size-10 place-items-center rounded-full bg-accent text-surface shadow-lg">
+            <Play className="size-5 fill-current" aria-hidden="true" />
+          </span>
+        </span>
+        {track.source !== "local" && (
+          <span className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-black/55 text-white backdrop-blur">
+            {track.source === "phone" ? (
+              <Smartphone className="size-3" aria-hidden="true" />
+            ) : (
+              <Cloud className="size-3" aria-hidden="true" />
+            )}
+          </span>
+        )}
+      </div>
+      <div className="min-w-0">
+        <p className={cn("truncate text-sm font-medium", playing && "text-accent-strong")}>
+          {track.title}
+        </p>
+        <p className="truncate text-xs text-text-muted">{track.artist ?? "Unknown artist"}</p>
+      </div>
+    </button>
+  );
+}
+
+/** A facet group (album/artist/folder/genre) rendered as a grid card. */
+function GroupCard({
+  group,
+  facetIcon: Icon,
+  showArt,
+  onOpen,
+}: {
+  group: Group;
+  facetIcon: LucideIcon;
+  showArt: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button type="button" onClick={onOpen} className="group flex h-full w-full flex-col gap-2 text-left">
+      <div className="relative">
+        {showArt ? (
+          <Artwork
+            path={group.artPath}
+            seed={group.seed}
+            label={group.label}
+            rounded="rounded-xl"
+            className="aspect-square w-full shadow-md ring-1 ring-white/5"
+          />
+        ) : (
+          <span className="grid aspect-square w-full place-items-center rounded-xl bg-surface-overlay text-text-muted ring-1 ring-border">
+            <Icon className="size-8" aria-hidden="true" />
+          </span>
+        )}
+        <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="grid size-10 place-items-center rounded-full bg-accent text-surface shadow-lg">
+            <Play className="size-5 fill-current" aria-hidden="true" />
+          </span>
+        </span>
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{group.label}</p>
+        <p className="truncate text-xs text-text-muted">{group.subtitle}</p>
+      </div>
+    </button>
+  );
+}
+
+function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <h3 className="truncate text-sm font-semibold">{title}</h3>
+      {subtitle && <span className="text-xs text-text-muted">{subtitle}</span>}
+    </div>
+  );
+}
+
+function Empty({ message }: { message: string }) {
+  return <p className="px-2 py-10 text-center text-sm text-text-muted">{message}</p>;
+}
+
+function EmptyAll() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+      <div className="grid size-14 place-items-center rounded-2xl bg-surface-raised ring-1 ring-border">
+        <Music2 className="size-7 text-text-faint" aria-hidden="true" />
+      </div>
+      <div>
+        <p className="text-base font-medium">No music yet</p>
+        <p className="mt-1 max-w-xs text-sm text-text-muted">
+          Add a folder in Settings, or connect your phone or a cloud account.
+        </p>
+      </div>
+      <p className="text-xs text-text-faint">Settings → Music library → Add folder</p>
+    </div>
+  );
+}
+
+function ConnectPrompt({ kind, onConnect }: { kind: "phone" | "cloud"; onConnect: () => void }) {
+  const Icon = kind === "phone" ? Smartphone : Cloud;
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+      <div className="grid size-14 place-items-center rounded-2xl bg-surface-raised ring-1 ring-border">
+        <Icon className="size-7 text-text-faint" aria-hidden="true" />
+      </div>
+      <div>
+        <p className="text-base font-medium">
+          {kind === "phone" ? "No phone connected" : "No cloud connected"}
+        </p>
+        <p className="mt-1 max-w-xs text-sm text-text-muted">
+          {kind === "phone"
+            ? "Pair a phone on your network to play its music here."
+            : "Connect Google Drive or Dropbox to stream your music here."}
+        </p>
+      </div>
+      <Button variant="primary" onClick={onConnect}>
+        <ListMusic className="size-4" aria-hidden="true" />
+        {kind === "phone" ? "Connect a phone" : "Connect cloud"}
+      </Button>
+    </div>
+  );
+}

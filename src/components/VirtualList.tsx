@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { cn } from "@/lib/cn";
 
@@ -33,14 +33,16 @@ export function VirtualList<T>({
   const spacerRef = useRef<HTMLDivElement>(null);
   const [range, setRange] = useState({ start: 0, end: 0 });
 
-  useLayoutEffect(() => {
+  // A passive effect (not layout) so the ancestor scroll container's ref is
+  // already attached: layout effects run bottom-up, before an ancestor's ref.
+  useEffect(() => {
     const scroller = scrollRef.current;
     const spacer = spacerRef.current;
     if (!scroller || !spacer) return;
 
-    let raf = 0;
+    let cancelled = false;
     const measure = () => {
-      raf = 0;
+      if (cancelled) return;
       // How far the list's top has scrolled above the scroller's viewport top.
       const scrolledPast = Math.max(
         0,
@@ -52,18 +54,33 @@ export function VirtualList<T>({
       const end = Math.min(items.length, start + count);
       setRange((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
     };
+
+    // Throttle with a timer rather than rAF: rAF is paused while the window is
+    // backgrounded/occluded, which would freeze the window mid-scroll; a ~frame
+    // timer stays responsive everywhere and is plenty smooth for a list.
+    let timer = 0;
     const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(measure);
+      if (timer) return;
+      timer = window.setTimeout(() => {
+        timer = 0;
+        measure();
+      }, 16);
     };
 
+    // Initial measure, with fallbacks for layout that settles a tick later.
     measure();
+    const t0 = window.setTimeout(measure, 0);
+    const t1 = window.setTimeout(measure, 250);
     scroller.addEventListener("scroll", onScroll, { passive: true });
     const ro = new ResizeObserver(measure);
     ro.observe(scroller);
     return () => {
+      cancelled = true;
       scroller.removeEventListener("scroll", onScroll);
       ro.disconnect();
-      if (raf) cancelAnimationFrame(raf);
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+      if (timer) window.clearTimeout(timer);
     };
   }, [scrollRef, rowHeight, overscan, items.length]);
 

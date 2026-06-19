@@ -42,12 +42,19 @@ export function useTrackArtwork(path: string | null | undefined): string | null 
       setCover(cache.get(path)!);
       return;
     }
+    // Defer the actual file probe slightly: rows the user scrolls straight past
+    // unmount before this fires, so a fast scroll through a huge list never
+    // kicks off thousands of disk reads. Already-cached/in-flight paths still
+    // resolve immediately via fetchArtwork's dedup.
     let active = true;
-    void fetchArtwork(path).then((v) => {
-      if (active) setCover(v);
-    });
+    const timer = window.setTimeout(() => {
+      void fetchArtwork(path).then((v) => {
+        if (active) setCover(v);
+      });
+    }, 140);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [path]);
 

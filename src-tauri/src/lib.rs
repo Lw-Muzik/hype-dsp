@@ -335,6 +335,7 @@ pub fn run() {
             commands::link::link_unpair,
             commands::link::link_library,
             commands::link::link_artwork,
+            commands::link::link_lyrics,
             commands::link::link_play,
             commands::engine::player_play_file,
             commands::engine::player_play_radio,

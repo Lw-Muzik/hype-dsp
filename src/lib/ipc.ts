@@ -186,6 +186,15 @@ export function linkArtwork(
   return invoke<string | null>("link_artwork", { deviceId, trackId });
 }
 
+/** A phone track's lyrics (a `.lrc` the user keeps next to the music, or
+ *  embedded lyrics) as raw LRC/plain text, or null if the phone has none. */
+export function linkLyrics(
+  deviceId: string,
+  trackId: string,
+): Promise<string | null> {
+  return invoke<string | null>("link_lyrics", { deviceId, trackId });
+}
+
 /** Stream one track from the phone through the enhancement chain. Passing the
  *  track's known length (seconds) makes the stream seekable and shows its
  *  duration straight away. */

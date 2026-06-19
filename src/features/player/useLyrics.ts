@@ -1,12 +1,25 @@
 import { useEffect, useState } from "react";
-import { lyricsFetch } from "@/lib/ipc";
+import { linkLyrics, lyricsFetch } from "@/lib/ipc";
 import { parseLrc } from "@/lib/lrc";
 import type { ParsedLyrics } from "@/lib/lrc";
 import { useEngineStore } from "@/stores/engine";
+import type { QueueItem } from "@/stores/engine";
 
 /** Resolved lyrics for the current track (cached per track for the session). */
 const cache = new Map<string, ParsedLyrics | null>();
 const inFlight = new Map<string, Promise<ParsedLyrics | null>>();
+
+/** Forget a track's cached lyrics so they re-resolve (e.g. after its tags are
+ *  fixed by identification). Pass no key to clear everything. */
+export function clearLyricsCache(key?: string): void {
+  if (key) {
+    cache.delete(key);
+    inFlight.delete(key);
+  } else {
+    cache.clear();
+    inFlight.clear();
+  }
+}
 
 interface LyricsState {
   loading: boolean;
@@ -15,16 +28,38 @@ interface LyricsState {
   key: string | null;
 }
 
-function fetchFor(
-  key: string,
+/** Resolve raw lyrics for an item, source-aware. A phone track is checked for
+ *  its own downloaded `.lrc` first (so the user's sidecars win); local files go
+ *  through the backend's sidecar/embedded path; everything then falls back to
+ *  the online chain (LRCLIB → HypeMuzik backend) by title/artist. */
+async function resolveRaw(
+  item: QueueItem | undefined,
   title: string,
   artist: string | null,
   durationSecs: number | null,
-  path: string | null,
+): Promise<string | null> {
+  if (item?.source === "phone" && item.device) {
+    try {
+      const phone = await linkLyrics(item.device.id, item.id);
+      if (phone) return phone;
+    } catch {
+      // Phone unreachable — fall through to the online sources.
+    }
+  }
+  const path = item?.source === "local" ? (item.track?.path ?? null) : null;
+  return lyricsFetch(title, artist, durationSecs, path);
+}
+
+function fetchFor(
+  key: string,
+  item: QueueItem | undefined,
+  title: string,
+  artist: string | null,
+  durationSecs: number | null,
 ): Promise<ParsedLyrics | null> {
   const existing = inFlight.get(key);
   if (existing) return existing;
-  const p = lyricsFetch(title, artist, durationSecs, path)
+  const p = resolveRaw(item, title, artist, durationSecs)
     .then((raw) => (raw ? parseLrc(raw) : null))
     .catch(() => null)
     .then((parsed) => {
@@ -66,8 +101,7 @@ export function useLyrics(): LyricsState {
     }
     let active = true;
     setState({ loading: true, lyrics: null, key });
-    const path = current?.source === "local" ? (current.track?.path ?? null) : null;
-    void fetchFor(key, title, meta?.artist ?? null, current?.durationSecs ?? null, path).then(
+    void fetchFor(key, current, title, meta?.artist ?? null, current?.durationSecs ?? null).then(
       (lyrics) => {
         if (active) setState({ loading: false, lyrics, key });
       },

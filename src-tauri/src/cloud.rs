@@ -26,18 +26,19 @@ const REDIRECT_URI: &str = "http://localhost:53682";
 const LOOPBACK_ADDR: &str = "127.0.0.1:53682";
 const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
 
-// Defaults reuse the Hype **mobile** app's existing OAuth apps so the desktop
-// needs no extra credentials (env vars still override). Caveats, because the
-// desktop uses a loopback + PKCE flow rather than the phone's native one:
+// Bundled OAuth defaults so the desktop connects with no env vars (env vars
+// still override). The desktop uses a loopback + PKCE flow:
+//   * Google: a dedicated **Desktop app** OAuth client (in Google Cloud project
+//     618382337035). Desktop clients accept the loopback redirect automatically
+//     and their "client secret" is non-confidential by Google's design, so it's
+//     embedded here like the other identifiers. Access is gated by the consent
+//     screen's test-user list until the app is verified.
 //   * Dropbox: works with just the app key, but `http://localhost:53682` must be
 //     added to this app's Redirect URIs in the Dropbox App Console (one-time).
-//   * Google: the desktop code-exchange needs a *client secret*, which the
-//     mobile app doesn't have (it uses native sign-in). Provide one via
-//     HM_GDRIVE_CLIENT_SECRET (create a "Desktop app" OAuth client in the same
-//     Google Cloud project, or add the loopback redirect to a web client).
 // See docs/cloud-setup.md.
 const DEFAULT_GOOGLE_CLIENT_ID: &str =
-    "618382337035-9nt8g6k40j6cvbfuekvt2iqliocrb52a.apps.googleusercontent.com";
+    "973894345549-bonaqu22njcih3h5oam88rafqnu9oiqu.apps.googleusercontent.com";
+const DEFAULT_GOOGLE_CLIENT_SECRET: &str = "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";
 const DEFAULT_DROPBOX_APP_KEY: &str = "1d0mou7l0x19mas";
 
 fn env_or(name: &str, default: &str) -> String {
@@ -50,7 +51,7 @@ fn google_client_id() -> String {
     env_or("HM_GDRIVE_CLIENT_ID", DEFAULT_GOOGLE_CLIENT_ID)
 }
 fn google_client_secret() -> String {
-    env_or("HM_GDRIVE_CLIENT_SECRET", "")
+    env_or("HM_GDRIVE_CLIENT_SECRET", DEFAULT_GOOGLE_CLIENT_SECRET)
 }
 fn dropbox_app_key() -> String {
     env_or("HM_DROPBOX_APP_KEY", DEFAULT_DROPBOX_APP_KEY)

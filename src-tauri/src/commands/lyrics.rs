@@ -1,7 +1,7 @@
-//! Lyrics resolution, mirroring the mobile app's chain: a `.lrc` sidecar or
-//! embedded tag for local files, then the HypeMuzik backend, then LRCLIB.
-//! Returns the raw lyrics (timestamped LRC when available, else plain text) for
-//! the UI to parse and sync.
+//! Lyrics resolution: a `.lrc` sidecar or embedded tag for local files, then
+//! LRCLIB, then the HypeMuzik backend as a last resort. Returns the raw lyrics
+//! (timestamped LRC when available, else plain text) for the UI to parse and
+//! sync.
 
 use std::path::Path;
 use std::time::Duration;
@@ -65,13 +65,13 @@ pub fn lyrics_fetch(
         }
     }
 
-    // 3. HypeMuzik backend (same endpoint as the mobile app).
-    if let Some(text) = backend_lyrics(&title, &artist) {
+    // 3. LRCLIB (best source of timestamped/synced lyrics).
+    if let Some(text) = lrclib_search(&title, &artist, duration_secs) {
         return Some(text);
     }
 
-    // 4. LRCLIB fallback.
-    lrclib_search(&title, &artist, duration_secs)
+    // 4. HypeMuzik backend (last resort — same endpoint as the mobile app).
+    backend_lyrics(&title, &artist)
 }
 
 /// Fetch raw lyrics from the HypeMuzik backend:

@@ -320,6 +320,26 @@ impl LinkState {
         ))
     }
 
+    /// Fetch a track's lyrics from the phone — the `.lrc` file the user keeps
+    /// next to the audio (or embedded lyrics), as raw LRC/plain text. `None`
+    /// when the phone has none or is unreachable. Goes through the authenticated
+    /// client, so no webview CSP changes are needed.
+    pub fn lyrics(&self, device_id: &str, track_id: &str) -> Option<String> {
+        let dev = self.find(device_id).ok()?;
+        let url = format!("http://{}:{}/lyrics/{}", dev.host, dev.port, track_id);
+        let resp = http_client()
+            .ok()?
+            .get(&url)
+            .bearer_auth(&dev.token)
+            .send()
+            .ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let text = resp.text().ok()?;
+        (!text.trim().is_empty()).then_some(text)
+    }
+
     /// Fetch the phone's track list.
     pub fn library(&self, device_id: &str) -> Result<Vec<PhoneTrack>, String> {
         let dev = self.find(device_id)?;

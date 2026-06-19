@@ -65,6 +65,18 @@ pub fn link_artwork(
     link.artwork_data_uri(&device_id, &track_id)
 }
 
+/// Fetch a phone track's lyrics (a `.lrc` sidecar the user downloaded next to
+/// the music, or embedded lyrics), as raw LRC/plain text. `None` when none.
+/// Never errors — missing lyrics just fall back to the online sources.
+#[tauri::command(async)]
+pub fn link_lyrics(
+    link: State<'_, LinkState>,
+    device_id: String,
+    track_id: String,
+) -> Option<String> {
+    link.lyrics(&device_id, &track_id)
+}
+
 /// Stream one track from the phone through the enhancement chain.
 /// `duration_secs`, when the phone already knows the track length, makes the
 /// stream seekable and shows its duration immediately.

@@ -1,5 +1,8 @@
+import { useState } from "react";
 import {
+  Ear,
   ListMusic,
+  Loader2,
   MicVocal,
   Pause,
   Play,
@@ -12,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
 import { useUiStore } from "@/stores/ui";
+import { clearLyricsCache } from "@/features/player/useLyrics";
 import { Slider } from "@/components/Slider";
 import { formatTime } from "@/lib/format";
 import { coverGradient, coverInitials } from "@/lib/cover";
@@ -57,6 +61,7 @@ export function NowPlayingBar() {
   const durationSecs = useEngineStore((s) => s.durationSecs);
   const seekable = useEngineStore((s) => s.seekable);
   const queue = useEngineStore((s) => s.queue);
+  const queueIndex = useEngineStore((s) => s.queueIndex);
   const order = useEngineStore((s) => s.order);
   const orderPos = useEngineStore((s) => s.orderPos);
   const repeat = useEngineStore((s) => s.repeat);
@@ -71,6 +76,9 @@ export function NowPlayingBar() {
   const cycleRepeat = useEngineStore((s) => s.cycleRepeat);
   const masterVolume = useEngineStore((s) => s.state.masterVolume);
   const setMasterVolume = useEngineStore((s) => s.setMasterVolume);
+  const identifyNowPlaying = useEngineStore((s) => s.identifyNowPlaying);
+
+  const [identifying, setIdentifying] = useState(false);
 
   const active = meta !== null;
   const source = orderPos >= 0 ? queue[order[orderPos] ?? -1]?.source : undefined;
@@ -89,6 +97,21 @@ export function NowPlayingBar() {
   const subtitle = meta?.artist ?? meta?.album ?? null;
   const repeatLabel =
     repeat === "one" ? "Repeat one" : repeat === "all" ? "Repeat all" : "Repeat off";
+
+  // Fill any missing tags for the current track (audio fingerprint) and refresh
+  // its lyrics, then reveal them — one tap to complete an under-tagged song.
+  const onIdentify = async () => {
+    if (!active || identifying) return;
+    setIdentifying(true);
+    try {
+      await identifyNowPlaying();
+      const current = queueIndex >= 0 ? queue[queueIndex] : undefined;
+      if (current) clearLyricsCache(`${current.source}:${current.id}`);
+    } finally {
+      setIdentifying(false);
+    }
+    if (rightPanel !== "lyrics") toggleRight("lyrics");
+  };
 
   return (
     <footer className="flex h-[76px] shrink-0 items-center gap-4 border-t border-border bg-surface-raised px-4">
@@ -192,8 +215,22 @@ export function NowPlayingBar() {
         </div>
       </div>
 
-      {/* Lyrics + queue + volume */}
+      {/* Identify + lyrics + queue + volume */}
       <div className="flex flex-1 items-center justify-end gap-2">
+        <button
+          type="button"
+          aria-label="Identify song and fill missing info"
+          title="Identify — fill missing tags & lyrics"
+          onClick={onIdentify}
+          disabled={!active || identifying}
+          className={cn(iconBtn, identifying && "text-accent")}
+        >
+          {identifying ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Ear className="size-4" aria-hidden="true" />
+          )}
+        </button>
         <button
           type="button"
           aria-label="Show lyrics"

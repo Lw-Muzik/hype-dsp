@@ -12,10 +12,11 @@ don't need new credentials:
   `http://localhost:53682` to this app's **Redirect URIs** (the desktop's
   loopback flow differs from the phone's custom-scheme redirect). Then Dropbox
   connects with no env vars.
-- **Google client ID** — baked in, **but Google Drive needs a client *secret***
-  that the mobile app doesn't have (it uses native sign-in, which never holds a
-  secret). So Google still shows "not configured" until you supply a secret
-  (see below). The desktop's code-exchange step can't work without it.
+- **Google client ID + secret** — a dedicated **Desktop app** OAuth client is
+  baked in, so Google Drive connects with no env vars. (Desktop-client secrets
+  are non-confidential by Google's design.) Access is limited to the **test
+  users** on the consent screen until the app is verified, so add your Google
+  account there.
 
 Environment variables still override the bundled defaults:
 
@@ -23,21 +24,16 @@ Environment variables still override the bundled defaults:
 |---|---|---|
 | `HM_DROPBOX_APP_KEY` | Dropbox app key | optional (bundled) |
 | `HM_GDRIVE_CLIENT_ID` | Google OAuth client id | optional (bundled) |
-| `HM_GDRIVE_CLIENT_SECRET` | Google client secret | **required for Google** |
+| `HM_GDRIVE_CLIENT_SECRET` | Google client secret | optional (bundled) |
 
-```bash
-# Google only — everything else is bundled:
-HM_GDRIVE_CLIENT_SECRET=… pnpm tauri dev
-```
+The **Cloud** page shows "not configured" only if you blank out the bundled
+identifiers.
 
-The **Cloud** page shows "not configured" for Google until a secret is set, and
-for Dropbox only if you blank out the key.
+## Google Drive (bundled — steps below are for using your own project)
 
-## Google Drive (needs a secret the mobile app doesn't have)
-
-The mobile app signs in natively and never holds a Google client secret, so the
-desktop's loopback code-exchange has nothing to reuse. Easiest fix — create a
-**Desktop app** client in the **same** Google Cloud project (`618382337035`):
+A **Desktop app** client is already bundled. To point at **your own** Google
+Cloud project instead, create a Desktop-app client and set `HM_GDRIVE_CLIENT_ID`
++ `HM_GDRIVE_CLIENT_SECRET`:
 
 1. <https://console.cloud.google.com> → select that project.
 2. **APIs & Services → Library** → ensure the **Google Drive API** is enabled.

@@ -8,6 +8,7 @@ import {
   engineSetRoom,
   engineSetSpatializer,
   engineSetSurround3d,
+  identifyTrack,
   ipcErrorMessage,
   linkPlay,
   engineSetPlayback,
@@ -270,6 +271,9 @@ interface EngineStore {
   cycleRepeat: () => void;
   /** Apply a transport action from the OS media controls. */
   handleMediaCommand: (action: string, secs: number | null) => void;
+  /** Fingerprint the current local track and fill any missing tags in place,
+   *  reflecting recognized title/artist/album in the now-playing card. */
+  identifyNowPlaying: () => Promise<void>;
 }
 
 export const useEngineStore = create<EngineStore>((set, get) => {
@@ -780,6 +784,56 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           s.seek(Math.max(0, s.positionSecs - (secs ?? 10)));
           break;
       }
+    },
+
+    identifyNowPlaying: async () => {
+      const s = get();
+      const item = s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined;
+      if (!item) {
+        toast.info("Nothing is playing.");
+        return;
+      }
+      // Fingerprinting needs the actual audio file; streams can't be matched.
+      if (item.source !== "local" || !item.track?.path) {
+        toast.info("Fingerprint ID needs a local file — fetching lyrics only.");
+        return;
+      }
+      const path = item.track.path;
+      let result;
+      try {
+        result = await identifyTrack(path);
+      } catch {
+        toast.error("Couldn't identify this track.");
+        return;
+      }
+      if (!result) {
+        toast.info("No match found for this track.");
+        return;
+      }
+      if (!result.written) {
+        toast.info("This track already has its info.");
+        return;
+      }
+      // Reflect the recognized tags in the card, filling what was missing. A
+      // title that's just the filename counts as missing.
+      set((st) => {
+        const prev = st.nowPlayingMeta;
+        if (!prev) return {};
+        const base = (path.split(/[/\\]/).pop() ?? "").replace(/\.[^.]+$/, "");
+        const titleMissing = !prev.title?.trim() || prev.title === base;
+        const title = titleMissing ? (result!.title ?? prev.title) : prev.title;
+        return {
+          nowPlayingMeta: {
+            title,
+            artist: prev.artist?.trim() ? prev.artist : result!.artist,
+            album: prev.album?.trim() ? prev.album : result!.album,
+            cover: prev.cover,
+          },
+          nowPlaying: title,
+        };
+      });
+      const label = [result.title, result.artist].filter(Boolean).join(" — ");
+      toast.success(label ? `Identified: ${label}` : "Track tags updated.");
     },
   };
 });

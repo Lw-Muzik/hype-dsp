@@ -16,6 +16,7 @@ import type {
   CloudEntry,
   CloudProvider,
   CloudStatus,
+  CloudTrackMeta,
   DeviceInfo,
   EngineFrame,
   EngineState,
@@ -144,6 +145,20 @@ export function cloudList(
  *  unified library. Mirrors the mobile app's account-wide listing. */
 export function cloudAllAudio(provider: CloudProvider): Promise<CloudEntry[]> {
   return invoke<CloudEntry[]>("cloud_all_audio", { provider });
+}
+
+/** Read a cloud track's embedded tags (title/artist/album + cover) from the
+ *  file's leading bytes. Cached on disk per file, so it's a one-time download. */
+export function cloudTrackMetadata(
+  provider: CloudProvider,
+  fileId: string,
+  name: string,
+): Promise<CloudTrackMeta | null> {
+  return invoke<CloudTrackMeta | null>("cloud_track_metadata", {
+    provider,
+    fileId,
+    name,
+  });
 }
 
 /** Stream a cloud file through the enhancement chain. */

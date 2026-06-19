@@ -332,6 +332,58 @@ fn stream_worker(
     }
 }
 
+/// Bytes to fetch when reading only a remote file's metadata. ID3v2 / FLAC /
+/// front-loaded MP4 headers (incl. embedded cover art) live in the leading
+/// bytes, so this bounds the download — pre-play metadata never pulls the whole
+/// track.
+const META_PREFIX_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Read title/artist/album + embedded cover from a remote audio file by fetching
+/// only its leading [`META_PREFIX_BYTES`], without streaming the whole file — the
+/// desktop counterpart to the mobile app's `MediaMetadataRetriever`-over-URL
+/// cloud metadata. `ext` hints the container (from the file name). Returns
+/// `None` if the file can't be fetched or probed.
+pub fn fetch_stream_metadata(
+    url: &str,
+    headers: &[(String, String)],
+    ext: Option<&str>,
+) -> Option<hm_core::TrackMeta> {
+    use std::io::Read;
+
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(6))
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .ok()?;
+    let mut req = client
+        .get(url)
+        .header("Range", format!("bytes=0-{}", META_PREFIX_BYTES - 1));
+    for (k, v) in headers {
+        req = req.header(k.as_str(), v.as_str());
+    }
+    let resp = match req.send() {
+        Ok(r) if r.status().is_success() => r,
+        _ => return None,
+    };
+
+    // Cap the read in case the server ignored the Range request.
+    let capped = resp.take(META_PREFIX_BYTES);
+    let mss = MediaSourceStream::new(Box::new(ReadOnlySource::new(capped)), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = ext {
+        hint.with_extension(ext);
+    }
+    let mut format = symphonia::default::get_probe()
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
+        .ok()?;
+    Some(crate::meta::extract_metadata(&mut *format))
+}
+
 /// Issue the GET, optionally from `start_byte` via a `Range` header.
 fn open(
     client: &reqwest::blocking::Client,

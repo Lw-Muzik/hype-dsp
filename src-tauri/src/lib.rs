@@ -7,6 +7,7 @@
 //! is the thin, well-documented bridge between Rust and React.
 
 mod cloud;
+mod cloud_meta;
 mod commands;
 mod control;
 mod media;
@@ -235,6 +236,18 @@ pub fn run() {
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_cloud.json"));
             app.manage(cloud::CloudState::load(cloud_path));
 
+            // Cloud track metadata (tags + cover) cache, so each cloud file's
+            // ID3 is only downloaded once.
+            let cloud_meta_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("cloud-meta.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_cloud_meta.json"));
+            app.manage(cloud_meta::CloudMetaCache::load(cloud_meta_path));
+
             // Phone Link (stream the phone's library over the LAN) pairing store.
             let link_path = app
                 .path()
@@ -329,6 +342,7 @@ pub fn run() {
             commands::cloud::cloud_disconnect,
             commands::cloud::cloud_list,
             commands::cloud::cloud_all_audio,
+            commands::cloud::cloud_track_metadata,
             commands::cloud::cloud_play,
             commands::link::link_discover,
             commands::link::link_paired,

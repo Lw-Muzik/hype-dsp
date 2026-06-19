@@ -38,7 +38,7 @@ pub use meta::{extract_metadata, extract_tags, TrackTags};
 pub use queue::QueuePlaybackSource;
 pub use sources::FilePlaybackSource;
 pub use spectrum::{SpectrumTap, SPECTRUM_BANDS};
-pub use streaming::RadioStreamSource;
+pub use streaming::{fetch_stream_metadata, RadioStreamSource};
 
 use serde::{Deserialize, Serialize};
 

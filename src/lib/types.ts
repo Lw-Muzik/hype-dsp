@@ -262,6 +262,15 @@ export interface CloudEntry {
   folder?: string | null;
 }
 
+/** A cloud track's embedded tags, read from the file's leading bytes. */
+export interface CloudTrackMeta {
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  /** Front cover as a `data:` URI, if the file had embedded art. */
+  cover: string | null;
+}
+
 export interface CloudStatus {
   googleConnected: boolean;
   dropboxConnected: boolean;

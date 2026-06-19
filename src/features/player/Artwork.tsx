@@ -25,7 +25,11 @@ export function Artwork({
   /** Tailwind rounding utility (so callers can match the surrounding shape). */
   rounded?: string;
 }) {
-  const cover = useTrackArtwork(art);
+  // A pre-resolved cover (e.g. the cloud metadata preload) wins and skips the
+  // lazy fetch; otherwise resolve it source-aware.
+  const direct = art?.cover ?? null;
+  const fetched = useTrackArtwork(direct ? null : art);
+  const cover = direct ?? fetched;
   if (cover) {
     return (
       <img

@@ -4,6 +4,7 @@ import { TrialBanner } from "@/components/TrialBanner";
 import { Toaster } from "@/components/Toaster";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
 import { RightSidebar } from "@/components/RightSidebar";
+import { ScrollingWaveform } from "@/features/player/ScrollingWaveform";
 import { Router } from "@/app/router";
 
 /** The application shell: sidebar + top bar + the active view + now-playing. */
@@ -20,6 +21,7 @@ export function App() {
           </main>
           <RightSidebar />
         </div>
+        <ScrollingWaveform />
         <NowPlayingBar />
       </div>
       <Toaster />

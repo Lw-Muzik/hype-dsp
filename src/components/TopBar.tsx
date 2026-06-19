@@ -20,8 +20,6 @@ export function TopBar() {
   const setPower = useEngineStore((s) => s.setPower);
   const masterVolume = useEngineStore((s) => s.state.masterVolume);
   const setMasterVolume = useEngineStore((s) => s.setMasterVolume);
-  const meters = useEngineStore((s) => s.meters);
-  const metersLive = useEngineStore((s) => s.metersLive);
 
   const volumePct = Math.round(masterVolume * 100);
 
@@ -51,7 +49,7 @@ export function TopBar() {
         </div>
 
         <div className="hidden sm:block">
-          <LevelMeter peak={meters.peak} live={metersLive} />
+          <LevelMeter />
         </div>
 
         <PowerToggle on={power} onToggle={setPower} />

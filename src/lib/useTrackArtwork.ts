@@ -17,6 +17,9 @@ export interface ArtSource {
   trackId?: string;
   /** Whether the phone reports embedded art (skip the fetch if false). */
   hasArt?: boolean;
+  /** Already-resolved cover (a `data:` URI), e.g. from the cloud metadata
+   *  preload — used directly, skipping any fetch. */
+  cover?: string | null;
 }
 
 /**

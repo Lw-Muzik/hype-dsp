@@ -235,7 +235,7 @@ export function MusicLibrary() {
       {needsConnect ? (
         <ConnectPrompt
           kind={sourceFilter === "phone" ? "phone" : "cloud"}
-          onConnect={() => setRoute(sourceFilter === "phone" ? "phone" : "cloud")}
+          onConnect={() => setRoute("settings")}
         />
       ) : tracks.length === 0 && !library.loading ? (
         <EmptyAll />
@@ -639,13 +639,13 @@ function ConnectPrompt({ kind, onConnect }: { kind: "phone" | "cloud"; onConnect
         </p>
         <p className="mt-1 max-w-xs text-sm text-text-muted">
           {kind === "phone"
-            ? "Pair a phone on your network to play its music here."
-            : "Connect Google Drive or Dropbox to stream your music here."}
+            ? "Pair a phone in Settings, then its music shows up here."
+            : "Connect Google Drive or Dropbox in Settings to stream your music here."}
         </p>
       </div>
       <Button variant="primary" onClick={onConnect}>
         <ListMusic className="size-4" aria-hidden="true" />
-        {kind === "phone" ? "Connect a phone" : "Connect cloud"}
+        {kind === "phone" ? "Pair in Settings" : "Connect in Settings"}
       </Button>
     </div>
   );

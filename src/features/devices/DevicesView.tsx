@@ -9,8 +9,6 @@ import {
   Trash2,
   Wifi,
 } from "lucide-react";
-import { routeById } from "@/app/routes";
-import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { useEngineStore } from "@/stores/engine";
@@ -83,8 +81,10 @@ function PhoneCover({ deviceId, track }: { deviceId: string; track: PhoneTrack }
   return <Thumb seed={track.album?.trim() || track.title} label={track.title} />;
 }
 
-export function DevicesView({ embedded = false }: { embedded?: boolean }) {
-  const route = routeById("phone");
+/** Phone Link UI — discover phones on the LAN, pair via PIN, browse + play a
+ *  phone's library. Lives as a section inside Settings (the connect flow); the
+ *  Player only filters already-paired phones' songs into its unified list. */
+export function DevicesView() {
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
   const playPhoneList = useEngineStore((s) => s.playPhoneList);
 
@@ -318,17 +318,7 @@ export function DevicesView({ embedded = false }: { embedded?: boolean }) {
         </div>
   );
 
-  if (embedded) {
-    return (
-      <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">{content}</div>
-    );
-  }
-  return (
-    <div className="mx-auto w-full max-w-3xl">
-      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
-      {content}
-    </div>
-  );
+  return content;
 }
 
 /** PIN entry shown while pairing with a phone. */

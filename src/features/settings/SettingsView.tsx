@@ -14,6 +14,8 @@ import {
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
+import { DevicesView } from "@/features/devices/DevicesView";
+import { CloudView } from "@/features/cloud/CloudView";
 import { Button } from "@/components/Button";
 import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
@@ -353,6 +355,10 @@ export function SettingsView() {
         </Card>
 
         <MusicLibraryCard />
+
+        <DevicesView />
+
+        <CloudView />
 
         <Card
           title="Playback"

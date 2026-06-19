@@ -8,8 +8,6 @@ import {
   Music,
   RefreshCw,
 } from "lucide-react";
-import { routeById } from "@/app/routes";
-import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { useEngineStore } from "@/stores/engine";
@@ -53,8 +51,10 @@ interface Crumb {
   name: string;
 }
 
-export function CloudView({ embedded = false }: { embedded?: boolean }) {
-  const route = routeById("cloud");
+/** Cloud accounts (Google Drive / Dropbox) — connect/disconnect and browse +
+ *  play folders. Lives as a section inside Settings (the connect flow); the
+ *  Player only filters connected-cloud songs into its unified list. */
+export function CloudView() {
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
   const playCloudList = useEngineStore((s) => s.playCloudList);
 
@@ -315,15 +315,5 @@ export function CloudView({ embedded = false }: { embedded?: boolean }) {
     </div>
   );
 
-  if (embedded) {
-    return (
-      <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">{content}</div>
-    );
-  }
-  return (
-    <div className="mx-auto w-full max-w-3xl">
-      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
-      {content}
-    </div>
-  );
+  return content;
 }

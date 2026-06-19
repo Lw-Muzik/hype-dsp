@@ -8,8 +8,6 @@ export type Route =
   | "mixer"
   | "player"
   | "radio"
-  | "cloud"
-  | "phone"
   | "settings";
 
 interface UiState {

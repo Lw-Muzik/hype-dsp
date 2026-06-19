@@ -6,8 +6,6 @@ import { EqualizerView } from "@/features/equalizer/EqualizerView";
 import { MixerView } from "@/features/mixer/MixerView";
 import { PlayerView } from "@/features/player/PlayerView";
 import { RadioView } from "@/features/radio/RadioView";
-import { CloudView } from "@/features/cloud/CloudView";
-import { DevicesView } from "@/features/devices/DevicesView";
 import { SettingsView } from "@/features/settings/SettingsView";
 
 /**
@@ -20,8 +18,6 @@ const VIEWS: Record<Route, FC> = {
   mixer: MixerView,
   player: PlayerView,
   radio: RadioView,
-  cloud: CloudView,
-  phone: DevicesView,
   settings: SettingsView,
 };
 

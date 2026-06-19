@@ -37,8 +37,8 @@ const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
 //     added to this app's Redirect URIs in the Dropbox App Console (one-time).
 // See docs/cloud-setup.md.
 const DEFAULT_GOOGLE_CLIENT_ID: &str =
-    "973894345549-bonaqu22njcih3h5oam88rafqnu9oiqu.apps.googleusercontent.com";
-const DEFAULT_GOOGLE_CLIENT_SECRET: &str = "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";
+    "618382337035-kuak9rr26kk7r62g3ac5hte0eei1l36d.apps.googleusercontent.com";
+const DEFAULT_GOOGLE_CLIENT_SECRET: &str = "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";
 const DEFAULT_DROPBOX_APP_KEY: &str = "1d0mou7l0x19mas";
 
 fn env_or(name: &str, default: &str) -> String {

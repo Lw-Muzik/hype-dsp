@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeBuildCommand": "pnpm tauri:prebuild"
   },
   "app": {
     "withGlobalTauri": false,
@@ -33,6 +33,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/hm-visualizer"],
+    "resources": {
+      "../crates/hm-visualizer/presets/*.milk": "presets/",
+      "binaries/*.dll": "./"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

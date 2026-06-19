@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:sidecar": "node scripts/build-sidecar.mjs",
+    "tauri:prebuild": "node scripts/build-sidecar.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "build:app": "tauri build",

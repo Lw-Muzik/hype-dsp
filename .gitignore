@@ -39,3 +39,6 @@ pnpm-debug.log*
 
 # Local cache
 .eslintcache
+
+# Generated visualizer sidecar binaries (built by scripts/build-sidecar.mjs)
+/src-tauri/binaries/

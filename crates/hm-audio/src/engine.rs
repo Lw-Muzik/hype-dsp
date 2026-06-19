@@ -327,11 +327,11 @@ enum EngineCommand {
         duration_hint: Option<f64>,
     },
     /// Play a list of file paths gaplessly (decoded on a worker), starting at
-    /// `start`, crossfading by `crossfade_secs` (0 = pure gapless).
+    /// `start`. The crossfade duration is read live from the engine's shared
+    /// crossfade value, so slider changes apply to the current queue.
     PlayQueue {
         paths: Vec<String>,
         start: usize,
-        crossfade_secs: f32,
     },
     PlayCapture,
     /// Play an already-constructed live source (e.g. the macOS system tap).
@@ -359,6 +359,9 @@ pub struct AudioEngine {
     meta_version: Arc<AtomicU64>,
     /// Absolute queue index the engine is currently playing (gapless/crossfade).
     queue_index: Arc<AtomicUsize>,
+    /// Live crossfade duration in seconds (f32 bits), read by the active queue
+    /// each block so slider changes apply to the current queue immediately.
+    crossfade: Arc<AtomicU32>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     _thread: JoinHandle<()>,
 }
@@ -398,6 +401,7 @@ impl AudioEngine {
         let track_meta = Arc::new(ArcSwap::from_pointee(TrackMeta::default()));
         let meta_version = Arc::new(AtomicU64::new(0));
         let queue_index = Arc::new(AtomicUsize::new(0));
+        let crossfade = Arc::new(AtomicU32::new(initial.playback.crossfade_secs.to_bits()));
         let (tx, rx) = mpsc::channel();
 
         let thread = {
@@ -410,6 +414,7 @@ impl AudioEngine {
             let track_meta = track_meta.clone();
             let meta_version = meta_version.clone();
             let queue_index = queue_index.clone();
+            let crossfade = crossfade.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
                 .spawn(move || {
@@ -424,6 +429,7 @@ impl AudioEngine {
                         track_meta,
                         meta_version,
                         queue_index,
+                        crossfade,
                     })
                 })
                 .expect("failed to spawn hm-audio engine thread")
@@ -440,6 +446,7 @@ impl AudioEngine {
             track_meta,
             meta_version,
             queue_index,
+            crossfade,
             ctrl: Mutex::new(tx),
             _thread: thread,
         }
@@ -488,8 +495,12 @@ impl AudioEngine {
         self.update(|s| s.master_volume = volume.clamp(0.0, 4.0));
     }
 
-    /// Replace the full engine state (used by EQ/preset application later).
+    /// Replace the full engine state (used on startup to restore saved settings).
     pub fn set_state(&self, new_state: EngineState) {
+        // Keep the live crossfade value in sync with the restored state, so a
+        // saved crossfade takes effect immediately (it's read off the atomic).
+        self.crossfade
+            .store(new_state.playback.crossfade_secs.max(0.0).to_bits(), Ordering::Relaxed);
         let mut guard = self.write_state.lock().expect("engine state poisoned");
         *guard = new_state.clone();
         self.shared.store(Arc::new(new_state));
@@ -533,21 +544,19 @@ impl AudioEngine {
     /// Update queue-playback behaviour (gapless + crossfade). Takes effect on the
     /// next queue played.
     pub fn set_playback(&self, gapless: bool, crossfade_secs: f32) {
+        let crossfade = crossfade_secs.max(0.0);
+        // Persist in state (for autosave/restore)...
         self.update(|s| {
-            s.playback = hm_core::PlaybackState {
-                gapless,
-                crossfade_secs: crossfade_secs.max(0.0),
-            };
+            s.playback = hm_core::PlaybackState { gapless, crossfade_secs: crossfade };
         });
+        // ...and publish to the live value the active queue reads each block, so
+        // the change takes effect on the current queue's next transition.
+        self.crossfade.store(crossfade.to_bits(), Ordering::Relaxed);
     }
 
     /// The current crossfade duration (seconds); 0 means gapless-only.
     pub fn crossfade_secs(&self) -> f32 {
-        self.write_state
-            .lock()
-            .expect("engine state poisoned")
-            .playback
-            .crossfade_secs
+        f32::from_bits(self.crossfade.load(Ordering::Relaxed))
     }
 
     /// Configure the spatializer stage.
@@ -713,21 +722,13 @@ impl AudioEngine {
     }
 
     /// Play a list of file paths as a gapless (and optionally crossfading) queue,
-    /// starting at `start`. Tracks decode on a background worker.
-    pub fn play_queue(
-        &self,
-        paths: Vec<String>,
-        start: usize,
-        crossfade_secs: f32,
-    ) -> Result<(), AudioError> {
+    /// starting at `start`. Tracks decode on a background worker. The crossfade
+    /// duration is read live from `set_playback`, so it can change mid-queue.
+    pub fn play_queue(&self, paths: Vec<String>, start: usize) -> Result<(), AudioError> {
         self.ctrl
             .lock()
             .expect("engine ctrl poisoned")
-            .send(EngineCommand::PlayQueue {
-                paths,
-                start,
-                crossfade_secs,
-            })
+            .send(EngineCommand::PlayQueue { paths, start })
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
@@ -815,6 +816,7 @@ struct ControlCtx {
     track_meta: Arc<ArcSwap<TrackMeta>>,
     meta_version: Arc<AtomicU64>,
     queue_index: Arc<AtomicUsize>,
+    crossfade: Arc<AtomicU32>,
 }
 
 fn control_loop(ctx: ControlCtx) {
@@ -829,6 +831,7 @@ fn control_loop(ctx: ControlCtx) {
         track_meta,
         meta_version,
         queue_index,
+        crossfade,
     } = ctx;
     let setup = output_setup().ok();
     // The active stream is held only to keep audio flowing (RAII); replacing or
@@ -922,11 +925,7 @@ fn control_loop(ctx: ControlCtx) {
                     _ => playing.store(false, Ordering::Relaxed),
                 }
             }
-            EngineCommand::PlayQueue {
-                paths,
-                start,
-                crossfade_secs,
-            } => {
+            EngineCommand::PlayQueue { paths, start } => {
                 drop(active.take());
                 meters.zero();
                 spectrum.zero();
@@ -946,7 +945,7 @@ fn control_loop(ctx: ControlCtx) {
                     paths,
                     start,
                     sample_rate,
-                    crossfade_secs,
+                    crossfade.clone(),
                     Some(sink),
                     Some(queue_index.clone()),
                 ));

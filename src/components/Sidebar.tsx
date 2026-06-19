@@ -3,6 +3,7 @@ import { ROUTES } from "@/app/routes";
 import { useUiStore } from "@/stores/ui";
 import { NavItem } from "@/components/NavItem";
 import { Logo } from "@/components/Logo";
+import { SidebarNowPlaying } from "@/components/SidebarNowPlaying";
 import { cn } from "@/lib/cn";
 
 /** Persistent left navigation: brand, primary destinations, system, collapse. */
@@ -51,6 +52,8 @@ export function Sidebar() {
           />
         ))}
       </nav>
+
+      <SidebarNowPlaying collapsed={collapsed} />
 
       <div className="flex flex-col gap-1 px-3 pb-1">
         {system.map((r) => (

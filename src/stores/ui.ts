@@ -31,7 +31,7 @@ interface UiState {
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  route: "enhancer",
+  route: "player",
   setRoute: (route) => set({ route }),
 
   sidebarCollapsed: false,

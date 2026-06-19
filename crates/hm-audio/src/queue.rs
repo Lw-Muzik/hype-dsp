@@ -9,7 +9,7 @@
 //! per-track.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -32,7 +32,11 @@ pub struct QueuePlaybackSource {
     expected: usize,
     /// Decoded tracks arriving from the background worker (`None` when eager).
     rx: Option<Receiver<DecodedTrack>>,
-    crossfade_frames: usize,
+    /// Live crossfade duration in seconds (f32 bits), shared with the engine so
+    /// slider changes apply to this queue's upcoming transitions.
+    crossfade: Arc<AtomicU32>,
+    /// Output sample rate, to convert the crossfade seconds to frames.
+    device_rate: u32,
     /// Absolute queue index of local track 0 (so reporting maps back).
     index_offset: usize,
     index: usize,
@@ -54,7 +58,7 @@ impl QueuePlaybackSource {
         paths: Vec<String>,
         start: usize,
         device_rate: u32,
-        crossfade_secs: f32,
+        crossfade: Arc<AtomicU32>,
         meta_sink: Option<MetaSink>,
         current_index: Option<Arc<AtomicUsize>>,
     ) -> Self {
@@ -96,7 +100,8 @@ impl QueuePlaybackSource {
             metas: Vec::new(),
             expected,
             rx: Some(rx),
-            crossfade_frames: (crossfade_secs.max(0.0) * device_rate as f32).round() as usize,
+            crossfade,
+            device_rate,
             index_offset: start,
             index: 0,
             cursor: 0,
@@ -110,6 +115,12 @@ impl QueuePlaybackSource {
 
     fn track_len(&self, i: usize) -> usize {
         self.tracks.get(i).map_or(0, |t| t.len() / 2)
+    }
+
+    /// Current crossfade length in frames, read live from the shared value.
+    fn crossfade_frames(&self) -> usize {
+        let secs = f32::from_bits(self.crossfade.load(Ordering::Relaxed)).max(0.0);
+        (secs * self.device_rate as f32).round() as usize
     }
 
     /// One stereo frame from track `i`, or silence past its end.
@@ -192,7 +203,7 @@ impl AudioSource for QueuePlaybackSource {
 
             let cur_len = self.track_len(self.index);
             let next_ready = self.index + 1 < self.tracks.len();
-            let xf = self.crossfade_frames;
+            let xf = self.crossfade_frames();
             let crossfading = xf > 0 && next_ready && self.cursor + xf >= cur_len;
 
             let (l, r) = if crossfading {
@@ -264,6 +275,7 @@ mod tests {
     }
 
     /// Build an eager (no worker) source over pre-decoded tracks, for testing.
+    /// `crossfade_frames` maps directly to frames here (device_rate = 1).
     fn eager(tracks: Vec<Vec<f32>>, crossfade_frames: usize) -> QueuePlaybackSource {
         let metas = tracks.iter().map(|_| TrackMeta::default()).collect();
         let expected = tracks.len();
@@ -272,7 +284,8 @@ mod tests {
             metas,
             expected,
             rx: None,
-            crossfade_frames,
+            crossfade: Arc::new(AtomicU32::new((crossfade_frames as f32).to_bits())),
+            device_rate: 1,
             index_offset: 0,
             index: 0,
             cursor: 0,

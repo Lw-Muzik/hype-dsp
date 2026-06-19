@@ -103,15 +103,15 @@ pub fn engine_set_playback(engine: State<'_, AudioEngine>, gapless: bool, crossf
 }
 
 /// Play a list of local files as a gapless (and optionally crossfading) queue,
-/// starting at `start`. The crossfade duration comes from the engine settings.
+/// starting at `start`. The crossfade duration is read live from the engine's
+/// playback settings each block, so changing it applies to the current queue.
 #[tauri::command]
 pub fn player_play_queue(
     engine: State<'_, AudioEngine>,
     paths: Vec<String>,
     start: usize,
 ) -> Result<(), IpcError> {
-    let crossfade = engine.crossfade_secs();
-    engine.play_queue(paths, start, crossfade).map_err(Into::into)
+    engine.play_queue(paths, start).map_err(Into::into)
 }
 
 /// Capture the default input device through the chain (driver-free stand-in).

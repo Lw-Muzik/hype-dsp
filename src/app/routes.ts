@@ -27,6 +27,13 @@ export interface NavRoute {
 
 export const ROUTES: readonly NavRoute[] = [
   {
+    id: "player",
+    label: "Player",
+    icon: Music2,
+    group: "main",
+    tagline: "Local library and playlists, played through the enhancement chain.",
+  },
+  {
     id: "enhancer",
     label: "Enhancer",
     icon: Sparkles,
@@ -46,13 +53,6 @@ export const ROUTES: readonly NavRoute[] = [
     icon: SlidersHorizontal,
     group: "main",
     tagline: "Per-application volume and mute.",
-  },
-  {
-    id: "player",
-    label: "Player",
-    icon: Music2,
-    group: "main",
-    tagline: "Local library and playlists, played through the enhancement chain.",
   },
   {
     id: "radio",

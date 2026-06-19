@@ -334,6 +334,8 @@ pub struct LibraryTrack {
     pub title: String,
     pub artist: Option<String>,
     pub album: Option<String>,
+    /// Genre from the file's tags, used for the library's category filter.
+    pub genre: Option<String>,
     pub duration_secs: Option<f64>,
 }
 

@@ -205,6 +205,8 @@ export interface LibraryTrack {
   title: string;
   artist: string | null;
   album: string | null;
+  /** Genre from the file's tags, used for the library's category filter. */
+  genre: string | null;
   durationSecs: number | null;
 }
 

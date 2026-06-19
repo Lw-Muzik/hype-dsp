@@ -31,12 +31,18 @@ impl MediaStore {
     }
 
     fn from_conn(conn: Connection) -> Result<Self, HmError> {
+        // WAL + relaxed sync make bulk imports (tens of thousands of tracks)
+        // dramatically faster — one fsync per checkpoint instead of per row —
+        // while staying crash-safe for a media catalog.
+        let _ = conn.pragma_update(None, "journal_mode", "WAL");
+        let _ = conn.pragma_update(None, "synchronous", "NORMAL");
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS tracks (
                 path          TEXT PRIMARY KEY,
                 title         TEXT NOT NULL,
                 artist        TEXT,
                 album         TEXT,
+                genre         TEXT,
                 duration_secs REAL,
                 added_at      INTEGER NOT NULL
             );
@@ -61,6 +67,9 @@ impl MediaStore {
                 added_at INTEGER NOT NULL
             );",
         )?;
+        // Migration: add `genre` to libraries created before category filtering.
+        // (SQLite has no "ADD COLUMN IF NOT EXISTS"; ignore the duplicate-column error.)
+        let _ = conn.execute("ALTER TABLE tracks ADD COLUMN genre TEXT", []);
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -70,18 +79,20 @@ impl MediaStore {
     pub fn upsert_track(&self, track: &LibraryTrack) -> Result<(), HmError> {
         let conn = self.conn.lock().expect("media store poisoned");
         conn.execute(
-            "INSERT INTO tracks (path, title, artist, album, duration_secs, added_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "INSERT INTO tracks (path, title, artist, album, genre, duration_secs, added_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT(path) DO UPDATE SET
                title = excluded.title,
                artist = excluded.artist,
                album = excluded.album,
+               genre = excluded.genre,
                duration_secs = excluded.duration_secs",
             rusqlite::params![
                 track.path,
                 track.title,
                 track.artist,
                 track.album,
+                track.genre,
                 track.duration_secs,
                 now_millis()
             ],
@@ -89,10 +100,46 @@ impl MediaStore {
         Ok(())
     }
 
+    /// Insert/update many tracks in a single transaction — the fast path for a
+    /// library scan (one fsync for the whole batch instead of one per track).
+    pub fn upsert_tracks(&self, tracks: &[LibraryTrack]) -> Result<(), HmError> {
+        if tracks.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.conn.lock().expect("media store poisoned");
+        let tx = conn.transaction()?;
+        let now = now_millis();
+        {
+            let mut stmt = tx.prepare_cached(
+                "INSERT INTO tracks (path, title, artist, album, genre, duration_secs, added_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(path) DO UPDATE SET
+                   title = excluded.title,
+                   artist = excluded.artist,
+                   album = excluded.album,
+                   genre = excluded.genre,
+                   duration_secs = excluded.duration_secs",
+            )?;
+            for t in tracks {
+                stmt.execute(rusqlite::params![
+                    t.path,
+                    t.title,
+                    t.artist,
+                    t.album,
+                    t.genre,
+                    t.duration_secs,
+                    now
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn list_tracks(&self) -> Result<Vec<LibraryTrack>, HmError> {
         let conn = self.conn.lock().expect("media store poisoned");
         let mut stmt = conn.prepare(
-            "SELECT path, title, artist, album, duration_secs FROM tracks
+            "SELECT path, title, artist, album, genre, duration_secs FROM tracks
              ORDER BY title COLLATE NOCASE",
         )?;
         let rows = stmt.query_map([], row_to_track)?;
@@ -159,7 +206,7 @@ impl MediaStore {
     pub fn playlist_tracks(&self, id: &str) -> Result<Vec<LibraryTrack>, HmError> {
         let conn = self.conn.lock().expect("media store poisoned");
         let mut stmt = conn.prepare(
-            "SELECT t.path, t.title, t.artist, t.album, t.duration_secs
+            "SELECT t.path, t.title, t.artist, t.album, t.genre, t.duration_secs
              FROM playlist_items pi JOIN tracks t ON t.path = pi.track_path
              WHERE pi.playlist_id = ?1 ORDER BY pi.position",
         )?;
@@ -262,7 +309,8 @@ fn row_to_track(r: &rusqlite::Row) -> rusqlite::Result<LibraryTrack> {
         title: r.get(1)?,
         artist: r.get(2)?,
         album: r.get(3)?,
-        duration_secs: r.get(4)?,
+        genre: r.get(4)?,
+        duration_secs: r.get(5)?,
     })
 }
 
@@ -276,6 +324,7 @@ mod tests {
             title: title.into(),
             artist: Some("Artist".into()),
             album: None,
+            genre: None,
             duration_secs: Some(123.0),
         }
     }

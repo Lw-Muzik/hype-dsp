@@ -377,6 +377,27 @@ export function libraryRemove(path: string): Promise<void> {
   return invoke<void>("library_remove", { path });
 }
 
+/** A track's embedded cover art as a data URI, or null if it has none.
+ *  Read on demand so the scan stays fast; the UI caches results per path. */
+export function libraryArtwork(path: string): Promise<string | null> {
+  return invoke<string | null>("library_artwork", { path });
+}
+
+/** Progress of an in-flight library scan. */
+export interface LibraryScanProgress {
+  done: number;
+  total: number;
+}
+
+/** Subscribe to library scan progress (emitted while a folder is importing). */
+export function onLibraryScanProgress(
+  handler: (p: LibraryScanProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<LibraryScanProgress>("library:scan_progress", (e) =>
+    handler(e.payload),
+  );
+}
+
 export function playlistList(): Promise<Playlist[]> {
   return invoke<Playlist[]>("playlist_list");
 }

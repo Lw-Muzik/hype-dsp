@@ -25,11 +25,14 @@ pub mod streaming;
 pub mod system_tap;
 
 pub use capture::{virtual_device_available, LoopbackCaptureSource, VirtualDeviceSource};
-pub use decode::{decode_file, probe_duration, resample_stereo, DecodedAudio};
+pub use decode::{
+    decode_file, probe_artwork, probe_duration, probe_tags, probe_track, resample_stereo,
+    DecodedAudio,
+};
 pub use device::{list_input_devices, list_output_devices, DeviceInfo};
 pub use engine::{AudioEngine, EngineMeters, MetaSink, PlaybackPos, Renderer};
 pub use error::AudioError;
-pub use meta::extract_metadata;
+pub use meta::{extract_metadata, extract_tags, TrackTags};
 pub use queue::QueuePlaybackSource;
 pub use sources::FilePlaybackSource;
 pub use spectrum::{SpectrumTap, SPECTRUM_BANDS};

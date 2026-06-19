@@ -104,6 +104,42 @@ pub fn decode_file(path: &Path) -> Result<DecodedAudio, AudioError> {
     })
 }
 
+/// Read a file's text tags (title/artist/album/genre) without decoding audio,
+/// for the library scan. Cheap enough to run over a whole folder. Returns
+/// default (all `None`) if the file can't be probed.
+pub fn probe_tags(path: &Path) -> crate::meta::TrackTags {
+    match open_format(path) {
+        Ok(mut format) => crate::meta::extract_tags(&mut *format),
+        Err(_) => crate::meta::TrackTags::default(),
+    }
+}
+
+/// Read a file's tags **and** duration in a single open, for the library scan —
+/// half the I/O of calling `probe_tags` + `probe_duration` separately. This
+/// matters when importing tens of thousands of files.
+pub fn probe_track(path: &Path) -> (crate::meta::TrackTags, Option<f64>) {
+    let Ok(mut format) = open_format(path) else {
+        return (crate::meta::TrackTags::default(), None);
+    };
+    let tags = crate::meta::extract_tags(&mut *format);
+    let duration = format
+        .default_track(TrackType::Audio)
+        .and_then(|t| {
+            let params = t.codec_params.as_ref()?.audio()?;
+            let rate = params.sample_rate? as f64;
+            let frames = t.num_frames? as f64;
+            (rate > 0.0).then_some(frames / rate)
+        });
+    (tags, duration)
+}
+
+/// Read a file's embedded front-cover art as a `data:` URI, or `None` if it has
+/// none / can't be probed. Used to lazily fill library artwork on demand.
+pub fn probe_artwork(path: &Path) -> Option<String> {
+    let mut format = open_format(path).ok()?;
+    extract_metadata(&mut *format).cover
+}
+
 /// Probe a file's duration in seconds without fully decoding it (for the
 /// library scan). Returns `None` if unknown.
 pub fn probe_duration(path: &Path) -> Option<f64> {

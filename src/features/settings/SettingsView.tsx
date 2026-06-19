@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CircleAlert,
+  FolderPlus,
   Info,
   KeyRound,
+  Library,
   ListMusic,
   Speaker,
   Sparkles,
@@ -15,12 +17,17 @@ import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
 import { useUiStore } from "@/stores/ui";
 import { useEngineStore } from "@/stores/engine";
+import { useLibraryStore } from "@/stores/library";
 import {
   captureVirtualAvailable,
   ipcErrorMessage,
+  libraryList,
+  libraryScan,
+  onLibraryScanProgress,
   licenseDeactivate,
   licenseStatus,
   listOutputDevices,
+  pickFolder,
   playerPlayCapture,
   playerPlaySystemAudio,
   systemAudioAvailable,
@@ -47,6 +54,113 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <span className="text-text-muted">{label}</span>
       <span className="font-medium tabular-nums">{value}</span>
     </div>
+  );
+}
+
+/**
+ * Music library management — the one place music is imported. Scanning reads
+ * each file's tags (title/artist/album/genre + cover art) into the library the
+ * Player renders.
+ */
+function MusicLibraryCard() {
+  const refreshLibrary = useLibraryStore((s) => s.refresh);
+  const [count, setCount] = useState<number | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const [note, setNote] = useState<string | null>(null);
+
+  const loadCount = useCallback(() => {
+    libraryList()
+      .then((t) => setCount(t.length))
+      .catch(() => setCount(null));
+  }, []);
+
+  useEffect(() => {
+    loadCount();
+  }, [loadCount]);
+
+  // Reflect live scan progress so a large import never looks frozen.
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    let cancelled = false;
+    onLibraryScanProgress((p) => setProgress(p))
+      .then((fn) => (cancelled ? fn() : (un = fn)))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      un?.();
+    };
+  }, []);
+
+  const addFolder = async () => {
+    const dir = await pickFolder();
+    if (!dir) return;
+    setScanning(true);
+    setNote(null);
+    setProgress(null);
+    try {
+      const added = await libraryScan(dir);
+      setNote(`Imported ${added} track${added === 1 ? "" : "s"}.`);
+      loadCount();
+      refreshLibrary();
+    } catch (e) {
+      setNote(`Scan failed: ${ipcErrorMessage(e)}`);
+    } finally {
+      setScanning(false);
+      setProgress(null);
+    }
+  };
+
+  const pct =
+    progress && progress.total > 0
+      ? Math.round((progress.done / progress.total) * 100)
+      : null;
+
+  return (
+    <Card
+      title="Music library"
+      icon={Library}
+      actions={
+        <Button variant="primary" onClick={addFolder} disabled={scanning}>
+          <FolderPlus className="size-4" aria-hidden="true" />
+          {scanning ? "Scanning…" : "Add folder"}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-1">
+        <p className="text-sm text-text-muted">
+          Scan a folder to import its tracks. Titles, artists, albums, genres,
+          and cover art are read from each file&rsquo;s tags and shown in the
+          Player.
+        </p>
+        <div className="divide-y divide-border">
+          <InfoRow
+            label="Tracks in library"
+            value={count == null ? "—" : count.toLocaleString()}
+          />
+        </div>
+        {scanning && progress && (
+          <div className="flex flex-col gap-1.5 pt-1">
+            <div className="flex items-center justify-between text-xs text-text-muted">
+              <span>Importing…</span>
+              <span className="tabular-nums">
+                {progress.done.toLocaleString()} / {progress.total.toLocaleString()}
+                {pct != null ? ` · ${pct}%` : ""}
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-border-strong">
+              <div
+                className="h-full rounded-full bg-accent transition-[width] duration-150"
+                style={{ width: `${pct ?? 0}%` }}
+              />
+            </div>
+          </div>
+        )}
+        {!scanning && note && <p className="text-xs text-text-faint">{note}</p>}
+      </div>
+    </Card>
   );
 }
 
@@ -169,6 +283,8 @@ export function SettingsView() {
             />
           </div>
         </Card>
+
+        <MusicLibraryCard />
 
         <Card
           title="Playback"

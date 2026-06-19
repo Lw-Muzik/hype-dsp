@@ -1,16 +1,20 @@
 //! Local library scan + playlist commands (SQLite-backed).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use hm_audio::probe_duration;
+use hm_audio::{probe_artwork, probe_track};
 use hm_core::{IpcError, LibraryTrack, MediaStore, Playlist};
-use tauri::State;
+use serde::Serialize;
+use tauri::{Emitter, State};
 
 /// Supported audio file extensions for library scanning.
 const AUDIO_EXTS: &[&str] = &[
     "mp3", "flac", "wav", "ogg", "oga", "m4a", "aac", "mp4", "opus",
 ];
 const MAX_DEPTH: usize = 8;
+/// Tracks tagged + written per transaction. Big enough to amortize fsync,
+/// small enough to keep progress smooth and memory bounded over huge libraries.
+const SCAN_CHUNK: usize = 256;
 
 fn is_audio(path: &Path) -> bool {
     path.extension()
@@ -19,7 +23,17 @@ fn is_audio(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn scan_dir(dir: &Path, store: &MediaStore, count: &mut usize, depth: usize) {
+/// Scan progress, emitted on `library:scan_progress` so the UI can show it
+/// instead of appearing frozen during a large import.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScanProgress {
+    done: usize,
+    total: usize,
+}
+
+/// Collect audio file paths under `dir` (cheap directory walk, no decoding).
+fn collect_audio_paths(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
     if depth > MAX_DEPTH {
         return;
     }
@@ -29,38 +43,62 @@ fn scan_dir(dir: &Path, store: &MediaStore, count: &mut usize, depth: usize) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            scan_dir(&path, store, count, depth + 1);
+            collect_audio_paths(&path, out, depth + 1);
         } else if is_audio(&path) {
-            let title = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Unknown")
-                .to_string();
-            let track = LibraryTrack {
-                path: path.to_string_lossy().into_owned(),
-                title,
-                artist: None,
-                album: None,
-                duration_secs: probe_duration(&path),
-            };
-            if store.upsert_track(&track).is_ok() {
-                *count += 1;
-            }
+            out.push(path);
         }
     }
 }
 
-/// Recursively scan a folder for audio files and add them to the library.
-/// Returns the number of tracks scanned.
+/// Recursively scan a folder for audio files and add them to the library,
+/// reading each file's tags. Designed to stay smooth over very large libraries:
+/// it walks first, then tags + writes in batched transactions, emitting
+/// `library:scan_progress` along the way. Runs off the UI thread (Tauri command
+/// pool). Returns the number of tracks imported.
 #[tauri::command]
-pub fn library_scan(store: State<'_, MediaStore>, dir: String) -> Result<usize, IpcError> {
+pub fn library_scan(
+    app: tauri::AppHandle,
+    store: State<'_, MediaStore>,
+    dir: String,
+) -> Result<usize, IpcError> {
     let path = Path::new(&dir);
     if !path.is_dir() {
         return Err(IpcError::new("invalid", "not a directory"));
     }
-    let mut count = 0;
-    scan_dir(path, &store, &mut count, 0);
-    Ok(count)
+
+    let mut paths = Vec::new();
+    collect_audio_paths(path, &mut paths, 0);
+    let total = paths.len();
+    let _ = app.emit("library:scan_progress", ScanProgress { done: 0, total });
+
+    let mut done = 0;
+    for chunk in paths.chunks(SCAN_CHUNK) {
+        let batch: Vec<LibraryTrack> = chunk
+            .iter()
+            .map(|p| {
+                // One file open for both tags and duration.
+                let (tags, duration) = probe_track(p);
+                let filename = p
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
+                LibraryTrack {
+                    path: p.to_string_lossy().into_owned(),
+                    title: tags.title.filter(|t| !t.trim().is_empty()).unwrap_or(filename),
+                    artist: tags.artist,
+                    album: tags.album,
+                    genre: tags.genre,
+                    duration_secs: duration,
+                }
+            })
+            .collect();
+        if store.upsert_tracks(&batch).is_ok() {
+            done += batch.len();
+        }
+        let _ = app.emit("library:scan_progress", ScanProgress { done, total });
+    }
+    Ok(done)
 }
 
 #[tauri::command]
@@ -71,6 +109,14 @@ pub fn library_list(store: State<'_, MediaStore>) -> Result<Vec<LibraryTrack>, I
 #[tauri::command]
 pub fn library_remove(store: State<'_, MediaStore>, path: String) -> Result<(), IpcError> {
     store.remove_track(&path).map_err(Into::into)
+}
+
+/// A track's embedded cover art as a `data:` URI, or `None` if it has none.
+/// Read on demand (the scan skips artwork to stay fast), so the UI lazy-loads
+/// covers only for the rows/cards it actually shows. Never errors.
+#[tauri::command]
+pub fn library_artwork(path: String) -> Option<String> {
+    probe_artwork(Path::new(&path))
 }
 
 #[tauri::command]

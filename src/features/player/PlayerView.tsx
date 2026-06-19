@@ -1,29 +1,39 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ChevronLeft,
-  ChevronRight,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Check,
+  ChevronDown,
   Cloud,
-  FolderPlus,
   ListMusic,
   Music2,
-  Play,
   Plus,
+  Search,
   Smartphone,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
-import { Button } from "@/components/Button";
 import { DevicesView } from "@/features/devices/DevicesView";
 import { CloudView } from "@/features/cloud/CloudView";
+import { AlbumDeck } from "@/features/player/AlbumDeck";
+import type { DeckItem } from "@/features/player/AlbumDeck";
+import { CategoryChips } from "@/features/player/CategoryChips";
+import { AlbumCarousel } from "@/features/player/AlbumCarousel";
+import type { CarouselAlbum } from "@/features/player/AlbumCarousel";
+import { TrackRow } from "@/features/player/TrackRow";
+import { VirtualList } from "@/components/VirtualList";
 import { useEngineStore } from "@/stores/engine";
+import { useLibraryStore } from "@/stores/library";
 import {
   libraryList,
-  libraryScan,
-  pickFolder,
   playlistAdd,
   playlistCreate,
   playlistDelete,
@@ -32,33 +42,7 @@ import {
   playlistTracks,
 } from "@/lib/ipc";
 import type { LibraryTrack, Playlist } from "@/lib/types";
-import { formatTime } from "@/lib/format";
-import { coverGradient, coverInitials } from "@/lib/cover";
 import { cn } from "@/lib/cn";
-
-/** A square gradient cover (with initials) for a track/album. */
-function Cover({
-  seed,
-  label,
-  className,
-}: {
-  seed: string;
-  label: string;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "grid shrink-0 place-items-center overflow-hidden font-semibold text-white/90",
-        className,
-      )}
-      style={{ background: coverGradient(seed) }}
-      aria-hidden="true"
-    >
-      <span className="opacity-80">{coverInitials(label)}</span>
-    </div>
-  );
-}
 
 interface Album {
   key: string;
@@ -91,29 +75,15 @@ function groupAlbums(tracks: LibraryTrack[]): Album[] {
   return [...map.values()];
 }
 
-/** A spotlighted album/track for the hero carousel. */
-interface Featured {
-  key: string;
-  title: string;
-  artist: string;
-  subtitle: string;
-  seed: string;
-  /** Index into the full track list to start playback from. */
-  index: number;
-}
-
-/**
- * Pick what to spotlight: real albums when the library has a few, otherwise
- * the first handful of tracks (so a flat, tag-less library still gets a hero).
- */
-function pickFeatured(albums: Album[], tracks: LibraryTrack[]): Featured[] {
+/** Featured deck items: real albums when there are a few, else the first tracks. */
+function pickDeck(albums: Album[], tracks: LibraryTrack[]): DeckItem[] {
   const realAlbums = albums.filter((a) => a.key !== "singles");
   if (realAlbums.length >= 2) {
     return realAlbums.slice(0, 6).map((a) => ({
       key: `a:${a.key}`,
       title: a.name,
       artist: a.artist,
-      subtitle: `${a.tracks.length} track${a.tracks.length === 1 ? "" : "s"}`,
+      path: a.tracks[0]?.path ?? null,
       seed: a.name,
       index: a.firstIndex,
     }));
@@ -122,139 +92,22 @@ function pickFeatured(albums: Album[], tracks: LibraryTrack[]): Featured[] {
     key: `t:${t.path}`,
     title: t.title,
     artist: t.artist?.trim() || "Unknown artist",
-    subtitle: t.album?.trim() || "Single",
+    path: t.path,
     seed: t.album?.trim() || t.title,
     index: i,
   }));
 }
 
-/** Big auto-rotating spotlight at the top of the Library. */
-function FeaturedHero({
-  items,
-  onPlay,
-}: {
-  items: Featured[];
-  onPlay: (f: Featured) => void;
-}) {
-  const [active, setActive] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const count = items.length;
-  const reduceMotion =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  // Keep the active index valid as the library changes underneath us.
-  useEffect(() => {
-    setActive((a) => (a < count ? a : 0));
-  }, [count]);
-
-  // Gently auto-advance — unless hovered, reduced-motion, or a single item.
-  useEffect(() => {
-    if (paused || reduceMotion || count <= 1) return;
-    const id = setInterval(() => setActive((a) => (a + 1) % count), 6000);
-    return () => clearInterval(id);
-  }, [paused, reduceMotion, count]);
-
-  if (count === 0) return null;
-  const f = items[active] ?? items[0]!;
-
-  return (
-    <section
-      className="px-4 pt-4"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-    >
-      <div className="group/hero relative h-44 overflow-hidden rounded-card">
-        {/* Cross-fading gradient backdrops */}
-        {items.map((it, i) => (
-          <div
-            key={it.key}
-            className={cn(
-              "absolute inset-0 transition-opacity duration-700",
-              i === active ? "opacity-100" : "opacity-0",
-            )}
-            style={{ background: coverGradient(it.seed) }}
-            aria-hidden="true"
-          />
-        ))}
-        <div
-          className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-transparent"
-          aria-hidden="true"
-        />
-        <span
-          className="pointer-events-none absolute -right-3 top-1/2 -translate-y-1/2 select-none text-[8rem] font-bold leading-none text-white/10"
-          aria-hidden="true"
-        >
-          {coverInitials(f.seed)}
-        </span>
-
-        {/* Content */}
-        <div className="relative flex h-full flex-col justify-between p-5">
-          <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white backdrop-blur">
-            <Sparkles className="size-3" aria-hidden="true" />
-            Featured
-          </span>
-          <div className="min-w-0">
-            <h2 className="truncate text-2xl font-bold text-white">{f.title}</h2>
-            <p className="mt-0.5 truncate text-sm text-white/80">
-              {f.artist} · {f.subtitle}
-            </p>
-            <button
-              type="button"
-              onClick={() => onPlay(f)}
-              className="mt-3 inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-surface shadow-lg transition-transform hover:scale-105 active:scale-100"
-            >
-              <Play className="size-4 fill-current" aria-hidden="true" />
-              Play
-            </button>
-          </div>
-        </div>
-
-        {/* Prev / next (revealed on hover) */}
-        {count > 1 && (
-          <>
-            <button
-              type="button"
-              aria-label="Previous featured"
-              onClick={() => setActive((a) => (a - 1 + count) % count)}
-              className="absolute left-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover/hero:opacity-100"
-            >
-              <ChevronLeft className="size-5" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              aria-label="Next featured"
-              onClick={() => setActive((a) => (a + 1) % count)}
-              className="absolute right-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover/hero:opacity-100"
-            >
-              <ChevronRight className="size-5" aria-hidden="true" />
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Dots */}
-      {count > 1 && (
-        <div className="mt-2 flex justify-center gap-1.5">
-          {items.map((it, i) => (
-            <button
-              key={it.key}
-              type="button"
-              aria-label={`Show featured item ${i + 1}`}
-              aria-current={i === active}
-              onClick={() => setActive(i)}
-              className={cn(
-                "h-1.5 rounded-full transition-all",
-                i === active
-                  ? "w-5 bg-accent"
-                  : "w-1.5 bg-border-strong hover:bg-text-faint",
-              )}
-            />
-          ))}
-        </div>
-      )}
-    </section>
-  );
+/** All albums as carousel cards. */
+function toCarousel(albums: Album[]): CarouselAlbum[] {
+  return albums.map((a) => ({
+    key: a.key,
+    name: a.name,
+    artist: a.artist,
+    path: a.tracks[0]?.path ?? null,
+    seed: a.name,
+    index: a.firstIndex,
+  }));
 }
 
 /** Per-row "add to playlist" popover. */
@@ -312,27 +165,185 @@ function AddToPlaylist({
   );
 }
 
-/** The Library source: local scanned library + playlists, rich UI. */
+/** Collection switcher (Library + playlists) + create. */
+function CollectionMenu({
+  collectionName,
+  playlists,
+  collection,
+  onSelect,
+  onDelete,
+  onCreate,
+}: {
+  collectionName: string;
+  playlists: Playlist[];
+  collection: string | null;
+  onSelect: (id: string | null) => void;
+  onDelete: (id: string) => void;
+  onCreate: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setCreating(false);
+      }
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  const submit = () => {
+    const n = name.trim();
+    setName("");
+    setCreating(false);
+    setOpen(false);
+    if (n) onCreate(n);
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 rounded-control border border-border px-3 py-1.5 text-sm font-medium text-text transition-colors hover:border-border-strong"
+      >
+        {collection ? (
+          <ListMusic className="size-4 text-text-muted" aria-hidden="true" />
+        ) : (
+          <Music2 className="size-4 text-text-muted" aria-hidden="true" />
+        )}
+        <span className="max-w-40 truncate">{collectionName}</span>
+        <ChevronDown className="size-4 text-text-faint" aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="absolute left-0 z-20 mt-1 w-56 rounded-control border border-border bg-surface-raised py-1 shadow-lg">
+          <CollectionRow
+            icon={Music2}
+            label="Library"
+            active={collection === null}
+            onClick={() => {
+              onSelect(null);
+              setOpen(false);
+            }}
+          />
+          {playlists.length > 0 && (
+            <div className="my-1 border-t border-border" aria-hidden="true" />
+          )}
+          {playlists.map((p) => (
+            <CollectionRow
+              key={p.id}
+              icon={ListMusic}
+              label={p.name}
+              active={collection === p.id}
+              onClick={() => {
+                onSelect(p.id);
+                setOpen(false);
+              }}
+              onDelete={() => onDelete(p.id)}
+            />
+          ))}
+          <div className="my-1 border-t border-border" aria-hidden="true" />
+          {creating ? (
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={submit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submit();
+                if (e.key === "Escape") {
+                  setName("");
+                  setCreating(false);
+                }
+              }}
+              placeholder="Playlist name"
+              className="mx-2 my-1 w-[calc(100%-1rem)] rounded-control border border-accent/40 bg-surface px-2.5 py-1.5 text-sm outline-none placeholder:text-text-faint"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text-muted hover:bg-surface-overlay hover:text-text"
+            >
+              <Plus className="size-4" aria-hidden="true" />
+              New playlist
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CollectionRow({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+  onDelete,
+}: {
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  onDelete?: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group/row flex items-center",
+        active ? "text-accent-strong" : "text-text",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-overlay"
+      >
+        <Icon className="size-4 shrink-0 text-text-muted" aria-hidden="true" />
+        <span className="truncate">{label}</span>
+        {active && <Check className="ml-auto size-3.5 shrink-0" aria-hidden="true" />}
+      </button>
+      {onDelete && (
+        <button
+          type="button"
+          aria-label={`Delete playlist ${label}`}
+          onClick={onDelete}
+          className="mr-1 hidden size-7 items-center justify-center rounded-control text-text-faint hover:text-danger group-hover/row:flex"
+        >
+          <Trash2 className="size-3.5" aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The Library source: hero deck, genre filter, album strip, and song list. */
 function LibraryPanel() {
   const playFromList = useEngineStore((s) => s.playFromList);
   const queue = useEngineStore((s) => s.queue);
   const queueIndex = useEngineStore((s) => s.queueIndex);
-  // Local queue items use the file path as their id, so this matches by path.
   const current = queueIndex >= 0 ? queue[queueIndex] : undefined;
-  const playingPath =
-    current?.source === "local" ? (current.id ?? null) : null;
+  const playingPath = current?.source === "local" ? (current.id ?? null) : null;
+  const libraryVersion = useLibraryStore((s) => s.version);
 
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [collection, setCollection] = useState<string | null>(null); // null = Library
   const [tracks, setTracks] = useState<LibraryTrack[]>([]);
-  const [scanning, setScanning] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
+  const [category, setCategory] = useState("All");
+  const [query, setQuery] = useState("");
+  // Defer the (potentially 100k-row) filter so typing stays responsive.
+  const deferredQuery = useDeferredValue(query);
+  // The single scroll container the song list virtualizes against.
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const refreshPlaylists = useCallback(() => {
-    playlistList()
-      .then(setPlaylists)
-      .catch(() => {});
+    playlistList().then(setPlaylists).catch(() => {});
   }, []);
 
   const refreshTracks = useCallback(() => {
@@ -343,28 +354,16 @@ function LibraryPanel() {
   useEffect(() => {
     refreshPlaylists();
   }, [refreshPlaylists]);
+  // Reload when the collection changes or the library is rescanned (in Settings).
   useEffect(() => {
     refreshTracks();
-  }, [refreshTracks]);
+  }, [refreshTracks, libraryVersion]);
+  // A genre filter from another collection may not exist here — reset it.
+  useEffect(() => {
+    setCategory("All");
+  }, [collection]);
 
-  const handleScan = async () => {
-    const dir = await pickFolder();
-    if (!dir) return;
-    setScanning(true);
-    try {
-      await libraryScan(dir);
-      setCollection(null);
-      refreshTracks();
-    } finally {
-      setScanning(false);
-    }
-  };
-
-  const handleCreate = () => {
-    const name = newName.trim();
-    setNewName("");
-    setCreating(false);
-    if (!name) return;
+  const handleCreate = (name: string) => {
     playlistCreate(name)
       .then((pl) => {
         refreshPlaylists();
@@ -382,218 +381,157 @@ function LibraryPanel() {
       .catch(() => {});
   };
 
-  const activeName = collection
+  const albums = useMemo(() => groupAlbums(tracks), [tracks]);
+  const deck = useMemo(() => pickDeck(albums, tracks), [albums, tracks]);
+  const carousel = useMemo(() => toCarousel(albums), [albums]);
+  const genres = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tracks) {
+      const g = t.genre?.trim();
+      if (g) set.add(g);
+    }
+    return ["All", ...[...set].sort((a, b) => a.localeCompare(b))];
+  }, [tracks]);
+
+  const visibleTracks = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    if (category === "All" && !q) return tracks;
+    return tracks.filter((t) => {
+      if (category !== "All" && t.genre?.trim() !== category) return false;
+      if (!q) return true;
+      return (
+        t.title.toLowerCase().includes(q) ||
+        (t.artist?.toLowerCase().includes(q) ?? false) ||
+        (t.album?.toLowerCase().includes(q) ?? false)
+      );
+    });
+  }, [tracks, category, deferredQuery]);
+
+  const collectionName = collection
     ? (playlists.find((p) => p.id === collection)?.name ?? "Playlist")
     : "Library";
 
-  // Albums strip + featured hero only on the Library (not inside a playlist).
-  const albums = collection === null ? groupAlbums(tracks) : [];
-  const featured = collection === null ? pickFeatured(albums, tracks) : [];
+  if (tracks.length === 0 && collection === null) {
+    return <EmptyLibrary />;
+  }
 
   return (
-    <div className="flex min-h-0 flex-1 gap-4">
-        {/* Collections sidebar */}
-        <aside className="flex w-52 shrink-0 flex-col gap-1">
-          <CollectionItem
-            icon={Music2}
-            label="Library"
-            active={collection === null}
-            onClick={() => setCollection(null)}
-          />
-          <div className="mt-2 px-2 text-[11px] font-medium uppercase tracking-wide text-text-faint">
-            Playlists
-          </div>
-          {playlists.map((p) => (
-            <CollectionItem
-              key={p.id}
-              icon={ListMusic}
-              label={p.name}
-              active={collection === p.id}
-              onClick={() => setCollection(p.id)}
-              onDelete={() => handleDeletePlaylist(p.id)}
+    <div
+      ref={scrollRef}
+      className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pb-2"
+    >
+      {deck.length > 0 && (
+        <AlbumDeck items={deck} onPlay={(i) => playFromList(tracks, i)} />
+      )}
+
+      <CategoryChips
+        categories={genres}
+        active={category}
+        onSelect={setCategory}
+      />
+
+      {carousel.length > 1 && (
+        <AlbumCarousel
+          title="Albums"
+          albums={carousel.slice(0, 24)}
+          onPlay={(i) => playFromList(tracks, i)}
+        />
+      )}
+
+      {/* Songs */}
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold">Songs</h3>
+            <CollectionMenu
+              collectionName={collectionName}
+              playlists={playlists}
+              collection={collection}
+              onSelect={setCollection}
+              onDelete={handleDeletePlaylist}
+              onCreate={handleCreate}
             />
-          ))}
-          {creating ? (
+          </div>
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-faint"
+              aria-hidden="true"
+            />
             <input
-              autoFocus
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onBlur={handleCreate}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-                if (e.key === "Escape") {
-                  setNewName("");
-                  setCreating(false);
-                }
-              }}
-              placeholder="Playlist name"
-              className="mx-1 rounded-control border border-accent/40 bg-surface px-2.5 py-1.5 text-sm outline-none placeholder:text-text-faint"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search songs"
+              aria-label="Search songs"
+              className="w-48 rounded-control border border-border bg-surface-raised py-1.5 pl-8 pr-3 text-sm outline-none transition-colors focus:border-border-strong placeholder:text-text-faint"
             />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setCreating(true)}
-              className="mx-1 mt-1 flex items-center gap-2 rounded-control px-2.5 py-1.5 text-sm text-text-muted hover:bg-surface-raised hover:text-text"
-            >
-              <Plus className="size-4" aria-hidden="true" />
-              New playlist
-            </button>
-          )}
-        </aside>
-
-        {/* Track table */}
-        <div className="flex min-w-0 flex-1 flex-col rounded-card border border-border bg-surface-raised">
-          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <div className="min-w-0">
-              <h3 className="truncate text-sm font-medium">{activeName}</h3>
-              <p className="text-xs text-text-muted">{tracks.length} tracks</p>
-            </div>
-            {collection === null && (
-              <Button variant="secondary" onClick={handleScan} disabled={scanning}>
-                <FolderPlus className="size-4" aria-hidden="true" />
-                {scanning ? "Scanning…" : "Scan folder"}
-              </Button>
-            )}
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {tracks.length === 0 ? (
-              <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 p-8 text-center">
-                <Music2 className="size-8 text-text-faint" aria-hidden="true" />
-                <p className="text-sm text-text-muted">
-                  {collection === null
-                    ? "Your library is empty. Scan a folder to add music."
-                    : "This playlist is empty. Add tracks from your library."}
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col">
-                {/* Featured spotlight (Library) */}
-                {featured.length > 0 && (
-                  <FeaturedHero
-                    items={featured}
-                    onPlay={(f) => playFromList(tracks, f.index)}
-                  />
-                )}
-
-                {/* Albums strip (Library) */}
-                {albums.length > 1 && (
-                  <section className="border-b border-border px-4 pb-4 pt-3">
-                    <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-text-faint">
-                      Albums
-                    </h4>
-                    <div className="flex gap-5 overflow-x-auto pb-1">
-                      {albums.map((a) => (
-                        <button
-                          key={a.key}
-                          type="button"
-                          onClick={() => playFromList(tracks, a.firstIndex)}
-                          className="group flex w-24 shrink-0 flex-col items-center gap-2 text-center"
-                          title={`${a.name} — ${a.artist}`}
-                        >
-                          <Cover
-                            seed={a.name}
-                            label={a.name}
-                            className="size-24 rounded-full text-lg shadow-md ring-1 ring-white/10 transition-transform group-hover:scale-105"
-                          />
-                          <span className="w-full truncate text-xs font-medium">
-                            {a.name}
-                          </span>
-                          <span className="-mt-1.5 w-full truncate text-[11px] text-text-faint">
-                            {a.artist}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                {/* Track list — ranked, with cover art */}
-                <div className="hidden items-center gap-3 px-4 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-text-faint sm:flex">
-                  <span className="w-6 text-right">#</span>
-                  <span className="w-11" />
-                  <span className="flex-1">Song</span>
-                  <span className="w-16 text-right">Time</span>
-                  <span className="w-7" />
-                </div>
-                <ol className="flex flex-col px-2 pb-2">
-                  {tracks.map((t, i) => {
-                    const isPlaying = t.path === playingPath;
-                    return (
-                      <li
-                        key={t.path}
-                        onClick={() => playFromList(tracks, i)}
-                        className={cn(
-                          "group flex cursor-pointer items-center gap-3 rounded-control px-2 py-1.5 transition-colors hover:bg-surface-overlay",
-                          isPlaying && "bg-accent-muted/40",
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "w-6 text-right text-xs tabular-nums",
-                            isPlaying ? "text-accent-strong" : "text-text-faint",
-                          )}
-                        >
-                          {String(i + 1).padStart(2, "0")}
-                        </span>
-                        <div className="relative">
-                          <Cover
-                            seed={t.album?.trim() || t.title}
-                            label={t.title}
-                            className="size-11 rounded-md text-sm"
-                          />
-                          <span className="absolute inset-0 grid place-items-center rounded-md bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
-                            <Play className="size-4 text-white" aria-hidden="true" />
-                          </span>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className={cn(
-                              "truncate text-sm font-medium",
-                              isPlaying && "text-accent-strong",
-                            )}
-                          >
-                            {t.title}
-                          </p>
-                          <p className="truncate text-xs text-text-muted">
-                            {t.artist ?? "—"}
-                          </p>
-                        </div>
-                        <span className="w-16 shrink-0 text-right text-xs tabular-nums text-text-muted">
-                          {formatTime(t.durationSecs)}
-                        </span>
-                        <div onClick={(e) => e.stopPropagation()}>
-                          {collection ? (
-                            <button
-                              type="button"
-                              aria-label="Remove from playlist"
-                              onClick={() =>
-                                playlistRemove(collection, t.path)
-                                  .then(refreshTracks)
-                                  .catch(() => {})
-                              }
-                              className="flex size-7 items-center justify-center rounded-control text-text-faint hover:bg-surface hover:text-danger"
-                            >
-                              <X className="size-4" aria-hidden="true" />
-                            </button>
-                          ) : (
-                            <AddToPlaylist
-                              playlists={playlists}
-                              onAdd={(id) =>
-                                void playlistAdd(id, t.path).catch(() => {})
-                              }
-                            />
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </div>
-            )}
           </div>
         </div>
+
+        {visibleTracks.length === 0 ? (
+          <p className="px-2 py-8 text-center text-sm text-text-muted">
+            {collection && tracks.length === 0
+              ? "This playlist is empty. Add songs from your library."
+              : "No songs match."}
+          </p>
+        ) : (
+          <VirtualList
+            items={visibleTracks}
+            rowHeight={56}
+            scrollRef={scrollRef}
+            ariaLabel="Songs"
+            getKey={(t) => t.path}
+            renderRow={(t, i) => (
+              <TrackRow
+                track={t}
+                rank={i + 1}
+                playing={t.path === playingPath}
+                onPlay={() => playFromList(visibleTracks, i)}
+                trailing={
+                  collection ? (
+                    <button
+                      type="button"
+                      aria-label="Remove from playlist"
+                      onClick={() =>
+                        playlistRemove(collection, t.path)
+                          .then(refreshTracks)
+                          .catch(() => {})
+                      }
+                      className="flex size-7 items-center justify-center rounded-control text-text-faint hover:bg-surface hover:text-danger"
+                    >
+                      <X className="size-4" aria-hidden="true" />
+                    </button>
+                  ) : (
+                    <AddToPlaylist
+                      playlists={playlists}
+                      onAdd={(id) => void playlistAdd(id, t.path).catch(() => {})}
+                    />
+                  )
+                }
+              />
+            )}
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** Shown when the library has never been scanned. */
+function EmptyLibrary() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
+      <div className="grid size-14 place-items-center rounded-2xl bg-surface-raised ring-1 ring-border">
+        <Music2 className="size-7 text-text-faint" aria-hidden="true" />
       </div>
+      <div>
+        <p className="text-base font-medium">Your library is empty</p>
+        <p className="mt-1 max-w-xs text-sm text-text-muted">
+          Add a music folder in Settings to fill your library with its tags and
+          cover art.
+        </p>
+      </div>
+      <p className="text-xs text-text-faint">Settings → Music library → Add folder</p>
+    </div>
   );
 }
 
@@ -647,48 +585,6 @@ export function PlayerView() {
         <DevicesView embedded />
       ) : (
         <CloudView embedded />
-      )}
-    </div>
-  );
-}
-
-function CollectionItem({
-  icon: Icon,
-  label,
-  active,
-  onClick,
-  onDelete,
-}: {
-  icon: typeof Music2;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  onDelete?: () => void;
-}) {
-  return (
-    <div
-      className={cn(
-        "group flex items-center rounded-control transition-colors",
-        active ? "bg-surface-overlay text-text" : "text-text-muted hover:bg-surface-raised",
-      )}
-    >
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-sm"
-      >
-        <Icon className="size-4 shrink-0" aria-hidden="true" />
-        <span className="truncate">{label}</span>
-      </button>
-      {onDelete && (
-        <button
-          type="button"
-          aria-label={`Delete playlist ${label}`}
-          onClick={onDelete}
-          className="mr-1 hidden size-7 items-center justify-center rounded-control text-text-faint hover:text-danger group-hover:flex"
-        >
-          <Trash2 className="size-3.5" aria-hidden="true" />
-        </button>
       )}
     </div>
   );

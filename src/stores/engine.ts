@@ -559,7 +559,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
 
     play: async (path, name) => {
-      const items = [localItem({ path, title: name, artist: null, album: null, durationSecs: null })];
+      const items = [
+        localItem({ path, title: name, artist: null, album: null, genre: null, durationSecs: null }),
+      ];
       setQueueAndPlay(items, 0);
     },
 

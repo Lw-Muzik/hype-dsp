@@ -360,6 +360,7 @@ pub fn run() {
             commands::library::library_scan,
             commands::library::library_list,
             commands::library::library_remove,
+            commands::library::library_artwork,
             commands::library::playlist_list,
             commands::library::playlist_create,
             commands::library::playlist_rename,

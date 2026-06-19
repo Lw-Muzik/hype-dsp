@@ -17,6 +17,7 @@ import { useEngineStore } from "@/stores/engine";
 import { useUiStore } from "@/stores/ui";
 import { clearLyricsCache } from "@/features/player/useLyrics";
 import { Slider } from "@/components/Slider";
+import { VisualizerButton } from "@/components/VisualizerButton";
 import { formatTime } from "@/lib/format";
 import { coverGradient, coverInitials } from "@/lib/cover";
 import { cn } from "@/lib/cn";
@@ -251,6 +252,7 @@ export function NowPlayingBar() {
         >
           <ListMusic className="size-4" aria-hidden="true" />
         </button>
+        <VisualizerButton />
         <Volume2 className="size-4 shrink-0 text-text-muted" aria-hidden="true" />
         <Slider
           label="Volume"

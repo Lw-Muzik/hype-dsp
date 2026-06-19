@@ -248,6 +248,9 @@ pub fn run() {
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_cloud_meta.json"));
             app.manage(cloud_meta::CloudMetaCache::load(cloud_meta_path));
 
+            // MilkDrop visualizer sidecar process handle.
+            app.manage(commands::visualizer::VisualizerState::default());
+
             // Phone Link (stream the phone's library over the LAN) pairing store.
             let link_path = app
                 .path()
@@ -359,6 +362,9 @@ pub fn run() {
             commands::engine::player_play_capture,
             commands::engine::player_play_system_audio,
             commands::engine::stop_system_audio,
+            commands::visualizer::visualizer_available,
+            commands::visualizer::visualizer_start,
+            commands::visualizer::visualizer_stop,
             commands::engine::capture_virtual_available,
             commands::engine::system_audio_available,
             commands::engine::player_stop,

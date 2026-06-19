@@ -368,6 +368,29 @@ export function systemAudioAvailable(): Promise<boolean> {
   return invoke<boolean>("system_audio_available");
 }
 
+/** Whether the native MilkDrop visualizer sidecar is bundled in this build. */
+export function visualizerAvailable(): Promise<boolean> {
+  return invoke<boolean>("visualizer_available");
+}
+
+/** Open the MilkDrop visualizer window and stream the engine's audio to it. */
+export function visualizerStart(opts?: {
+  fps?: number;
+  beat?: number;
+  presetSecs?: number;
+}): Promise<void> {
+  return invoke<void>("visualizer_start", {
+    fps: opts?.fps ?? null,
+    beat: opts?.beat ?? null,
+    presetSecs: opts?.presetSecs ?? null,
+  });
+}
+
+/** Close the visualizer window. */
+export function visualizerStop(): Promise<void> {
+  return invoke<void>("visualizer_stop");
+}
+
 /** Whether audio is currently playing. */
 export function playerIsPlaying(): Promise<boolean> {
   return invoke<boolean>("player_is_playing");

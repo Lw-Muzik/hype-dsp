@@ -18,3 +18,4 @@ pub mod mixer;
 pub mod presets;
 pub mod profiles;
 pub mod radio;
+pub mod visualizer;

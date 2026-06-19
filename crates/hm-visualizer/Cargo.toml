@@ -7,17 +7,24 @@ license.workspace = true
 
 # Native MilkDrop (libprojectM v4) visualizer.
 #
-# `projectm-sys` compiles libprojectM from source via CMake and links it
-# STATICALLY (`features = ["static"]`). It's OPTIONAL and OFF by default, so the
-# normal workspace build (and the existing CI clippy job) never needs the native
-# toolchain (CMake / OpenGL / GLEW / vcpkg). Only the dedicated `milkdrop` CI
-# job enables it, to validate the cross-platform native build before the
-# renderer is wired in.
-[dependencies]
-projectm-sys = { version = "1", optional = true, features = ["static"] }
-
+# `projectm-sys` compiles libprojectM from source via CMake. It's OPTIONAL and
+# OFF by default, so the normal workspace build (and the existing CI clippy job)
+# never needs the native toolchain (CMake / OpenGL / GLEW / vcpkg). Only the
+# dedicated `milkdrop` CI job enables it.
+#
+# Linked STATICALLY on macOS/Linux (self-contained binary). On Windows the
+# `static` feature is broken in projectm-sys — it builds `libprojectM-4.lib`
+# (with a `lib` prefix) but tells MSVC to link `projectM-4`, which looks for the
+# prefix-less name — so we use the default SHARED build there (a correctly-named
+# import lib; the DLL ships alongside the app), as projectM's own CI does.
 [features]
 milkdrop = ["dep:projectm-sys"]
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+projectm-sys = { version = "1", optional = true, features = ["static"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+projectm-sys = { version = "1", optional = true }
 
 # Build-proof binary, compiled only with `--features milkdrop`. Compiling +
 # linking it confirms libprojectM built and links on the target OS.

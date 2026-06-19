@@ -40,6 +40,33 @@ import type {
   TransportProgress,
 } from "@/lib/types";
 
+/** How the engine reaches the audio for a queued item. */
+export type QueueSource = "local" | "phone" | "cloud" | "radio" | "cast";
+
+/** Auto-advance behaviour at the end of a track. */
+export type RepeatMode = "off" | "all" | "one";
+
+/**
+ * One entry in the unified playback queue. A queue is always built from a
+ * single source (a library list, a phone's library, or one cloud folder), so
+ * every item shares the same `source`.
+ */
+export interface QueueItem {
+  /** Stable id for highlight/dedup: local path | phone/cloud id | url. */
+  id: string;
+  source: QueueSource;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  durationSecs: number | null;
+  // Exactly one payload is set, matching `source`:
+  track?: LibraryTrack;
+  device?: PhoneDevice;
+  phoneTrack?: PhoneTrack;
+  cloud?: CloudEntry;
+  radioUrl?: string;
+}
+
 const defaultEngineState: EngineState = {
   power: true,
   masterVolume: 1,
@@ -78,18 +105,86 @@ const defaultEngineState: EngineState = {
 
 const idleMeters: MeterFrame = { peak: [0, 0], rms: [0, 0] };
 
-/** Synthesize a minimal track for an ad-hoc opened file. */
-function fileTrack(path: string, title: string): LibraryTrack {
-  return { path, title, artist: null, album: null, durationSecs: null };
+/* --------------------------------------------------------------- queue items */
+
+function localItem(track: LibraryTrack): QueueItem {
+  return {
+    id: track.path,
+    source: "local",
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    durationSecs: track.durationSecs,
+    track,
+  };
 }
 
-/** An initial now-playing card from what we know before decode fills in tags. */
-function initialMeta(
-  title: string,
-  artist: string | null = null,
-  album: string | null = null,
-): TrackMeta {
-  return { title, artist, album, cover: null };
+function phoneItem(device: PhoneDevice, t: PhoneTrack): QueueItem {
+  return {
+    id: t.id,
+    source: "phone",
+    title: t.title,
+    artist: t.artist,
+    album: t.album,
+    durationSecs: t.durationMs != null ? t.durationMs / 1000 : null,
+    device,
+    phoneTrack: t,
+  };
+}
+
+function cloudItem(file: CloudEntry): QueueItem {
+  return {
+    id: file.id,
+    source: "cloud",
+    title: file.name,
+    artist: null,
+    album: null,
+    durationSecs: null,
+    cloud: file,
+  };
+}
+
+/** Now-playing card metadata derived from a queue item (before decode adds art). */
+function itemMeta(item: QueueItem): TrackMeta {
+  return { title: item.title, artist: item.artist, album: item.album, cover: null };
+}
+
+/* ----------------------------------------------------------------- play order */
+
+/** Fisher–Yates shuffle (in place). */
+function shuffleInPlace<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j]!, arr[i]!];
+  }
+  return arr;
+}
+
+/** Build a play order over `len` items, keeping `start` first when shuffling. */
+function buildOrder(
+  len: number,
+  shuffle: boolean,
+  start: number,
+): { order: number[]; orderPos: number } {
+  const identity = Array.from({ length: len }, (_, i) => i);
+  if (!shuffle || len <= 1) return { order: identity, orderPos: start };
+  const rest = identity.filter((i) => i !== start);
+  shuffleInPlace(rest);
+  return { order: [start, ...rest], orderPos: 0 };
+}
+
+/** Next order position in `dir`, honouring repeat; null when there's nowhere to go. */
+function stepOrder(
+  pos: number,
+  len: number,
+  repeat: RepeatMode,
+  dir: 1 | -1,
+): number | null {
+  if (len === 0 || pos < 0) return null;
+  const n = pos + dir;
+  if (n >= 0 && n < len) return n;
+  if (repeat === "all") return ((n % len) + len) % len;
+  return null;
 }
 
 interface EngineStore {
@@ -106,8 +201,19 @@ interface EngineStore {
   nowPlayingMeta: TrackMeta | null;
   positionSecs: number;
   durationSecs: number | null;
-  queue: LibraryTrack[];
+  /** Whether the active source can be scrubbed (false for live radio). */
+  seekable: boolean;
+
+  // queue
+  queue: QueueItem[];
+  /** Index into `queue` of the current item (= order[orderPos]); -1 when idle. */
   queueIndex: number;
+  /** Play order over the queue (identity, or shuffled). */
+  order: number[];
+  /** Position within `order`; -1 when idle. */
+  orderPos: number;
+  shuffle: boolean;
+  repeat: RepeatMode;
 
   hydrate: (state: EngineState) => void;
   setPower: (power: boolean) => void;
@@ -135,13 +241,17 @@ interface EngineStore {
 
   /** Play an ad-hoc file (single-item queue). Throws on IPC error. */
   play: (path: string, name: string) => Promise<void>;
-  /** Play a track list starting at `index`. */
+  /** Play a local track list starting at `index`. */
   playFromList: (tracks: LibraryTrack[], index: number) => void;
+  /** Play a phone's track list starting at `index`. */
+  playPhoneList: (device: PhoneDevice, tracks: PhoneTrack[], index: number) => void;
+  /** Play a list of cloud files starting at `index`. */
+  playCloudList: (files: CloudEntry[], index: number) => void;
   /** Stream an internet radio station (live; no queue/duration). */
   playRadio: (station: RadioStation) => void;
-  /** Stream a cloud file (Drive/Dropbox) through the chain. */
+  /** Stream a single cloud file (folder context unknown). */
   playCloud: (file: CloudEntry) => void;
-  /** Stream a track from a paired phone through the chain. */
+  /** Stream a single track from a paired phone. */
   playPhone: (device: PhoneDevice, track: PhoneTrack) => void;
   /** Reflect a track a phone has cast to this desktop (started server-side). */
   castIncoming: (title: string, artist: string | null) => void;
@@ -150,54 +260,132 @@ interface EngineStore {
   togglePause: () => void;
   seek: (secs: number) => void;
   stop: () => Promise<void>;
+  toggleShuffle: () => void;
+  cycleRepeat: () => void;
+  /** Apply a transport action from the OS media controls. */
+  handleMediaCommand: (action: string, secs: number | null) => void;
 }
 
 export const useEngineStore = create<EngineStore>((set, get) => {
   // Not part of rendered state: distinguishes user-stop from natural end.
   let userStopped = false;
+  // Whether the engine is currently driving a multi-track gapless queue (true),
+  // versus a single track / stream the store advances itself (false). Decides
+  // how a natural end-of-stream is interpreted.
+  let gaplessQueueRunning = false;
 
   const pushEq = (eq: EngineState["eq"]) => {
     void engineSetEq(eq.bands, eq.preGain, eq.enabled).catch(() => {});
   };
 
-  const startTrack = async (track: LibraryTrack) => {
-    await playerPlayFile(track.path);
+  /** Reset all transport/queue state to idle. */
+  const idleState = () => ({
+    playing: false,
+    paused: false,
+    metersLive: false,
+    meters: idleMeters,
+    nowPlaying: null,
+    nowPlayingMeta: null,
+    positionSecs: 0,
+    durationSecs: null,
+    seekable: false,
+  });
+
+  /**
+   * Start the item at order position `pos`: set the now-playing card and tell
+   * the engine to play it. Local lists use the engine's gapless queue (so they
+   * play back-to-back with no gap); phone/cloud/radio play one stream at a time.
+   */
+  const startPlayback = (pos: number) => {
+    const { queue, order, repeat, state } = get();
+    const qi = order[pos];
+    const item = qi != null ? queue[qi] : undefined;
+    if (!item) return;
+
     set({
-      nowPlaying: track.title,
-      nowPlayingMeta: initialMeta(track.title, track.artist, track.album),
+      queueIndex: qi!,
+      orderPos: pos,
+      nowPlaying: item.title,
+      nowPlayingMeta: itemMeta(item),
       playing: true,
       paused: false,
       positionSecs: 0,
-      durationSecs: track.durationSecs,
+      durationSecs: item.durationSecs,
+      // Optimistic; the backend's progress events correct this per source.
+      seekable: item.source === "local",
     });
+
+    const onError = (e: unknown) =>
+      toast.error(`Couldn't play ${item.title}: ${ipcErrorMessage(e)}`);
+
+    const { gapless, crossfadeSecs } = state.playback;
+    const useEngineQueue =
+      item.source === "local" && (gapless || crossfadeSecs > 0) && repeat !== "one";
+
+    gaplessQueueRunning = useEngineQueue;
+
+    switch (item.source) {
+      case "local":
+        if (useEngineQueue) {
+          const paths = order
+            .map((i) => queue[i]?.track?.path)
+            .filter((p): p is string => typeof p === "string");
+          void playerPlayQueue(paths, pos).catch(onError);
+        } else {
+          // Single track (gapless off, or repeat-one): the store advances.
+          void playerPlayFile(item.track!.path).catch(onError);
+        }
+        break;
+      case "phone":
+        void linkPlay(
+          item.device!.id,
+          item.phoneTrack!.id,
+          item.phoneTrack!.ext,
+          item.durationSecs,
+        ).catch(onError);
+        break;
+      case "cloud":
+        void cloudPlay(item.cloud!.provider, item.cloud!.id).catch(onError);
+        break;
+      case "radio":
+        void playerPlayRadio(item.radioUrl!).catch(onError);
+        break;
+      case "cast":
+        break; // already playing on the casting phone
+    }
   };
 
-  /** Play `tracks[index]`, gaplessly (engine owns the queue) when enabled, else
-   *  one track at a time (the store advances on each track end). */
-  const playFrom = (tracks: LibraryTrack[], index: number) => {
-    const track = tracks[index];
-    if (!track) return;
-    set({ queue: tracks, queueIndex: index });
-    const { gapless, crossfadeSecs } = get().state.playback;
-    const onError = (e: unknown) =>
-      toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`);
+  /** Replace the queue and start playing `index`. */
+  const setQueueAndPlay = (items: QueueItem[], index: number) => {
+    if (items.length === 0) return;
+    const start = Math.max(0, Math.min(index, items.length - 1));
+    const { order, orderPos } = buildOrder(items.length, get().shuffle, start);
+    set({ queue: items, order, orderPos, queueIndex: order[orderPos]! });
+    startPlayback(orderPos);
+  };
 
-    if (gapless || crossfadeSecs > 0) {
-      set({
-        nowPlaying: track.title,
-        nowPlayingMeta: initialMeta(track.title, track.artist, track.album),
-        playing: true,
-        paused: false,
-        positionSecs: 0,
-        durationSecs: track.durationSecs,
-      });
-      void playerPlayQueue(
-        tracks.map((t) => t.path),
-        index,
-      ).catch(onError);
-    } else {
-      void startTrack(track).catch(onError);
+  /** Decide what to play when the current item ends naturally. */
+  const advanceOnEnd = () => {
+    const { queue, order, orderPos, repeat } = get();
+    const item = orderPos >= 0 ? queue[order[orderPos]!] : undefined;
+    if (!item || item.source === "cast" || item.source === "radio") {
+      set(idleState());
+      return;
     }
+    if (repeat === "one") {
+      startPlayback(orderPos);
+      return;
+    }
+    if (gaplessQueueRunning) {
+      // The whole local gapless list just finished.
+      if (repeat === "all" && order.length > 0) startPlayback(0);
+      else set(idleState());
+      return;
+    }
+    // Single-track sources (phone/cloud/non-gapless local): advance by one.
+    const np = stepOrder(orderPos, order.length, repeat, 1);
+    if (np !== null) startPlayback(np);
+    else set(idleState());
   };
 
   return {
@@ -211,8 +399,13 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     nowPlayingMeta: null,
     positionSecs: 0,
     durationSecs: null,
+    seekable: false,
     queue: [],
     queueIndex: -1,
+    order: [],
+    orderPos: -1,
+    shuffle: false,
+    repeat: "off",
 
     hydrate: (state) => set({ state }),
 
@@ -306,11 +499,14 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       }),
 
     applyProgress: (p) =>
-      set({
+      set((s) => ({
         positionSecs: p.positionSecs,
-        durationSecs: p.durationSecs,
+        // Keep a known (item-provided) duration until the backend learns one,
+        // so streams show their length before the first progress with a value.
+        durationSecs: p.durationSecs ?? s.durationSecs,
         paused: p.paused,
-      }),
+        seekable: p.seekable,
+      })),
 
     setPlaying: (playing) => {
       if (playing) {
@@ -320,29 +516,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       // Stopped/ended.
       if (userStopped) {
         userStopped = false;
-        set({
-          playing: false,
-          metersLive: false,
-          meters: idleMeters,
-          nowPlaying: null,
-          nowPlayingMeta: null,
-          positionSecs: 0,
-        });
+        set(idleState());
         return;
       }
-      const { queue, queueIndex } = get();
-      if (queueIndex >= 0 && queueIndex + 1 < queue.length) {
-        get().next();
-        return;
-      }
-      set({
-        playing: false,
-        metersLive: false,
-        meters: idleMeters,
-        nowPlaying: null,
-        nowPlayingMeta: null,
-        positionSecs: 0,
-      });
+      advanceOnEnd();
     },
 
     applyNowPlaying: (meta) =>
@@ -362,95 +539,112 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         };
       }),
 
-    applyQueueIndex: (index) =>
+    applyQueueIndex: (absPos) => {
+      // Only the engine's gapless queue emits this; map its absolute index back
+      // to our order position. Ignored for single-track / streamed playback.
+      if (!gaplessQueueRunning) return;
       set((s) => {
-        const track = s.queue[index];
-        if (!track) return {};
-        // Reset the card for the new track; the now_playing event adds the cover.
+        const qi = s.order[absPos];
+        const item = qi != null ? s.queue[qi] : undefined;
+        if (!item) return {};
         return {
-          queueIndex: index,
-          nowPlaying: track.title,
-          nowPlayingMeta: initialMeta(track.title, track.artist, track.album),
+          orderPos: absPos,
+          queueIndex: qi!,
+          nowPlaying: item.title,
+          nowPlayingMeta: itemMeta(item),
           positionSecs: 0,
+          durationSecs: item.durationSecs,
         };
-      }),
+      });
+    },
 
     play: async (path, name) => {
-      set({ queue: [fileTrack(path, name)], queueIndex: 0 });
-      await startTrack(fileTrack(path, name));
+      const items = [localItem({ path, title: name, artist: null, album: null, durationSecs: null })];
+      setQueueAndPlay(items, 0);
     },
 
-    playFromList: (tracks, index) => playFrom(tracks, index),
+    playFromList: (tracks, index) =>
+      setQueueAndPlay(tracks.map(localItem), index),
+
+    playPhoneList: (device, tracks, index) =>
+      setQueueAndPlay(
+        tracks.map((t) => phoneItem(device, t)),
+        index,
+      ),
+
+    playCloudList: (files, index) => {
+      const audio = files.filter((f) => !f.isFolder);
+      if (audio.length === 0) return;
+      // Re-base the index onto the filtered (audio-only) list.
+      const target = files[index];
+      const start = target ? Math.max(0, audio.findIndex((f) => f.id === target.id)) : 0;
+      setQueueAndPlay(audio.map(cloudItem), start);
+    },
 
     playRadio: (station) => {
-      set({
-        nowPlaying: station.name,
-        nowPlayingMeta: initialMeta(station.name),
-        playing: true,
-        paused: false,
-        positionSecs: 0,
+      const item: QueueItem = {
+        id: station.url,
+        source: "radio",
+        title: station.name,
+        artist: null,
+        album: null,
         durationSecs: null,
-        queue: [],
-        queueIndex: -1,
-      });
-      void playerPlayRadio(station.url).catch((e) =>
-        toast.error(`Couldn't stream ${station.name}: ${ipcErrorMessage(e)}`),
-      );
+        radioUrl: station.url,
+      };
+      gaplessQueueRunning = false;
+      set({ queue: [item], order: [0], orderPos: 0, queueIndex: 0 });
+      startPlayback(0);
     },
 
-    playCloud: (file) => {
-      set({
-        nowPlaying: file.name,
-        nowPlayingMeta: initialMeta(file.name),
-        playing: true,
-        paused: false,
-        positionSecs: 0,
-        durationSecs: null,
-        queue: [],
-        queueIndex: -1,
-      });
-      void cloudPlay(file.provider, file.id).catch((e) =>
-        toast.error(`Couldn't play ${file.name}: ${ipcErrorMessage(e)}`),
-      );
-    },
+    playCloud: (file) => setQueueAndPlay([cloudItem(file)], 0),
 
-    playPhone: (device, track) => {
-      set({
-        nowPlaying: track.title,
-        nowPlayingMeta: initialMeta(track.title, track.artist, track.album),
-        playing: true,
-        paused: false,
-        positionSecs: 0,
-        durationSecs: null,
-        queue: [],
-        queueIndex: -1,
-      });
-      void linkPlay(device.id, track.id, track.ext).catch((e) =>
-        toast.error(`Couldn't play ${track.title}: ${ipcErrorMessage(e)}`),
-      );
-    },
+    playPhone: (device, track) => setQueueAndPlay([phoneItem(device, track)], 0),
 
     castIncoming: (title, artist) => {
+      const item: QueueItem = {
+        id: title,
+        source: "cast",
+        title,
+        artist,
+        album: null,
+        durationSecs: null,
+      };
+      gaplessQueueRunning = false;
       set({
+        queue: [item],
+        order: [0],
+        orderPos: 0,
+        queueIndex: 0,
         nowPlaying: title,
-        nowPlayingMeta: initialMeta(title, artist),
+        nowPlayingMeta: itemMeta(item),
         playing: true,
         paused: false,
         positionSecs: 0,
         durationSecs: null,
-        queue: [],
-        queueIndex: -1,
+        seekable: false,
       });
     },
 
     next: () => {
-      const { queue, queueIndex } = get();
-      if (queueIndex + 1 < queue.length) playFrom(queue, queueIndex + 1);
+      const { order, orderPos, repeat, queue } = get();
+      const item = orderPos >= 0 ? queue[order[orderPos]!] : undefined;
+      if (!item || item.source === "cast") return;
+      const np = stepOrder(orderPos, order.length, repeat, 1);
+      if (np !== null) startPlayback(np);
     },
 
     prev: () => {
-      const { queue, queueIndex } = get();
-      if (queueIndex - 1 >= 0) playFrom(queue, queueIndex - 1);
+      const { order, orderPos, repeat, queue, positionSecs, seekable } = get();
+      const item = orderPos >= 0 ? queue[order[orderPos]!] : undefined;
+      if (!item || item.source === "cast") return;
+      // Restart the current track if we're a few seconds in (familiar UX).
+      if (positionSecs > 3 && seekable) {
+        get().seek(0);
+        return;
+      }
+      const pp = stepOrder(orderPos, order.length, repeat, -1);
+      if (pp !== null) startPlayback(pp);
+      else if (seekable) get().seek(0);
     },
 
     togglePause: () => {
@@ -466,24 +660,81 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
 
     seek: (secs) => {
+      if (!get().seekable) return;
       set({ positionSecs: secs });
       void playerSeek(secs).catch(() => {});
     },
 
     stop: async () => {
       userStopped = true;
+      gaplessQueueRunning = false;
       set({
-        playing: false,
-        paused: false,
-        metersLive: false,
-        meters: idleMeters,
-        nowPlaying: null,
-        nowPlayingMeta: null,
-        positionSecs: 0,
+        ...idleState(),
         queue: [],
         queueIndex: -1,
+        order: [],
+        orderPos: -1,
       });
       await playerStop();
+    },
+
+    toggleShuffle: () => {
+      const { shuffle, queue, order, orderPos } = get();
+      const next = !shuffle;
+      const curIdx = orderPos >= 0 ? order[orderPos] : -1;
+      const start = curIdx != null && curIdx >= 0 ? curIdx : 0;
+      const { order: newOrder, orderPos: newPos } = buildOrder(
+        queue.length,
+        next,
+        start,
+      );
+      set({ shuffle: next, order: newOrder, orderPos: queue.length > 0 ? newPos : -1 });
+      // Re-issue local gapless playback so upcoming tracks follow the new order.
+      if (gaplessQueueRunning && queue.length > 0) startPlayback(newPos);
+    },
+
+    cycleRepeat: () => {
+      const order: RepeatMode[] = ["off", "all", "one"];
+      const next = order[(order.indexOf(get().repeat) + 1) % order.length]!;
+      set({ repeat: next });
+      // Repeat-one vs multi changes whether the engine owns the queue, so a
+      // local track must be re-issued to switch modes cleanly.
+      const { queue, orderPos } = get();
+      const cur = orderPos >= 0 ? queue[get().order[orderPos]!] : undefined;
+      if (cur?.source === "local" && get().playing) startPlayback(orderPos);
+    },
+
+    handleMediaCommand: (action, secs) => {
+      const s = get();
+      switch (action) {
+        case "play":
+          if (s.paused) s.togglePause();
+          break;
+        case "pause":
+          if (s.playing && !s.paused) s.togglePause();
+          break;
+        case "toggle":
+          s.togglePause();
+          break;
+        case "next":
+          s.next();
+          break;
+        case "prev":
+          s.prev();
+          break;
+        case "stop":
+          void s.stop();
+          break;
+        case "seek":
+          if (secs != null) s.seek(secs);
+          break;
+        case "seekForward":
+          s.seek(s.positionSecs + (secs ?? 10));
+          break;
+        case "seekBackward":
+          s.seek(Math.max(0, s.positionSecs - (secs ?? 10)));
+          break;
+      }
     },
   };
 });

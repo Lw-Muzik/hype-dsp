@@ -217,6 +217,8 @@ export interface TransportProgress {
   positionSecs: number;
   durationSecs: number | null;
   paused: boolean;
+  /** Whether the active source can be scrubbed (false for live radio). */
+  seekable: boolean;
 }
 
 /** Now-playing metadata extracted from the decoded track (tags + cover art). */

@@ -186,13 +186,21 @@ export function linkArtwork(
   return invoke<string | null>("link_artwork", { deviceId, trackId });
 }
 
-/** Stream one track from the phone through the enhancement chain. */
+/** Stream one track from the phone through the enhancement chain. Passing the
+ *  track's known length (seconds) makes the stream seekable and shows its
+ *  duration straight away. */
 export function linkPlay(
   deviceId: string,
   trackId: string,
   ext: string,
+  durationSecs?: number | null,
 ): Promise<void> {
-  return invoke<void>("link_play", { deviceId, trackId, ext });
+  return invoke<void>("link_play", {
+    deviceId,
+    trackId,
+    ext,
+    durationSecs: durationSecs ?? null,
+  });
 }
 
 /** Now-playing pushed by a phone casting to this desktop. */
@@ -421,6 +429,21 @@ export function onProgress(
   handler: (p: TransportProgress) => void,
 ): Promise<UnlistenFn> {
   return listen<TransportProgress>("engine:progress", (e) => handler(e.payload));
+}
+
+/** A transport action from the OS media controls (Control Center / SMTC / MPRIS). */
+export interface MediaCommand {
+  /** play | pause | toggle | next | prev | stop | seek | seekForward | seekBackward */
+  action: string;
+  /** Absolute seek target, or seek delta (seconds), when applicable. */
+  secs: number | null;
+}
+
+/** Subscribe to OS media-control actions (hardware keys, Control Center, etc.). */
+export function onMediaCommand(
+  handler: (cmd: MediaCommand) => void,
+): Promise<UnlistenFn> {
+  return listen<MediaCommand>("media:command", (e) => handler(e.payload));
 }
 
 /* ------------------------------------------------------------------- events */

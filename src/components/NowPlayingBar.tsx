@@ -1,4 +1,13 @@
-import { Pause, Play, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import {
+  Pause,
+  Play,
+  Repeat,
+  Repeat1,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Volume2,
+} from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
 import { Slider } from "@/components/Slider";
 import { formatTime } from "@/lib/format";
@@ -43,22 +52,38 @@ export function NowPlayingBar() {
   const paused = useEngineStore((s) => s.paused);
   const positionSecs = useEngineStore((s) => s.positionSecs);
   const durationSecs = useEngineStore((s) => s.durationSecs);
+  const seekable = useEngineStore((s) => s.seekable);
   const queue = useEngineStore((s) => s.queue);
-  const queueIndex = useEngineStore((s) => s.queueIndex);
+  const order = useEngineStore((s) => s.order);
+  const orderPos = useEngineStore((s) => s.orderPos);
+  const repeat = useEngineStore((s) => s.repeat);
+  const shuffle = useEngineStore((s) => s.shuffle);
   const togglePause = useEngineStore((s) => s.togglePause);
   const next = useEngineStore((s) => s.next);
   const prev = useEngineStore((s) => s.prev);
   const seek = useEngineStore((s) => s.seek);
+  const toggleShuffle = useEngineStore((s) => s.toggleShuffle);
+  const cycleRepeat = useEngineStore((s) => s.cycleRepeat);
   const masterVolume = useEngineStore((s) => s.state.masterVolume);
   const setMasterVolume = useEngineStore((s) => s.setMasterVolume);
 
   const active = meta !== null;
-  const hasPrev = queueIndex > 0;
-  const hasNext = queueIndex >= 0 && queueIndex + 1 < queue.length;
+  const source = orderPos >= 0 ? queue[order[orderPos] ?? -1]?.source : undefined;
+  // Radio / cast have no list to navigate.
+  const navigable = source !== "radio" && source !== "cast";
+  const wrap = repeat === "all" && order.length > 0;
+  const hasPrev = navigable && orderPos >= 0 && (orderPos > 0 || wrap);
+  const hasNext =
+    navigable && orderPos >= 0 && (orderPos + 1 < order.length || wrap);
   const duration = durationSecs ?? 0;
+  // A live/unknown-duration source has no scale: keep the thumb at the start
+  // (never pinned to the far right) and the bar non-interactive.
+  const sliderValue = duration > 0 ? Math.min(positionSecs, duration) : 0;
   const showPause = playing && !paused;
   const title = meta?.title ?? "Nothing playing";
   const subtitle = meta?.artist ?? meta?.album ?? null;
+  const repeatLabel =
+    repeat === "one" ? "Repeat one" : repeat === "all" ? "Repeat all" : "Repeat off";
 
   return (
     <footer className="flex h-[76px] shrink-0 items-center gap-4 border-t border-border bg-surface-raised px-4">
@@ -83,6 +108,15 @@ export function NowPlayingBar() {
       {/* Transport + seek */}
       <div className="flex max-w-xl flex-[1.6] flex-col items-center gap-1.5">
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Shuffle"
+            aria-pressed={shuffle}
+            onClick={toggleShuffle}
+            className={cn(iconBtn, shuffle && "text-accent hover:text-accent")}
+          >
+            <Shuffle className="size-4" aria-hidden="true" />
+          </button>
           <button
             type="button"
             aria-label="Previous track"
@@ -117,6 +151,20 @@ export function NowPlayingBar() {
           >
             <SkipForward className="size-4" aria-hidden="true" />
           </button>
+          <button
+            type="button"
+            aria-label={repeatLabel}
+            title={repeatLabel}
+            aria-pressed={repeat !== "off"}
+            onClick={cycleRepeat}
+            className={cn(iconBtn, repeat !== "off" && "text-accent hover:text-accent")}
+          >
+            {repeat === "one" ? (
+              <Repeat1 className="size-4" aria-hidden="true" />
+            ) : (
+              <Repeat className="size-4" aria-hidden="true" />
+            )}
+          </button>
         </div>
         <div className="flex w-full items-center gap-2">
           <span className="w-9 text-right text-[11px] tabular-nums text-text-faint">
@@ -125,11 +173,11 @@ export function NowPlayingBar() {
           <Slider
             label="Seek"
             min={0}
-            max={Math.max(duration, 0.1)}
+            max={duration > 0 ? duration : 1}
             step={0.1}
-            value={Math.min(positionSecs, duration > 0 ? duration : positionSecs)}
+            value={sliderValue}
             onChange={seek}
-            disabled={!active || duration <= 0}
+            disabled={!active || !seekable || duration <= 0}
             formatValue={(v) => formatTime(v)}
             className="flex-1"
           />

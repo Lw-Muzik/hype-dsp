@@ -317,8 +317,10 @@ function LibraryPanel() {
   const playFromList = useEngineStore((s) => s.playFromList);
   const queue = useEngineStore((s) => s.queue);
   const queueIndex = useEngineStore((s) => s.queueIndex);
+  // Local queue items use the file path as their id, so this matches by path.
+  const current = queueIndex >= 0 ? queue[queueIndex] : undefined;
   const playingPath =
-    queueIndex >= 0 ? (queue[queueIndex]?.path ?? null) : null;
+    current?.source === "local" ? (current.id ?? null) : null;
 
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [collection, setCollection] = useState<string | null>(null); // null = Library

@@ -66,6 +66,8 @@ pub fn link_artwork(
 }
 
 /// Stream one track from the phone through the enhancement chain.
+/// `duration_secs`, when the phone already knows the track length, makes the
+/// stream seekable and shows its duration immediately.
 #[tauri::command]
 pub fn link_play(
     link: State<'_, LinkState>,
@@ -73,9 +75,12 @@ pub fn link_play(
     device_id: String,
     track_id: String,
     ext: String,
+    duration_secs: Option<f64>,
 ) -> Result<(), IpcError> {
     let (url, headers) = link
         .stream_target(&device_id, &track_id, &ext)
         .map_err(|e| IpcError::new("link", e))?;
-    engine.play_stream(url, headers).map_err(Into::into)
+    engine
+        .play_stream(url, headers, duration_secs)
+        .map_err(Into::into)
 }

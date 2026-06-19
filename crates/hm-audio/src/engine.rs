@@ -141,6 +141,8 @@ pub struct PlaybackPos {
     sample_rate: AtomicU32,
     /// Pending seek target in frames, or `-1` for none.
     seek_to: AtomicI64,
+    /// Whether the active source can be scrubbed (false for live radio).
+    seekable: AtomicBool,
 }
 
 impl Default for PlaybackPos {
@@ -150,6 +152,7 @@ impl Default for PlaybackPos {
             total_frames: AtomicU64::new(0),
             sample_rate: AtomicU32::new(0),
             seek_to: AtomicI64::new(-1),
+            seekable: AtomicBool::new(false),
         }
     }
 }
@@ -175,6 +178,9 @@ impl PlaybackPos {
         self.total_frames.store(total as u64, Ordering::Relaxed);
         self.position_frames.store(0, Ordering::Relaxed);
         self.seek_to.store(-1, Ordering::Relaxed);
+        // Known length up front (files/queues) ⇒ seekable immediately; streams
+        // start non-seekable and flip once the renderer learns their length.
+        self.seekable.store(total > 0, Ordering::Relaxed);
     }
 
     fn reset(&self) {
@@ -196,6 +202,15 @@ impl PlaybackPos {
         let rate = self.sample_rate.load(Ordering::Relaxed);
         let total = self.total_frames.load(Ordering::Relaxed);
         (rate > 0 && total > 0).then(|| total as f64 / rate as f64)
+    }
+
+    /// Whether the active source can be scrubbed.
+    pub fn is_seekable(&self) -> bool {
+        self.seekable.load(Ordering::Relaxed)
+    }
+
+    fn set_seekable(&self, seekable: bool) {
+        self.seekable.store(seekable, Ordering::Relaxed);
     }
 
     /// Request a seek to `secs` (applied on the next audio block).
@@ -252,6 +267,7 @@ impl Renderer {
         }
         let produced = self.source.read(out, channels);
         pos.write(self.source.position(), self.source.total_frames());
+        pos.set_seekable(self.source.seekable());
 
         if (state.master_volume - 1.0).abs() > f32::EPSILON {
             for s in out.iter_mut() {
@@ -303,8 +319,13 @@ impl Renderer {
 /// Control messages to the engine thread.
 enum EngineCommand {
     Play(DecodedAudio),
-    /// Stream a URL (radio, or a cloud file) with optional HTTP headers.
-    PlayRadio(String, Vec<(String, String)>),
+    /// Stream a URL (radio, or a cloud/phone file) with optional HTTP headers
+    /// and an optional duration hint (seconds) when the length is known up front.
+    PlayStream {
+        url: String,
+        headers: Vec<(String, String)>,
+        duration_hint: Option<f64>,
+    },
     /// Play a list of file paths gaplessly (decoded on a worker), starting at
     /// `start`, crossfading by `crossfade_secs` (0 = pure gapless).
     PlayQueue {
@@ -663,17 +684,31 @@ impl AudioEngine {
         self.ctrl
             .lock()
             .expect("engine ctrl poisoned")
-            .send(EngineCommand::PlayRadio(url, Vec::new()))
+            .send(EngineCommand::PlayStream {
+                url,
+                headers: Vec::new(),
+                duration_hint: None,
+            })
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
     /// Stream and play a URL with extra HTTP headers (e.g. a cloud file that
-    /// needs an `Authorization: Bearer …`), through the chain.
-    pub fn play_stream(&self, url: String, headers: Vec<(String, String)>) -> Result<(), AudioError> {
+    /// needs an `Authorization: Bearer …`), through the chain. `duration_hint`
+    /// (seconds) makes the stream seekable when the container omits a length.
+    pub fn play_stream(
+        &self,
+        url: String,
+        headers: Vec<(String, String)>,
+        duration_hint: Option<f64>,
+    ) -> Result<(), AudioError> {
         self.ctrl
             .lock()
             .expect("engine ctrl poisoned")
-            .send(EngineCommand::PlayRadio(url, headers))
+            .send(EngineCommand::PlayStream {
+                url,
+                headers,
+                duration_hint,
+            })
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
@@ -839,7 +874,11 @@ fn control_loop(ctx: ControlCtx) {
                     _ => playing.store(false, Ordering::Relaxed),
                 }
             }
-            EngineCommand::PlayRadio(url, headers) => {
+            EngineCommand::PlayStream {
+                url,
+                headers,
+                duration_hint,
+            } => {
                 drop(active.take());
                 meters.zero();
                 spectrum.zero();
@@ -850,7 +889,7 @@ fn control_loop(ctx: ControlCtx) {
                 };
                 let sample_rate = config.sample_rate;
                 let channels = config.channels as usize;
-                pos.prepare(sample_rate, 0); // live stream: no known duration
+                pos.prepare(sample_rate, 0); // duration learned by the source (if any)
                 // The stream thread publishes tags + cover once it has probed.
                 let sink = MetaSink {
                     meta: track_meta.clone(),
@@ -861,6 +900,7 @@ fn control_loop(ctx: ControlCtx) {
                     headers,
                     sample_rate,
                     Some(sink),
+                    duration_hint,
                 ));
 
                 match build_output_stream(

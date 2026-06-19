@@ -56,7 +56,7 @@ interface Crumb {
 export function CloudView({ embedded = false }: { embedded?: boolean }) {
   const route = routeById("cloud");
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
-  const playCloud = useEngineStore((s) => s.playCloud);
+  const playCloudList = useEngineStore((s) => s.playCloudList);
 
   const [status, setStatus] = useState<CloudStatus | null>(null);
   const [stack, setStack] = useState<Crumb[]>([]);
@@ -64,6 +64,13 @@ export function CloudView({ embedded = false }: { embedded?: boolean }) {
   const [busy, setBusy] = useState<CloudProvider | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** Play `e` within the current folder so next/prev walk its audio files. */
+  const playEntry = (e: CloudEntry) =>
+    playCloudList(
+      entries,
+      entries.findIndex((x) => x.id === e.id),
+    );
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -277,7 +284,7 @@ export function CloudView({ embedded = false }: { embedded?: boolean }) {
                       <button
                         type="button"
                         aria-label={`Play ${e.name}`}
-                        onClick={() => playCloud(e)}
+                        onClick={() => playEntry(e)}
                         className={cn(
                           "transition-colors hover:text-accent-strong",
                           nowPlaying === e.name ? "text-accent-strong" : "text-text-muted",
@@ -287,7 +294,7 @@ export function CloudView({ embedded = false }: { embedded?: boolean }) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => playCloud(e)}
+                        onClick={() => playEntry(e)}
                         className={cn(
                           "min-w-0 flex-1 truncate text-left text-sm transition-colors hover:text-text",
                           nowPlaying === e.name && "text-accent-strong",

@@ -51,5 +51,7 @@ pub fn cloud_play(
     let (url, headers) = cloud
         .stream_target(provider, &file_id)
         .map_err(|e| IpcError::new("cloud", e))?;
-    engine.play_stream(url, headers).map_err(Into::into)
+    // Cloud files carry no duration hint; the source learns it from the
+    // container (Content-Length + Range) when the server supports it.
+    engine.play_stream(url, headers, None).map_err(Into::into)
 }

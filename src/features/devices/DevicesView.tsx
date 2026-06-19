@@ -86,7 +86,7 @@ function PhoneCover({ deviceId, track }: { deviceId: string; track: PhoneTrack }
 export function DevicesView({ embedded = false }: { embedded?: boolean }) {
   const route = routeById("phone");
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
-  const playPhone = useEngineStore((s) => s.playPhone);
+  const playPhoneList = useEngineStore((s) => s.playPhoneList);
 
   const [devices, setDevices] = useState<PhoneDevice[]>([]);
   const [pairedIds, setPairedIds] = useState<Set<string>>(new Set());
@@ -208,7 +208,13 @@ export function DevicesView({ embedded = false }: { embedded?: boolean }) {
       loading={loading}
       nowPlaying={nowPlaying}
       onBack={back}
-      onPlay={(t) => playPhone(open, t)}
+      onPlay={(t) =>
+        playPhoneList(
+          open,
+          tracks,
+          tracks.findIndex((x) => x.id === t.id),
+        )
+      }
       banner={errorBanner}
     />
   ) : (

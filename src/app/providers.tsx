@@ -7,6 +7,7 @@ import {
   licenseStatus,
   onEngineFrame,
   onLinkNowPlaying,
+  onMediaCommand,
   onNowPlaying,
   onProgress,
   onQueueIndex,
@@ -30,6 +31,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const castIncoming = useEngineStore((s) => s.castIncoming);
   const applyNowPlaying = useEngineStore((s) => s.applyNowPlaying);
   const applyQueueIndex = useEngineStore((s) => s.applyQueueIndex);
+  const handleMediaCommand = useEngineStore((s) => s.handleMediaCommand);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,6 +73,10 @@ export function Providers({ children }: { children: ReactNode }) {
       .then((un) => (cancelled ? un() : unlisteners.push(un)))
       .catch(() => {});
 
+    onMediaCommand((c) => handleMediaCommand(c.action, c.secs))
+      .then((un) => (cancelled ? un() : unlisteners.push(un)))
+      .catch(() => {});
+
     return () => {
       cancelled = true;
       for (const un of unlisteners) un();
@@ -85,6 +91,7 @@ export function Providers({ children }: { children: ReactNode }) {
     castIncoming,
     applyNowPlaying,
     applyQueueIndex,
+    handleMediaCommand,
   ]);
 
   return <>{children}</>;

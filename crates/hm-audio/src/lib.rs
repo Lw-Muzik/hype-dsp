@@ -89,6 +89,12 @@ pub trait AudioSource: Send {
         0
     }
 
+    /// Whether the user can scrub this source. Defaults to "yes if the length is
+    /// known"; network streams override to also require byte-range support.
+    fn seekable(&self) -> bool {
+        self.total_frames() > 0
+    }
+
     /// Whether this is a live/open-ended source (e.g. radio). Live sources never
     /// signal end-of-stream on underflow — they output silence while buffering.
     fn is_live(&self) -> bool {

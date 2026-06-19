@@ -83,7 +83,10 @@ fn handle_cast(app: &AppHandle, mut request: Request, token: &str) {
         return unauthorized(request);
     };
 
-    let played = app.state::<AudioEngine>().play_stream(url, headers).is_ok();
+    let played = app
+        .state::<AudioEngine>()
+        .play_stream(url, headers, None)
+        .is_ok();
     if !played {
         let _ = request.respond(Response::from_string("playback failed").with_status_code(500));
         return;

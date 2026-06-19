@@ -37,6 +37,10 @@ getrandom = "0.2"
 # Phone Link: a small control server phones cast to (POST /cast, /transport).
 tiny_http = "0.12"
 
+# OS media controls / "now playing": Control Center + media keys (macOS),
+# System Media Transport Controls (Windows), MPRIS (Linux).
+souvlaki = "0.8"
+
 # Internal crates wired into the app.
 hm-core = { workspace = true }
 hm-audio = { workspace = true }

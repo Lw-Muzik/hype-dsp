@@ -9,6 +9,7 @@
 mod cloud;
 mod commands;
 mod control;
+mod media;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -30,6 +31,8 @@ struct Progress {
     position_secs: f64,
     duration_secs: Option<f64>,
     paused: bool,
+    /// Whether the active source can be scrubbed (false for live radio).
+    seekable: bool,
 }
 
 /// Emits real-time meter + spectrum frames to the UI at ~60 fps over the
@@ -47,10 +50,15 @@ fn forward_frames(
     track_meta: Arc<ArcSwap<TrackMeta>>,
     meta_version: Arc<AtomicU64>,
     queue_index: Arc<AtomicUsize>,
+    media: media::MediaSession,
 ) {
     let mut last_playing = false;
+    let mut last_paused = false;
     let mut last_meta_version = 0u64;
     let mut last_queue_index = usize::MAX;
+    // Rounded duration last pushed to the OS, so we can re-publish metadata once
+    // a stream's length becomes known (it's unknown at the first meta event).
+    let mut last_media_dur: Option<u64> = None;
     let mut tick: u32 = 0;
     loop {
         std::thread::sleep(Duration::from_millis(16));
@@ -67,25 +75,48 @@ fn forward_frames(
 
         // ...then the decoded track's tags + cover art refine it.
         let version = meta_version.load(Ordering::Acquire);
+        let dur = pos.duration_secs();
+        let dur_key = dur.map(|d| d.round() as u64);
         if version != last_meta_version {
             last_meta_version = version;
             let meta = (*track_meta.load_full()).clone();
+            // Mirror the now-playing card to the OS media controls.
+            media.set_metadata(
+                meta.title.clone(),
+                meta.artist.clone(),
+                meta.album.clone(),
+                meta.cover.clone(),
+                dur,
+            );
+            last_media_dur = dur_key;
             let _ = app.emit("engine:now_playing", meta);
+        } else if dur_key != last_media_dur && now_playing {
+            // A stream just learned its length: re-publish so the OS scrubber
+            // shows the right duration.
+            last_media_dur = dur_key;
+            let meta = (*track_meta.load_full()).clone();
+            media.set_metadata(meta.title, meta.artist, meta.album, meta.cover, dur);
         }
 
-        if now_playing != last_playing {
-            let _ = app.emit("engine:transport", now_playing);
-            if !now_playing {
-                // Settle meters and spectrum to idle when playback ends.
-                let _ = app.emit(
-                    "engine:frame",
-                    EngineFrame {
-                        meters: MeterFrame::default(),
-                        spectrum: Some(vec![0.0; SPECTRUM_BANDS]),
-                    },
-                );
+        let now_paused = paused.load(Ordering::Relaxed);
+        if now_playing != last_playing || now_paused != last_paused {
+            if now_playing != last_playing {
+                let _ = app.emit("engine:transport", now_playing);
+                if !now_playing {
+                    // Settle meters and spectrum to idle when playback ends.
+                    let _ = app.emit(
+                        "engine:frame",
+                        EngineFrame {
+                            meters: MeterFrame::default(),
+                            spectrum: Some(vec![0.0; SPECTRUM_BANDS]),
+                        },
+                    );
+                }
             }
+            // Keep the OS play/pause indicator in sync with the engine.
+            media.set_playback(now_playing, now_paused, pos.position_secs());
             last_playing = now_playing;
+            last_paused = now_paused;
         }
 
         if now_playing {
@@ -102,10 +133,16 @@ fn forward_frames(
                     "engine:progress",
                     Progress {
                         position_secs: pos.position_secs(),
-                        duration_secs: pos.duration_secs(),
-                        paused: paused.load(Ordering::Relaxed),
+                        duration_secs: dur,
+                        paused: now_paused,
+                        seekable: pos.is_seekable(),
                     },
                 );
+            }
+            // Re-sync the OS scrubber's elapsed position about once a second
+            // (the system interpolates between updates from the playback rate).
+            if tick % 64 == 0 {
+                media.set_playback(true, now_paused, pos.position_secs());
             }
         }
     }
@@ -250,6 +287,11 @@ pub fn run() {
                     .ok();
             }
 
+            // OS media controls (Control Center / SMTC / MPRIS). Forwards the
+            // engine's transport to the OS and the OS's transport actions back
+            // to the UI over the `media:command` event.
+            let media_session = media::start(app.handle().clone());
+
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("hm-frame-forwarder".into())
@@ -264,6 +306,7 @@ pub fn run() {
                         track_meta,
                         meta_version,
                         queue_index,
+                        media_session,
                     )
                 })
                 .ok();

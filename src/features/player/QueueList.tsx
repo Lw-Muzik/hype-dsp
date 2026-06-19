@@ -1,17 +1,118 @@
 import { useMemo, useRef } from "react";
 import { Play, X } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
+import type { QueueItem } from "@/stores/engine";
 import { VirtualList } from "@/components/VirtualList";
-import { formatTime } from "@/lib/format";
+import { Artwork } from "@/features/player/Artwork";
+import type { ArtSource } from "@/lib/useTrackArtwork";
 import { cn } from "@/lib/cn";
 
-const ROW_H = 52;
+const ROW_H = 84;
+
+interface Row {
+  item: QueueItem;
+  /** Queue index (for removal). */
+  qi: number;
+  /** Position within the play order (for jump + highlight). */
+  pos: number;
+}
+
+/** Where to resolve a queue item's cover art from, by source. */
+function queueArt(item: QueueItem): ArtSource {
+  const key = `${item.source}:${item.id}`;
+  if (item.source === "phone" && item.device && item.phoneTrack) {
+    return {
+      key,
+      source: "phone",
+      deviceId: item.device.id,
+      trackId: item.phoneTrack.id,
+      hasArt: item.phoneTrack.hasArt,
+    };
+  }
+  if (item.source === "cloud") {
+    return { key, source: "cloud" };
+  }
+  // Local files read embedded art by path; radio has none (→ gradient).
+  return { key, source: "local", path: item.track?.path ?? null };
+}
 
 /**
- * The current play order with the now-playing track highlighted. Click a track
- * to jump to it, or remove one. Reads the order straight off the engine store
- * so it always reflects what's queued (any mix of local / phone / cloud), and
- * is virtualized for very long queues.
+ * A queue row: album thumbnail + title/artist. The now-playing row is shown
+ * statically at the top (green title, no controls); up-next rows reveal a play
+ * overlay + remove button on hover and jump to that track when clicked.
+ */
+function QueueRow({
+  row,
+  nowPlaying = false,
+  onJump,
+  onRemove,
+}: {
+  row: Row;
+  nowPlaying?: boolean;
+  onJump: (pos: number) => void;
+  onRemove: (qi: number) => void;
+}) {
+  const { item, qi, pos } = row;
+  const seed = item.album?.trim() || item.title;
+  return (
+    <div
+      onClick={() => onJump(pos)}
+      className={cn(
+        "group flex h-full cursor-pointer items-center gap-3 rounded-lg px-2 transition-colors",
+        !nowPlaying && "hover:bg-surface-overlay",
+      )}
+    >
+      <div className="relative size-16 shrink-0">
+        <Artwork
+          art={queueArt(item)}
+          seed={seed}
+          label={item.title}
+          className="size-16 text-lg"
+          rounded="rounded-md"
+        />
+        {!nowPlaying && (
+          <span className="absolute inset-0 grid place-items-center rounded-md bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+            <Play className="size-6 fill-white text-white" aria-hidden="true" />
+          </span>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p
+          className={cn(
+            "truncate text-[15px] font-semibold leading-tight",
+            nowPlaying ? "text-accent-strong" : "text-text",
+          )}
+        >
+          {item.title}
+        </p>
+        <p className="mt-1 truncate text-[13px] text-text-muted">
+          {item.artist ?? "Unknown artist"}
+        </p>
+      </div>
+
+      {!nowPlaying && (
+        <button
+          type="button"
+          aria-label={`Remove ${item.title} from queue`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(qi);
+          }}
+          className="hidden size-7 shrink-0 place-items-center rounded-control text-text-faint hover:bg-surface hover:text-danger group-hover:grid"
+        >
+          <X className="size-4" aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The play queue: a static "Now playing" card at the top and a scrollable
+ * "Next up" list below. Reads the order straight off the engine store so it
+ * always reflects what's queued (any mix of local / phone / cloud); the up-next
+ * list is virtualized for very long queues.
  */
 export function QueueList() {
   const queue = useEngineStore((s) => s.queue);
@@ -21,15 +122,21 @@ export function QueueList() {
   const removeFromQueue = useEngineStore((s) => s.removeFromQueue);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const rows = useMemo(
+  const rows = useMemo<Row[]>(
     () =>
       order
-        .map((qi, pos) => ({ item: queue[qi], qi, pos }))
-        .filter(
-          (r): r is { item: NonNullable<(typeof queue)[number]>; qi: number; pos: number } =>
-            Boolean(r.item),
-        ),
+        .map((qi, pos) => ({ item: queue[qi]!, qi, pos }))
+        .filter((r): r is Row => Boolean(r.item)),
     [order, queue],
+  );
+
+  const current = useMemo(
+    () => rows.find((r) => r.pos === orderPos) ?? null,
+    [rows, orderPos],
+  );
+  const upcoming = useMemo(
+    () => rows.filter((r) => r.pos > orderPos),
+    [rows, orderPos],
   );
 
   if (rows.length === 0) {
@@ -43,63 +150,44 @@ export function QueueList() {
   }
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-2">
-      <VirtualList
-        items={rows}
-        rowHeight={ROW_H}
-        scrollRef={scrollRef}
-        ariaLabel="Queued tracks"
-        getKey={(r) => `${r.qi}:${r.item.id}`}
-        renderRow={(r) => {
-          const playing = r.pos === orderPos;
-          return (
-            <div
-              onClick={() => jumpTo(r.pos)}
-              className={cn(
-                "group flex h-full cursor-pointer items-center gap-2.5 rounded-control px-2 transition-colors hover:bg-surface-overlay",
-                playing && "bg-accent-muted/40",
-              )}
-            >
-              <span className="grid w-5 shrink-0 place-items-center text-xs tabular-nums text-text-faint">
-                {playing ? (
-                  <Play className="size-3.5 fill-current text-accent-strong" aria-hidden="true" />
-                ) : (
-                  r.pos + 1
-                )}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p
-                  className={cn(
-                    "truncate text-sm font-medium",
-                    playing && "text-accent-strong",
-                  )}
-                >
-                  {r.item.title}
-                </p>
-                <p className="truncate text-xs text-text-muted">
-                  {r.item.artist ?? "Unknown artist"}
-                </p>
-              </div>
-              {r.item.durationSecs != null && (
-                <span className="shrink-0 text-xs tabular-nums text-text-faint group-hover:hidden">
-                  {formatTime(r.item.durationSecs)}
-                </span>
-              )}
-              <button
-                type="button"
-                aria-label={`Remove ${r.item.title} from queue`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeFromQueue(r.qi);
-                }}
-                className="hidden size-7 shrink-0 place-items-center rounded-control text-text-faint hover:bg-surface hover:text-danger group-hover:grid"
-              >
-                <X className="size-4" aria-hidden="true" />
-              </button>
-            </div>
-          );
-        }}
-      />
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Now playing — static. */}
+      {current && (
+        <div className="shrink-0 px-2 pt-3">
+          <h3 className="mb-2 px-1 text-base font-bold tracking-tight">
+            Now playing
+          </h3>
+          <div style={{ height: ROW_H }}>
+            <QueueRow
+              row={current}
+              nowPlaying
+              onJump={jumpTo}
+              onRemove={removeFromQueue}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Next up — header static, list scrolls. */}
+      <h3 className="shrink-0 px-3 pb-2 pt-4 text-base font-bold tracking-tight">
+        Next up
+      </h3>
+      {upcoming.length === 0 ? (
+        <p className="px-3 text-sm text-text-muted">Nothing up next.</p>
+      ) : (
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+          <VirtualList
+            items={upcoming}
+            rowHeight={ROW_H}
+            scrollRef={scrollRef}
+            ariaLabel="Up next"
+            getKey={(r) => `${r.qi}:${r.item.id}`}
+            renderRow={(r) => (
+              <QueueRow row={r} onJump={jumpTo} onRemove={removeFromQueue} />
+            )}
+          />
+        </div>
+      )}
     </div>
   );
 }

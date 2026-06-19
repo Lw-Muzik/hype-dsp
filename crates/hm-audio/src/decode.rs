@@ -140,6 +140,13 @@ pub fn probe_artwork(path: &Path) -> Option<String> {
     extract_metadata(&mut *format).cover
 }
 
+/// Read a file's embedded lyrics (plain or LRC), or `None`. Used by the lyrics
+/// resolution chain before falling back to an online lookup.
+pub fn probe_lyrics(path: &Path) -> Option<String> {
+    let mut format = open_format(path).ok()?;
+    crate::meta::extract_lyrics(&mut *format)
+}
+
 /// Probe a file's duration in seconds without fully decoding it (for the
 /// library scan). Returns `None` if unknown.
 pub fn probe_duration(path: &Path) -> Option<f64> {

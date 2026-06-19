@@ -26,8 +26,8 @@ pub mod system_tap;
 
 pub use capture::{virtual_device_available, LoopbackCaptureSource, VirtualDeviceSource};
 pub use decode::{
-    decode_file, probe_artwork, probe_duration, probe_tags, probe_track, resample_stereo,
-    DecodedAudio,
+    decode_file, probe_artwork, probe_duration, probe_lyrics, probe_tags, probe_track,
+    resample_stereo, DecodedAudio,
 };
 pub use device::{list_input_devices, list_output_devices, DeviceInfo};
 pub use engine::{AudioEngine, EngineMeters, MetaSink, PlaybackPos, Renderer};

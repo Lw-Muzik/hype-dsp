@@ -3,7 +3,7 @@ import { TopBar } from "@/components/TopBar";
 import { TrialBanner } from "@/components/TrialBanner";
 import { Toaster } from "@/components/Toaster";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
-import { QueueDrawer } from "@/components/QueueDrawer";
+import { RightSidebar } from "@/components/RightSidebar";
 import { Router } from "@/app/router";
 
 /** The application shell: sidebar + top bar + the active view + now-playing. */
@@ -14,12 +14,14 @@ export function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
         <TrialBanner />
-        <main className="min-h-0 flex-1 overflow-y-auto p-6">
-          <Router />
-        </main>
+        <div className="flex min-h-0 flex-1">
+          <main className="min-h-0 flex-1 overflow-y-auto p-6">
+            <Router />
+          </main>
+          <RightSidebar />
+        </div>
         <NowPlayingBar />
       </div>
-      <QueueDrawer />
       <Toaster />
     </div>
   );

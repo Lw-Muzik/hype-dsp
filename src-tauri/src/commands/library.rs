@@ -50,33 +50,19 @@ fn collect_audio_paths(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
     }
 }
 
-/// Recursively scan a folder for audio files and add them to the library,
-/// reading each file's tags. Designed to stay smooth over very large libraries:
-/// it walks first, then tags + writes in batched transactions, emitting
-/// `library:scan_progress` along the way. Runs off the UI thread (Tauri command
-/// pool). Returns the number of tracks imported.
-#[tauri::command]
-pub fn library_scan(
-    app: tauri::AppHandle,
-    store: State<'_, MediaStore>,
-    dir: String,
-) -> Result<usize, IpcError> {
-    let path = Path::new(&dir);
-    if !path.is_dir() {
-        return Err(IpcError::new("invalid", "not a directory"));
-    }
-
-    let mut paths = Vec::new();
-    collect_audio_paths(path, &mut paths, 0);
+/// Read tags + duration for `paths` and upsert them in batched transactions,
+/// emitting `library:scan_progress` as it goes. Shared by the folder scan and
+/// the tag refresh. Returns the number indexed.
+fn index_paths(app: &tauri::AppHandle, store: &MediaStore, paths: &[PathBuf]) -> usize {
     let total = paths.len();
     let _ = app.emit("library:scan_progress", ScanProgress { done: 0, total });
-
     let mut done = 0;
     for chunk in paths.chunks(SCAN_CHUNK) {
         let batch: Vec<LibraryTrack> = chunk
             .iter()
             .map(|p| {
-                // One file open for both tags and duration.
+                // One file open for both tags and duration — the same extractor
+                // the now-playing card uses, so the listing matches it.
                 let (tags, duration) = probe_track(p);
                 let filename = p
                     .file_stem()
@@ -98,7 +84,45 @@ pub fn library_scan(
         }
         let _ = app.emit("library:scan_progress", ScanProgress { done, total });
     }
-    Ok(done)
+    done
+}
+
+/// Recursively scan a folder for audio files and add them to the library,
+/// reading each file's tags. Designed to stay smooth over very large libraries:
+/// it walks first, then tags + writes in batched transactions, emitting
+/// `library:scan_progress` along the way. Runs off the UI thread (Tauri command
+/// pool). Returns the number of tracks imported.
+#[tauri::command]
+pub fn library_scan(
+    app: tauri::AppHandle,
+    store: State<'_, MediaStore>,
+    dir: String,
+) -> Result<usize, IpcError> {
+    let path = Path::new(&dir);
+    if !path.is_dir() {
+        return Err(IpcError::new("invalid", "not a directory"));
+    }
+    let mut paths = Vec::new();
+    collect_audio_paths(path, &mut paths, 0);
+    Ok(index_paths(&app, &store, &paths))
+}
+
+/// Re-read tags + duration for every track already in the library, updating
+/// rows in place. Use this to backfill tags for a library that was scanned
+/// before tag extraction existed (or after files were re-tagged) without
+/// re-picking folders. Returns the number refreshed.
+#[tauri::command]
+pub fn library_refresh_tags(
+    app: tauri::AppHandle,
+    store: State<'_, MediaStore>,
+) -> Result<usize, IpcError> {
+    let paths: Vec<PathBuf> = store
+        .list_tracks()
+        .map_err(IpcError::from)?
+        .into_iter()
+        .map(|t| PathBuf::from(t.path))
+        .collect();
+    Ok(index_paths(&app, &store, &paths))
 }
 
 #[tauri::command]

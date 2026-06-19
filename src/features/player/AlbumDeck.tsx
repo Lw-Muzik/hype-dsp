@@ -91,21 +91,27 @@ export function AlbumDeck({
       };
 
   return (
-    <section className="px-1" aria-roledescription="carousel" aria-label="Featured albums">
+    <section
+      className="px-1 pb-6 pt-1"
+      aria-roledescription="carousel"
+      aria-label="Featured albums"
+    >
       <div className="group relative mx-auto h-52 w-full max-w-2xl">
         {/* Cards behind the front one, fanned out with depth. */}
         {Array.from({ length: Math.min(count - 1, 3) }, (_, k) => {
           const depth = k + 1; // 1 = nearest behind
           const item = items[at(active + depth)]!;
           const side = depth % 2 === 1 ? 1 : -1; // alternate the fan side
-          const x = side * (26 + depth * 14);
+          const x = side * (24 + depth * 12);
+          // Gentle rotation: enough to read as a fanned deck, small enough that
+          // the rotated corners don't bleed over the controls below the hero.
           return (
             <DeckCard
               key={`${item.key}-bg`}
               item={item}
               rank={at(active + depth) + 1}
               style={{
-                transform: `translateX(${x}px) scale(${1 - depth * 0.06}) rotate(${side * (depth * 2 + 2)}deg)`,
+                transform: `translateX(${x}px) scale(${1 - depth * 0.05}) rotate(${side * (depth + 1.5)}deg)`,
                 zIndex: 10 - depth,
                 opacity: 1 - depth * 0.18,
                 filter: `brightness(${1 - depth * 0.18})`,

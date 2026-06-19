@@ -6,6 +6,7 @@ import {
   KeyRound,
   Library,
   ListMusic,
+  RefreshCw,
   Speaker,
   Sparkles,
 } from "lucide-react";
@@ -22,6 +23,7 @@ import {
   captureVirtualAvailable,
   ipcErrorMessage,
   libraryList,
+  libraryRefreshTags,
   libraryScan,
   onLibraryScanProgress,
   licenseDeactivate,
@@ -113,6 +115,24 @@ function MusicLibraryCard() {
     }
   };
 
+  const refreshTags = async () => {
+    if (!count) return;
+    setScanning(true);
+    setNote(null);
+    setProgress(null);
+    try {
+      const n = await libraryRefreshTags();
+      setNote(`Refreshed tags for ${n.toLocaleString()} track${n === 1 ? "" : "s"}.`);
+      loadCount();
+      refreshLibrary();
+    } catch (e) {
+      setNote(`Refresh failed: ${ipcErrorMessage(e)}`);
+    } finally {
+      setScanning(false);
+      setProgress(null);
+    }
+  };
+
   const pct =
     progress && progress.total > 0
       ? Math.round((progress.done / progress.total) * 100)
@@ -123,17 +143,26 @@ function MusicLibraryCard() {
       title="Music library"
       icon={Library}
       actions={
-        <Button variant="primary" onClick={addFolder} disabled={scanning}>
-          <FolderPlus className="size-4" aria-hidden="true" />
-          {scanning ? "Scanning…" : "Add folder"}
-        </Button>
+        <div className="flex gap-2">
+          {count != null && count > 0 && (
+            <Button variant="secondary" onClick={refreshTags} disabled={scanning}>
+              <RefreshCw className="size-4" aria-hidden="true" />
+              Refresh tags
+            </Button>
+          )}
+          <Button variant="primary" onClick={addFolder} disabled={scanning}>
+            <FolderPlus className="size-4" aria-hidden="true" />
+            {scanning ? "Scanning…" : "Add folder"}
+          </Button>
+        </div>
       }
     >
       <div className="flex flex-col gap-1">
         <p className="text-sm text-text-muted">
           Scan a folder to import its tracks. Titles, artists, albums, genres,
           and cover art are read from each file&rsquo;s tags and shown in the
-          Player.
+          Player. If a library scanned earlier shows filenames instead of tags,
+          use <span className="text-text">Refresh tags</span>.
         </p>
         <div className="divide-y divide-border">
           <InfoRow

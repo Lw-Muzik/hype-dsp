@@ -367,6 +367,12 @@ export function libraryScan(dir: string): Promise<number> {
   return invoke<number>("library_scan", { dir });
 }
 
+/** Re-read tags for every track already in the library; returns the count.
+ *  Backfills tags for libraries scanned before tag extraction existed. */
+export function libraryRefreshTags(): Promise<number> {
+  return invoke<number>("library_refresh_tags");
+}
+
 /** List all library tracks. */
 export function libraryList(): Promise<LibraryTrack[]> {
   return invoke<LibraryTrack[]>("library_list");
@@ -381,6 +387,22 @@ export function libraryRemove(path: string): Promise<void> {
  *  Read on demand so the scan stays fast; the UI caches results per path. */
 export function libraryArtwork(path: string): Promise<string | null> {
   return invoke<string | null>("library_artwork", { path });
+}
+
+/** Resolve lyrics for a track (.lrc sidecar / embedded for local files, else
+ *  an online lookup). Returns raw LRC or plain text, or null if none found. */
+export function lyricsFetch(
+  title: string,
+  artist: string | null,
+  durationSecs: number | null,
+  path: string | null,
+): Promise<string | null> {
+  return invoke<string | null>("lyrics_fetch", {
+    title,
+    artist: artist ?? null,
+    durationSecs: durationSecs ?? null,
+    path: path ?? null,
+  });
 }
 
 /** Progress of an in-flight library scan. */

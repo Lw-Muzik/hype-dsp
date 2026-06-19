@@ -21,10 +21,11 @@ interface UiState {
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
 
-  /** Whether the play-queue drawer is open. */
-  queueOpen: boolean;
-  toggleQueue: () => void;
-  closeQueue: () => void;
+  /** The right sidebar's active tab, or null when hidden. */
+  rightPanel: "queue" | "lyrics" | null;
+  /** Open `tab` in the right sidebar, or close it if that tab is already open. */
+  toggleRight: (tab: "queue" | "lyrics") => void;
+  closeRight: () => void;
 
   /** App metadata, loaded once from the backend on startup. */
   appInfo: AppInfo | null;
@@ -43,9 +44,10 @@ export const useUiStore = create<UiState>((set) => ({
   toggleSidebar: () =>
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
-  queueOpen: false,
-  toggleQueue: () => set((state) => ({ queueOpen: !state.queueOpen })),
-  closeQueue: () => set({ queueOpen: false }),
+  rightPanel: null,
+  toggleRight: (tab) =>
+    set((state) => ({ rightPanel: state.rightPanel === tab ? null : tab })),
+  closeRight: () => set({ rightPanel: null }),
 
   appInfo: null,
   setAppInfo: (appInfo) => set({ appInfo }),

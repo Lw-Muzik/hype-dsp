@@ -20,6 +20,22 @@ pub struct TrackTags {
     pub genre: Option<String>,
 }
 
+/// Read embedded lyrics (ID3 `USLT` / Vorbis `LYRICS`, etc.) from a probed
+/// container — may be plain text or timestamped LRC. `None` if absent/empty.
+pub fn extract_lyrics(format: &mut dyn FormatReader) -> Option<String> {
+    let binding = format.metadata();
+    let rev = binding.current()?;
+    for tag in &rev.media.tags {
+        if let Some(StandardTag::Lyrics(v)) = &tag.std {
+            let s = v.to_string();
+            if !s.trim().is_empty() {
+                return Some(s);
+            }
+        }
+    }
+    None
+}
+
 /// Read title/artist/album/genre tags (no artwork) from a probed container.
 pub fn extract_tags(format: &mut dyn FormatReader) -> TrackTags {
     let mut tags = TrackTags::default();

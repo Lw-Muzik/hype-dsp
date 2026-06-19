@@ -1,5 +1,6 @@
 import {
   ListMusic,
+  MicVocal,
   Pause,
   Play,
   Repeat,
@@ -60,8 +61,8 @@ export function NowPlayingBar() {
   const orderPos = useEngineStore((s) => s.orderPos);
   const repeat = useEngineStore((s) => s.repeat);
   const shuffle = useEngineStore((s) => s.shuffle);
-  const toggleQueue = useUiStore((s) => s.toggleQueue);
-  const queueOpen = useUiStore((s) => s.queueOpen);
+  const toggleRight = useUiStore((s) => s.toggleRight);
+  const rightPanel = useUiStore((s) => s.rightPanel);
   const togglePause = useEngineStore((s) => s.togglePause);
   const next = useEngineStore((s) => s.next);
   const prev = useEngineStore((s) => s.prev);
@@ -191,15 +192,25 @@ export function NowPlayingBar() {
         </div>
       </div>
 
-      {/* Queue + volume */}
+      {/* Lyrics + queue + volume */}
       <div className="flex flex-1 items-center justify-end gap-2">
         <button
           type="button"
+          aria-label="Show lyrics"
+          aria-pressed={rightPanel === "lyrics"}
+          title="Lyrics"
+          onClick={() => toggleRight("lyrics")}
+          className={cn(iconBtn, rightPanel === "lyrics" && "text-accent hover:text-accent")}
+        >
+          <MicVocal className="size-4" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
           aria-label="Show queue"
-          aria-pressed={queueOpen}
+          aria-pressed={rightPanel === "queue"}
           title="Queue"
-          onClick={toggleQueue}
-          className={cn(iconBtn, queueOpen && "text-accent hover:text-accent")}
+          onClick={() => toggleRight("queue")}
+          className={cn(iconBtn, rightPanel === "queue" && "text-accent hover:text-accent")}
         >
           <ListMusic className="size-4" aria-hidden="true" />
         </button>

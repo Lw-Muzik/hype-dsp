@@ -12,6 +12,7 @@ pub mod engine;
 pub mod library;
 pub mod link;
 pub mod license;
+pub mod lyrics;
 pub mod mixer;
 pub mod presets;
 pub mod profiles;

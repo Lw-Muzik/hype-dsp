@@ -10,6 +10,9 @@
 //! a lock-free PCM tap off the engine) lands in a follow-up once the build is
 //! green on all three platforms.
 
+#[cfg(feature = "milkdrop")]
+pub mod projectm;
+
 /// Whether this build includes the native libprojectM renderer.
 pub const HAS_MILKDROP: bool = cfg!(feature = "milkdrop");
 

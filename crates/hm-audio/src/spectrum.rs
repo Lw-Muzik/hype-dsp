@@ -14,6 +14,9 @@ use std::sync::Arc;
 
 /// Number of log-spaced display bands.
 pub const SPECTRUM_BANDS: usize = 64;
+/// Mono PCM window length published for the MilkDrop visualizer (projectM does
+/// its own FFT/beat detection from this). A power of two ≤ projectM's max.
+pub const WAVEFORM_SAMPLES: usize = 512;
 /// FFT window size (≈ 43 ms at 48 kHz — decent low-frequency resolution).
 const FFT_SIZE: usize = 2048;
 /// Display dynamic range floor, in dB.
@@ -26,12 +29,16 @@ const HIGH_HZ: f32 = 20_000.0;
 /// seqlock is needed — same trade-off as the meters.
 pub struct SpectrumTap {
     bands: [AtomicU32; SPECTRUM_BANDS],
+    /// Latest mono PCM window for the MilkDrop visualizer. Same lock-free
+    /// per-slot atomics — minor tearing is invisible in a moving visualizer.
+    waveform: [AtomicU32; WAVEFORM_SAMPLES],
 }
 
 impl Default for SpectrumTap {
     fn default() -> Self {
         Self {
             bands: std::array::from_fn(|_| AtomicU32::new(0)),
+            waveform: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
 }
@@ -39,6 +46,14 @@ impl Default for SpectrumTap {
 impl SpectrumTap {
     fn store(&self, values: &[f32; SPECTRUM_BANDS]) {
         for (slot, &v) in self.bands.iter().zip(values.iter()) {
+            slot.store(v.to_bits(), Ordering::Relaxed);
+        }
+    }
+
+    /// Publish the latest mono PCM window (allocation-free; writes up to
+    /// [`WAVEFORM_SAMPLES`] atomics). Filled from the analyzer's rolling window.
+    fn store_waveform(&self, samples: &[f32]) {
+        for (slot, &v) in self.waveform.iter().zip(samples.iter()) {
             slot.store(v.to_bits(), Ordering::Relaxed);
         }
     }
@@ -51,10 +66,21 @@ impl SpectrumTap {
             .collect()
     }
 
-    /// Reset all bands to zero (on stop).
+    /// Read the latest mono PCM window (for the MilkDrop visualizer).
+    pub fn load_waveform(&self) -> Vec<f32> {
+        self.waveform
+            .iter()
+            .map(|s| f32::from_bits(s.load(Ordering::Relaxed)))
+            .collect()
+    }
+
+    /// Reset spectrum + waveform to zero (on stop).
     pub fn zero(&self) {
         for b in self.bands.iter() {
             b.store(0, Ordering::Relaxed);
+        }
+        for s in self.waveform.iter() {
+            s.store(0, Ordering::Relaxed);
         }
     }
 }
@@ -142,6 +168,8 @@ impl Analyzer {
 
         let bands = self.analyze();
         tap.store(&bands);
+        // Publish the most recent mono samples for the MilkDrop visualizer.
+        tap.store_waveform(&self.ring[FFT_SIZE - WAVEFORM_SAMPLES..]);
     }
 
     /// Run the FFT over the current window and aggregate into normalized bands.
@@ -237,5 +265,29 @@ mod tests {
         let tap = SpectrumTap::default();
         analyzer.push(&vec![0.0; 4096], 2, &tap);
         assert!(tap.load().iter().all(|&v| v < 1e-3));
+    }
+
+    #[test]
+    fn publishes_latest_pcm_window() {
+        let mut analyzer = Analyzer::new(48_000.0);
+        let tap = SpectrumTap::default();
+        // A ramp so the tail is identifiable; stereo interleaved.
+        let frames = FFT_SIZE * 2;
+        let mut block = Vec::with_capacity(frames * 2);
+        for n in 0..frames {
+            let s = (n % 100) as f32 / 100.0;
+            block.push(s);
+            block.push(s);
+        }
+        analyzer.push(&block, 2, &tap);
+
+        let wave = tap.load_waveform();
+        assert_eq!(wave.len(), WAVEFORM_SAMPLES);
+        // The window holds the most recent mono samples (matches the block tail).
+        let last = (frames - 1) % 100;
+        assert!((wave[WAVEFORM_SAMPLES - 1] - last as f32 / 100.0).abs() < 1e-6);
+        // Stop zeros it.
+        tap.zero();
+        assert!(tap.load_waveform().iter().all(|&v| v == 0.0));
     }
 }

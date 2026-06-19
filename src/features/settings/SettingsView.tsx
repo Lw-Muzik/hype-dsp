@@ -36,6 +36,7 @@ import {
   pickFolder,
   playerPlayCapture,
   playerPlaySystemAudio,
+  stopSystemAudio,
   systemAudioAvailable,
 } from "@/lib/ipc";
 import type { DeviceInfo } from "@/lib/types";
@@ -290,13 +291,14 @@ export function SettingsView() {
   const appInfo = useUiStore((s) => s.appInfo);
   const license = useUiStore((s) => s.license);
   const setLicense = useUiStore((s) => s.setLicense);
-  const stop = useEngineStore((s) => s.stop);
-  const playing = useEngineStore((s) => s.playing);
   const playback = useEngineStore((s) => s.state.playback);
   const setPlayback = useEngineStore((s) => s.setPlayback);
   const [devices, setDevices] = useState<DeviceState>({ status: "loading" });
-  const [virtualAvailable, setVirtualAvailable] = useState(false);
+  const [, setVirtualAvailable] = useState(false);
   const [systemAvailable, setSystemAvailable] = useState(false);
+  // System-wide EQ runs out-of-band on Linux/Windows (not through the engine's
+  // play state), so track its on/off here for the toggle.
+  const [systemEqOn, setSystemEqOn] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -326,7 +328,14 @@ export function SettingsView() {
   };
   const startSystemAudio = () => {
     setCaptureError(null);
-    playerPlaySystemAudio().catch((e) => setCaptureError(ipcErrorMessage(e)));
+    playerPlaySystemAudio()
+      .then(() => setSystemEqOn(true))
+      .catch((e) => setCaptureError(ipcErrorMessage(e)));
+  };
+  const stopSystemEq = () => {
+    stopSystemAudio()
+      .catch(() => {})
+      .finally(() => setSystemEqOn(false));
   };
   const deactivate = () => {
     licenseDeactivate()
@@ -433,15 +442,15 @@ export function SettingsView() {
                     Equalize everything you hear
                   </p>
                   <p className="text-xs text-text-muted">
-                    Routes all system audio through the chain (Core Audio tap).
+                    Routes all system audio through the equalizer and effects.
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-2">
                   <Button variant="primary" onClick={startSystemAudio}>
-                    {playing ? "Restart" : "Enable"}
+                    {systemEqOn ? "Restart" : "Enable"}
                   </Button>
-                  {playing && (
-                    <Button variant="secondary" onClick={() => void stop()}>
+                  {systemEqOn && (
+                    <Button variant="secondary" onClick={stopSystemEq}>
                       Stop
                     </Button>
                   )}
@@ -472,10 +481,8 @@ export function SettingsView() {
               />
               <span>
                 {systemAvailable
-                  ? "First use prompts for audio-capture permission. While enabled, other apps are muted and you hear HypeMuzik's processed output (the original is re-rendered through the chain). The grant persists only on a code-signed build."
-                  : `System-wide capture is unavailable on this platform${
-                      virtualAvailable ? "" : " (a signed virtual audio driver is not installed)"
-                    } — see docs/audio-driver.md.`}
+                  ? "Everything you hear is re-rendered through the chain. macOS taps other apps (first use prompts for audio-capture permission; the grant persists on a code-signed build); Linux routes through a PipeWire/PulseAudio virtual sink and restores your default output when stopped."
+                  : "System-wide equalization isn't available here — on Windows it needs the HypeMuzik virtual audio device. See docs/system-eq.md."}
               </span>
             </div>
           </div>

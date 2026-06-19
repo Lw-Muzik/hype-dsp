@@ -351,12 +351,19 @@ export function captureVirtualAvailable(): Promise<boolean> {
   return invoke<boolean>("capture_virtual_available");
 }
 
-/** Equalize system-wide audio via a Core Audio process tap (macOS 14.4+). */
+/** Equalize system-wide audio through the chain: macOS taps + re-renders every
+ *  app; Linux/Windows re-route all output through a virtual device. */
 export function playerPlaySystemAudio(): Promise<void> {
   return invoke<void>("player_play_system_audio");
 }
 
-/** Whether system-wide capture via process taps is available (macOS 14.4+). */
+/** Stop system-wide equalization and restore normal audio routing. */
+export function stopSystemAudio(): Promise<void> {
+  return invoke<void>("stop_system_audio");
+}
+
+/** Whether system-wide equalization is available (macOS tap / Linux PipeWire
+ *  or PulseAudio / Windows bundled virtual device). */
 export function systemAudioAvailable(): Promise<boolean> {
   return invoke<boolean>("system_audio_available");
 }

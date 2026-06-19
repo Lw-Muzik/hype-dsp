@@ -24,6 +24,27 @@ pub mod spectrum;
 pub mod streaming;
 #[cfg(target_os = "macos")]
 pub mod system_tap;
+#[cfg(target_os = "linux")]
+pub mod system_eq_linux;
+#[cfg(target_os = "windows")]
+pub mod system_eq_windows;
+
+/// Whether self-contained system-wide EQ (the Linux/Windows re-routing pipeline,
+/// distinct from the macOS process tap) is currently available on this machine.
+pub fn system_eq_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        system_eq_linux::available()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        system_eq_windows::available()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        false
+    }
+}
 
 pub use capture::{virtual_device_available, LoopbackCaptureSource, VirtualDeviceSource};
 pub use decode::{

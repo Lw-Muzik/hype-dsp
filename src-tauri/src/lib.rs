@@ -358,6 +358,7 @@ pub fn run() {
             commands::engine::engine_set_playback,
             commands::engine::player_play_capture,
             commands::engine::player_play_system_audio,
+            commands::engine::stop_system_audio,
             commands::engine::capture_virtual_available,
             commands::engine::system_audio_available,
             commands::engine::player_stop,

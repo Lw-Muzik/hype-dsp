@@ -363,6 +363,11 @@ pub struct AudioEngine {
     /// each block so slider changes apply to the current queue immediately.
     crossfade: Arc<AtomicU32>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
+    /// Active self-contained system-wide EQ pipeline (Linux/Windows re-routing).
+    /// Held only to keep it running; dropping it tears the routing down. `Send`-
+    /// boxed since the concrete type is platform-specific.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    system_eq: Mutex<Option<Box<dyn Send>>>,
     _thread: JoinHandle<()>,
 }
 
@@ -448,6 +453,8 @@ impl AudioEngine {
             queue_index,
             crossfade,
             ctrl: Mutex::new(tx),
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            system_eq: Mutex::new(None),
             _thread: thread,
         }
     }
@@ -752,6 +759,32 @@ impl AudioEngine {
             .expect("engine ctrl poisoned")
             .send(EngineCommand::PlaySource(Box::new(source)))
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
+    }
+
+    /// Start the self-contained system-wide EQ pipeline (Linux/Windows): re-route
+    /// every app's audio through the DSP chain by capturing a virtual device and
+    /// rendering the processed result to the real output. Idempotent — any
+    /// running pipeline is torn down first. The macOS path uses `play_system_tap`.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub fn start_system_eq(&self) -> Result<(), AudioError> {
+        // Tear down any existing pipeline before starting a fresh one.
+        self.stop_system_eq();
+        let state = self.shared.clone();
+        #[cfg(target_os = "linux")]
+        let session: Box<dyn Send> =
+            Box::new(crate::system_eq_linux::LinuxSystemEq::start(state)?);
+        #[cfg(target_os = "windows")]
+        let session: Box<dyn Send> =
+            Box::new(crate::system_eq_windows::WindowsSystemEq::start(state)?);
+        *self.system_eq.lock().expect("system_eq poisoned") = Some(session);
+        Ok(())
+    }
+
+    /// Stop the self-contained system-wide EQ pipeline and restore audio routing
+    /// (dropping the session runs its teardown). No-op if it isn't running.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub fn stop_system_eq(&self) {
+        *self.system_eq.lock().expect("system_eq poisoned") = None;
     }
 
     /// Stop playback.

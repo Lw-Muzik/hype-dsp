@@ -135,8 +135,9 @@ pub fn capture_virtual_available() -> bool {
     hm_audio::virtual_device_available()
 }
 
-/// Whether system-wide capture via Core Audio process taps is available
-/// (macOS 14.4+). The audio-capture permission is requested on first use.
+/// Whether system-wide equalization is available on this machine: macOS uses
+/// Core Audio process taps (14.4+, permission requested on first use); Linux a
+/// PulseAudio/PipeWire virtual sink; Windows the bundled virtual audio device.
 #[tauri::command]
 pub fn system_audio_available() -> bool {
     #[cfg(target_os = "macos")]
@@ -145,25 +146,44 @@ pub fn system_audio_available() -> bool {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        false
+        hm_audio::system_eq_available()
     }
 }
 
-/// Equalize system-wide audio through the chain (macOS process tap). Returns a
-/// clear error if denied/unavailable.
+/// Equalize system-wide audio through the chain. macOS taps every other app and
+/// re-renders the processed mix; Linux/Windows re-route all output through a
+/// virtual device into the chain. Returns a clear error if unavailable/denied.
 #[tauri::command]
 pub fn player_play_system_audio(engine: State<'_, AudioEngine>) -> Result<(), IpcError> {
     #[cfg(target_os = "macos")]
     {
         engine.play_system_tap().map_err(Into::into)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    {
+        engine.start_system_eq().map_err(Into::into)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         let _ = engine;
         Err(IpcError::new(
             "unsupported",
-            "System-wide capture via process taps is macOS-only.",
+            "System-wide equalization isn't supported on this platform.",
         ))
+    }
+}
+
+/// Stop system-wide equalization and restore normal audio routing. On macOS this
+/// stops playback; on Linux/Windows it tears down the re-routing pipeline.
+#[tauri::command]
+pub fn stop_system_audio(engine: State<'_, AudioEngine>) {
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    {
+        engine.stop_system_eq();
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        engine.stop();
     }
 }
 

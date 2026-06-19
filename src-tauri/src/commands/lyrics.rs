@@ -87,7 +87,7 @@ pub fn lyrics_fetch(
     }
 
     // 4. LRCLIB (best source of synced lyrics), then the HypeMuzik backend.
-    if let Some(text) = lrclib_search(&title, &artist, duration_secs) {
+    if let Some(text) = lrclib_resolve(&title, &artist, duration_secs) {
         return Some(text);
     }
     if let Some(text) = backend_lyrics(&title, &artist) {
@@ -100,7 +100,7 @@ pub fn lyrics_fetch(
         if let Some(p) = local_path {
             if let Some(r) = identify_local(&store, p) {
                 apply_recognition(&mut title, &mut artist, &r);
-                if let Some(text) = lrclib_search(&title, &artist, duration_secs) {
+                if let Some(text) = lrclib_resolve(&title, &artist, duration_secs) {
                     return Some(text);
                 }
                 if let Some(text) = backend_lyrics(&title, &artist) {
@@ -166,9 +166,102 @@ fn read_lrc_sidecar(audio: &str) -> Option<String> {
     (!content.trim().is_empty()).then_some(content)
 }
 
-/// Search LRCLIB and pick the best hit by title/artist/duration, preferring
-/// synced lyrics. Mirrors the mobile app's scoring.
-fn lrclib_search(title: &str, artist: &str, duration_secs: Option<f64>) -> Option<String> {
+/// Resolve lyrics from LRCLIB, trying hard not to come back empty. Real-world
+/// titles/artists are messy (YouTube-style "(Official Video)", "feat." credits,
+/// "Artist - Title" file names), so this runs several strategies from precise to
+/// broad and stops at the first hit:
+///   1. exact `/api/get` (track + artist + duration), original then normalized;
+///   2. strict scored search (title AND artist must match);
+///   3. relaxed scored search (artist optional, then title-only);
+///   4. an "Artist - Title" split when there's no usable artist.
+fn lrclib_resolve(title: &str, artist: &str, duration_secs: Option<f64>) -> Option<String> {
+    if title.trim().is_empty() {
+        return None;
+    }
+    let clean_t = clean_title(title);
+    let clean_a = primary_artist(artist);
+
+    // (title, artist, require_artist) attempts, most precise first.
+    let mut tries: Vec<(String, String, bool)> = Vec::new();
+    push_try(&mut tries, title, artist, true);
+    push_try(&mut tries, &clean_t, &clean_a, true);
+    push_try(&mut tries, &clean_t, &clean_a, false);
+    push_try(&mut tries, &clean_t, "", false);
+    if clean_a.is_empty() {
+        if let Some((a, t)) = split_artist_title(&clean_t) {
+            push_try(&mut tries, &t, &a, true);
+            push_try(&mut tries, &t, &a, false);
+        }
+    }
+
+    for (t, a, require_artist) in &tries {
+        // Exact get first when an artist is known (very precise; 404s fast).
+        if *require_artist && !a.is_empty() {
+            if let Some(text) = lrclib_get(t, a, duration_secs) {
+                return Some(text);
+            }
+        }
+        if let Some(text) = lrclib_search_scored(t, a, duration_secs, *require_artist) {
+            return Some(text);
+        }
+    }
+    None
+}
+
+/// Add a unique `(title, artist, require_artist)` attempt (trimmed, non-empty).
+fn push_try(tries: &mut Vec<(String, String, bool)>, t: &str, a: &str, require_artist: bool) {
+    let t = t.trim().to_string();
+    let a = a.trim().to_string();
+    if t.is_empty() {
+        return;
+    }
+    if !tries
+        .iter()
+        .any(|x| x.0 == t && x.1 == a && x.2 == require_artist)
+    {
+        tries.push((t, a, require_artist));
+    }
+}
+
+/// Exact lookup via `GET /api/get?track_name=&artist_name=&duration=` — returns
+/// the single best match (404 when there's no exact hit). Needs an artist.
+fn lrclib_get(title: &str, artist: &str, duration_secs: Option<f64>) -> Option<String> {
+    if title.trim().is_empty() || artist.trim().is_empty() {
+        return None;
+    }
+    let mut params: Vec<(&str, String)> =
+        vec![("track_name", title.to_string()), ("artist_name", artist.to_string())];
+    if let Some(d) = duration_secs {
+        params.push(("duration", (d.round() as i64).to_string()));
+    }
+    let pairs: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let url = reqwest::Url::parse_with_params("https://lrclib.net/api/get", &pairs).ok()?;
+    let res = http_client(15)?
+        .get(url)
+        .header("User-Agent", USER_AGENT)
+        .send()
+        .ok()?;
+    if !res.status().is_success() {
+        return None;
+    }
+    let hit: LrclibHit = res.json().ok()?;
+    if hit.instrumental == Some(true) {
+        return None;
+    }
+    hit.synced_lyrics
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| hit.plain_lyrics.filter(|s| !s.trim().is_empty()))
+}
+
+/// Scored `/api/search`: pick the best hit by title/artist/duration, preferring
+/// synced lyrics. With `require_artist` false, a non-matching artist no longer
+/// disqualifies a hit (it just earns no artist bonus) — the broad fallback.
+fn lrclib_search_scored(
+    title: &str,
+    artist: &str,
+    duration_secs: Option<f64>,
+    require_artist: bool,
+) -> Option<String> {
     if title.trim().is_empty() {
         return None;
     }
@@ -207,7 +300,7 @@ fn lrclib_search(title: &str, artist: &str, duration_secs: Option<f64>) -> Optio
         let ra = h.artist_name.as_deref().unwrap_or("").to_lowercase();
 
         let mut score = 0;
-        // Title must match.
+        // Title must be relevant.
         if rt == title_l {
             score += 10;
         } else if rt.contains(title_l) || title_l.contains(&rt) {
@@ -215,13 +308,13 @@ fn lrclib_search(title: &str, artist: &str, duration_secs: Option<f64>) -> Optio
         } else {
             continue;
         }
-        // Artist must match when we know it.
+        // Artist: a match earns a bonus; a mismatch only disqualifies in strict mode.
         if !artist_l.is_empty() {
             if ra == artist_l {
                 score += 10;
             } else if ra.contains(artist_l) || artist_l.contains(&ra) {
                 score += 5;
-            } else {
+            } else if require_artist {
                 continue;
             }
         }
@@ -253,9 +346,101 @@ fn lrclib_search(title: &str, artist: &str, duration_secs: Option<f64>) -> Optio
     })
 }
 
+/// Drop "(Official Video)", "[Lyrics]" bracketed groups, "feat./ft." credits,
+/// and collapse whitespace — the decorations that throw LRCLIB's match off.
+fn clean_title(title: &str) -> String {
+    collapse_ws(&strip_feat(&strip_brackets(title)))
+}
+
+/// Remove anything inside `()`, `[]`, or `{}` (non-nested, tolerant of unmatched).
+fn strip_brackets(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut depth = 0i32;
+    for c in s.chars() {
+        match c {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = (depth - 1).max(0),
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Truncate at the first "feat./ft./featuring" marker.
+fn strip_feat(s: &str) -> String {
+    let low = s.to_lowercase();
+    let cut = [" feat.", " feat ", " ft.", " ft ", " featuring "]
+        .iter()
+        .filter_map(|m| low.find(m))
+        .min();
+    match cut {
+        Some(i) if s.is_char_boundary(i) => s[..i].to_string(),
+        _ => s.to_string(),
+    }
+}
+
+/// The primary (first) artist: the part before a "feat./&/,/x" separator, which
+/// is how LRCLIB usually stores the credit.
+fn primary_artist(artist: &str) -> String {
+    let low = artist.to_lowercase();
+    let cut = [",", " & ", " feat.", " feat ", " ft.", " ft ", " featuring ", ";", " x "]
+        .iter()
+        .filter_map(|m| low.find(m))
+        .min();
+    let base = match cut {
+        Some(i) if artist.is_char_boundary(i) => &artist[..i],
+        _ => artist,
+    };
+    base.trim().to_string()
+}
+
+/// Split an "Artist - Title" string into `(artist, title)` (both non-empty).
+fn split_artist_title(s: &str) -> Option<(String, String)> {
+    let (a, t) = s.split_once(" - ")?;
+    let (a, t) = (a.trim(), t.trim());
+    (!a.is_empty() && !t.is_empty()).then(|| (a.to_string(), t.to_string()))
+}
+
+fn collapse_ws(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::metadata_is_weak;
+    use super::{
+        clean_title, metadata_is_weak, primary_artist, split_artist_title, strip_brackets,
+    };
+
+    #[test]
+    fn clean_title_strips_decorations() {
+        assert_eq!(clean_title("Blinding Lights (Official Video)"), "Blinding Lights");
+        assert_eq!(clean_title("Levitating [Official Audio]"), "Levitating");
+        assert_eq!(clean_title("Stay  feat. Justin Bieber"), "Stay");
+        assert_eq!(clean_title("No Decorations"), "No Decorations");
+    }
+
+    #[test]
+    fn strip_brackets_tolerates_unmatched() {
+        assert_eq!(strip_brackets("a (b) c"), "a  c");
+        assert_eq!(strip_brackets("a (b c"), "a ");
+    }
+
+    #[test]
+    fn primary_artist_takes_first_credit() {
+        assert_eq!(primary_artist("The Weeknd"), "The Weeknd");
+        assert_eq!(primary_artist("Calvin Harris feat. Rihanna"), "Calvin Harris");
+        assert_eq!(primary_artist("Drake, Future & Metro Boomin"), "Drake");
+    }
+
+    #[test]
+    fn split_artist_title_handles_dash() {
+        assert_eq!(
+            split_artist_title("Daft Punk - Get Lucky"),
+            Some(("Daft Punk".into(), "Get Lucky".into())),
+        );
+        assert_eq!(split_artist_title("No Dash Here"), None);
+    }
 
     #[test]
     fn weak_when_artist_missing() {

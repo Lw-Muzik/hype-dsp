@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  AudioLines,
   CircleAlert,
   FolderPlus,
   Info,
@@ -7,6 +8,7 @@ import {
   Library,
   ListMusic,
   RefreshCw,
+  RotateCcw,
   Speaker,
   Sparkles,
   Wand2,
@@ -22,6 +24,7 @@ import { Slider } from "@/components/Slider";
 import { useUiStore } from "@/stores/ui";
 import { useEngineStore } from "@/stores/engine";
 import { useLibraryStore } from "@/stores/library";
+import { useVisualizerStore, VISUALIZER_LIMITS } from "@/stores/visualizer";
 import {
   captureVirtualAvailable,
   ipcErrorMessage,
@@ -61,6 +64,140 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <span className="text-text-muted">{label}</span>
       <span className="font-medium tabular-nums">{value}</span>
     </div>
+  );
+}
+
+/** A labelled slider row: fixed-width label · flexible track · value readout. */
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  display,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  display: string;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-28 shrink-0 text-sm text-text-muted">{label}</span>
+      <Slider
+        label={label}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+        formatValue={() => display}
+        className="flex-1"
+      />
+      <span className="w-14 text-right text-xs tabular-nums text-text-muted">
+        {display}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Tunes the native MilkDrop visualizer sidecar — frame rate, beat reactivity,
+ * and preset auto-cycling. Settings persist immediately; the sidecar reads its
+ * config once at launch, so while the window is open a "Restart to apply" action
+ * relaunches it with the new values. Hidden entirely when the sidecar isn't in
+ * this build.
+ */
+function VisualizerCard() {
+  const available = useVisualizerStore((s) => s.available);
+  const running = useVisualizerStore((s) => s.running);
+  const settings = useVisualizerStore((s) => s.settings);
+  const update = useVisualizerStore((s) => s.update);
+  const start = useVisualizerStore((s) => s.start);
+  const probe = useVisualizerStore((s) => s.probe);
+
+  // Probe on mount so the card appears even if the toolbar button isn't mounted.
+  useEffect(() => {
+    probe();
+  }, [probe]);
+
+  if (!available) return null;
+
+  return (
+    <Card
+      title="Visualizer"
+      icon={AudioLines}
+      actions={
+        running ? (
+          <Button variant="secondary" onClick={() => void start()}>
+            <RotateCcw className="size-4" aria-hidden="true" />
+            Restart to apply
+          </Button>
+        ) : undefined
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-text-muted">
+          The MilkDrop visualizer renders bundled presets that react to your
+          audio in a separate window. Use{" "}
+          <span className="text-text">&larr;</span> /{" "}
+          <span className="text-text">&rarr;</span> in that window to change
+          presets by hand.
+        </p>
+
+        <SliderRow
+          label="Frame rate"
+          min={VISUALIZER_LIMITS.fps.min}
+          max={VISUALIZER_LIMITS.fps.max}
+          step={VISUALIZER_LIMITS.fps.step}
+          value={settings.fps}
+          display={`${settings.fps} fps`}
+          onChange={(v) => update({ fps: v })}
+        />
+
+        <SliderRow
+          label="Beat sensitivity"
+          min={VISUALIZER_LIMITS.beat.min}
+          max={VISUALIZER_LIMITS.beat.max}
+          step={VISUALIZER_LIMITS.beat.step}
+          value={settings.beat}
+          display={settings.beat.toFixed(1)}
+          onChange={(v) => update({ beat: v })}
+        />
+
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 text-sm">
+            <p className="font-medium">Auto-cycle presets</p>
+            <p className="text-xs text-text-muted">
+              Move to the next preset automatically over time.
+            </p>
+          </div>
+          <Switch
+            checked={settings.autoCycle}
+            onChange={(v) => update({ autoCycle: v })}
+            label="Auto-cycle presets"
+          />
+        </div>
+
+        <SliderRow
+          label="Cycle every"
+          min={VISUALIZER_LIMITS.cycleSecs.min}
+          max={VISUALIZER_LIMITS.cycleSecs.max}
+          step={VISUALIZER_LIMITS.cycleSecs.step}
+          value={settings.cycleSecs}
+          display={`${settings.cycleSecs}s`}
+          disabled={!settings.autoCycle}
+          onChange={(v) => update({ cycleSecs: v })}
+        />
+      </div>
+    </Card>
   );
 }
 
@@ -487,6 +624,8 @@ export function SettingsView() {
             </div>
           </div>
         </Card>
+
+        <VisualizerCard />
       </div>
     </div>
   );

@@ -11,6 +11,7 @@
 
 pub mod capture;
 pub mod decode;
+pub mod fingerprint;
 pub(crate) mod diag;
 pub mod device;
 pub mod resampler;
@@ -30,6 +31,7 @@ pub use decode::{
     resample_stereo, DecodedAudio,
 };
 pub use device::{list_input_devices, list_output_devices, DeviceInfo};
+pub use fingerprint::fingerprint_file;
 pub use engine::{AudioEngine, EngineMeters, MetaSink, PlaybackPos, Renderer};
 pub use error::AudioError;
 pub use meta::{extract_metadata, extract_tags, TrackTags};

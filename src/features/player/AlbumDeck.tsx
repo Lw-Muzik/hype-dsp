@@ -92,11 +92,11 @@ export function AlbumDeck({
 
   return (
     <section
-      className="px-1 pb-6 pt-1"
+      className="shrink-0 px-1 pb-4"
       aria-roledescription="carousel"
       aria-label="Featured albums"
     >
-      <div className="group relative mx-auto h-52 w-full max-w-2xl">
+      <div className="group relative mx-auto h-40 w-full max-w-2xl">
         {/* Cards behind the front one, fanned out with depth. */}
         {Array.from({ length: Math.min(count - 1, 3) }, (_, k) => {
           const depth = k + 1; // 1 = nearest behind
@@ -145,7 +145,7 @@ export function AlbumDeck({
       </div>
 
       {count > 1 && (
-        <div className="mt-3 flex justify-center gap-1.5">
+        <div className="mt-2 flex justify-center gap-1.5">
           {items.map((it, i) => (
             <button
               key={it.key}

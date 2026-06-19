@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Speaker,
   Sparkles,
+  Wand2,
 } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
@@ -22,6 +23,7 @@ import { useLibraryStore } from "@/stores/library";
 import {
   captureVirtualAvailable,
   ipcErrorMessage,
+  libraryIdentifyMissing,
   libraryList,
   libraryRefreshTags,
   libraryScan,
@@ -68,6 +70,7 @@ function MusicLibraryCard() {
   const refreshLibrary = useLibraryStore((s) => s.refresh);
   const [count, setCount] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [op, setOp] = useState<"import" | "refresh" | "identify">("import");
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
@@ -99,6 +102,7 @@ function MusicLibraryCard() {
   const addFolder = async () => {
     const dir = await pickFolder();
     if (!dir) return;
+    setOp("import");
     setScanning(true);
     setNote(null);
     setProgress(null);
@@ -117,6 +121,7 @@ function MusicLibraryCard() {
 
   const refreshTags = async () => {
     if (!count) return;
+    setOp("refresh");
     setScanning(true);
     setNote(null);
     setProgress(null);
@@ -133,6 +138,32 @@ function MusicLibraryCard() {
     }
   };
 
+  const identifyMissing = async () => {
+    if (!count) return;
+    setOp("identify");
+    setScanning(true);
+    setNote(null);
+    setProgress(null);
+    try {
+      const n = await libraryIdentifyMissing();
+      setNote(
+        n === 0
+          ? "No tracks could be identified."
+          : `Identified and tagged ${n.toLocaleString()} track${n === 1 ? "" : "s"}.`,
+      );
+      loadCount();
+      refreshLibrary();
+    } catch (e) {
+      setNote(`Identify failed: ${ipcErrorMessage(e)}`);
+    } finally {
+      setScanning(false);
+      setProgress(null);
+    }
+  };
+
+  const progressLabel =
+    op === "identify" ? "Identifying…" : op === "refresh" ? "Refreshing tags…" : "Importing…";
+
   const pct =
     progress && progress.total > 0
       ? Math.round((progress.done / progress.total) * 100)
@@ -145,10 +176,16 @@ function MusicLibraryCard() {
       actions={
         <div className="flex gap-2">
           {count != null && count > 0 && (
-            <Button variant="secondary" onClick={refreshTags} disabled={scanning}>
-              <RefreshCw className="size-4" aria-hidden="true" />
-              Refresh tags
-            </Button>
+            <>
+              <Button variant="secondary" onClick={identifyMissing} disabled={scanning}>
+                <Wand2 className="size-4" aria-hidden="true" />
+                Identify missing
+              </Button>
+              <Button variant="secondary" onClick={refreshTags} disabled={scanning}>
+                <RefreshCw className="size-4" aria-hidden="true" />
+                Refresh tags
+              </Button>
+            </>
           )}
           <Button variant="primary" onClick={addFolder} disabled={scanning}>
             <FolderPlus className="size-4" aria-hidden="true" />
@@ -162,7 +199,9 @@ function MusicLibraryCard() {
           Scan a folder to import its tracks. Titles, artists, albums, genres,
           and cover art are read from each file&rsquo;s tags and shown in the
           Player. If a library scanned earlier shows filenames instead of tags,
-          use <span className="text-text">Refresh tags</span>.
+          use <span className="text-text">Refresh tags</span>.{" "}
+          <span className="text-text">Identify missing</span> fingerprints tracks
+          without artist/title info and fills them in from AcoustID.
         </p>
         <div className="divide-y divide-border">
           <InfoRow
@@ -173,7 +212,7 @@ function MusicLibraryCard() {
         {scanning && progress && (
           <div className="flex flex-col gap-1.5 pt-1">
             <div className="flex items-center justify-between text-xs text-text-muted">
-              <span>Importing…</span>
+              <span>{progressLabel}</span>
               <span className="tabular-nums">
                 {progress.done.toLocaleString()} / {progress.total.toLocaleString()}
                 {pct != null ? ` · ${pct}%` : ""}

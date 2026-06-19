@@ -1,12 +1,31 @@
-//! Lyrics resolution: a `.lrc` sidecar or embedded tag for local files, then an
-//! online lookup via LRCLIB. Returns the raw lyrics (timestamped LRC when
-//! available, else plain text) for the UI to parse and sync.
+//! Lyrics resolution, mirroring the mobile app's chain: a `.lrc` sidecar or
+//! embedded tag for local files, then the HypeMuzik backend, then LRCLIB.
+//! Returns the raw lyrics (timestamped LRC when available, else plain text) for
+//! the UI to parse and sync.
 
 use std::path::Path;
 use std::time::Duration;
 
 use hm_audio::probe_lyrics;
 use serde::Deserialize;
+
+const USER_AGENT: &str = "HypeMuzik/1.0 (https://github.com/Lw-Muzik)";
+
+/// HypeMuzik backend base URL (same default + override as the mobile app's
+/// `API_BASE_URL`).
+fn api_base() -> String {
+    std::env::var("HM_API_BASE_URL")
+        .or_else(|_| std::env::var("API_BASE_URL"))
+        .unwrap_or_else(|_| "http://37.60.225.220:3035".to_string())
+}
+
+fn http_client(secs: u64) -> Option<reqwest::blocking::Client> {
+    reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(6))
+        .timeout(Duration::from_secs(secs))
+        .build()
+        .ok()
+}
 
 /// One LRCLIB search hit (https://lrclib.net/docs).
 #[derive(Deserialize)]
@@ -32,6 +51,9 @@ pub fn lyrics_fetch(
     duration_secs: Option<f64>,
     path: Option<String>,
 ) -> Option<String> {
+    let artist = artist.unwrap_or_default();
+
+    // 1–2. Local file: .lrc sidecar, then embedded lyrics.
     if let Some(p) = path.as_deref() {
         if !p.starts_with("http") {
             if let Some(lrc) = read_lrc_sidecar(p) {
@@ -42,7 +64,36 @@ pub fn lyrics_fetch(
             }
         }
     }
-    lrclib_search(&title, artist.as_deref().unwrap_or(""), duration_secs)
+
+    // 3. HypeMuzik backend (same endpoint as the mobile app).
+    if let Some(text) = backend_lyrics(&title, &artist) {
+        return Some(text);
+    }
+
+    // 4. LRCLIB fallback.
+    lrclib_search(&title, &artist, duration_secs)
+}
+
+/// Fetch raw lyrics from the HypeMuzik backend:
+/// `GET {base}/api/v1/songLyrics/{title}/{artist}` (returns the body verbatim).
+fn backend_lyrics(title: &str, artist: &str) -> Option<String> {
+    if title.trim().is_empty() {
+        return None;
+    }
+    let mut url = reqwest::Url::parse(&api_base()).ok()?;
+    url.path_segments_mut()
+        .ok()?
+        .extend(["api", "v1", "songLyrics", title, artist]);
+    let res = http_client(8)?
+        .get(url)
+        .header("User-Agent", USER_AGENT)
+        .send()
+        .ok()?;
+    if !res.status().is_success() {
+        return None;
+    }
+    let body = res.text().ok()?;
+    (!body.trim().is_empty()).then_some(body)
 }
 
 /// Read a `.lrc` file sitting next to the audio file (same name).
@@ -68,13 +119,9 @@ fn lrclib_search(title: &str, artist: &str, duration_secs: Option<f64>) -> Optio
         &[("q", query.as_str())],
     )
     .ok()?;
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .ok()?;
-    let res = client
+    let res = http_client(10)?
         .get(url)
-        .header("User-Agent", "HypeMuzik/1.0 (https://github.com/Lw-Muzik)")
+        .header("User-Agent", USER_AGENT)
         .send()
         .ok()?;
     if !res.status().is_success() {

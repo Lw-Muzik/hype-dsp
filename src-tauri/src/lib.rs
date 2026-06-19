@@ -362,6 +362,8 @@ pub fn run() {
             commands::library::library_list,
             commands::library::library_remove,
             commands::library::library_artwork,
+            commands::identify::identify_track,
+            commands::identify::library_identify_missing,
             commands::lyrics::lyrics_fetch,
             commands::library::playlist_list,
             commands::library::playlist_create,

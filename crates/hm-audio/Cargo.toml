@@ -27,6 +27,7 @@ rtrb = { workspace = true }
 
 # Encode embedded cover art into a data: URI for the now-playing UI.
 base64 = "0.22"
+rusty-chromaprint = "0.3.0"
 
 # macOS system-wide capture via Core Audio process taps (macOS 14.4+).
 [target.'cfg(target_os = "macos")'.dependencies]

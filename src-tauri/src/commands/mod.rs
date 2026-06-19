@@ -9,6 +9,7 @@ pub mod app;
 pub mod audio;
 pub mod cloud;
 pub mod engine;
+pub mod identify;
 pub mod library;
 pub mod link;
 pub mod license;

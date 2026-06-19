@@ -373,6 +373,26 @@ export function libraryRefreshTags(): Promise<number> {
   return invoke<number>("library_refresh_tags");
 }
 
+/** A track recognized by audio fingerprint (AcoustID). */
+export interface RecognitionResult {
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  score: number;
+  written: boolean;
+}
+
+/** Identify one local track by audio fingerprint and fill in missing tags. */
+export function identifyTrack(path: string): Promise<RecognitionResult | null> {
+  return invoke<RecognitionResult | null>("identify_track", { path });
+}
+
+/** Fingerprint + identify every library track missing info; tags them in place.
+ *  Returns the number successfully tagged. Emits `library:scan_progress`. */
+export function libraryIdentifyMissing(): Promise<number> {
+  return invoke<number>("library_identify_missing");
+}
+
 /** List all library tracks. */
 export function libraryList(): Promise<LibraryTrack[]> {
   return invoke<LibraryTrack[]>("library_list");

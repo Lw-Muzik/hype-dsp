@@ -185,7 +185,7 @@ export function MusicLibrary() {
   return (
     <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-2">
       {/* Source filter + global search */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1 rounded-control border border-border bg-surface-raised p-1">
           <SourcePill label="All" active={sourceFilter === "all"} onClick={() => setSourceFilter("all")} />
           <SourcePill
@@ -254,7 +254,7 @@ export function MusicLibrary() {
           {searching ? (
             <SectionHeader title={`Results for “${deferredQuery.trim()}”`} subtitle={`${searchResults.length} songs`} />
           ) : drill ? (
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-3">
               <button
                 type="button"
                 onClick={() => setDrill(null)}
@@ -283,7 +283,7 @@ export function MusicLibrary() {
           {/* Content — re-keyed so it animates in on any view/facet/search change. */}
           <div
             key={`${view}|${searching ? "search" : drill ? "drill" : facet}`}
-            className="hm-view-enter"
+            className="hm-view-enter min-h-0 shrink-0"
           >
             {searching || drill || facet === "songs" ? (
               shownTracks.length === 0 ? (
@@ -411,7 +411,11 @@ function SourcePill({
 
 function FacetTabs({ facet, onSelect }: { facet: Facet; onSelect: (f: Facet) => void }) {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Browse by">
+    <div
+      className="flex shrink-0 gap-2 overflow-x-auto pb-1"
+      role="tablist"
+      aria-label="Browse by"
+    >
       {FACETS.map((f) => {
         const Icon = f.icon;
         const active = f.id === facet;
@@ -592,7 +596,7 @@ function GroupCard({
 
 function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <div className="flex items-baseline gap-2">
+    <div className="flex shrink-0 items-baseline gap-2">
       <h3 className="truncate text-sm font-semibold">{title}</h3>
       {subtitle && <span className="text-xs text-text-muted">{subtitle}</span>}
     </div>

@@ -78,6 +78,10 @@ pub struct CloudEntry {
     pub name: String,
     pub is_folder: bool,
     pub size: u64,
+    /// Parent folder name, for the flat account-wide listing's grouping label
+    /// (`None` for folder-by-folder browse entries).
+    #[serde(default)]
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -223,6 +227,20 @@ impl CloudState {
                 .cmp(&a.is_folder)
                 .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
         });
+        Ok(entries)
+    }
+
+    /// Every audio file in the account, flat — mirrors the mobile app, which
+    /// lists all audio account-wide rather than folder-by-folder, so the Player
+    /// sees songs nested in subfolders too. Each entry carries its parent
+    /// folder's name as a grouping label.
+    pub fn all_audio(&self, provider: CloudProvider) -> Result<Vec<CloudEntry>, String> {
+        let access = self.access_token(provider)?;
+        let mut entries = match provider {
+            CloudProvider::GoogleDrive => drive_all_audio(&access)?,
+            CloudProvider::Dropbox => dropbox_all_audio(&access)?,
+        };
+        entries.sort_by_key(|e| e.name.to_lowercase());
         Ok(entries)
     }
 
@@ -567,6 +585,7 @@ fn drive_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String> {
                 name,
                 is_folder,
                 size,
+                folder: None,
             });
         }
         match data["nextPageToken"].as_str() {
@@ -575,6 +594,106 @@ fn drive_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String> {
         }
     }
     Ok(entries)
+}
+
+/// Cap on distinct parent-folder name lookups for the flat listing, so a huge
+/// account can't fan out into thousands of metadata calls. Songs always appear;
+/// only some folder *labels* are omitted past this many distinct folders.
+const DRIVE_FOLDER_NAME_CAP: usize = 300;
+
+/// List EVERY audio file in the Drive account (flat, all folders) in one
+/// paginated query, then resolve each file's parent folder name for grouping.
+/// Mirrors the mobile app's `GoogleDriveService.listAudioFiles`.
+fn drive_all_audio(access: &str) -> Result<Vec<CloudEntry>, String> {
+    let client = http_client()?;
+    let kinds = DRIVE_AUDIO_MIMES
+        .iter()
+        .map(|m| format!("mimeType='{m}'"))
+        .collect::<Vec<_>>()
+        .join(" or ");
+    // No parent filter → every audio file the user can access, across all folders.
+    let query = format!("({kinds}) and trashed=false");
+    let fields = "nextPageToken,files(id,name,size,parents)";
+
+    // (id, name, size, parent_id) — folder names are resolved in a second pass.
+    let mut raw: Vec<(String, String, u64, Option<String>)> = Vec::new();
+    let mut page_token: Option<String> = None;
+    loop {
+        let mut url = format!(
+            "https://www.googleapis.com/drive/v3/files?q={}&fields={}&pageSize=1000&orderBy=name",
+            pct_encode(&query),
+            pct_encode(fields),
+        );
+        if let Some(pt) = &page_token {
+            url.push_str(&format!("&pageToken={}", pct_encode(pt)));
+        }
+        let resp = client
+            .get(&url)
+            .bearer_auth(access)
+            .send()
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Drive list failed ({})", resp.status()));
+        }
+        let data: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
+        for f in data["files"].as_array().unwrap_or(&Vec::new()) {
+            let id = f["id"].as_str().unwrap_or_default().to_string();
+            let name = f["name"].as_str().unwrap_or_default().to_string();
+            if id.is_empty() || name.is_empty() {
+                continue;
+            }
+            let size = f["size"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0);
+            let parent = f["parents"]
+                .as_array()
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            raw.push((id, name, size, parent));
+        }
+        match data["nextPageToken"].as_str() {
+            Some(pt) => page_token = Some(pt.to_string()),
+            None => break,
+        }
+    }
+
+    // Resolve distinct parent folder names (bounded), so songs group by folder.
+    let mut names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for (_, _, _, parent) in &raw {
+        if let Some(pid) = parent {
+            if names.contains_key(pid) || names.len() >= DRIVE_FOLDER_NAME_CAP {
+                continue;
+            }
+            if let Some(n) = drive_folder_name(&client, access, pid) {
+                names.insert(pid.clone(), n);
+            }
+        }
+    }
+
+    Ok(raw
+        .into_iter()
+        .map(|(id, name, size, parent)| {
+            let folder = parent.and_then(|p| names.get(&p).cloned());
+            CloudEntry {
+                provider: CloudProvider::GoogleDrive,
+                id,
+                name,
+                is_folder: false,
+                size,
+                folder,
+            }
+        })
+        .collect())
+}
+
+/// Fetch a Drive folder's display name by id (`None` on any error).
+fn drive_folder_name(client: &reqwest::blocking::Client, access: &str, id: &str) -> Option<String> {
+    let url = format!("https://www.googleapis.com/drive/v3/files/{id}?fields=name");
+    let resp = client.get(&url).bearer_auth(access).send().ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let data: serde_json::Value = resp.json().ok()?;
+    data["name"].as_str().map(|s| s.to_string())
 }
 
 // ------------------------------------------------------------------- Dropbox
@@ -618,6 +737,7 @@ fn dropbox_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String>
                     name,
                     is_folder: true,
                     size: 0,
+                    folder: None,
                 }),
                 "file" if dropbox_is_audio(&name) => entries.push(CloudEntry {
                     provider: CloudProvider::Dropbox,
@@ -625,6 +745,7 @@ fn dropbox_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String>
                     name,
                     is_folder: false,
                     size: entry["size"].as_u64().unwrap_or(0),
+                    folder: None,
                 }),
                 _ => {}
             }
@@ -649,6 +770,71 @@ fn dropbox_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String>
     Ok(entries)
 }
 
+/// List EVERY audio file in the Dropbox account (recursive from the root) in one
+/// cursor-paged sweep, mirroring the mobile app. Each file carries its parent
+/// folder name as a grouping label.
+fn dropbox_all_audio(access: &str) -> Result<Vec<CloudEntry>, String> {
+    let client = http_client()?;
+    let mut entries = Vec::new();
+
+    let mut resp = client
+        .post("https://api.dropboxapi.com/2/files/list_folder")
+        .bearer_auth(access)
+        .json(&serde_json::json!({ "path": "", "recursive": true, "limit": 2000 }))
+        .send()
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Dropbox list failed ({})", resp.status()));
+    }
+
+    loop {
+        let data: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
+        for entry in data["entries"].as_array().unwrap_or(&Vec::new()) {
+            if entry[".tag"].as_str() != Some("file") {
+                continue;
+            }
+            let name = entry["name"].as_str().unwrap_or_default().to_string();
+            let path = entry["path_lower"].as_str().unwrap_or_default().to_string();
+            if path.is_empty() || name.is_empty() || !dropbox_is_audio(&name) {
+                continue;
+            }
+            let folder = dropbox_parent_folder(entry["path_display"].as_str().unwrap_or(&path));
+            entries.push(CloudEntry {
+                provider: CloudProvider::Dropbox,
+                id: path,
+                name,
+                is_folder: false,
+                size: entry["size"].as_u64().unwrap_or(0),
+                folder,
+            });
+        }
+        if data["has_more"].as_bool() != Some(true) {
+            break;
+        }
+        let cursor = match data["cursor"].as_str() {
+            Some(c) => c.to_string(),
+            None => break,
+        };
+        resp = client
+            .post("https://api.dropboxapi.com/2/files/list_folder/continue")
+            .bearer_auth(access)
+            .json(&serde_json::json!({ "cursor": cursor }))
+            .send()
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            break;
+        }
+    }
+    Ok(entries)
+}
+
+/// Parent folder name of a Dropbox path ("/Music/Album/Song.mp3" → "Album");
+/// `None` at the account root.
+fn dropbox_parent_folder(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    (parts.len() >= 2).then(|| parts[parts.len() - 2].to_string())
+}
+
 fn dropbox_temporary_link(access: &str, path: &str) -> Result<String, String> {
     let client = http_client()?;
     let resp = client
@@ -665,4 +851,23 @@ fn dropbox_temporary_link(access: &str, path: &str) -> Result<String, String> {
         .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "no temporary link returned".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dropbox_parent_folder;
+
+    #[test]
+    fn parent_folder_of_nested_path() {
+        assert_eq!(
+            dropbox_parent_folder("/Music/Album/Song.mp3").as_deref(),
+            Some("Album")
+        );
+    }
+
+    #[test]
+    fn no_parent_folder_at_root() {
+        assert_eq!(dropbox_parent_folder("/Song.mp3"), None);
+        assert_eq!(dropbox_parent_folder(""), None);
+    }
 }

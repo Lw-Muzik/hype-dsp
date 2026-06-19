@@ -40,6 +40,19 @@ pub fn cloud_list(
         .map_err(|e| IpcError::new("cloud", e))
 }
 
+/// Every audio file in the account, flat (all folders) — for the Player's
+/// unified library. Mirrors the mobile app's account-wide listing so songs
+/// nested in subfolders are included, unlike folder-by-folder `cloud_list`.
+#[tauri::command(async)]
+pub fn cloud_all_audio(
+    cloud: State<'_, CloudState>,
+    provider: CloudProvider,
+) -> Result<Vec<CloudEntry>, IpcError> {
+    cloud
+        .all_audio(provider)
+        .map_err(|e| IpcError::new("cloud", e))
+}
+
 /// Resolve a streamable URL for the file and play it through the chain.
 #[tauri::command(async)]
 pub fn cloud_play(

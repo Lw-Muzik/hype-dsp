@@ -1,10 +1,11 @@
-//! Track identification: Chromaprint fingerprint → AcoustID lookup → write the
-//! recognized title/artist/album back into untagged files. Mirrors the mobile
-//! app's fingerprint feature (Chromaprint + AcoustID), with a fill-empty policy
+//! Track identification: Chromaprint fingerprint → AcoustID lookup → MusicBrainz
+//! enrichment → write the recognized title/artist/album back into untagged
+//! files. Mirrors the mobile app's fingerprint feature, with a fill-empty policy
 //! so existing tags are never overwritten.
 
 use std::path::Path;
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use hm_audio::{fingerprint_file, probe_track};
 use hm_core::{IpcError, LibraryTrack, MediaStore};
@@ -17,6 +18,31 @@ use tauri::{Emitter, State};
 const USER_AGENT: &str = "HypeMuzik/1.0 (https://github.com/Lw-Muzik)";
 /// AcoustID asks for ≤3 requests/sec; pace batch lookups accordingly.
 const ACOUSTID_GAP: Duration = Duration::from_millis(340);
+/// MusicBrainz asks for ≤1 request/sec — enforced process-wide (a small margin
+/// over 1s) so the batch identify can't trip its rate limiter.
+const MUSICBRAINZ_GAP: Duration = Duration::from_millis(1100);
+
+/// Timestamp of the last MusicBrainz request, for the global rate limiter.
+static MB_LAST_CALL: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// Block until at least `MUSICBRAINZ_GAP` has elapsed since the previous
+/// MusicBrainz request, reserving this call's slot before releasing the lock so
+/// concurrent callers queue in order (no double-rate when batch + lyrics overlap).
+fn musicbrainz_rate_limit() {
+    let wait = {
+        let mut last = MB_LAST_CALL.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        let wait = match *last {
+            Some(prev) if prev + MUSICBRAINZ_GAP > now => (prev + MUSICBRAINZ_GAP) - now,
+            _ => Duration::ZERO,
+        };
+        *last = Some(now + wait);
+        wait
+    };
+    if !wait.is_zero() {
+        std::thread::sleep(wait);
+    }
+}
 
 /// What identification found (and whether it was written to the file).
 #[derive(Clone, Serialize)]
@@ -27,6 +53,21 @@ pub struct RecognitionResult {
     album: Option<String>,
     score: f64,
     written: bool,
+    /// MusicBrainz recording id (used internally to enrich; not sent to the UI).
+    #[serde(skip)]
+    mb_recording_id: Option<String>,
+}
+
+impl RecognitionResult {
+    /// Recognized title, when non-empty.
+    pub(crate) fn title(&self) -> Option<&str> {
+        self.title.as_deref().filter(|s| !s.trim().is_empty())
+    }
+
+    /// Recognized artist, when non-empty.
+    pub(crate) fn artist(&self) -> Option<&str> {
+        self.artist.as_deref().filter(|s| !s.trim().is_empty())
+    }
 }
 
 /// Progress of a batch identify, on `library:scan_progress` (shared with scan).
@@ -51,6 +92,7 @@ struct AcoustidResult {
 }
 #[derive(Deserialize)]
 struct Recording {
+    id: Option<String>,
     title: Option<String>,
     artists: Option<Vec<NamedEntity>>,
     releasegroups: Option<Vec<ReleaseGroup>>,
@@ -129,6 +171,81 @@ fn acoustid_lookup(fingerprint: &str, duration: u32) -> Option<RecognitionResult
         album,
         score,
         written: false,
+        mb_recording_id: rec.id.clone(),
+    })
+}
+
+/* -------------------------------------------------------------- MusicBrainz */
+
+#[derive(Deserialize)]
+struct MbRecording {
+    title: Option<String>,
+    #[serde(rename = "artist-credit")]
+    artist_credit: Option<Vec<MbCredit>>,
+    releases: Option<Vec<MbRelease>>,
+}
+#[derive(Deserialize)]
+struct MbCredit {
+    name: Option<String>,
+    joinphrase: Option<String>,
+}
+#[derive(Deserialize)]
+struct MbRelease {
+    title: Option<String>,
+}
+
+/// Enrich an AcoustID match with MusicBrainz's canonical recording metadata
+/// (full artist credits + release title), mirroring the mobile app. Falls back
+/// to the AcoustID values for anything MusicBrainz doesn't return.
+fn musicbrainz_enrich(recording_id: &str, base: &RecognitionResult) -> Option<RecognitionResult> {
+    musicbrainz_rate_limit();
+    let url = reqwest::Url::parse_with_params(
+        &format!("https://musicbrainz.org/ws/2/recording/{recording_id}"),
+        &[("inc", "artist-credits releases"), ("fmt", "json")],
+    )
+    .ok()?;
+    // MusicBrainz requires a descriptive User-Agent with contact info.
+    let res = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(6))
+        .timeout(Duration::from_secs(15))
+        .build()
+        .ok()?
+        .get(url)
+        .header("User-Agent", "HypeMuzik/1.0 ( contact@hypemuzik.app )")
+        .send()
+        .ok()?;
+    if !res.status().is_success() {
+        return None;
+    }
+    let rec: MbRecording = res.json().ok()?;
+
+    // Join the artist credit parts with their join phrases ("Foo feat. Bar").
+    let artist = rec.artist_credit.as_ref().and_then(|credits| {
+        let joined: String = credits
+            .iter()
+            .map(|c| {
+                format!(
+                    "{}{}",
+                    c.name.clone().unwrap_or_default(),
+                    c.joinphrase.clone().unwrap_or_default()
+                )
+            })
+            .collect();
+        (!joined.trim().is_empty()).then_some(joined)
+    });
+    let album = rec
+        .releases
+        .as_ref()
+        .and_then(|r| r.first())
+        .and_then(|r| r.title.clone());
+
+    Some(RecognitionResult {
+        title: rec.title.or_else(|| base.title.clone()),
+        artist: artist.or_else(|| base.artist.clone()),
+        album: album.or_else(|| base.album.clone()),
+        score: base.score,
+        written: false,
+        mb_recording_id: Some(recording_id.to_string()),
     })
 }
 
@@ -211,18 +328,34 @@ fn needs_identify(t: &LibraryTrack) -> bool {
 /// Identify one local track by audio fingerprint and fill in any missing tags.
 #[tauri::command(async)]
 pub fn identify_track(store: State<'_, MediaStore>, path: String) -> Option<RecognitionResult> {
-    let (fingerprint, duration) = fingerprint_file(Path::new(&path))?;
+    identify_local(&store, &path)
+}
+
+/// Full single-track identify chain — Chromaprint fingerprint → AcoustID →
+/// MusicBrainz enrichment — filling any empty tags in place and refreshing the
+/// library DB. Reused by the lyrics resolver so a mistagged track can still
+/// resolve lyrics (mirrors the mobile app's fingerprint feature). Returns the
+/// recognized metadata, or `None` if the track couldn't be identified.
+pub(crate) fn identify_local(store: &MediaStore, path: &str) -> Option<RecognitionResult> {
+    let (fingerprint, duration) = fingerprint_file(Path::new(path))?;
     let mut result = acoustid_lookup(&fingerprint, duration)?;
-    result.written = write_tags_fill_empty(&path, &result);
+    // Prefer MusicBrainz's canonical metadata when AcoustID gave us a recording.
+    if let Some(mbid) = result.mb_recording_id.clone() {
+        if let Some(enriched) = musicbrainz_enrich(&mbid, &result) {
+            result = enriched;
+        }
+    }
+    result.written = write_tags_fill_empty(path, &result);
     if result.written {
-        refresh_db(&store, &path);
+        refresh_db(store, path);
     }
     Some(result)
 }
 
 /// Fingerprint + identify every library track that's missing information,
-/// filling tags in place. Rate-limited for AcoustID; emits progress; returns
-/// the number of tracks successfully tagged.
+/// filling tags in place via the full chain (AcoustID → MusicBrainz). Emits
+/// progress; returns the number of tracks successfully tagged. AcoustID is paced
+/// by the inter-track gap; MusicBrainz by its own process-wide rate limiter.
 #[tauri::command(async)]
 pub fn library_identify_missing(
     app: tauri::AppHandle,
@@ -240,13 +373,8 @@ pub fn library_identify_missing(
 
     let mut tagged = 0;
     for (i, track) in missing.iter().enumerate() {
-        if let Some((fingerprint, duration)) = fingerprint_file(Path::new(&track.path)) {
-            if let Some(result) = acoustid_lookup(&fingerprint, duration) {
-                if write_tags_fill_empty(&track.path, &result) {
-                    refresh_db(&store, &track.path);
-                    tagged += 1;
-                }
-            }
+        if identify_local(&store, &track.path).is_some_and(|r| r.written) {
+            tagged += 1;
         }
         let _ = app.emit("library:scan_progress", Progress { done: i + 1, total });
         if i + 1 < total {

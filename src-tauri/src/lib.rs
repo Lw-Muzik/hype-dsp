@@ -328,6 +328,7 @@ pub fn run() {
             commands::cloud::cloud_connect,
             commands::cloud::cloud_disconnect,
             commands::cloud::cloud_list,
+            commands::cloud::cloud_all_audio,
             commands::cloud::cloud_play,
             commands::link::link_discover,
             commands::link::link_paired,

@@ -140,6 +140,12 @@ export function cloudList(
   return invoke<CloudEntry[]>("cloud_list", { provider, folder });
 }
 
+/** Every audio file in the account, flat (all folders), for the Player's
+ *  unified library. Mirrors the mobile app's account-wide listing. */
+export function cloudAllAudio(provider: CloudProvider): Promise<CloudEntry[]> {
+  return invoke<CloudEntry[]>("cloud_all_audio", { provider });
+}
+
 /** Stream a cloud file through the enhancement chain. */
 export function cloudPlay(provider: CloudProvider, fileId: string): Promise<void> {
   return invoke<void>("cloud_play", { provider, fileId });

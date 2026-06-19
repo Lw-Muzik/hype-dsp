@@ -258,6 +258,8 @@ export interface CloudEntry {
   name: string;
   isFolder: boolean;
   size: number;
+  /** Parent folder name, set on the flat account-wide listing (else null). */
+  folder?: string | null;
 }
 
 export interface CloudStatus {

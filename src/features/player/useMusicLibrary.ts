@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  cloudList,
+  cloudAllAudio,
   cloudStatus,
   libraryList,
   linkLibrary,
@@ -66,43 +66,24 @@ function parentFolder(path: string): string | null {
   return parts.length >= 2 ? parts[parts.length - 2]! : null;
 }
 
-// Bounds so a large cloud account can't stall the UI or hammer the API.
-const CLOUD_MAX_DEPTH = 4;
-const CLOUD_MAX_FILES = 1500;
-const CLOUD_MAX_FOLDERS = 60;
-
-/** Recursively collect a connected provider's audio files (bounded). */
+/** Collect a connected provider's audio files in one flat, account-wide listing
+ *  (all folders) — mirrors the mobile app, so songs nested in subfolders are
+ *  included rather than truncated by a bounded folder walk. */
 async function scanCloud(provider: CloudProvider): Promise<MusicTrack[]> {
-  const out: MusicTrack[] = [];
-  let foldersVisited = 0;
-  const walk = async (folder: string, label: string | null, depth: number) => {
-    if (depth > CLOUD_MAX_DEPTH || out.length >= CLOUD_MAX_FILES) return;
-    if (foldersVisited >= CLOUD_MAX_FOLDERS) return;
-    foldersVisited += 1;
-    let entries;
-    try {
-      entries = await cloudList(provider, folder);
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      if (out.length >= CLOUD_MAX_FILES) return;
-      if (e.isFolder) {
-        await walk(e.id, e.name, depth + 1);
-      } else {
-        out.push({
-          ...cloudItem(e),
-          source: "cloud" as const,
-          uid: `cloud:${provider}:${e.id}`,
-          genre: null,
-          folder: label,
-          artPath: null,
-        });
-      }
-    }
-  };
-  await walk("", null, 0);
-  return out;
+  let entries;
+  try {
+    entries = await cloudAllAudio(provider);
+  } catch {
+    return [];
+  }
+  return entries.map((e) => ({
+    ...cloudItem(e),
+    source: "cloud" as const,
+    uid: `cloud:${provider}:${e.id}`,
+    genre: null,
+    folder: e.folder ?? null,
+    artPath: null,
+  }));
 }
 
 /**

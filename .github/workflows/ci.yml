@@ -89,3 +89,15 @@ jobs:
 
       - name: Build native libprojectM (proof)
         run: cargo build --release -p hm-visualizer --features milkdrop --examples
+
+      # The Windows VS multi-config generator can install the static lib to a
+      # path projectm-sys's link-search doesn't cover. Dump where it actually
+      # landed so the fix is exact (runs even when the build above fails).
+      - name: Locate built libprojectM (diagnostics)
+        if: always()
+        shell: bash
+        run: |
+          echo "=== link-search expects <out>/lib — actual projectM libs: ==="
+          find target -path "*projectm-sys*" \( -name "projectM*.lib" -o -name "libprojectM*.a" \) 2>/dev/null || true
+          echo "=== contents of projectm-sys out/lib: ==="
+          find target -path "*projectm-sys*/out/lib*" 2>/dev/null || true

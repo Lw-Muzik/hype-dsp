@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   cloudPlay,
+  cloudTrackMetadata,
   engineSetBass,
   engineSetEq,
   engineSetMasterVolume,
@@ -60,6 +61,9 @@ export interface QueueItem {
   artist: string | null;
   album: string | null;
   durationSecs: number | null;
+  /** Resolved cover (a `data:` URI), e.g. a cloud track's art once its tags
+   *  load. Local/phone items resolve art lazily from their path instead. */
+  cover?: string | null;
   // Exactly one payload is set, matching `source`:
   track?: LibraryTrack;
   device?: PhoneDevice;
@@ -368,6 +372,77 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     }
   };
 
+  /** A cloud item still labelled with its file name (or no artist) needs its
+   *  real tags fetched. Items enqueued from the library already carry them. */
+  const cloudNeedsMeta = (it: QueueItem): boolean => {
+    if (it.source !== "cloud" || !it.cloud) return false;
+    if (!it.artist || it.artist.trim() === "") return true;
+    const stem = it.cloud.name.replace(/\.[^./\\]+$/, "");
+    return it.title === it.cloud.name || it.title === stem;
+  };
+
+  /** Patch one queued cloud item (by id) with resolved tags, keeping the
+   *  now-playing card in sync when it's the current track. No-op if it changed. */
+  const patchCloudItem = (id: string, meta: TrackMeta): void =>
+    set((s) => {
+      const idx = s.queue.findIndex((q) => q.source === "cloud" && q.id === id);
+      if (idx < 0) return {};
+      const cur = s.queue[idx]!;
+      const next: QueueItem = {
+        ...cur,
+        title: meta.title ?? cur.title,
+        artist: meta.artist ?? cur.artist,
+        album: meta.album ?? cur.album,
+        cover: meta.cover ?? cur.cover ?? null,
+      };
+      if (
+        next.title === cur.title &&
+        next.artist === cur.artist &&
+        next.album === cur.album &&
+        next.cover === cur.cover
+      ) {
+        return {};
+      }
+      const queue = s.queue.slice();
+      queue[idx] = next;
+      const patchNow =
+        s.queueIndex === idx
+          ? {
+              nowPlaying: next.title,
+              nowPlayingMeta: {
+                title: next.title,
+                artist: next.artist,
+                album: next.album,
+                cover: s.nowPlayingMeta?.cover ?? meta.cover ?? null,
+              },
+            }
+          : {};
+      return { queue, ...patchNow };
+    });
+
+  /** Background-fill missing cloud tags for a queue (cache-backed, bounded), so
+   *  the queue list shows real title/artist instead of the file name. */
+  const enrichCloudQueue = (items: QueueItem[]): void => {
+    const pending = items.filter(cloudNeedsMeta);
+    if (pending.length === 0) return;
+    let next = 0;
+    const worker = async () => {
+      while (next < pending.length) {
+        const it = pending[next++]!;
+        const file = it.cloud!;
+        try {
+          const meta = await cloudTrackMetadata(file.provider, file.id, file.name);
+          if (meta && (meta.title || meta.artist || meta.album)) {
+            patchCloudItem(it.id, meta);
+          }
+        } catch {
+          // Skip — one failed lookup shouldn't block the rest.
+        }
+      }
+    };
+    void Promise.all([worker(), worker(), worker(), worker()]);
+  };
+
   /** Replace the queue and start playing `index`. */
   const setQueueAndPlay = (items: QueueItem[], index: number) => {
     if (items.length === 0) return;
@@ -375,6 +450,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     const { order, orderPos } = buildOrder(items.length, get().shuffle, start);
     set({ queue: items, order, orderPos, queueIndex: order[orderPos]! });
     startPlayback(orderPos);
+    enrichCloudQueue(items);
   };
 
   /** Decide what to play when the current item ends naturally. */
@@ -540,13 +616,39 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         // Ignore late events after playback stopped.
         if (!s.nowPlaying && !s.playing) return {};
         const prev = s.nowPlayingMeta;
+        const nowPlayingMeta = {
+          title: meta.title ?? prev?.title ?? s.nowPlaying,
+          artist: meta.artist ?? prev?.artist ?? null,
+          album: meta.album ?? prev?.album ?? null,
+          cover: meta.cover ?? prev?.cover ?? null,
+        };
+        // Mirror the stream-resolved tags onto the current queue item so the
+        // queue list matches the now-playing bar — cloud tracks are queued under
+        // their file name until their real tags arrive from the stream.
+        let queue = s.queue;
+        const qi = s.queueIndex;
+        const cur = qi >= 0 ? s.queue[qi] : undefined;
+        if (cur && (meta.title || meta.artist || meta.album || meta.cover)) {
+          const patched: QueueItem = {
+            ...cur,
+            title: meta.title ?? cur.title,
+            artist: meta.artist ?? cur.artist,
+            album: meta.album ?? cur.album,
+            cover: meta.cover ?? cur.cover ?? null,
+          };
+          if (
+            patched.title !== cur.title ||
+            patched.artist !== cur.artist ||
+            patched.album !== cur.album ||
+            patched.cover !== cur.cover
+          ) {
+            queue = s.queue.slice();
+            queue[qi] = patched;
+          }
+        }
         return {
-          nowPlayingMeta: {
-            title: meta.title ?? prev?.title ?? s.nowPlaying,
-            artist: meta.artist ?? prev?.artist ?? null,
-            album: meta.album ?? prev?.album ?? null,
-            cover: meta.cover ?? prev?.cover ?? null,
-          },
+          nowPlayingMeta,
+          ...(queue !== s.queue ? { queue } : {}),
           // Keep the title string in sync for views that match on it.
           ...(meta.title ? { nowPlaying: meta.title } : {}),
         };

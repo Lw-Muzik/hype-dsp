@@ -7,20 +7,29 @@ import { SidebarNowPlaying } from "@/components/SidebarNowPlaying";
 import { cn } from "@/lib/cn";
 
 /** Persistent left navigation: brand, primary destinations, system, collapse. */
+const COLLAPSED_WIDTH = 68;
+
 export function Sidebar() {
   const route = useUiStore((s) => s.route);
   const setRoute = useUiStore((s) => s.setRoute);
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+  const leftWidth = useUiStore((s) => s.leftWidth);
+  const resizing = useUiStore((s) => s.resizing);
 
   const main = ROUTES.filter((r) => r.group === "main" && !r.hidden);
   const system = ROUTES.filter((r) => r.group === "system" && !r.hidden);
 
   return (
     <aside
+      style={{ width: collapsed ? COLLAPSED_WIDTH : leftWidth }}
       className={cn(
-        "flex h-full shrink-0 flex-col border-r border-border bg-surface-raised transition-[width] duration-200",
-        collapsed ? "w-[68px]" : "w-60",
+        "flex h-full shrink-0 flex-col bg-surface-raised",
+        // Collapsed rail carries the separator itself; when expanded the
+        // adjacent drag handle provides it.
+        collapsed && "border-r border-border",
+        // Drop the transition mid-drag so the width tracks the cursor exactly.
+        !resizing && "transition-[width] duration-200",
       )}
     >
       <div

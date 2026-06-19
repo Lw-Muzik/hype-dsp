@@ -19,6 +19,8 @@ export function RightSidebar() {
   const panel = useUiStore((s) => s.rightPanel);
   const toggleRight = useUiStore((s) => s.toggleRight);
   const closeRight = useUiStore((s) => s.closeRight);
+  const rightWidth = useUiStore((s) => s.rightWidth);
+  const resizing = useUiStore((s) => s.resizing);
 
   // The tab whose content is mounted. Lingers briefly after close so the
   // panel can animate out before its content disappears.
@@ -38,15 +40,18 @@ export function RightSidebar() {
   return (
     <div
       aria-hidden={!open}
+      style={{ width: open ? rightWidth : 0 }}
       className={cn(
-        "h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-out",
-        open ? "w-80" : "w-0",
+        "h-full shrink-0 overflow-hidden ease-out",
+        // Drop the transition mid-drag so the width tracks the cursor exactly.
+        !resizing && "transition-[width] duration-200",
       )}
     >
       <aside
         aria-label={tab === "lyrics" ? "Lyrics" : "Play queue"}
+        style={{ width: rightWidth }}
         className={cn(
-          "flex h-full w-80 flex-col border-l border-border bg-surface-raised transition-opacity duration-200",
+          "flex h-full flex-col bg-surface-raised transition-opacity duration-200",
           open ? "opacity-100" : "opacity-0",
         )}
       >

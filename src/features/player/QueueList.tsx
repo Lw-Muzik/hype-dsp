@@ -30,7 +30,7 @@ function queueArt(item: QueueItem): ArtSource {
     };
   }
   if (item.source === "cloud") {
-    return { key, source: "cloud" };
+    return { key, source: "cloud", cover: item.cover ?? null };
   }
   // Local files read embedded art by path; radio has none (→ gradient).
   return { key, source: "local", path: item.track?.path ?? null };

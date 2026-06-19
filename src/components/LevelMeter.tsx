@@ -37,6 +37,9 @@ export function LevelMeter({ className }: { className?: string }) {
     const beat: [BeatState, BeatState] = [initialBeat(), initialBeat()];
     let raf = 0;
     let prev = performance.now();
+    // Once idle settles to zero, stop pushing state (the rAF keeps spinning, but
+    // cheaply) until signal returns — no 60fps re-renders while nothing plays.
+    let settled = false;
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - prev) / 1000);
       prev = now;
@@ -48,7 +51,21 @@ export function LevelMeter({ className }: { className?: string }) {
       ];
       beat[0] = stepBeat(beat[0], peak[0], dt);
       beat[1] = stepBeat(beat[1], peak[1], dt);
-      setView({ peak, pulse: [beat[0].pulse, beat[1].pulse], live });
+      const idle =
+        !live &&
+        peak[0] === 0 &&
+        peak[1] === 0 &&
+        beat[0].pulse < 0.005 &&
+        beat[1].pulse < 0.005;
+      if (idle) {
+        if (!settled) {
+          settled = true;
+          setView({ peak: [0, 0], pulse: [0, 0], live: false });
+        }
+      } else {
+        settled = false;
+        setView({ peak, pulse: [beat[0].pulse, beat[1].pulse], live });
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

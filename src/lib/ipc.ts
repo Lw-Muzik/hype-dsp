@@ -29,6 +29,7 @@ import type {
   PhoneDevice,
   PhoneTrack,
   Playlist,
+  RadioCountry,
   RadioStation,
   RoomState,
   SpatialMode,
@@ -409,6 +410,31 @@ export function visualizerIsOpen(): Promise<boolean> {
   return invoke<boolean>("visualizer_is_open");
 }
 
+/* ----------------------------------------------- in-app visualizer scenes */
+
+/** A selectable in-app (Canvas/WebGL) visualizer. */
+export interface SceneInfo {
+  id: string;
+  name: string;
+  /** "2d" (Canvas) or "3d" (WebGL/Three.js). */
+  kind: "2d" | "3d";
+}
+
+/** The registry of in-app visualizer scenes (backend source of truth). */
+export function sceneList(): Promise<SceneInfo[]> {
+  return invoke<SceneInfo[]>("scene_list");
+}
+
+/** The currently selected scene id (persisted by the backend). */
+export function sceneSelected(): Promise<string> {
+  return invoke<string>("scene_selected");
+}
+
+/** Select a scene; the backend persists it. */
+export function sceneSelect(id: string): Promise<void> {
+  return invoke<void>("scene_select", { id });
+}
+
 /** Whether audio is currently playing. */
 export function playerIsPlaying(): Promise<boolean> {
   return invoke<boolean>("player_is_playing");
@@ -548,6 +574,16 @@ export function playlistReorder(id: string, paths: string[]): Promise<void> {
 /** Search the radio directory (falls back to the bundled seed offline). */
 export function radioSearch(query: string): Promise<RadioStation[]> {
   return invoke<RadioStation[]>("radio_search", { query });
+}
+
+/** The African countries available in the radio browser. */
+export function radioAfricanCountries(): Promise<RadioCountry[]> {
+  return invoke<RadioCountry[]>("radio_african_countries");
+}
+
+/** Every station for a country (ISO alpha-2 code), most-popular first. */
+export function radioByCountry(code: string): Promise<RadioStation[]> {
+  return invoke<RadioStation[]>("radio_by_country", { code });
 }
 export function radioFavoritesList(): Promise<RadioStation[]> {
   return invoke<RadioStation[]>("radio_favorites_list");

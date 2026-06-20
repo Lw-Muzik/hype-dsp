@@ -1,12 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Monitor, Search, Shuffle, Sparkles, Star, X } from "lucide-react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import {
+  AudioLines,
+  Maximize2,
+  Monitor,
+  Search,
+  Shuffle,
+  Sparkles,
+  Star,
+  X,
+} from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
 import { useVisualizerStore } from "@/stores/visualizer";
 import { useEngineStore } from "@/stores/engine";
-import { visualizerPresetNames } from "@/lib/ipc";
+import { sceneList, sceneSelect, sceneSelected, visualizerPresetNames } from "@/lib/ipc";
+import type { SceneInfo } from "@/lib/ipc";
+import { BUILT_SCENES, SCENE_COMPONENTS } from "./scenes/registry";
 import { cn } from "@/lib/cn";
+
+type Tab = "scenes" | "milkdrop";
+const TAB_KEY = "hm.visuals.tab";
 
 /** Pick a random preset to cut to — favorites first if any, never the current. */
 function pickPreset(
@@ -22,14 +37,177 @@ function pickPreset(
 }
 
 /**
- * Visuals — a browser for the bundled MilkDrop (`.milk`) presets that drives the
- * native visualizer window. Selecting a preset shows it in the window live (when
- * open); "Auto" cuts to a fresh preset on every track change. The visuals
- * themselves render in the separate window (a webview can't host native GL).
+ * Visuals — two ways to watch the music:
+ *  - "In-app" scenes: Canvas/WebGL visualizers rendered right here (the engine's
+ *    spectrum/beat drive them).
+ *  - "MilkDrop": browse the bundled `.milk` presets and drive the native window.
  */
 export function VisualsView() {
   const route = routeById("visuals");
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = (() => {
+      try {
+        return localStorage.getItem(TAB_KEY);
+      } catch {
+        return null;
+      }
+    })();
+    return t === "milkdrop" ? "milkdrop" : "scenes";
+  });
+  const switchTab = (t: Tab) => {
+    setTab(t);
+    try {
+      localStorage.setItem(TAB_KEY, t);
+    } catch {
+      // No storage — tab just won't persist.
+    }
+  };
 
+  return (
+    <div className="flex h-full flex-col">
+      <PageHeader
+        icon={route.icon}
+        title={route.label}
+        subtitle={route.tagline}
+        actions={
+          <div className="flex rounded-control border border-border bg-surface p-0.5">
+            <TabButton active={tab === "scenes"} onClick={() => switchTab("scenes")}>
+              In-app
+            </TabButton>
+            <TabButton active={tab === "milkdrop"} onClick={() => switchTab("milkdrop")}>
+              MilkDrop
+            </TabButton>
+          </div>
+        }
+      />
+      {tab === "scenes" ? <ScenesPanel /> : <MilkDropPanel />}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors",
+        active ? "bg-accent text-text" : "text-text-muted hover:text-text",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ----------------------------------------------------------- in-app scenes */
+
+function ScenesPanel() {
+  const [scenes, setScenes] = useState<SceneInfo[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    sceneList()
+      .then((list) => setScenes(list.length > 0 ? list : BUILT_SCENES))
+      .catch(() => setScenes(BUILT_SCENES));
+    sceneSelected()
+      .then((id) => setSelected(id || "radial-spectrum"))
+      .catch(() => setSelected("radial-spectrum"));
+  }, []);
+
+  const select = (id: string) => {
+    if (!(id in SCENE_COMPONENTS)) return; // not built yet
+    setSelected(id);
+    void sceneSelect(id).catch(() => {});
+  };
+
+  const goFullscreen = () => {
+    void stageRef.current?.requestFullscreen?.().catch(() => {});
+  };
+
+  const Scene = selected ? SCENE_COMPONENTS[selected] : undefined;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div
+        ref={stageRef}
+        className="relative min-h-0 flex-1 overflow-hidden rounded-card bg-black ring-1 ring-border"
+      >
+        {Scene ? (
+          <Suspense fallback={<StageMessage>Loading visualizer…</StageMessage>}>
+            <Scene key={selected} />
+          </Suspense>
+        ) : (
+          <StageMessage>
+            {scenes.length === 0 ? "Loading…" : "This visualizer is coming soon."}
+          </StageMessage>
+        )}
+        <button
+          type="button"
+          onClick={goFullscreen}
+          title="Fullscreen"
+          aria-label="Fullscreen"
+          className="absolute right-3 top-3 grid size-9 place-items-center rounded-full bg-white/10 text-text backdrop-blur transition-colors hover:bg-white/20"
+        >
+          <Maximize2 className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+
+      {/* Scene picker */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {scenes.map((s) => {
+          const built = s.id in SCENE_COMPONENTS;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => select(s.id)}
+              disabled={!built}
+              aria-pressed={s.id === selected}
+              className={cn(
+                "flex shrink-0 items-center gap-2 rounded-control border px-3 py-2 text-sm transition-colors",
+                s.id === selected
+                  ? "border-accent/50 bg-accent-muted text-accent-strong"
+                  : "border-border bg-surface-raised text-text hover:bg-surface-overlay",
+                !built && "cursor-not-allowed opacity-40 hover:bg-surface-raised",
+              )}
+            >
+              <span className="whitespace-nowrap">{s.name}</span>
+              <span className="rounded-full bg-black/30 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                {built ? s.kind : "soon"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StageMessage({ children }: { children: ReactNode }) {
+  return (
+    <div className="absolute inset-0 grid place-items-center text-sm text-text-muted">
+      <div className="flex items-center gap-2">
+        <AudioLines className="size-4 animate-pulse text-accent" aria-hidden="true" />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------- MilkDrop native window */
+
+function MilkDropPanel() {
   const available = useVisualizerStore((s) => s.available);
   const running = useVisualizerStore((s) => s.running);
   const current = useVisualizerStore((s) => s.current);
@@ -58,9 +236,6 @@ export function VisualsView() {
       .catch(() => setNames([]));
   }, [available]);
 
-  // Cut to a fresh preset whenever the track changes (read inputs via refs so
-  // this fires only on a track change). selectPreset pushes to the window if it
-  // is open, and remembers the choice either way.
   const autoRef = useRef(autoChange);
   autoRef.current = autoChange;
   const namesRef = useRef(names);
@@ -80,7 +255,6 @@ export function VisualsView() {
   }, [nowPlaying, selectPreset]);
 
   const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
-
   const ordered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const match = (n: string) => q === "" || n.toLowerCase().includes(q);
@@ -91,55 +265,21 @@ export function VisualsView() {
 
   if (!available) {
     return (
-      <div className="flex h-full flex-col">
-        <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
-        <div className="grid flex-1 place-items-center">
-          <div className="max-w-sm text-center text-sm text-text-muted">
-            <Sparkles className="mx-auto mb-3 size-6 text-text-faint" aria-hidden="true" />
-            <p className="font-medium text-text">Visualizer not available</p>
-            <p className="mt-1">
-              This build doesn&rsquo;t include the native MilkDrop renderer. See
-              docs for enabling the visualizer.
-            </p>
-          </div>
+      <div className="grid flex-1 place-items-center">
+        <div className="max-w-sm text-center text-sm text-text-muted">
+          <Sparkles className="mx-auto mb-3 size-6 text-text-faint" aria-hidden="true" />
+          <p className="font-medium text-text">MilkDrop window not available</p>
+          <p className="mt-1">
+            This build doesn&rsquo;t include the native MilkDrop renderer.
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader
-        icon={route.icon}
-        title={route.label}
-        subtitle={route.tagline}
-        actions={
-          <div className="flex gap-2">
-            <Button
-              variant={autoChange ? "primary" : "secondary"}
-              onClick={() => setAutoChange(!autoChange)}
-              title="Cut to a new preset on every track change"
-              aria-pressed={autoChange}
-            >
-              <Shuffle className="size-4" aria-hidden="true" />
-              Auto
-            </Button>
-            {running ? (
-              <Button variant="secondary" onClick={() => void stop()}>
-                <X className="size-4" aria-hidden="true" />
-                Close window
-              </Button>
-            ) : (
-              <Button variant="primary" onClick={() => void start()}>
-                <Monitor className="size-4" aria-hidden="true" />
-                Open visualizer
-              </Button>
-            )}
-          </div>
-        }
-      />
-
-      {/* Status: which preset is showing + where */}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Window controls */}
       <div className="mb-3 flex items-center gap-3 rounded-card border border-border bg-surface-raised px-4 py-3">
         <span
           className={cn(
@@ -149,21 +289,35 @@ export function VisualsView() {
           aria-hidden="true"
         />
         <div className="min-w-0 flex-1 text-sm">
-          <p className="truncate font-medium">
-            {current ?? "No preset selected"}
-          </p>
+          <p className="truncate font-medium">{current ?? "No preset selected"}</p>
           <p className="text-xs text-text-muted">
             {running
-              ? "Showing in the visualizer window"
-              : "Open the window to see it — selections apply live once it's open"}
+              ? "Showing in the MilkDrop window"
+              : "Open the window — selections then apply live"}
           </p>
         </div>
-        <span className="shrink-0 text-xs tabular-nums text-text-faint">
-          {names.length.toLocaleString()} presets
-        </span>
+        <Button
+          variant={autoChange ? "primary" : "secondary"}
+          onClick={() => setAutoChange(!autoChange)}
+          title="Cut to a new preset on every track change"
+          aria-pressed={autoChange}
+        >
+          <Shuffle className="size-4" aria-hidden="true" />
+          Auto
+        </Button>
+        {running ? (
+          <Button variant="secondary" onClick={() => void stop()}>
+            <X className="size-4" aria-hidden="true" />
+            Close
+          </Button>
+        ) : (
+          <Button variant="primary" onClick={() => void start()}>
+            <Monitor className="size-4" aria-hidden="true" />
+            Open window
+          </Button>
+        )}
       </div>
 
-      {/* Search */}
       <div className="mb-3 flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2">
         <Search className="size-4 shrink-0 text-text-faint" aria-hidden="true" />
         <input
@@ -172,9 +326,11 @@ export function VisualsView() {
           placeholder="Search presets"
           className="w-full bg-transparent text-sm text-text placeholder:text-text-faint focus:outline-none"
         />
+        <span className="shrink-0 text-xs tabular-nums text-text-faint">
+          {names.length.toLocaleString()}
+        </span>
       </div>
 
-      {/* Preset list */}
       <div className="min-h-0 flex-1 overflow-y-auto rounded-card border border-border bg-surface-raised p-2">
         {ordered.favs.length > 0 && (
           <>

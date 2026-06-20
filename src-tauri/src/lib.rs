@@ -251,6 +251,17 @@ pub fn run() {
             // MilkDrop visualizer sidecar process handle.
             app.manage(commands::visualizer::VisualizerState::default());
 
+            // In-app (Canvas/WebGL) visualizer scene selection (persisted).
+            let scenes_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("scenes.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_scenes.json"));
+            app.manage(commands::scenes::SceneState::load(scenes_path));
+
             // Phone Link (stream the phone's library over the LAN) pairing store.
             let link_path = app
                 .path()
@@ -368,6 +379,9 @@ pub fn run() {
             commands::visualizer::visualizer_set_preset,
             commands::visualizer::visualizer_stop,
             commands::visualizer::visualizer_is_open,
+            commands::scenes::scene_list,
+            commands::scenes::scene_selected,
+            commands::scenes::scene_select,
             commands::engine::capture_virtual_available,
             commands::engine::system_audio_available,
             commands::engine::player_stop,
@@ -400,6 +414,8 @@ pub fn run() {
             commands::library::playlist_remove,
             commands::library::playlist_reorder,
             commands::radio::radio_search,
+            commands::radio::radio_african_countries,
+            commands::radio::radio_by_country,
             commands::radio::radio_favorites_list,
             commands::radio::radio_favorite_add,
             commands::radio::radio_favorite_remove,

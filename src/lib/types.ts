@@ -167,6 +167,13 @@ export interface RadioStation {
   favicon: string | null;
 }
 
+/** A country in the Africa radio browser. */
+export interface RadioCountry {
+  /** ISO 3166-1 alpha-2 code (e.g. "NG"). */
+  code: string;
+  name: string;
+}
+
 export interface AppSession {
   id: string;
   name: string;

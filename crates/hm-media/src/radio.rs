@@ -87,6 +87,40 @@ fn seed_filtered(query: &str) -> Vec<RadioStation> {
         .collect()
 }
 
+/// Stations for one country (ISO 3166-1 alpha-2 code), most-popular first.
+/// Returns empty when offline or the code is invalid.
+pub fn by_country(code: &str) -> Vec<RadioStation> {
+    by_country_remote(code).unwrap_or_default()
+}
+
+fn by_country_remote(code: &str) -> Option<Vec<RadioStation>> {
+    let code = code.trim();
+    if code.len() != 2 || !code.chars().all(|c| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .user_agent("hypemuzik/0.1")
+        .build()
+        .ok()?;
+    let path = format!(
+        "/json/stations/search?countrycode={}&hidebroken=true&order=clickcount&reverse=true&limit=300",
+        code.to_uppercase()
+    );
+    for host in HOSTS {
+        let Ok(resp) = client.get(format!("{host}{path}")).send() else {
+            continue;
+        };
+        if !resp.status().is_success() {
+            continue;
+        }
+        if let Ok(raw) = resp.json::<Vec<RbStation>>() {
+            return Some(raw.into_iter().filter_map(to_station).collect());
+        }
+    }
+    None
+}
+
 fn search_remote(query: &str) -> Option<Vec<RadioStation>> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(10))

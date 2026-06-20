@@ -3,12 +3,15 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  Globe,
   Play,
+  QrCode,
   RefreshCw,
   Smartphone,
   Trash2,
   Wifi,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { useEngineStore } from "@/stores/engine";
@@ -22,9 +25,16 @@ import {
   linkPair,
   linkPairAddress,
   linkPaired,
+  linkRemoteCancel,
+  linkRemoteConnect,
+  linkRemoteForget,
+  linkRemoteQr,
+  linkRemoteStatus,
   linkUnpair,
   onPhoneFound,
+  onRemoteConnected,
 } from "@/lib/ipc";
+import type { RemotePairingInfo, RemotePhoneStatus } from "@/lib/ipc";
 import type { PhoneDevice, PhoneTrack } from "@/lib/types";
 import { formatTime } from "@/lib/format";
 import { coverGradient, coverInitials } from "@/lib/cover";
@@ -111,6 +121,11 @@ export function DevicesView() {
   const [manualAddr, setManualAddr] = useState("");
   const [manualPin, setManualPin] = useState("");
   const [manualBusy, setManualBusy] = useState(false);
+
+  // Remote (cross-network, iroh) phones + the QR pairing session.
+  const [remotePhones, setRemotePhones] = useState<RemotePhoneStatus[]>([]);
+  const [pairingInfo, setPairingInfo] = useState<RemotePairingInfo | null>(null);
+  const [remoteBusy, setRemoteBusy] = useState(false);
 
   /** Load paired phones + browse the LAN, merged (paired first). */
   const scan = useCallback(async () => {
@@ -259,6 +274,63 @@ export function DevicesView() {
     await scan();
   };
 
+  // --- remote (cross-network) phones ---
+
+  const refreshRemote = useCallback(async () => {
+    try {
+      setRemotePhones(await linkRemoteStatus());
+    } catch {
+      /* manager may be unavailable — leave the list as-is */
+    }
+  }, []);
+
+  const startRemotePairing = async () => {
+    setRemoteBusy(true);
+    setError(null);
+    try {
+      setPairingInfo(await linkRemoteQr());
+    } catch (e) {
+      setError(ipcErrorMessage(e));
+    } finally {
+      setRemoteBusy(false);
+    }
+  };
+
+  const stopRemotePairing = async () => {
+    setPairingInfo(null);
+    await linkRemoteCancel().catch(() => {});
+  };
+
+  const forgetRemote = async (id: string) => {
+    await linkRemoteForget(id).catch(() => {});
+    if (open?.id === id) {
+      setOpen(null);
+      setTracks([]);
+    }
+    await refreshRemote();
+    await scan();
+  };
+
+  // Redial known remote phones on open, and refresh whenever one pairs/connects.
+  useEffect(() => {
+    void linkRemoteConnect()
+      .then(setRemotePhones)
+      .catch(() => void refreshRemote());
+    let un: (() => void) | undefined;
+    let cancelled = false;
+    onRemoteConnected(() => {
+      setPairingInfo(null);
+      void refreshRemote();
+      void scan();
+    })
+      .then((fn) => (cancelled ? fn() : (un = fn)))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      un?.();
+    };
+  }, [refreshRemote, scan]);
+
   const back = () => {
     setOpen(null);
     setTracks([]);
@@ -270,6 +342,18 @@ export function DevicesView() {
       <CircleAlert className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden="true" />
       <span>{error}</span>
     </div>
+  );
+
+  // Remote phones are reachable over iroh (host 127.0.0.1 loopback), not on the
+  // LAN — keep them out of the "Phones on your network" list; they get their own
+  // panel below.
+  const remoteIds = useMemo(
+    () => new Set(remotePhones.map((p) => p.id)),
+    [remotePhones],
+  );
+  const lanDevices = useMemo(
+    () => devices.filter((d) => !remoteIds.has(d.id)),
+    [devices, remoteIds],
   );
 
   const content = open ? (
@@ -316,7 +400,7 @@ export function DevicesView() {
                 onSubmit={() => void submitPin()}
                 onCancel={() => setPairing(null)}
               />
-            ) : devices.length === 0 ? (
+            ) : lanDevices.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-6 text-center">
                 <Wifi className="size-7 text-text-faint" aria-hidden="true" />
                 <p className="text-sm text-text-muted">
@@ -327,7 +411,7 @@ export function DevicesView() {
               </div>
             ) : (
               <ul className="divide-y divide-border">
-                {devices.map((d) => {
+                {lanDevices.map((d) => {
                   const isPaired = pairedIds.has(d.id);
                   return (
                     <li key={d.id} className="flex items-center gap-3 py-2.5">
@@ -420,10 +504,136 @@ export function DevicesView() {
             {!pairing && errorBanner && <div className="mt-3">{errorBanner}</div>}
           </Card>
 
+          <Card
+            title="Connect across networks"
+            icon={Globe}
+            actions={
+              <button
+                type="button"
+                aria-label="Refresh remote phones"
+                onClick={() => void refreshRemote()}
+                className="text-text-muted transition-colors hover:text-text"
+              >
+                <RefreshCw className="size-4" aria-hidden="true" />
+              </button>
+            }
+          >
+            {pairingInfo ? (
+              <div className="flex flex-col items-center gap-3 py-1 text-center">
+                <p className="text-sm text-text-muted">
+                  In Hype Muzik on your phone, open{" "}
+                  <span className="font-medium text-text">Stream / Cast → Link a desktop</span>{" "}
+                  and scan this code.
+                </p>
+                <div className="rounded-xl bg-white p-3">
+                  <QRCodeSVG value={pairingInfo.qr} size={184} marginSize={1} />
+                </div>
+                <p className="text-xs text-text-faint">
+                  Pairing code{" "}
+                  <span className="font-mono tabular-nums text-text">
+                    {pairingInfo.pin}
+                  </span>
+                </p>
+                <Button variant="secondary" onClick={() => void stopRemotePairing()}>
+                  Done
+                </Button>
+              </div>
+            ) : (
+              <>
+                {remotePhones.length === 0 ? (
+                  <p className="py-2 text-sm text-text-muted">
+                    No phones linked across networks yet. Pair one to stream its
+                    music over the internet — securely, peer-to-peer.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {remotePhones.map((p) => (
+                      <li key={p.id} className="flex items-center gap-3 py-2.5">
+                        <Globe
+                          className="size-5 shrink-0 text-text-muted"
+                          aria-hidden="true"
+                        />
+                        <button
+                          type="button"
+                          disabled={!p.online || p.port == null}
+                          onClick={() =>
+                            p.port != null &&
+                            void browse({
+                              id: p.id,
+                              name: p.name,
+                              host: "127.0.0.1",
+                              port: p.port,
+                            })
+                          }
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium">
+                              {p.name}
+                            </span>
+                            <span className="block truncate text-xs text-text-faint">
+                              {p.online ? "Connected" : "Offline"}
+                            </span>
+                          </span>
+                        </button>
+                        <span
+                          className={cn(
+                            "rounded-control px-2 py-0.5 text-xs",
+                            p.online
+                              ? "bg-success/15 text-success"
+                              : "bg-surface text-text-faint",
+                          )}
+                        >
+                          {p.online ? "Online" : "Offline"}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Forget ${p.name}`}
+                          onClick={() => void forgetRemote(p.id)}
+                          className="flex size-7 items-center justify-center rounded-control text-text-faint hover:bg-surface hover:text-danger"
+                        >
+                          <Trash2 className="size-4" aria-hidden="true" />
+                        </button>
+                        {p.online && p.port != null && (
+                          <button
+                            type="button"
+                            aria-label={`Open ${p.name}`}
+                            onClick={() =>
+                              void browse({
+                                id: p.id,
+                                name: p.name,
+                                host: "127.0.0.1",
+                                port: p.port as number,
+                              })
+                            }
+                            className="text-text-faint transition-colors hover:text-text"
+                          >
+                            <ChevronRight className="size-4" aria-hidden="true" />
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-3 border-t border-border pt-3">
+                  <Button
+                    variant="primary"
+                    disabled={remoteBusy}
+                    onClick={() => void startRemotePairing()}
+                  >
+                    <QrCode className="mr-1.5 size-4" aria-hidden="true" />
+                    {remoteBusy ? "Preparing…" : "Pair a phone across networks"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </Card>
+
           <p className="text-xs text-text-faint">
             Music streams from your phone and plays through the desktop’s
-            enhancement chain. Discovery uses your local Wi‑Fi; if it can’t find
-            the phone, use “Connect by address”.
+            enhancement chain. On the same Wi‑Fi, phones appear above
+            automatically; on a different network, pair once with a QR and they
+            reconnect peer-to-peer over iroh.
           </p>
         </div>
   );

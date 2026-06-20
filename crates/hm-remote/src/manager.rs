@@ -16,9 +16,9 @@
 //! Thereafter the phone is just a paired device reachable at `127.0.0.1:<port>`,
 //! so the existing `hm-link` HTTP calls work through the tunnel unchanged.
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use iroh::endpoint::Connection;
-use iroh::{Endpoint, EndpointAddr, EndpointId, SecretKey};
+use iroh::{Endpoint, EndpointAddr, EndpointId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
@@ -26,9 +26,8 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::io::AsyncWriteExt;
 
-use crate::{build_endpoint, endpoint_addr, open_proxy, RemoteProxy, ALPN_LINK, ALPN_PAIR};
+use crate::{build_endpoint, endpoint_addr, open_proxy, RemoteProxy, ALPN_PAIR};
 
 /// A paired remote phone, as persisted to disk (its loopback port is assigned
 /// fresh each run, so it isn't stored).
@@ -285,28 +284,30 @@ async fn handle_pairing(ep: Endpoint, inner: Arc<Inner>, conn: Connection) -> Re
     send.write_all(&reply).await?;
     let _ = send.finish();
 
-    if !pin_ok {
-        return Ok(());
-    }
-
-    let id = req.addr.id.to_string();
-    upsert_peer(&inner, RemotePeer {
-        id: id.clone(),
-        name: req.name.clone(),
-        token: req.token.clone(),
-    });
-
-    // Dial the phone back over the media ALPN using the address it gave us
-    // (direct addrs enable hole-punching; the id alone would also work via
-    // discovery). On success, hand the app the fresh loopback port.
-    if let Ok(port) = connect_peer(&ep, &inner, req.addr).await {
-        (inner.on_paired)(PairedPhone {
-            id,
-            name: req.name,
-            token: req.token,
-            port,
+    if pin_ok {
+        let id = req.addr.id.to_string();
+        upsert_peer(&inner, RemotePeer {
+            id: id.clone(),
+            name: req.name.clone(),
+            token: req.token.clone(),
         });
+
+        // Dial the phone back over the media ALPN using the address it gave us
+        // (direct addrs enable hole-punching; the id alone would also work via
+        // discovery). On success, hand the app the fresh loopback port.
+        if let Ok(port) = connect_peer(&ep, &inner, req.addr).await {
+            (inner.on_paired)(PairedPhone {
+                id,
+                name: req.name,
+                token: req.token,
+                port,
+            });
+        }
     }
+
+    // Hold the pairing connection open until the phone has read the reply and
+    // closed it (bounded), so the reply is reliably delivered before we drop it.
+    let _ = tokio::time::timeout(Duration::from_secs(5), conn.closed()).await;
     Ok(())
 }
 
@@ -346,9 +347,11 @@ fn save_peers(path: &Path, peers: &[RemotePeer]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::serve_tunnel;
+    use crate::{serve_tunnel, ALPN_LINK};
+    use anyhow::anyhow;
+    use iroh::SecretKey;
     use std::sync::mpsc;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt as _};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
 
     /// End-to-end: a mock phone pairs with the manager (PIN over iroh), the

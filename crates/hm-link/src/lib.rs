@@ -15,7 +15,7 @@
 //! layer wires `stream_target` into `engine.play_stream`. See
 //! `docs/superpowers/specs/2026-06-18-phone-link-streaming.md`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -102,6 +102,11 @@ struct Store {
     self_id: String,
     #[serde(default)]
     devices: Vec<Paired>,
+    /// Ids of *remote* (iroh) phones, reachable at an ephemeral loopback proxy
+    /// that hm-remote reassigns each run. They live in `devices` so every lookup
+    /// works, but are runtime-only — filtered out of the persisted store.
+    #[serde(skip)]
+    remote_ids: HashSet<String>,
 }
 
 /// Managed state: the paired-device store and its on-disk path.
@@ -132,7 +137,19 @@ impl LinkState {
     }
 
     fn save(&self, store: &Store) {
-        if let Ok(json) = serde_json::to_string_pretty(store) {
+        // Persist only the LAN/paired phones — transient remote phones (loopback
+        // proxies) are re-registered each run by hm-remote.
+        let persisted = Store {
+            self_id: store.self_id.clone(),
+            devices: store
+                .devices
+                .iter()
+                .filter(|d| !store.remote_ids.contains(&d.id))
+                .cloned()
+                .collect(),
+            remote_ids: HashSet::new(),
+        };
+        if let Ok(json) = serde_json::to_string_pretty(&persisted) {
             let tmp = self.path.with_extension("json.tmp");
             if std::fs::write(&tmp, json).is_ok() {
                 let _ = std::fs::rename(&tmp, &self.path);
@@ -165,7 +182,24 @@ impl LinkState {
     pub fn unpair(&self, device_id: &str) {
         let mut s = self.inner.lock().expect("link poisoned");
         s.devices.retain(|d| d.id != device_id);
+        s.remote_ids.remove(device_id);
         self.save(&s);
+    }
+
+    /// Register (or refresh) a *remote* phone reachable through an iroh loopback
+    /// proxy at `127.0.0.1:port` with the given media `token`. Runtime-only — not
+    /// persisted (hm-remote re-establishes it each run with a fresh port).
+    pub fn register_remote(&self, id: String, name: String, port: u16, token: String) {
+        let mut s = self.inner.lock().expect("link poisoned");
+        s.devices.retain(|d| d.id != id);
+        s.devices.push(Paired {
+            id: id.clone(),
+            name,
+            host: "127.0.0.1".to_string(),
+            port,
+            token,
+        });
+        s.remote_ids.insert(id);
     }
 
     fn remember(&self, dev: Paired) {

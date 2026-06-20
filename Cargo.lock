@@ -2583,6 +2583,7 @@ dependencies = [
  "hm-link",
  "hm-media",
  "hm-platform",
+ "hm-remote",
  "lofty",
  "objc2-app-kit",
  "reqwest",

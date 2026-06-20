@@ -275,6 +275,56 @@ pub fn run() {
             // Continuous phone discovery (streams `link:phone_found` events).
             app.manage(commands::link::DiscoveryState::default());
 
+            // Remote (cross-network) phone link over iroh. When a phone pairs,
+            // `on_paired` registers it into LinkState as a loopback proxy so its
+            // library loads through the same path as a LAN phone, then notifies
+            // the UI to refresh.
+            let remote_dir = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d
+                })
+                .unwrap_or_else(|_| std::env::temp_dir());
+            let pair_handle = app.handle().clone();
+            match hm_remote::RemoteManager::new(
+                remote_dir.join("remote-secret.bin"),
+                remote_dir.join("remote-peers.json"),
+                hm_link::device_name(),
+                true,
+                move |phone| {
+                    pair_handle.state::<hm_link::LinkState>().register_remote(
+                        phone.id.clone(),
+                        phone.name.clone(),
+                        phone.port,
+                        phone.token.clone(),
+                    );
+                    let _ = pair_handle.emit("link:remote_connected", &phone.id);
+                },
+            ) {
+                Ok(remote) => {
+                    app.manage(remote);
+                    // Silently redial known remote phones in the background so
+                    // their libraries come back without blocking startup.
+                    let bg = app.handle().clone();
+                    std::thread::spawn(move || {
+                        let remote = bg.state::<hm_remote::RemoteManager>();
+                        let link = bg.state::<hm_link::LinkState>();
+                        for phone in remote.connect_known() {
+                            link.register_remote(
+                                phone.id.clone(),
+                                phone.name.clone(),
+                                phone.port,
+                                phone.token.clone(),
+                            );
+                            let _ = bg.emit("link:remote_connected", &phone.id);
+                        }
+                    });
+                }
+                Err(e) => eprintln!("remote phone link unavailable: {e}"),
+            }
+
             // Phone Link cast: a control server phones can push tracks to, plus
             // an mDNS advertisement so they can find this desktop.
             control::start(app.handle().clone());
@@ -367,6 +417,11 @@ pub fn run() {
             commands::link::link_discover_start,
             commands::link::link_discover_stop,
             commands::link::link_unpair,
+            commands::link::link_remote_qr,
+            commands::link::link_remote_cancel,
+            commands::link::link_remote_status,
+            commands::link::link_remote_connect,
+            commands::link::link_remote_forget,
             commands::link::link_library,
             commands::link::link_artwork,
             commands::link::link_lyrics,

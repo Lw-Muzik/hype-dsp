@@ -47,6 +47,7 @@ hm-audio = { workspace = true }
 hm-media = { workspace = true }
 hm-platform = { workspace = true }
 hm-link = { workspace = true }
+hm-remote = { workspace = true }
 lofty = "0.24.0"
 
 

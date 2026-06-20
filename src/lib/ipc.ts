@@ -222,6 +222,55 @@ export function linkUnpair(deviceId: string): Promise<void> {
   return invoke<void>("link_unpair", { deviceId });
 }
 
+// ------------------------------------------- remote (cross-network) phone link
+
+/** What the phone scans to pair across networks. */
+export interface RemotePairingInfo {
+  endpointId: string;
+  pin: string;
+  qr: string;
+}
+
+/** A paired remote phone's live status. */
+export interface RemotePhoneStatus {
+  id: string;
+  name: string;
+  online: boolean;
+  port: number | null;
+}
+
+/** Open a remote pairing session; returns the QR payload + PIN to display. */
+export function linkRemoteQr(): Promise<RemotePairingInfo> {
+  return invoke<RemotePairingInfo>("link_remote_qr");
+}
+
+/** Close the open remote pairing session. */
+export function linkRemoteCancel(): Promise<void> {
+  return invoke<void>("link_remote_cancel");
+}
+
+/** Status of every paired remote phone. */
+export function linkRemoteStatus(): Promise<RemotePhoneStatus[]> {
+  return invoke<RemotePhoneStatus[]>("link_remote_status");
+}
+
+/** (Re)dial all known remote phones; returns the refreshed status list. */
+export function linkRemoteConnect(): Promise<RemotePhoneStatus[]> {
+  return invoke<RemotePhoneStatus[]>("link_remote_connect");
+}
+
+/** Forget a remote phone (drops its tunnel + both stores). */
+export function linkRemoteForget(deviceId: string): Promise<void> {
+  return invoke<void>("link_remote_forget", { deviceId });
+}
+
+/** Fires when a remote phone pairs / reconnects — re-scan the library. */
+export function onRemoteConnected(
+  handler: (deviceId: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>("link:remote_connected", (e) => handler(e.payload));
+}
+
 /** Fetch a paired phone's track list. */
 export function linkLibrary(deviceId: string): Promise<PhoneTrack[]> {
   return invoke<PhoneTrack[]>("link_library", { deviceId });

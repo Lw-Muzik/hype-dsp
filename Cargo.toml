@@ -72,6 +72,7 @@ hm-audio = { path = "crates/hm-audio" }
 hm-media = { path = "crates/hm-media" }
 hm-platform = { path = "crates/hm-platform" }
 hm-link = { path = "crates/hm-link" }
+hm-remote = { path = "crates/hm-remote" }
 hm-core = { path = "crates/hm-core" }
 
 # Release profile tuned for real-time audio: optimize hard, keep panic=unwind

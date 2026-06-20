@@ -105,6 +105,57 @@ pub fn link_unpair(link: State<'_, LinkState>, device_id: String) {
     link.unpair(&device_id);
 }
 
+// ------------------------------------------------- remote (cross-network) link
+
+/// Open a pairing session for a phone on a *different* network and return the
+/// QR payload + 6-digit PIN to display. The phone scans the QR and connects
+/// peer-to-peer over iroh (registered into [`LinkState`] by the `on_paired`
+/// callback wired in `lib.rs`).
+#[tauri::command]
+pub fn link_remote_qr(remote: State<'_, hm_remote::RemoteManager>) -> hm_remote::PairingInfo {
+    remote.start_pairing(Duration::from_secs(300))
+}
+
+/// Close any open remote pairing session.
+#[tauri::command]
+pub fn link_remote_cancel(remote: State<'_, hm_remote::RemoteManager>) {
+    remote.cancel_pairing();
+}
+
+/// Current status of every paired remote phone (online = tunnel connected).
+#[tauri::command]
+pub fn link_remote_status(
+    remote: State<'_, hm_remote::RemoteManager>,
+) -> Vec<hm_remote::RemotePhoneStatus> {
+    remote.remote_phones()
+}
+
+/// (Re)dial every known remote phone and register the connected ones into the
+/// device store so their libraries load. Returns the refreshed status list.
+#[tauri::command(async)]
+pub fn link_remote_connect(
+    remote: State<'_, hm_remote::RemoteManager>,
+    link: State<'_, LinkState>,
+    app: AppHandle,
+) -> Vec<hm_remote::RemotePhoneStatus> {
+    for phone in remote.connect_known() {
+        link.register_remote(phone.id.clone(), phone.name, phone.port, phone.token);
+        let _ = app.emit("link:remote_connected", &phone.id);
+    }
+    remote.remote_phones()
+}
+
+/// Forget a remote phone: drop its tunnel and remove it from both stores.
+#[tauri::command]
+pub fn link_remote_forget(
+    remote: State<'_, hm_remote::RemoteManager>,
+    link: State<'_, LinkState>,
+    device_id: String,
+) {
+    remote.forget(&device_id);
+    link.unpair(&device_id);
+}
+
 /// Fetch a paired phone's track list.
 #[tauri::command(async)]
 pub fn link_library(

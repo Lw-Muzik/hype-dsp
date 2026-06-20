@@ -87,14 +87,10 @@ pub async fn serve_tunnel(ep: Endpoint, shelf_port: u16) -> Result<()> {
 /// Handle one peer connection: every bi-stream it opens becomes a proxied TCP
 /// connection to the shelf.
 async fn serve_connection(conn: Connection, shelf_port: u16) {
-    loop {
-        match conn.accept_bi().await {
-            Ok((send, recv)) => {
-                tokio::spawn(stream_to_shelf(send, recv, shelf_port));
-            }
-            // The peer closed the connection (or it errored) — stop accepting.
-            Err(_) => break,
-        }
+    // Each bi-stream the peer opens becomes a proxied TCP connection to the
+    // shelf; the loop ends when the peer closes the connection (or it errors).
+    while let Ok((send, recv)) = conn.accept_bi().await {
+        tokio::spawn(stream_to_shelf(send, recv, shelf_port));
     }
 }
 

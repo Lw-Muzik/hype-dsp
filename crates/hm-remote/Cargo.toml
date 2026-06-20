@@ -26,6 +26,12 @@ anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 getrandom = "0.2"
+# Same rustls (0.23) iroh uses, pinned to the `ring` provider only (NOT
+# aws-lc-rs) so we can install a process-level CryptoProvider before binding
+# the endpoint — without that, rustls panics on Android when iroh/reqwest build
+# their TLS configs ("Could not automatically determine the process-level
+# CryptoProvider"). default-features=false keeps aws-lc-rs out of the tree.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "time"] }

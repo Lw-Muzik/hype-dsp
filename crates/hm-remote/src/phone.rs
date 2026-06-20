@@ -28,6 +28,12 @@ impl PhoneNode {
     /// serving the media tunnel into the local shelf at `127.0.0.1:shelf_port`.
     /// Uses n0's relays + discovery so the phone is reachable by id anywhere.
     pub fn start(secret_path: PathBuf, shelf_port: u16) -> Result<Self> {
+        // Install a process-level rustls CryptoProvider (ring) before any TLS
+        // config is built. On Android, iroh/reqwest otherwise panic with
+        // "Could not automatically determine the process-level CryptoProvider".
+        // Idempotent: returns Err if one is already installed, which we ignore.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()?;

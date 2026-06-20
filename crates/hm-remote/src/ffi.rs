@@ -20,6 +20,29 @@ use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
+/// Emit a diagnostic line. On Android this goes to `logcat` (visible in
+/// `flutter run` / `adb logcat`); elsewhere to stderr. Rust's stdout/stderr is
+/// NOT wired to logcat by default, so panic/bind-failure messages would
+/// otherwise be lost on device — making the iroh-on-Android failure invisible.
+pub(crate) fn diag(msg: &str) {
+    #[cfg(target_os = "android")]
+    {
+        use std::os::raw::{c_char as cc, c_int};
+        extern "C" {
+            // liblog: int __android_log_write(int prio, const char* tag, const char* text)
+            fn __android_log_write(prio: c_int, tag: *const cc, text: *const cc) -> c_int;
+        }
+        if let (Ok(tag), Ok(text)) = (CString::new("hm-remote"), CString::new(msg)) {
+            // 6 = ANDROID_LOG_ERROR
+            unsafe { __android_log_write(6, tag.as_ptr(), text.as_ptr()) };
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        eprintln!("{msg}");
+    }
+}
+
 /// Run an FFI body, converting any panic into `fallback` instead of letting it
 /// unwind across the C boundary (UB → process abort). The closure is asserted
 /// unwind-safe because on the panic path we discard all of its state and hand
@@ -33,8 +56,7 @@ fn guard_ffi<T>(fallback: T, f: impl FnOnce() -> T) -> T {
                 .map(|s| s.to_string())
                 .or_else(|| payload.downcast_ref::<String>().cloned())
                 .unwrap_or_else(|| "unknown panic".to_string());
-            // Best-effort diagnostics (reaches logcat when stdio is captured).
-            eprintln!("hm-remote: caught panic at FFI boundary: {msg}");
+            diag(&format!("caught panic at FFI boundary: {msg}"));
             fallback
         }
     }
@@ -73,7 +95,10 @@ pub unsafe extern "C" fn hm_phone_start(
         };
         match PhoneNode::start(PathBuf::from(path), shelf_port) {
             Ok(node) => Box::into_raw(Box::new(node)),
-            Err(_) => std::ptr::null_mut(),
+            Err(e) => {
+                diag(&format!("endpoint failed to start: {e:#}"));
+                std::ptr::null_mut()
+            }
         }
     })
 }

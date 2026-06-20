@@ -21,17 +21,20 @@
 //! This crate is shared: the **desktop** links it directly; the **phone** links
 //! it via `flutter_rust_bridge` (it runs [`serve_tunnel`] alongside its shelf).
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::{Endpoint, EndpointAddr, SecretKey};
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 
+pub mod ffi;
 pub mod manager;
+pub mod phone;
 pub mod secret;
 
 pub use manager::{PairedPhone, PairingInfo, RemoteManager, RemotePhoneStatus};
+pub use phone::PhoneNode;
 
 /// ALPN for the media tunnel (desktop ⇄ phone shelf).
 pub const ALPN_LINK: &[u8] = b"hypemuzik/link/0";

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "HypeMuzik",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "identifier": "com.hypemuzik.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -33,7 +33,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/hm-visualizer"],
+    "externalBin": [
+      "binaries/hm-visualizer"
+    ],
     "resources": {
       "../crates/hm-visualizer/presets/*.milk": "presets/"
     },

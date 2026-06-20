@@ -391,6 +391,25 @@ export function visualizerStop(): Promise<void> {
   return invoke<void>("visualizer_stop");
 }
 
+/** Start streaming the engine's mono waveform to the webview (over the
+ *  `visualizer:pcm` event) for the embedded butterchurn visualizer. */
+export function visualizerPcmStart(): Promise<void> {
+  return invoke<void>("visualizer_pcm_start");
+}
+
+/** Stop the embedded visualizer's PCM stream. */
+export function visualizerPcmStop(): Promise<void> {
+  return invoke<void>("visualizer_pcm_stop");
+}
+
+/** Subscribe to the engine's mono waveform frames (512 samples in [-1, 1]),
+ *  emitted ~45 fps while {@link visualizerPcmStart} is active. */
+export function onVisualizerPcm(
+  handler: (samples: number[]) => void,
+): Promise<UnlistenFn> {
+  return listen<number[]>("visualizer:pcm", (e) => handler(e.payload));
+}
+
 /** Whether audio is currently playing. */
 export function playerIsPlaying(): Promise<boolean> {
   return invoke<boolean>("player_is_playing");

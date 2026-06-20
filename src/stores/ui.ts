@@ -1,13 +1,14 @@
 import { create } from "zustand";
 import type { AppInfo, LicenseStatus } from "@/lib/types";
 
-/** Top-level navigable views (one window, six destinations). */
+/** Top-level navigable views (one window, seven destinations). */
 export type Route =
   | "enhancer"
   | "equalizer"
   | "mixer"
   | "player"
   | "radio"
+  | "visuals"
   | "settings";
 
 /** Drag-resize bounds (px) for each sidebar: clamp + reset target. */

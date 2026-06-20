@@ -17,10 +17,16 @@ use std::time::Duration;
 use hm_audio::AudioEngine;
 use hm_core::IpcError;
 use tauri::path::BaseDirectory;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// How often the waveform is pushed to the sidecar (projectM interpolates).
 const PCM_FPS: u64 = 30;
+
+/// How often the engine's waveform is pushed to the embedded (webview)
+/// butterchurn visualizer over the `visualizer:pcm` event. A touch above 30 so
+/// the canvas — which renders on its own rAF loop and reads the latest frame —
+/// always has fresh-ish audio.
+const WEB_PCM_FPS: u64 = 45;
 
 /// Managed handle to the running visualizer process (if any).
 #[derive(Default)]
@@ -158,5 +164,69 @@ pub fn visualizer_start(
 pub fn visualizer_stop(state: State<'_, VisualizerState>) {
     if let Some(r) = state.inner.lock().expect("visualizer poisoned").take() {
         r.shutdown();
+    }
+}
+
+/* ----------------------------------------------------- embedded (webview) PCM */
+
+/// Managed handle to the embedded-visualizer PCM emitter thread. Independent of
+/// the native sidecar window above: this feeds the in-app butterchurn canvas via
+/// `visualizer:pcm` events, and runs only while that view is mounted.
+#[derive(Default)]
+pub struct PcmStreamState {
+    inner: Mutex<Option<PcmPump>>,
+}
+
+struct PcmPump {
+    stop: Arc<AtomicBool>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl PcmPump {
+    fn shutdown(mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+    }
+}
+
+/// Start emitting the engine's latest mono waveform to the webview over
+/// `visualizer:pcm` (a `Vec<f32>`), for the embedded butterchurn visualizer.
+/// Idempotent — replaces any stream already running.
+#[tauri::command]
+pub fn visualizer_pcm_start(
+    app: AppHandle,
+    engine: State<'_, AudioEngine>,
+    state: State<'_, PcmStreamState>,
+) {
+    if let Some(prev) = state.inner.lock().expect("pcm stream poisoned").take() {
+        prev.shutdown();
+    }
+    let tap = engine.spectrum();
+    let stop = Arc::new(AtomicBool::new(false));
+    let run = stop.clone();
+    let handle = std::thread::Builder::new()
+        .name("hm-viz-web-pcm".into())
+        .spawn(move || {
+            let period = Duration::from_millis(1000 / WEB_PCM_FPS);
+            while !run.load(Ordering::Relaxed) {
+                // Only serialization can fail here (no listener ≠ error), so the
+                // frontend is responsible for calling stop on unmount.
+                if app.emit("visualizer:pcm", tap.load_waveform()).is_err() {
+                    break;
+                }
+                std::thread::sleep(period);
+            }
+        })
+        .ok();
+    *state.inner.lock().expect("pcm stream poisoned") = Some(PcmPump { stop, handle });
+}
+
+/// Stop the embedded visualizer's PCM stream.
+#[tauri::command]
+pub fn visualizer_pcm_stop(state: State<'_, PcmStreamState>) {
+    if let Some(p) = state.inner.lock().expect("pcm stream poisoned").take() {
+        p.shutdown();
     }
 }

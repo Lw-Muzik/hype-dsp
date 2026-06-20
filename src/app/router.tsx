@@ -7,6 +7,7 @@ import { MixerView } from "@/features/mixer/MixerView";
 import { PlayerView } from "@/features/player/PlayerView";
 import { RadioView } from "@/features/radio/RadioView";
 import { SettingsView } from "@/features/settings/SettingsView";
+import { VisualsView } from "@/features/visuals/VisualsView";
 
 /**
  * Maps each route to its view. A typed `Record<Route, FC>` so adding a route to
@@ -18,6 +19,7 @@ const VIEWS: Record<Route, FC> = {
   mixer: MixerView,
   player: PlayerView,
   radio: RadioView,
+  visuals: VisualsView,
   settings: SettingsView,
 };
 

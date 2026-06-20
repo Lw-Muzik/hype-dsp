@@ -72,6 +72,41 @@ function saveSettings(s: VisualizerSettings): void {
   }
 }
 
+/* ---- embedded-visualizer preset selection + favorites (persisted) -------- */
+
+const PRESETS_KEY = "hm.visualizer.presets";
+
+interface PresetPrefs {
+  /** Starred preset names, shown first in the picker. */
+  favorites: string[];
+  /** The preset that was showing last, restored on reopen. */
+  lastPreset: string | null;
+}
+
+function loadPresetPrefs(): PresetPrefs {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    if (!raw) return { favorites: [], lastPreset: null };
+    const p = JSON.parse(raw) as Partial<PresetPrefs>;
+    return {
+      favorites: Array.isArray(p.favorites)
+        ? p.favorites.filter((x): x is string => typeof x === "string")
+        : [],
+      lastPreset: typeof p.lastPreset === "string" ? p.lastPreset : null,
+    };
+  } catch {
+    return { favorites: [], lastPreset: null };
+  }
+}
+
+function savePresetPrefs(p: PresetPrefs): void {
+  try {
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(p));
+  } catch {
+    // No storage — favorites just won't persist.
+  }
+}
+
 /** Map settings to the sidecar launch args. */
 const startArgs = (s: VisualizerSettings) => ({
   fps: s.fps,
@@ -86,6 +121,15 @@ interface VisualizerStore {
   running: boolean;
   /** Persisted render settings. */
   settings: VisualizerSettings;
+
+  /** Starred preset names for the embedded visualizer (persisted). */
+  favorites: string[];
+  /** Last preset shown in the embedded visualizer (persisted). */
+  lastPreset: string | null;
+  /** Star / unstar a preset by name. */
+  toggleFavorite: (name: string) => void;
+  /** Remember the preset currently showing (restored on reopen). */
+  setLastPreset: (name: string) => void;
 
   /** Probe sidecar availability — call once on mount. */
   probe: () => void;
@@ -103,10 +147,28 @@ interface VisualizerStore {
   update: (patch: Partial<VisualizerSettings>) => void;
 }
 
+const initialPrefs = loadPresetPrefs();
+
 export const useVisualizerStore = create<VisualizerStore>((set, get) => ({
   available: false,
   running: false,
   settings: loadSettings(),
+  favorites: initialPrefs.favorites,
+  lastPreset: initialPrefs.lastPreset,
+
+  toggleFavorite: (name) => {
+    const has = get().favorites.includes(name);
+    const favorites = has
+      ? get().favorites.filter((n) => n !== name)
+      : [...get().favorites, name];
+    savePresetPrefs({ favorites, lastPreset: get().lastPreset });
+    set({ favorites });
+  },
+
+  setLastPreset: (name) => {
+    savePresetPrefs({ favorites: get().favorites, lastPreset: name });
+    set({ lastPreset: name });
+  },
 
   probe: () => {
     visualizerAvailable()

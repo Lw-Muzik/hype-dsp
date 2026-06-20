@@ -1,4 +1,5 @@
 import {
+  AudioLines,
   Music2,
   Radio,
   Settings,
@@ -58,6 +59,13 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Radio,
     group: "main",
     tagline: "Browse and stream internet radio through the same engine.",
+  },
+  {
+    id: "visuals",
+    label: "Visuals",
+    icon: AudioLines,
+    group: "main",
+    tagline: "MilkDrop presets that dance to whatever's playing.",
   },
   {
     id: "settings",

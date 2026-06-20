@@ -132,7 +132,7 @@ function VisualizerCard() {
 
   return (
     <Card
-      title="Visualizer"
+      title="Fullscreen visualizer"
       icon={AudioLines}
       actions={
         running ? (
@@ -145,8 +145,9 @@ function VisualizerCard() {
     >
       <div className="flex flex-col gap-4">
         <p className="text-sm text-text-muted">
-          The MilkDrop visualizer renders bundled presets that react to your
-          audio in a separate window. Use{" "}
+          These apply to the fullscreen pop-out window (the native MilkDrop
+          renderer you open from the Visuals view) — the embedded view in the
+          middle section always runs. Use{" "}
           <span className="text-text">&larr;</span> /{" "}
           <span className="text-text">&rarr;</span> in that window to change
           presets by hand.

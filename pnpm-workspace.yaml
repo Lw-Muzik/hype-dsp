@@ -1,2 +1,4 @@
+allowBuilds:
+  core-js: set this to true or false
 minimumReleaseAgeExclude:
   - '@tauri-apps/api@2.11.1'

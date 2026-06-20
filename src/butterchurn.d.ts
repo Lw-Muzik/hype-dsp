@@ -41,3 +41,10 @@ declare module "butterchurn-presets" {
   const presets: { getPresets(): Record<string, unknown> };
   export default presets;
 }
+
+// The extra preset packs ship as separate UMD bundles under lib/.
+declare module "butterchurn-presets/lib/*" {
+  export function getPresets(): Record<string, unknown>;
+  const presets: { getPresets(): Record<string, unknown> };
+  export default presets;
+}

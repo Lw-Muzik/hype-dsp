@@ -100,20 +100,33 @@ export function useButterchurn(
       const parent = canvas?.parentElement;
       if (!canvas || !parent) return;
       try {
-        const [bcMod, pMod] = await Promise.all([
+        // Load butterchurn plus the full preset library — the base pack only
+        // has ~100; the Extra / Extra2 / MD1 packs bring the total to ~395.
+        // Each is a lazy chunk, so this only downloads when the view opens.
+        const [bcMod, base, extra, extra2, md1] = await Promise.all([
           import("butterchurn"),
           import("butterchurn-presets"),
+          import("butterchurn-presets/lib/butterchurnPresetsExtra.min.js"),
+          import("butterchurn-presets/lib/butterchurnPresetsExtra2.min.js"),
+          import("butterchurn-presets/lib/butterchurnPresetsMD1.min.js"),
         ]);
         if (disposed) return;
 
         const butterchurn = unwrap<Butterchurn>(bcMod, "createVisualizer");
-        const presetsApi = unwrap<{ getPresets(): Record<string, unknown> }>(
-          pMod,
-          "getPresets",
-        );
         if (!butterchurn) throw new Error("butterchurn failed to load");
-        if (!presetsApi) throw new Error("preset pack failed to load");
-        const presets = presetsApi.getPresets();
+
+        // Merge every pack (dedup by name — later packs win on collision).
+        const presets: Record<string, unknown> = {};
+        for (const mod of [base, extra, extra2, md1]) {
+          const api = unwrap<{ getPresets(): Record<string, unknown> }>(
+            mod,
+            "getPresets",
+          );
+          if (api) Object.assign(presets, api.getPresets());
+        }
+        if (Object.keys(presets).length === 0) {
+          throw new Error("preset packs failed to load");
+        }
         presetsRef.current = presets;
         const names = Object.keys(presets).sort((a, b) =>
           a.toLowerCase().localeCompare(b.toLowerCase()),
@@ -200,6 +213,12 @@ export function useButterchurn(
       void visualizerPcmStop().catch(() => {});
       vizRef.current = null;
       void audioCtx?.close().catch(() => {});
+      // Explicitly drop the WebGL context so navigating in/out of the view many
+      // times can't exhaust the browser's context pool (GPU memory leak).
+      canvasRef.current
+        ?.getContext("webgl2")
+        ?.getExtension("WEBGL_lose_context")
+        ?.loseContext();
     };
     // Set up once; latest callbacks/initial are read through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps

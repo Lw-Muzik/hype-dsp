@@ -6,6 +6,7 @@ import {
   ListMusic,
   Maximize2,
   Search,
+  Shuffle,
   Star,
   X,
 } from "lucide-react";
@@ -13,12 +14,26 @@ import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
 import { useVisualizerStore } from "@/stores/visualizer";
+import { useEngineStore } from "@/stores/engine";
 import { cn } from "@/lib/cn";
 import { useButterchurn } from "./useButterchurn";
 
 /** Strip butterchurn's author/prefix noise into a friendlier label. */
 function prettyName(name: string): string {
   return name.replace(/^[_$\s]+/, "").replace(/\s*\(\d+\)\s*$/, "").trim() || name;
+}
+
+/** Pick a random preset to cut to — favorites first if any, never the current one. */
+function pickPreset(
+  all: string[],
+  favorites: string[],
+  current: string | null,
+): string | null {
+  const favs = favorites.filter((f) => all.includes(f));
+  const pool = favs.length > 0 ? favs : all;
+  const choices = pool.length > 1 ? pool.filter((n) => n !== current) : pool;
+  if (choices.length === 0) return null;
+  return choices[Math.floor(Math.random() * choices.length)] ?? null;
 }
 
 /**
@@ -35,9 +50,14 @@ export function VisualsView() {
   const toggleFavorite = useVisualizerStore((s) => s.toggleFavorite);
   const lastPreset = useVisualizerStore((s) => s.lastPreset);
   const setLastPreset = useVisualizerStore((s) => s.setLastPreset);
+  const autoChange = useVisualizerStore((s) => s.autoChangePreset);
+  const setAutoChange = useVisualizerStore((s) => s.setAutoChangePreset);
   const nativeAvailable = useVisualizerStore((s) => s.available);
   const probe = useVisualizerStore((s) => s.probe);
   const startNative = useVisualizerStore((s) => s.start);
+
+  // The playing track's id — our signal to cut to a new preset per song.
+  const nowPlaying = useEngineStore((s) => s.nowPlaying);
 
   const [current, setCurrent] = useState<string | null>(lastPreset);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -57,6 +77,33 @@ export function VisualsView() {
   useEffect(() => {
     probe();
   }, [probe]);
+
+  // Cut to a fresh preset whenever the track changes (read inputs via refs so
+  // this effect fires *only* on a track change, not on every preset/star edit).
+  const autoRef = useRef(autoChange);
+  autoRef.current = autoChange;
+  const readyRef = useRef(ready);
+  readyRef.current = ready;
+  const namesRef = useRef(presetNames);
+  namesRef.current = presetNames;
+  const favRef = useRef(favorites);
+  favRef.current = favorites;
+  const curRef = useRef(current);
+  curRef.current = current;
+  const prevTrackRef = useRef<string | null>(nowPlaying);
+
+  useEffect(() => {
+    if (nowPlaying === prevTrackRef.current) return;
+    prevTrackRef.current = nowPlaying;
+    if (!autoRef.current || !readyRef.current || !nowPlaying) return;
+    if (namesRef.current.length === 0) return;
+    const next = pickPreset(namesRef.current, favRef.current, curRef.current);
+    if (next) {
+      loadPreset(next, 0); // fast cut, no morph
+      setCurrent(next);
+      setLastPreset(next);
+    }
+  }, [nowPlaying, loadPreset, setLastPreset]);
 
   const select = (name: string) => {
     loadPreset(name);
@@ -101,6 +148,15 @@ export function VisualsView() {
         subtitle={route.tagline}
         actions={
           <div className="flex gap-2">
+            <Button
+              variant={autoChange ? "primary" : "secondary"}
+              onClick={() => setAutoChange(!autoChange)}
+              title="Cut to a new preset on every track change"
+              aria-pressed={autoChange}
+            >
+              <Shuffle className="size-4" aria-hidden="true" />
+              Auto
+            </Button>
             <Button
               variant={pickerOpen ? "primary" : "secondary"}
               onClick={() => setPickerOpen((v) => !v)}

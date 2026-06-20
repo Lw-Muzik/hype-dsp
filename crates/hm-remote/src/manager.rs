@@ -347,7 +347,7 @@ fn save_peers(path: &Path, peers: &[RemotePeer]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{serve_tunnel, ALPN_LINK};
+    use crate::{dial_pair, serve_tunnel, ALPN_LINK};
     use anyhow::anyhow;
     use iroh::SecretKey;
     use std::sync::mpsc;
@@ -403,29 +403,16 @@ mod tests {
                 false,
             )
             .await?;
-            let phone_addr = endpoint_addr(&phone).await?;
             let phone_serve = phone.clone();
             tokio::spawn(async move {
                 let _ = serve_tunnel(phone_serve, shelf_port).await;
             });
 
-            // Phone dials the desktop's pairing endpoint with the QR's pin.
-            let conn = phone
-                .connect(desktop_addr, ALPN_PAIR)
-                .await
-                .map_err(|e| anyhow!("connect pairing: {e}"))?;
-            let (mut send, mut recv) = conn.open_bi().await?;
-            let req = serde_json::json!({
-                "addr": phone_addr,
-                "name": "My Phone",
-                "pin": info.pin,
-                "token": "tok-xyz",
-            });
-            send.write_all(&serde_json::to_vec(&req)?).await?;
-            let _ = send.finish();
-            let reply = recv.read_to_end(64 * 1024).await?;
-            let reply: serde_json::Value = serde_json::from_slice(&reply)?;
-            assert_eq!(reply["accepted"], serde_json::json!(true), "pairing rejected");
+            // Phone dials the desktop's pairing endpoint with the QR's pin,
+            // exercising the same `dial_pair` the phone FFI uses.
+            let desktop_name =
+                dial_pair(&phone, desktop_addr, "My Phone", &info.pin, "tok-xyz").await?;
+            assert_eq!(desktop_name, "Test Desktop", "pairing rejected");
             anyhow::Ok(())
         })?;
 

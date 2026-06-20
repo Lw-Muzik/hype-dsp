@@ -75,6 +75,40 @@ pub async fn endpoint_addr(ep: &Endpoint) -> Result<EndpointAddr> {
 
 // ----------------------------------------------------------------- phone side
 
+/// Phone side of pairing: dial the desktop's [`ALPN_PAIR`] endpoint (`desktop`
+/// is the id from its QR; discovery resolves it on any network) and send our
+/// `{addr, name, pin, token}`. Returns the desktop's name on acceptance. The
+/// `token` is a shelf bearer token the phone has already authorised for this
+/// desktop, so its media requests through the tunnel pass `/` auth.
+pub async fn dial_pair(
+    endpoint: &Endpoint,
+    desktop: impl Into<EndpointAddr>,
+    name: &str,
+    pin: &str,
+    token: &str,
+) -> Result<String> {
+    let own = endpoint_addr(endpoint).await?;
+    let conn = endpoint
+        .connect(desktop, ALPN_PAIR)
+        .await
+        .map_err(|e| anyhow!("couldn't reach the desktop: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await?;
+    let req = serde_json::json!({ "addr": own, "name": name, "pin": pin, "token": token });
+    send.write_all(&serde_json::to_vec(&req)?).await?;
+    let _ = send.finish();
+    let reply = recv.read_to_end(64 * 1024).await?;
+    let reply: serde_json::Value = serde_json::from_slice(&reply)?;
+    if reply.get("accepted").and_then(|v| v.as_bool()) == Some(true) {
+        Ok(reply
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Desktop")
+            .to_string())
+    } else {
+        Err(anyhow!("the desktop rejected the pairing code"))
+    }
+}
+
 /// Phone side: accept incoming tunnel connections and pipe each bi-stream to the
 /// local shelf server at `127.0.0.1:shelf_port`. Runs until the endpoint closes.
 pub async fn serve_tunnel(ep: Endpoint, shelf_port: u16) -> Result<()> {

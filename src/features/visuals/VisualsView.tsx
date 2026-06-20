@@ -83,8 +83,7 @@ export function VisualsView() {
 
   const ordered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const match = (n: string) =>
-      q === "" || prettyName(n).toLowerCase().includes(q) || n.toLowerCase().includes(q);
+    const match = (n: string) => q === "" || n.toLowerCase().includes(q);
     const favs = names.filter((n) => favoriteSet.has(n) && match(n));
     const rest = names.filter((n) => !favoriteSet.has(n) && match(n));
     return { favs, rest };
@@ -151,7 +150,7 @@ export function VisualsView() {
         />
         <div className="min-w-0 flex-1 text-sm">
           <p className="truncate font-medium">
-            {current ? prettyName(current) : "No preset selected"}
+            {current ?? "No preset selected"}
           </p>
           <p className="text-xs text-text-muted">
             {running
@@ -244,7 +243,7 @@ function PresetRow({
         )}
         title={name}
       >
-        {prettyName(name)}
+        {name}
       </button>
       <button
         type="button"

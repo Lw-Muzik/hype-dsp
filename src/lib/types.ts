@@ -307,5 +307,7 @@ export interface PhoneTrack {
   durationMs: number | null;
   /** File extension, e.g. "mp3" — appended to the stream URL. */
   ext: string;
+  /** The folder the file lives in on the phone, for folder browsing. */
+  folder: string | null;
   hasArt: boolean;
 }

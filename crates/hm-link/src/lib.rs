@@ -55,6 +55,10 @@ pub struct PhoneTrack {
     /// File extension (e.g. `mp3`) — appended to the stream URL so the decoder
     /// gets a format hint.
     pub ext: String,
+    /// The folder the file lives in on the phone (its immediate parent folder
+    /// name), so the desktop can browse the phone's music by folder.
+    #[serde(default)]
+    pub folder: Option<String>,
     #[serde(default)]
     pub has_art: bool,
 }
@@ -659,10 +663,12 @@ mod tests {
             album: None,
             duration_ms: Some(1000),
             ext: "m4a".into(),
+            folder: Some("Rock".into()),
             has_art: true,
         };
         let json = serde_json::to_string(&track).unwrap();
         assert!(json.contains("\"durationMs\":1000"));
+        assert!(json.contains("\"folder\":\"Rock\""));
         assert!(json.contains("\"hasArt\":true"));
     }
 

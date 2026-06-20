@@ -198,7 +198,9 @@ export function useMusicLibrary(): MusicLibrary {
                   source: "phone" as const,
                   uid: `phone:${d.id}:${t.id}`,
                   genre: null,
-                  folder: d.name,
+                  // The real folder the track came from on the phone, so the
+                  // Folders facet groups by it (falls back to the device name).
+                  folder: t.folder ?? d.name,
                   artPath: null,
                   cover: null,
                 })),

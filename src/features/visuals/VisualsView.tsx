@@ -8,11 +8,6 @@ import { useEngineStore } from "@/stores/engine";
 import { visualizerPresetNames } from "@/lib/ipc";
 import { cn } from "@/lib/cn";
 
-/** Strip author/prefix noise from a `.milk` name into a friendlier label. */
-function prettyName(name: string): string {
-  return name.replace(/^[_$\s]+/, "").trim() || name;
-}
-
 /** Pick a random preset to cut to — favorites first if any, never the current. */
 function pickPreset(
   all: string[],

@@ -81,21 +81,30 @@ interface PresetPrefs {
   favorites: string[];
   /** The preset that was showing last, restored on reopen. */
   lastPreset: string | null;
+  /** Cut to a fresh preset each time the playing track changes. */
+  autoChange: boolean;
 }
+
+const DEFAULT_PREFS: PresetPrefs = {
+  favorites: [],
+  lastPreset: null,
+  autoChange: true,
+};
 
 function loadPresetPrefs(): PresetPrefs {
   try {
     const raw = localStorage.getItem(PRESETS_KEY);
-    if (!raw) return { favorites: [], lastPreset: null };
+    if (!raw) return DEFAULT_PREFS;
     const p = JSON.parse(raw) as Partial<PresetPrefs>;
     return {
       favorites: Array.isArray(p.favorites)
         ? p.favorites.filter((x): x is string => typeof x === "string")
         : [],
       lastPreset: typeof p.lastPreset === "string" ? p.lastPreset : null,
+      autoChange: typeof p.autoChange === "boolean" ? p.autoChange : true,
     };
   } catch {
-    return { favorites: [], lastPreset: null };
+    return DEFAULT_PREFS;
   }
 }
 

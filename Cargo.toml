@@ -6,6 +6,7 @@ members = [
     "crates/hm-media",
     "crates/hm-platform",
     "crates/hm-link",
+    "crates/hm-remote",
     "crates/hm-core",
     "crates/hm-visualizer",
     "src-tauri",

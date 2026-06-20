@@ -253,7 +253,7 @@ impl LinkState {
             .post(&url)
             .json(&body)
             .send()
-            .map_err(|e| format!("couldn't reach the phone: {e}"))?;
+            .map_err(|e| format!("couldn't reach the phone at {host}:{port}: {e}"))?;
         if resp.status().as_u16() == 403 {
             return Err("incorrect or expired PIN".into());
         }
@@ -501,11 +501,22 @@ fn parse_phone(info: &ServiceInfo) -> Option<PhoneDevice> {
     if info.get_property_val_str("role") != Some("source") {
         return None;
     }
-    let addresses = info.get_addresses();
-    let addr = addresses
-        .iter()
-        .find(|a| a.is_ipv4())
-        .or_else(|| addresses.iter().next())?;
+    // The phone's own IP from the advert is the source of truth; otherwise pick
+    // the first *routable* address it resolved to (skip loopback/link-local,
+    // prefer IPv4) — a link-local or loopback host can't actually be reached.
+    let host = match info.get_property_val_str("ip") {
+        Some(ip) if !ip.is_empty() => ip.to_string(),
+        _ => {
+            let addresses = info.get_addresses();
+            let addr = addresses
+                .iter()
+                .copied()
+                .filter(is_routable)
+                .min_by_key(|ip| u8::from(ip.is_ipv6()))
+                .or_else(|| addresses.iter().copied().next())?;
+            ip_host(&addr)
+        }
+    };
     let id = info
         .get_property_val_str("id")
         .unwrap_or_else(|| info.get_fullname())
@@ -517,9 +528,22 @@ fn parse_phone(info: &ServiceInfo) -> Option<PhoneDevice> {
     Some(PhoneDevice {
         id,
         name,
-        host: ip_host(addr),
+        host,
         port: info.get_port(),
     })
+}
+
+/// Is this address actually reachable on the LAN? Loopback, link-local
+/// (169.254/16, fe80::), unspecified and broadcast are not.
+fn is_routable(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => is_routable_v4(v4),
+        IpAddr::V6(v6) => !v6.is_loopback() && !v6.is_unspecified(),
+    }
+}
+
+fn is_routable_v4(ip: &std::net::Ipv4Addr) -> bool {
+    !ip.is_loopback() && !ip.is_link_local() && !ip.is_unspecified() && !ip.is_broadcast()
 }
 
 /// Continuously browse the LAN for phones until `stop` is set, calling
@@ -574,6 +598,10 @@ fn watch_bonjour(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice)) {
         role: Option<String>,
         id: Option<String>,
         name: Option<String>,
+        ip: Option<String>,
+        /// Cached resolution of `host` → routable IP (resolving spawns a
+        /// `dns-sd -G` subprocess, so we only do it once per host).
+        resolved: Option<String>,
     }
 
     let child = Command::new("dns-sd")
@@ -621,8 +649,13 @@ fn watch_bonjour(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice)) {
         match parts[1] {
             "SRV" if parts.len() >= 6 => {
                 if let Ok(port) = parts[4].parse::<u16>() {
+                    let new_host = parts[5].trim_end_matches('.').to_string();
                     let e = map.entry(instance.clone()).or_default();
-                    e.host = Some(parts[5].trim_end_matches('.').to_string());
+                    // Host changed → drop the stale cached resolution.
+                    if e.host.as_deref() != Some(new_host.as_str()) {
+                        e.resolved = None;
+                    }
+                    e.host = Some(new_host);
                     e.port = Some(port);
                 }
             }
@@ -633,6 +666,7 @@ fn watch_bonjour(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice)) {
                         "role" => e.role = Some(v),
                         "id" => e.id = Some(v),
                         "name" => e.name = Some(v),
+                        "ip" => e.ip = Some(v),
                         _ => {}
                     }
                 }
@@ -640,13 +674,26 @@ fn watch_bonjour(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice)) {
             _ => continue,
         }
 
-        if let Some(p) = map.get(&instance) {
+        if let Some(p) = map.get_mut(&instance) {
             if p.role.as_deref() == Some("source") {
-                if let (Some(host), Some(port)) = (&p.host, p.port) {
+                if let (Some(host), Some(port)) = (p.host.clone(), p.port) {
+                    // Prefer the phone's own advertised IP; otherwise resolve its
+                    // `.local` hostname to a routable address (cached per host).
+                    let resolved = match p.ip.clone() {
+                        Some(ip) if !ip.is_empty() => ip,
+                        _ => {
+                            if p.resolved.is_none() {
+                                p.resolved = Some(
+                                    resolve_host(&host, port).unwrap_or_else(|| host.clone()),
+                                );
+                            }
+                            p.resolved.clone().unwrap_or(host)
+                        }
+                    };
                     on_found(PhoneDevice {
                         id: p.id.clone().unwrap_or_else(|| instance.clone()),
                         name: p.name.clone().unwrap_or_else(|| "Phone".to_string()),
-                        host: resolve_host(host, port).unwrap_or_else(|| host.clone()),
+                        host: resolved,
                         port,
                     });
                 }
@@ -659,14 +706,63 @@ fn watch_bonjour(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice)) {
     });
 }
 
-/// Resolve an mDNS hostname (`name.local`) to an IPv4 string via the OS resolver
-/// (mDNSResponder), so the rest of the app streams to a plain address.
+/// Resolve an mDNS hostname (`name.local`) to a *routable* IPv4 string.
+///
+/// Prefers the mDNS A record straight from `dns-sd -G`, because `getaddrinfo`
+/// on `.local` names (especially Android's) is flaky — it can hand back
+/// `127.0.0.1` or a link-local address first, which then silently fails to
+/// connect. Falls back to the OS resolver, still skipping loopback/link-local.
 #[cfg(target_os = "macos")]
 fn resolve_host(host: &str, port: u16) -> Option<String> {
+    if let Some(ip) = resolve_via_dns_sd(host) {
+        return Some(ip);
+    }
     use std::net::ToSocketAddrs;
     let addrs: Vec<_> = format!("{host}:{port}").to_socket_addrs().ok()?.collect();
-    let a = addrs.iter().find(|a| a.is_ipv4()).or_else(|| addrs.first())?;
-    Some(ip_host(&a.ip()))
+    let ip = addrs
+        .iter()
+        .map(|s| s.ip())
+        .find(|ip| matches!(ip, IpAddr::V4(v4) if is_routable_v4(v4)))
+        .or_else(|| addrs.iter().map(|s| s.ip()).find(is_routable))?;
+    Some(ip_host(&ip))
+}
+
+/// Query the mDNS A record for `host` directly via the system Bonjour daemon and
+/// return its first routable IPv4. `dns-sd -G` streams forever, so we read until
+/// the first usable address (or a short timeout) and then kill it.
+#[cfg(target_os = "macos")]
+fn resolve_via_dns_sd(host: &str) -> Option<String> {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    use std::sync::mpsc;
+
+    let mut child = Command::new("dns-sd")
+        .args(["-G", "v4", host])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let stdout = child.stdout.take()?;
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        // Lines look like: `<ts> Add <flags> <if> <hostname>. <address> <ttl>`.
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 6 && parts[1] == "Add" {
+                if let Ok(v4) = parts[5].parse::<std::net::Ipv4Addr>() {
+                    if is_routable_v4(&v4) {
+                        let _ = tx.send(v4.to_string());
+                        return;
+                    }
+                }
+            }
+        }
+    });
+    let result = rx.recv_timeout(Duration::from_millis(1500)).ok();
+    let _ = child.kill();
+    let _ = child.wait();
+    result
 }
 
 /// Extract `key=value` pairs from `dns-sd`'s quoted TXT output
@@ -701,6 +797,10 @@ fn random_hex(bytes: usize) -> String {
 
 fn http_client() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
+        // Fail fast on an unreachable/wrong address instead of hanging on the
+        // full timeout — a wrong host drops packets with no rejection, so the
+        // connect (not the response) is what would otherwise stall.
+        .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(20))
         .build()
         .map_err(|e| e.to_string())
@@ -725,6 +825,22 @@ mod tests {
 
     fn temp_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!("hm_link_test_{tag}_{}.json", random_hex(6)))
+    }
+
+    #[test]
+    fn loopback_and_link_local_are_not_routable() {
+        use std::net::Ipv4Addr;
+        // The bug: `getaddrinfo` on a `.local` name can return loopback first,
+        // which silently fails to connect. These must be rejected so the real
+        // LAN address is chosen instead.
+        assert!(!is_routable_v4(&Ipv4Addr::new(127, 0, 0, 1)));
+        assert!(!is_routable_v4(&Ipv4Addr::new(169, 254, 3, 4))); // link-local
+        assert!(!is_routable_v4(&Ipv4Addr::UNSPECIFIED));
+        assert!(is_routable_v4(&Ipv4Addr::new(192, 168, 1, 5))); // real LAN IP
+        assert!(is_routable_v4(&Ipv4Addr::new(10, 0, 0, 9)));
+
+        assert!(!is_routable(&"127.0.0.1".parse().unwrap()));
+        assert!(is_routable(&"192.168.1.5".parse().unwrap()));
     }
 
     #[test]

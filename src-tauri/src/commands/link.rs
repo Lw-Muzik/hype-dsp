@@ -65,6 +65,12 @@ pub fn link_paired(link: State<'_, LinkState>) -> Vec<PhoneDevice> {
 }
 
 /// Pair with a phone using the 6-digit PIN it's showing.
+///
+/// Routes through the same ping-then-pair path as the manual "connect by
+/// address" form (which is proven to work): we ping the discovered address
+/// first so an unreachable/wrong host fails fast with the IP in the message,
+/// instead of hanging on the pairing POST. The discovered `name`/`device_id`
+/// are superseded by what the phone reports on `/ping`.
 #[tauri::command(async)]
 pub fn link_pair(
     link: State<'_, LinkState>,
@@ -74,7 +80,8 @@ pub fn link_pair(
     device_id: String,
     pin: String,
 ) -> Result<PhoneDevice, IpcError> {
-    link.pair(&host, port, &name, &device_id, &pin)
+    let _ = (name, device_id);
+    link.pair_by_address(&host, port, &pin)
         .map_err(|e| IpcError::new("link", e))
 }
 

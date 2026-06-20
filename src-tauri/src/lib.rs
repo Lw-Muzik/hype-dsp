@@ -272,6 +272,8 @@ pub fn run() {
                 })
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_paired_devices.json"));
             app.manage(hm_link::LinkState::load(link_path));
+            // Continuous phone discovery (streams `link:phone_found` events).
+            app.manage(commands::link::DiscoveryState::default());
 
             // Phone Link cast: a control server phones can push tracks to, plus
             // an mDNS advertisement so they can find this desktop.
@@ -362,6 +364,8 @@ pub fn run() {
             commands::link::link_paired,
             commands::link::link_pair,
             commands::link::link_pair_address,
+            commands::link::link_discover_start,
+            commands::link::link_discover_stop,
             commands::link::link_unpair,
             commands::link::link_library,
             commands::link::link_artwork,

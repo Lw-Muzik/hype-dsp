@@ -179,6 +179,23 @@ export function linkPaired(): Promise<PhoneDevice[]> {
   return invoke<PhoneDevice[]>("link_paired");
 }
 
+/** Start continuous phone discovery — phones arrive over `onPhoneFound`. */
+export function linkDiscoverStart(): Promise<void> {
+  return invoke<void>("link_discover_start");
+}
+
+/** Stop continuous phone discovery. */
+export function linkDiscoverStop(): Promise<void> {
+  return invoke<void>("link_discover_stop");
+}
+
+/** Subscribe to phones as they're discovered on the LAN (live, no polling). */
+export function onPhoneFound(
+  handler: (device: PhoneDevice) => void,
+): Promise<UnlistenFn> {
+  return listen<PhoneDevice>("link:phone_found", (e) => handler(e.payload));
+}
+
 /** Pair with a phone using the 6-digit PIN it's showing. */
 export function linkPair(
   host: string,

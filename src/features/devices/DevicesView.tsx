@@ -16,11 +16,14 @@ import {
   ipcErrorMessage,
   linkArtwork,
   linkDiscover,
+  linkDiscoverStart,
+  linkDiscoverStop,
   linkLibrary,
   linkPair,
   linkPairAddress,
   linkPaired,
   linkUnpair,
+  onPhoneFound,
 } from "@/lib/ipc";
 import type { PhoneDevice, PhoneTrack } from "@/lib/types";
 import { formatTime } from "@/lib/format";
@@ -117,16 +120,22 @@ export function DevicesView() {
       const paired = await linkPaired();
       const pairedSet = new Set(paired.map((d) => d.id));
       setPairedIds(pairedSet);
-      let merged = paired;
+      let fresh = paired;
       try {
         const found = await linkDiscover();
         const extra = found.filter((d) => !pairedSet.has(d.id));
-        merged = [...paired, ...extra];
+        fresh = [...paired, ...extra];
       } catch (e) {
         // Discovery can fail (no network); still show paired devices.
         setError(ipcErrorMessage(e));
       }
-      setDevices(merged);
+      // Merge by id so phones already surfaced by continuous discovery aren't
+      // dropped when paired/one-shot results come in.
+      setDevices((prev) => {
+        const byId = new Map(prev.map((d) => [d.id, d]));
+        for (const d of fresh) byId.set(d.id, d);
+        return [...byId.values()];
+      });
     } catch (e) {
       setError(ipcErrorMessage(e));
     } finally {
@@ -137,6 +146,31 @@ export function DevicesView() {
   useEffect(() => {
     void scan();
   }, [scan]);
+
+  // Continuous discovery — phones appear the instant they're seen, no refresh.
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    let cancelled = false;
+    void linkDiscoverStart().catch(() => {});
+    onPhoneFound((dev) => {
+      setDevices((prev) => {
+        const i = prev.findIndex((d) => d.id === dev.id);
+        if (i < 0) return [...prev, dev];
+        const cur = prev[i];
+        if (!cur) return prev;
+        const next = prev.slice();
+        next[i] = { ...cur, name: dev.name, host: dev.host, port: dev.port };
+        return next;
+      });
+    })
+      .then((fn) => (cancelled ? fn() : (un = fn)))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      un?.();
+      void linkDiscoverStop().catch(() => {});
+    };
+  }, []);
 
   const browse = useCallback(async (device: PhoneDevice) => {
     setOpen(device);

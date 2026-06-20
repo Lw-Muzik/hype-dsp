@@ -5,12 +5,51 @@
 //! lives in the pure `hm-link` crate; these commands are the thin bridge that
 //! also routes the resolved stream URL into the audio engine.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use hm_audio::AudioEngine;
 use hm_core::IpcError;
 use hm_link::{LinkState, PhoneDevice, PhoneTrack};
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
+
+/// Managed handle to the continuous-discovery thread (if running).
+#[derive(Default)]
+pub struct DiscoveryState {
+    stop: Mutex<Option<Arc<AtomicBool>>>,
+}
+
+/// Start streaming discovered phones to the UI over `link:phone_found` events —
+/// a continuous mDNS browse that surfaces a phone the instant it appears (no
+/// polling / refresh). Idempotent; replaces any running watcher.
+#[tauri::command]
+pub fn link_discover_start(app: AppHandle, disc: State<'_, DiscoveryState>) {
+    if let Some(prev) = disc.stop.lock().expect("discovery poisoned").take() {
+        prev.store(true, Ordering::Relaxed);
+    }
+    let stop = Arc::new(AtomicBool::new(false));
+    *disc.stop.lock().expect("discovery poisoned") = Some(stop.clone());
+    let _ = std::thread::Builder::new()
+        .name("hm-link-watch".into())
+        .spawn(move || {
+            hm_link::watch(stop, move |dev| {
+                // Silently update a paired phone's stored address if its IP
+                // changed, so streaming keeps working.
+                app.state::<LinkState>()
+                    .update_addresses(std::slice::from_ref(&dev));
+                let _ = app.emit("link:phone_found", dev);
+            });
+        });
+}
+
+/// Stop the continuous discovery (e.g. when leaving the Phone screen).
+#[tauri::command]
+pub fn link_discover_stop(disc: State<'_, DiscoveryState>) {
+    if let Some(stop) = disc.stop.lock().expect("discovery poisoned").take() {
+        stop.store(true, Ordering::Relaxed);
+    }
+}
 
 /// Browse the LAN (~2.5 s) for phones sharing their library.
 #[tauri::command(async)]

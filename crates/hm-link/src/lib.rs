@@ -18,7 +18,8 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use base64::Engine as _;
@@ -197,32 +198,8 @@ impl LinkState {
         while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
             match receiver.recv_timeout(remaining) {
                 Ok(ServiceEvent::ServiceResolved(info)) => {
-                    if info.get_property_val_str("role") != Some("source") {
-                        continue;
-                    }
-                    let addresses = info.get_addresses();
-                    let addr = addresses
-                        .iter()
-                        .find(|a| a.is_ipv4())
-                        .or_else(|| addresses.iter().next());
-                    if let Some(addr) = addr {
-                        let id = info
-                            .get_property_val_str("id")
-                            .unwrap_or_else(|| info.get_fullname())
-                            .to_string();
-                        let name = info
-                            .get_property_val_str("name")
-                            .unwrap_or("Phone")
-                            .to_string();
-                        found.insert(
-                            id.clone(),
-                            PhoneDevice {
-                                id,
-                                name,
-                                host: ip_host(addr),
-                                port: info.get_port(),
-                            },
-                        );
+                    if let Some(dev) = parse_phone(&info) {
+                        found.insert(dev.id.clone(), dev);
                     }
                 }
                 Ok(_) => {}
@@ -516,6 +493,204 @@ fn ip_host(addr: &IpAddr) -> String {
         IpAddr::V4(v4) => v4.to_string(),
         IpAddr::V6(v6) => format!("[{v6}]"),
     }
+}
+
+/// Turn a resolved mDNS record into a phone (a music *source*), or `None` if it
+/// isn't one or has no address.
+fn parse_phone(info: &ServiceInfo) -> Option<PhoneDevice> {
+    if info.get_property_val_str("role") != Some("source") {
+        return None;
+    }
+    let addresses = info.get_addresses();
+    let addr = addresses
+        .iter()
+        .find(|a| a.is_ipv4())
+        .or_else(|| addresses.iter().next())?;
+    let id = info
+        .get_property_val_str("id")
+        .unwrap_or_else(|| info.get_fullname())
+        .to_string();
+    let name = info
+        .get_property_val_str("name")
+        .unwrap_or("Phone")
+        .to_string();
+    Some(PhoneDevice {
+        id,
+        name,
+        host: ip_host(addr),
+        port: info.get_port(),
+    })
+}
+
+/// Continuously browse the LAN for phones until `stop` is set, calling
+/// `on_found` for each one as it's resolved (and re-resolved — addresses can
+/// change). Unlike [`LinkState::discover`] this never closes the browse window,
+/// so a phone is picked up the instant it appears — no polling or refresh.
+///
+/// On macOS this drives the system Bonjour daemon (`dns-sd`), because an app's
+/// own raw multicast (what `mdns_sd` does) is blocked there; everywhere else it
+/// uses the pure-Rust `mdns_sd` browser (no system mDNS dependency).
+pub fn watch(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice)) {
+    #[cfg(target_os = "macos")]
+    watch_bonjour(stop, on_found);
+    #[cfg(not(target_os = "macos"))]
+    watch_mdns(stop, on_found);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn watch_mdns(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice)) {
+    let Ok(daemon) = ServiceDaemon::new() else {
+        return;
+    };
+    let Ok(receiver) = daemon.browse(SERVICE_TYPE) else {
+        return;
+    };
+    while !stop.load(Ordering::Relaxed) {
+        match receiver.recv_timeout(Duration::from_millis(400)) {
+            Ok(ServiceEvent::ServiceResolved(info)) => {
+                if let Some(dev) = parse_phone(&info) {
+                    on_found(dev);
+                }
+            }
+            // Other events, or a recv timeout: loop to re-check `stop`. The
+            // daemon stays alive here, so the channel won't disconnect.
+            _ => {}
+        }
+    }
+    let _ = daemon.shutdown();
+}
+
+/// macOS: browse via the system Bonjour daemon by parsing `dns-sd -Z`'s
+/// continuous SRV + TXT output (the same daemon `dns-sd -B` uses).
+#[cfg(target_os = "macos")]
+fn watch_bonjour(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice)) {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+
+    #[derive(Default)]
+    struct Partial {
+        host: Option<String>,
+        port: Option<u16>,
+        role: Option<String>,
+        id: Option<String>,
+        name: Option<String>,
+    }
+
+    let child = Command::new("dns-sd")
+        .args(["-Z", "_hypemuzik._tcp", "local."])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn();
+    let Ok(mut child) = child else {
+        return;
+    };
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        return;
+    };
+    let child = Arc::new(Mutex::new(child));
+    {
+        // `dns-sd` is a long-running process that blocks the line reader below;
+        // kill it when `stop` is set so the reader (and this thread) exits.
+        let killer = child.clone();
+        let stop = stop.clone();
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            if let Ok(mut c) = killer.lock() {
+                let _ = c.kill();
+            }
+        });
+    }
+
+    let mut map: HashMap<String, Partial> = HashMap::new();
+    for line in BufReader::new(stdout).lines() {
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
+        let Ok(line) = line else {
+            break;
+        };
+        let trimmed = line.trim_start();
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 2 || !parts[0].contains("_hypemuzik._tcp") {
+            continue;
+        }
+        let instance = parts[0].to_string();
+        match parts[1] {
+            "SRV" if parts.len() >= 6 => {
+                if let Ok(port) = parts[4].parse::<u16>() {
+                    let e = map.entry(instance.clone()).or_default();
+                    e.host = Some(parts[5].trim_end_matches('.').to_string());
+                    e.port = Some(port);
+                }
+            }
+            "TXT" => {
+                let e = map.entry(instance.clone()).or_default();
+                for (k, v) in parse_txt_quoted(trimmed) {
+                    match k.as_str() {
+                        "role" => e.role = Some(v),
+                        "id" => e.id = Some(v),
+                        "name" => e.name = Some(v),
+                        _ => {}
+                    }
+                }
+            }
+            _ => continue,
+        }
+
+        if let Some(p) = map.get(&instance) {
+            if p.role.as_deref() == Some("source") {
+                if let (Some(host), Some(port)) = (&p.host, p.port) {
+                    on_found(PhoneDevice {
+                        id: p.id.clone().unwrap_or_else(|| instance.clone()),
+                        name: p.name.clone().unwrap_or_else(|| "Phone".to_string()),
+                        host: resolve_host(host, port).unwrap_or_else(|| host.clone()),
+                        port,
+                    });
+                }
+            }
+        }
+    }
+    let _ = child.lock().map(|mut c| {
+        let _ = c.kill();
+        let _ = c.wait();
+    });
+}
+
+/// Resolve an mDNS hostname (`name.local`) to an IPv4 string via the OS resolver
+/// (mDNSResponder), so the rest of the app streams to a plain address.
+#[cfg(target_os = "macos")]
+fn resolve_host(host: &str, port: u16) -> Option<String> {
+    use std::net::ToSocketAddrs;
+    let addrs: Vec<_> = format!("{host}:{port}").to_socket_addrs().ok()?.collect();
+    let a = addrs.iter().find(|a| a.is_ipv4()).or_else(|| addrs.first())?;
+    Some(ip_host(&a.ip()))
+}
+
+/// Extract `key=value` pairs from `dns-sd`'s quoted TXT output
+/// (e.g. `"role=source" "name=My Phone"`).
+#[cfg(target_os = "macos")]
+fn parse_txt_quoted(s: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '"' {
+            continue;
+        }
+        let mut buf = String::new();
+        for c2 in chars.by_ref() {
+            if c2 == '"' {
+                break;
+            }
+            buf.push(c2);
+        }
+        if let Some(eq) = buf.find('=') {
+            out.push((buf[..eq].to_string(), buf[eq + 1..].to_string()));
+        }
+    }
+    out
 }
 
 fn random_hex(bytes: usize) -> String {

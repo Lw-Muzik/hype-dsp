@@ -361,6 +361,7 @@ pub fn run() {
             commands::link::link_discover,
             commands::link::link_paired,
             commands::link::link_pair,
+            commands::link::link_pair_address,
             commands::link::link_unpair,
             commands::link::link_library,
             commands::link::link_artwork,

@@ -18,6 +18,7 @@ import {
   linkDiscover,
   linkLibrary,
   linkPair,
+  linkPairAddress,
   linkPaired,
   linkUnpair,
 } from "@/lib/ipc";
@@ -103,6 +104,11 @@ export function DevicesView() {
   const [pin, setPin] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
 
+  // Manual "connect by address" (when discovery can't see the phone).
+  const [manualAddr, setManualAddr] = useState("");
+  const [manualPin, setManualPin] = useState("");
+  const [manualBusy, setManualBusy] = useState(false);
+
   /** Load paired phones + browse the LAN, merged (paired first). */
   const scan = useCallback(async () => {
     setScanning(true);
@@ -176,6 +182,37 @@ export function DevicesView() {
       setError(ipcErrorMessage(e));
     } finally {
       setPinBusy(false);
+    }
+  };
+
+  const connectByAddress = async () => {
+    const addr = manualAddr.trim().replace(/^https?:\/\//, "");
+    const m = addr.match(/^(.+):(\d{1,5})$/);
+    if (!m) {
+      setError("Enter the phone's address as host:port (e.g. 192.168.1.5:54321).");
+      return;
+    }
+    const host = m[1]!;
+    const port = Number(m[2]);
+    if (manualPin.length < 4) {
+      setError("Enter the pairing code shown on your phone.");
+      return;
+    }
+    setManualBusy(true);
+    setError(null);
+    try {
+      const device = await linkPairAddress(host, port, manualPin);
+      setPairedIds((s) => new Set(s).add(device.id));
+      setDevices((d) =>
+        d.some((x) => x.id === device.id) ? d : [...d, device],
+      );
+      setManualAddr("");
+      setManualPin("");
+      await browse(device);
+    } catch (e) {
+      setError(ipcErrorMessage(e));
+    } finally {
+      setManualBusy(false);
     }
   };
 
@@ -308,12 +345,51 @@ export function DevicesView() {
                 })}
               </ul>
             )}
+            {!pairing && (
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="text-xs font-medium text-text-muted">
+                  Or connect by address
+                </p>
+                <p className="mt-1 text-xs text-text-faint">
+                  If your phone doesn’t appear above, open Stream / Cast on it and
+                  enter the address it shows with the pairing code. Works across
+                  networks too (e.g. over a VPN).
+                </p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={manualAddr}
+                    onChange={(e) => setManualAddr(e.target.value)}
+                    placeholder="192.168.1.5:54321"
+                    aria-label="Phone address"
+                    className="min-w-0 flex-1 rounded-control border border-border bg-surface px-3 py-2 text-sm outline-none placeholder:text-text-faint focus:border-accent/50"
+                  />
+                  <input
+                    value={manualPin}
+                    onChange={(e) =>
+                      setManualPin(e.target.value.replace(/\D/g, "").slice(0, 8))
+                    }
+                    placeholder="Code"
+                    inputMode="numeric"
+                    aria-label="Pairing code"
+                    className="w-full rounded-control border border-border bg-surface px-3 py-2 text-sm tabular-nums outline-none placeholder:text-text-faint focus:border-accent/50 sm:w-28"
+                  />
+                  <Button
+                    variant="primary"
+                    disabled={manualBusy}
+                    onClick={() => void connectByAddress()}
+                  >
+                    {manualBusy ? "Connecting…" : "Connect"}
+                  </Button>
+                </div>
+              </div>
+            )}
             {!pairing && errorBanner && <div className="mt-3">{errorBanner}</div>}
           </Card>
 
           <p className="text-xs text-text-faint">
-            Music streams from your phone over the local network and plays through
-            the desktop’s enhancement chain. Same Wi‑Fi only.
+            Music streams from your phone and plays through the desktop’s
+            enhancement chain. Discovery uses your local Wi‑Fi; if it can’t find
+            the phone, use “Connect by address”.
           </p>
         </div>
   );

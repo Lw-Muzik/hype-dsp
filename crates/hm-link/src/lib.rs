@@ -74,6 +74,15 @@ struct PairResponse {
     token: String,
 }
 
+/// The phone's `GET /ping` reply — its id + display name.
+#[derive(Debug, Deserialize)]
+struct PingResponse {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+}
+
 /// A persisted pairing: enough to reach the phone and authenticate silently.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Paired {
@@ -289,6 +298,38 @@ impl LinkState {
             token: parsed.token,
         });
         Ok(device)
+    }
+
+    /// Pair with a phone by its address (`host:port`) + PIN, without mDNS
+    /// discovery — pings the phone for its id/name first, then runs the normal
+    /// PIN handshake. Lets pairing work when discovery can't see the phone
+    /// (e.g. multicast blocked) or across networks (e.g. over a VPN).
+    pub fn pair_by_address(
+        &self,
+        host: &str,
+        port: u16,
+        pin: &str,
+    ) -> Result<PhoneDevice, String> {
+        let url = format!("http://{host}:{port}/ping");
+        let resp = http_client()?
+            .get(&url)
+            .send()
+            .map_err(|e| format!("couldn't reach the phone at {host}:{port}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("the phone didn't respond ({})", resp.status()));
+        }
+        let ping: PingResponse = resp.json().map_err(|e| e.to_string())?;
+        let id = if ping.id.is_empty() {
+            format!("{host}:{port}")
+        } else {
+            ping.id
+        };
+        let name = if ping.name.is_empty() {
+            "Phone".to_string()
+        } else {
+            ping.name
+        };
+        self.pair(host, port, &name, &id, pin)
     }
 
     /// Fetch a track's embedded artwork as a `data:` URI (so it can drop

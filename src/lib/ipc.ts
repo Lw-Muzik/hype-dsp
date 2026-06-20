@@ -190,6 +190,16 @@ export function linkPair(
   return invoke<PhoneDevice>("link_pair", { host, port, name, deviceId, pin });
 }
 
+/** Pair with a phone by its address (host:port) + PIN — no mDNS discovery
+ *  needed (works when discovery can't see the phone, or across networks). */
+export function linkPairAddress(
+  host: string,
+  port: number,
+  pin: string,
+): Promise<PhoneDevice> {
+  return invoke<PhoneDevice>("link_pair_address", { host, port, pin });
+}
+
 /** Forget a paired phone. */
 export function linkUnpair(deviceId: string): Promise<void> {
   return invoke<void>("link_unpair", { deviceId });

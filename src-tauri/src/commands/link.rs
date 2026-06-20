@@ -39,6 +39,20 @@ pub fn link_pair(
         .map_err(|e| IpcError::new("link", e))
 }
 
+/// Pair with a phone by typing its address (`host:port`) + PIN — no mDNS
+/// discovery needed (works when discovery can't see the phone, or across
+/// networks over a VPN).
+#[tauri::command(async)]
+pub fn link_pair_address(
+    link: State<'_, LinkState>,
+    host: String,
+    port: u16,
+    pin: String,
+) -> Result<PhoneDevice, IpcError> {
+    link.pair_by_address(&host, port, &pin)
+        .map_err(|e| IpcError::new("link", e))
+}
+
 /// Forget a paired phone.
 #[tauri::command]
 pub fn link_unpair(link: State<'_, LinkState>, device_id: String) {

@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "@/app/App";
+import { AuthGate } from "@/app/AuthGate";
 import { Providers } from "@/app/providers";
 import "@/styles/index.css";
 
@@ -12,7 +13,9 @@ if (!rootEl) {
 createRoot(rootEl).render(
   <StrictMode>
     <Providers>
-      <App />
+      <AuthGate>
+        <App />
+      </AuthGate>
     </Providers>
   </StrictMode>,
 );

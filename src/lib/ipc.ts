@@ -12,6 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
+  AccountStatus,
   AppInfo,
   CloudEntry,
   CloudProvider,
@@ -538,6 +539,38 @@ export function licenseActivate(key: string): Promise<LicenseStatus> {
 }
 export function licenseDeactivate(): Promise<void> {
   return invoke<void>("license_deactivate");
+}
+
+/* --------------------------------------------------------------- account */
+
+export function accountStatus(): Promise<AccountStatus> {
+  return invoke<AccountStatus>("account_status");
+}
+export function accountLogin(
+  email: string,
+  password: string,
+): Promise<AccountStatus> {
+  return invoke<AccountStatus>("account_login", { email, password });
+}
+export function accountSignup(
+  email: string,
+  password: string,
+  name?: string,
+): Promise<AccountStatus> {
+  return invoke<AccountStatus>("account_signup", {
+    email,
+    password,
+    name: name ?? null,
+  });
+}
+export function accountLogout(): Promise<void> {
+  return invoke<void>("account_logout");
+}
+export function accountHeartbeat(
+  platform: string,
+  appVersion: string,
+): Promise<void> {
+  return invoke<void>("account_heartbeat", { platform, appVersion });
 }
 
 /* --------------------------------------------------------------- library */

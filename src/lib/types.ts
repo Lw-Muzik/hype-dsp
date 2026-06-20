@@ -188,6 +188,23 @@ export type LicenseStatus =
   | { kind: "licensed" }
   | { kind: "expired" };
 
+/** The server's license verdict (from the Management API). */
+export interface LicenseInfo {
+  state: "trial" | "expired" | "licensed" | "blocked";
+  allowed: boolean;
+  daysLeft: number;
+  trialEndsAt: string | null;
+  licensedUntil: string | null;
+}
+
+/** The signed-in account + its current entitlement. */
+export interface AccountStatus {
+  authenticated: boolean;
+  email: string | null;
+  name: string | null;
+  license: LicenseInfo | null;
+}
+
 export interface MixerSnapshot {
   supported: boolean;
   unavailableReason: string | null;

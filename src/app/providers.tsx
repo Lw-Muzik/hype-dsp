@@ -4,7 +4,6 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   appInfo,
   engineGetState,
-  licenseStatus,
   onEngineFrame,
   onLinkNowPlaying,
   onMediaCommand,
@@ -23,7 +22,6 @@ import { useEngineStore } from "@/stores/engine";
  */
 export function Providers({ children }: { children: ReactNode }) {
   const setAppInfo = useUiStore((s) => s.setAppInfo);
-  const setLicense = useUiStore((s) => s.setLicense);
   const hydrate = useEngineStore((s) => s.hydrate);
   const applyFrame = useEngineStore((s) => s.applyFrame);
   const applyProgress = useEngineStore((s) => s.applyProgress);
@@ -43,10 +41,6 @@ export function Providers({ children }: { children: ReactNode }) {
 
     engineGetState()
       .then((state) => !cancelled && hydrate(state))
-      .catch(() => {});
-
-    licenseStatus()
-      .then((status) => !cancelled && setLicense(status))
       .catch(() => {});
 
     onEngineFrame((frame) => applyFrame(frame))
@@ -83,7 +77,6 @@ export function Providers({ children }: { children: ReactNode }) {
     };
   }, [
     setAppInfo,
-    setLicense,
     hydrate,
     applyFrame,
     applyProgress,

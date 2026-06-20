@@ -5,6 +5,7 @@
 //! `serde`-serializable value or `hm_core::IpcError`, mirrored in
 //! `src/lib/ipc.ts`.
 
+pub mod account;
 pub mod app;
 pub mod audio;
 pub mod cloud;

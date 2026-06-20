@@ -222,6 +222,18 @@ pub fn run() {
                 ));
             }
 
+            // Account + real licensing against the Management API (the gate the
+            // app actually enforces — replaces the local mock for access).
+            let account_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("account.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_account.json"));
+            app.manage(commands::account::AccountState::open(account_path));
+
             // Per-app mixer controller (real on Windows; unsupported stub on macOS).
             app.manage::<commands::mixer::Mixer>(Mutex::new(hm_platform::default_controller()));
 
@@ -485,6 +497,11 @@ pub fn run() {
             commands::license::license_status,
             commands::license::license_activate,
             commands::license::license_deactivate,
+            commands::account::account_status,
+            commands::account::account_login,
+            commands::account::account_signup,
+            commands::account::account_logout,
+            commands::account::account_heartbeat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the HypeMuzik application");

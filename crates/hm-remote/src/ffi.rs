@@ -6,11 +6,39 @@
 //! * functions returning `*mut c_char` transfer ownership — free with
 //!   `hm_string_free`. A null return means failure.
 //! * all `*const c_char` inputs must be valid NUL-terminated UTF-8.
+//!
+//! Panic safety: every entry point runs inside [`guard_ffi`]. A Rust panic that
+//! unwound across this `extern "C"` boundary would be undefined behaviour and
+//! aborts the whole app (SIGABRT). Instead we catch it and return the failure
+//! sentinel (null / no-op), so the Dart side degrades gracefully — e.g. the
+//! phone keeps sharing over the LAN even when the iroh endpoint can't start
+//! (iroh's relay TLS isn't yet wired up for Android).
 
 use crate::phone::PhoneNode;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
+
+/// Run an FFI body, converting any panic into `fallback` instead of letting it
+/// unwind across the C boundary (UB → process abort). The closure is asserted
+/// unwind-safe because on the panic path we discard all of its state and hand
+/// the caller the failure sentinel.
+fn guard_ffi<T>(fallback: T, f: impl FnOnce() -> T) -> T {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(value) => value,
+        Err(payload) => {
+            let msg = payload
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".to_string());
+            // Best-effort diagnostics (reaches logcat when stdio is captured).
+            eprintln!("hm-remote: caught panic at FFI boundary: {msg}");
+            fallback
+        }
+    }
+}
 
 /// # Safety
 /// `p` must be null or a valid NUL-terminated C string outliving the call.
@@ -29,7 +57,8 @@ fn into_c_string(s: String) -> *mut c_char {
 
 /// Start the phone node: load/persist the identity at `secret_path`, bind the
 /// iroh endpoint, and serve the media tunnel into `127.0.0.1:shelf_port`.
-/// Returns an opaque handle, or null on failure.
+/// Returns an opaque handle, or null on failure (including if the node panics
+/// while binding — see [`guard_ffi`]).
 ///
 /// # Safety
 /// `secret_path` must be a valid NUL-terminated C string.
@@ -38,13 +67,15 @@ pub unsafe extern "C" fn hm_phone_start(
     secret_path: *const c_char,
     shelf_port: u16,
 ) -> *mut PhoneNode {
-    let Some(path) = borrow_str(secret_path) else {
-        return std::ptr::null_mut();
-    };
-    match PhoneNode::start(PathBuf::from(path), shelf_port) {
-        Ok(node) => Box::into_raw(Box::new(node)),
-        Err(_) => std::ptr::null_mut(),
-    }
+    guard_ffi(std::ptr::null_mut(), || {
+        let Some(path) = (unsafe { borrow_str(secret_path) }) else {
+            return std::ptr::null_mut();
+        };
+        match PhoneNode::start(PathBuf::from(path), shelf_port) {
+            Ok(node) => Box::into_raw(Box::new(node)),
+            Err(_) => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// This phone's stable iroh id (caller frees with `hm_string_free`).
@@ -53,10 +84,12 @@ pub unsafe extern "C" fn hm_phone_start(
 /// `node` must be a handle from `hm_phone_start` that hasn't been stopped.
 #[no_mangle]
 pub unsafe extern "C" fn hm_phone_endpoint_id(node: *mut PhoneNode) -> *mut c_char {
-    let Some(node) = node.as_ref() else {
-        return std::ptr::null_mut();
-    };
-    into_c_string(node.endpoint_id())
+    guard_ffi(std::ptr::null_mut(), || {
+        let Some(node) = (unsafe { node.as_ref() }) else {
+            return std::ptr::null_mut();
+        };
+        into_c_string(node.endpoint_id())
+    })
 }
 
 /// Pair with the desktop scanned from its QR. Returns the desktop's name on
@@ -72,19 +105,21 @@ pub unsafe extern "C" fn hm_phone_pair(
     name: *const c_char,
     token: *const c_char,
 ) -> *mut c_char {
-    let (Some(node), Some(ep), Some(pin), Some(name), Some(token)) = (
-        node.as_ref(),
-        borrow_str(desktop_ep),
-        borrow_str(pin),
-        borrow_str(name),
-        borrow_str(token),
-    ) else {
-        return std::ptr::null_mut();
-    };
-    match node.pair(ep, pin, name, token) {
-        Ok(desktop_name) => into_c_string(desktop_name),
-        Err(_) => std::ptr::null_mut(),
-    }
+    guard_ffi(std::ptr::null_mut(), || {
+        let (Some(node), Some(ep), Some(pin), Some(name), Some(token)) = (
+            unsafe { node.as_ref() },
+            unsafe { borrow_str(desktop_ep) },
+            unsafe { borrow_str(pin) },
+            unsafe { borrow_str(name) },
+            unsafe { borrow_str(token) },
+        ) else {
+            return std::ptr::null_mut();
+        };
+        match node.pair(ep, pin, name, token) {
+            Ok(desktop_name) => into_c_string(desktop_name),
+            Err(_) => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// Stop the phone node and free its handle.
@@ -93,9 +128,11 @@ pub unsafe extern "C" fn hm_phone_pair(
 /// `node` must be a handle from `hm_phone_start`, freed at most once.
 #[no_mangle]
 pub unsafe extern "C" fn hm_phone_stop(node: *mut PhoneNode) {
-    if !node.is_null() {
-        drop(Box::from_raw(node));
-    }
+    guard_ffi((), || {
+        if !node.is_null() {
+            drop(unsafe { Box::from_raw(node) });
+        }
+    })
 }
 
 /// Free a string returned by this library.
@@ -104,7 +141,28 @@ pub unsafe extern "C" fn hm_phone_stop(node: *mut PhoneNode) {
 /// `s` must be a pointer returned by this library, freed at most once.
 #[no_mangle]
 pub unsafe extern "C" fn hm_string_free(s: *mut c_char) {
-    if !s.is_null() {
-        drop(CString::from_raw(s));
+    guard_ffi((), || {
+        if !s.is_null() {
+            drop(unsafe { CString::from_raw(s) });
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::guard_ffi;
+
+    #[test]
+    fn guard_ffi_returns_fallback_on_panic() {
+        // A panic inside the body must NOT unwind out of guard_ffi (which, across
+        // the real extern "C" boundary, would abort the process). It returns the
+        // failure sentinel instead.
+        let result = guard_ffi(std::ptr::null_mut::<u8>(), || panic!("boom"));
+        assert!(result.is_null());
+    }
+
+    #[test]
+    fn guard_ffi_passes_value_through_when_ok() {
+        assert_eq!(guard_ffi(-1, || 42), 42);
     }
 }

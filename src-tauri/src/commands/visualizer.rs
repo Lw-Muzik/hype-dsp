@@ -1,14 +1,14 @@
-//! MilkDrop visualizer: spawn the standalone sidecar window and stream the
-//! engine's post-DSP PCM to it.
+//! MilkDrop visualizer: spawn the standalone sidecar window, stream the engine's
+//! post-DSP PCM to it, and drive its preset selection from the app.
 //!
 //! The renderer is a separate process (`hm-visualizer`) so its OpenGL window has
 //! its own main-thread event loop (required on macOS) and a projectM crash can't
-//! take the app down. We pipe the engine's lock-free mono waveform tap to the
-//! sidecar's stdin at a modest rate — no audio-thread work, no large IPC.
+//! take the app down. One stdin pipe carries both audio and control via a tiny
+//! tagged protocol: `b'P'` + PCM frame, `b'L'` + preset name (see the sidecar).
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -17,16 +17,10 @@ use std::time::Duration;
 use hm_audio::AudioEngine;
 use hm_core::IpcError;
 use tauri::path::BaseDirectory;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 
 /// How often the waveform is pushed to the sidecar (projectM interpolates).
 const PCM_FPS: u64 = 30;
-
-/// How often the engine's waveform is pushed to the embedded (webview)
-/// butterchurn visualizer over the `visualizer:pcm` event. A touch above 30 so
-/// the canvas — which renders on its own rAF loop and reads the latest frame —
-/// always has fresh-ish audio.
-const WEB_PCM_FPS: u64 = 45;
 
 /// Managed handle to the running visualizer process (if any).
 #[derive(Default)]
@@ -38,6 +32,8 @@ struct Running {
     child: Child,
     stop: Arc<AtomicBool>,
     pump: Option<JoinHandle<()>>,
+    /// Shared so both the PCM pump and `set_preset` can write to the one pipe.
+    stdin: Arc<Mutex<ChildStdin>>,
 }
 
 impl Running {
@@ -61,13 +57,12 @@ fn sidecar_path() -> Option<PathBuf> {
     } else {
         "hm-visualizer"
     };
-    // Packaged build: bundled next to the app executable.
     let p = dir.join(name);
     if p.exists() {
         return Some(p);
     }
-    // Dev: `tauri dev` runs the app from target/debug, but the sidecar only
-    // builds in release — look in the sibling profile dirs too.
+    // Dev: the app runs from target/debug but the sidecar only builds in
+    // release — look in the sibling profile dirs too.
     let target = dir.parent()?;
     ["release", "debug"]
         .iter()
@@ -76,15 +71,13 @@ fn sidecar_path() -> Option<PathBuf> {
 }
 
 /// The bundled `.milk` preset directory: a packaged resource, or the crate's
-/// `presets/` dir during development. Empty when neither is found (projectM then
-/// shows its built-in idle preset).
+/// `presets/` dir during development. Empty when neither is found.
 fn preset_dir(app: &AppHandle) -> String {
     if let Ok(p) = app.path().resolve("presets", BaseDirectory::Resource) {
         if p.exists() {
             return p.to_string_lossy().into_owned();
         }
     }
-    // Dev: target/<profile>/<app> → up to the workspace root → crate presets.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(root) = exe.ancestors().nth(3) {
             let p = root.join("crates/hm-visualizer/presets");
@@ -102,8 +95,30 @@ pub fn visualizer_available() -> bool {
     sidecar_path().is_some()
 }
 
-/// Open the MilkDrop visualizer window and start streaming audio to it. Replaces
-/// any window already open.
+/// Every bundled `.milk` preset name (file stem), sorted — the list the app's
+/// Visuals view browses and drives the window with.
+#[tauri::command]
+pub fn visualizer_preset_names(app: AppHandle) -> Vec<String> {
+    let dir = preset_dir(&app);
+    let mut names = Vec::new();
+    if !dir.is_empty() {
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("milk") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        names.push(stem.to_owned());
+                    }
+                }
+            }
+        }
+    }
+    names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    names
+}
+
+/// Open the MilkDrop visualizer window, streaming audio to it and starting on
+/// `preset` (a `.milk` file stem) when given. Replaces any window already open.
 #[tauri::command]
 pub fn visualizer_start(
     app: AppHandle,
@@ -112,6 +127,7 @@ pub fn visualizer_start(
     fps: Option<i32>,
     beat: Option<f32>,
     preset_secs: Option<f64>,
+    preset: Option<String>,
 ) -> Result<(), IpcError> {
     if let Some(prev) = state.inner.lock().expect("visualizer poisoned").take() {
         prev.shutdown();
@@ -123,31 +139,39 @@ pub fn visualizer_start(
         .arg(preset_dir(&app))
         .arg(fps.unwrap_or(30).to_string())
         .arg(beat.unwrap_or(1.0).to_string())
-        .arg(preset_secs.unwrap_or(20.0).to_string())
+        .arg(preset_secs.unwrap_or(30.0).to_string())
+        .arg(preset.unwrap_or_default())
         .stdin(Stdio::piped())
         .spawn()
         .map_err(|e| IpcError::new("spawn", format!("couldn't start visualizer: {e}")))?;
 
-    let mut stdin = child
+    let raw_stdin = child
         .stdin
         .take()
         .ok_or_else(|| IpcError::new("spawn", "no stdin pipe to the visualizer"))?;
+    let stdin = Arc::new(Mutex::new(raw_stdin));
 
     let tap = engine.spectrum();
     let stop = Arc::new(AtomicBool::new(false));
     let run = stop.clone();
+    let pump_stdin = stdin.clone();
     let pump = std::thread::Builder::new()
         .name("hm-viz-pcm".into())
         .spawn(move || {
             let period = Duration::from_millis(1000 / PCM_FPS);
-            let mut bytes = Vec::with_capacity(2048);
+            let mut buf = Vec::with_capacity(1 + 2048);
             while !run.load(Ordering::Relaxed) {
-                bytes.clear();
+                buf.clear();
+                buf.push(b'P'); // PCM frame tag
                 for s in tap.load_waveform() {
-                    bytes.extend_from_slice(&s.to_le_bytes());
+                    buf.extend_from_slice(&s.to_le_bytes());
                 }
                 // The window closing breaks the pipe — stop quietly.
-                if stdin.write_all(&bytes).is_err() {
+                let broken = pump_stdin
+                    .lock()
+                    .map(|mut s| s.write_all(&buf).is_err())
+                    .unwrap_or(true);
+                if broken {
                     break;
                 }
                 std::thread::sleep(period);
@@ -155,8 +179,34 @@ pub fn visualizer_start(
         })
         .ok();
 
-    *state.inner.lock().expect("visualizer poisoned") = Some(Running { child, stop, pump });
+    *state.inner.lock().expect("visualizer poisoned") = Some(Running {
+        child,
+        stop,
+        pump,
+        stdin,
+    });
     Ok(())
+}
+
+/// Switch the open visualizer window to `preset` (a `.milk` file stem). No-op
+/// when the window isn't open.
+#[tauri::command]
+pub fn visualizer_set_preset(state: State<'_, VisualizerState>, preset: String) {
+    // Clone the shared pipe out and drop the state lock before writing.
+    let stdin = {
+        let guard = state.inner.lock().expect("visualizer poisoned");
+        match guard.as_ref() {
+            Some(running) => running.stdin.clone(),
+            None => return,
+        }
+    };
+    let bytes = preset.as_bytes();
+    let len = bytes.len().min(u16::MAX as usize);
+    let mut msg = Vec::with_capacity(3 + len);
+    msg.push(b'L'); // load-preset tag
+    msg.extend_from_slice(&(len as u16).to_le_bytes());
+    msg.extend_from_slice(&bytes[..len]);
+    let _ = stdin.lock().map(|mut s| s.write_all(&msg));
 }
 
 /// Close the visualizer window and stop streaming.
@@ -167,66 +217,8 @@ pub fn visualizer_stop(state: State<'_, VisualizerState>) {
     }
 }
 
-/* ----------------------------------------------------- embedded (webview) PCM */
-
-/// Managed handle to the embedded-visualizer PCM emitter thread. Independent of
-/// the native sidecar window above: this feeds the in-app butterchurn canvas via
-/// `visualizer:pcm` events, and runs only while that view is mounted.
-#[derive(Default)]
-pub struct PcmStreamState {
-    inner: Mutex<Option<PcmPump>>,
-}
-
-struct PcmPump {
-    stop: Arc<AtomicBool>,
-    handle: Option<JoinHandle<()>>,
-}
-
-impl PcmPump {
-    fn shutdown(mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        if let Some(h) = self.handle.take() {
-            let _ = h.join();
-        }
-    }
-}
-
-/// Start emitting the engine's latest mono waveform to the webview over
-/// `visualizer:pcm` (a `Vec<f32>`), for the embedded butterchurn visualizer.
-/// Idempotent — replaces any stream already running.
+/// Whether the visualizer window is currently open.
 #[tauri::command]
-pub fn visualizer_pcm_start(
-    app: AppHandle,
-    engine: State<'_, AudioEngine>,
-    state: State<'_, PcmStreamState>,
-) {
-    if let Some(prev) = state.inner.lock().expect("pcm stream poisoned").take() {
-        prev.shutdown();
-    }
-    let tap = engine.spectrum();
-    let stop = Arc::new(AtomicBool::new(false));
-    let run = stop.clone();
-    let handle = std::thread::Builder::new()
-        .name("hm-viz-web-pcm".into())
-        .spawn(move || {
-            let period = Duration::from_millis(1000 / WEB_PCM_FPS);
-            while !run.load(Ordering::Relaxed) {
-                // Only serialization can fail here (no listener ≠ error), so the
-                // frontend is responsible for calling stop on unmount.
-                if app.emit("visualizer:pcm", tap.load_waveform()).is_err() {
-                    break;
-                }
-                std::thread::sleep(period);
-            }
-        })
-        .ok();
-    *state.inner.lock().expect("pcm stream poisoned") = Some(PcmPump { stop, handle });
-}
-
-/// Stop the embedded visualizer's PCM stream.
-#[tauri::command]
-pub fn visualizer_pcm_stop(state: State<'_, PcmStreamState>) {
-    if let Some(p) = state.inner.lock().expect("pcm stream poisoned").take() {
-        p.shutdown();
-    }
+pub fn visualizer_is_open(state: State<'_, VisualizerState>) -> bool {
+    state.inner.lock().expect("visualizer poisoned").is_some()
 }

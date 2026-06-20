@@ -66,6 +66,14 @@ impl ProjectM {
         unsafe { ffi::projectm_set_preset_locked(self.handle, locked) };
     }
 
+    /// Load one preset file directly (app-driven selection), blending from the
+    /// current preset when `smooth`. Bypasses the playlist's cycling.
+    pub fn load_preset_file(&self, path: &Path, smooth: bool) {
+        if let Ok(c) = CString::new(path.to_string_lossy().as_bytes()) {
+            unsafe { ffi::projectm_load_preset_file(self.handle, c.as_ptr(), smooth) };
+        }
+    }
+
     fn handle(&self) -> ffi::projectm_handle {
         self.handle
     }

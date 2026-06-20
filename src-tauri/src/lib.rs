@@ -250,8 +250,6 @@ pub fn run() {
 
             // MilkDrop visualizer sidecar process handle.
             app.manage(commands::visualizer::VisualizerState::default());
-            // Embedded (webview) butterchurn visualizer PCM emitter handle.
-            app.manage(commands::visualizer::PcmStreamState::default());
 
             // Phone Link (stream the phone's library over the LAN) pairing store.
             let link_path = app
@@ -365,10 +363,11 @@ pub fn run() {
             commands::engine::player_play_system_audio,
             commands::engine::stop_system_audio,
             commands::visualizer::visualizer_available,
+            commands::visualizer::visualizer_preset_names,
             commands::visualizer::visualizer_start,
+            commands::visualizer::visualizer_set_preset,
             commands::visualizer::visualizer_stop,
-            commands::visualizer::visualizer_pcm_start,
-            commands::visualizer::visualizer_pcm_stop,
+            commands::visualizer::visualizer_is_open,
             commands::engine::capture_virtual_available,
             commands::engine::system_audio_available,
             commands::engine::player_stop,

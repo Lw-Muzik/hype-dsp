@@ -1,41 +1,30 @@
 import { create } from "zustand";
 import {
   visualizerAvailable,
+  visualizerSetPreset,
   visualizerStart,
   visualizerStop,
 } from "@/lib/ipc";
 
-/** User-tunable render settings for the MilkDrop visualizer sidecar. */
+/** Render settings for the native MilkDrop visualizer window. */
 export interface VisualizerSettings {
   /** Frames per second the renderer targets. Higher is smoother but heavier. */
   fps: number;
   /** How reactive presets are to the beat (projectM beat sensitivity). */
   beat: number;
-  /** Whether presets auto-advance over time. */
-  autoCycle: boolean;
-  /** Seconds each preset shows before auto-advancing (when auto-cycle is on). */
-  cycleSecs: number;
 }
 
 /** Slider bounds + defaults, shared with the Settings UI. */
 export const VISUALIZER_LIMITS = {
   fps: { min: 15, max: 60, step: 5, default: 30 },
   beat: { min: 0.1, max: 5, step: 0.1, default: 1 },
-  cycleSecs: { min: 5, max: 120, step: 5, default: 20 },
 } as const;
 
 const LS_KEY = "hm.visualizer";
 
-// projectM has no separate "lock current preset" arg — so to stop auto-cycling
-// we hand it an effectively unreachable display duration. The user can still
-// advance presets by hand with ←/→ in the visualizer window.
-const NEVER_CYCLE_SECS = 1e9;
-
 const DEFAULTS: VisualizerSettings = {
   fps: VISUALIZER_LIMITS.fps.default,
   beat: VISUALIZER_LIMITS.beat.default,
-  autoCycle: true,
-  cycleSecs: VISUALIZER_LIMITS.cycleSecs.default,
 };
 
 const clampTo = (
@@ -55,9 +44,6 @@ function loadSettings(): VisualizerSettings {
     return {
       fps: clampTo(p.fps, VISUALIZER_LIMITS.fps, DEFAULTS.fps),
       beat: clampTo(p.beat, VISUALIZER_LIMITS.beat, DEFAULTS.beat),
-      autoCycle:
-        typeof p.autoCycle === "boolean" ? p.autoCycle : DEFAULTS.autoCycle,
-      cycleSecs: clampTo(p.cycleSecs, VISUALIZER_LIMITS.cycleSecs, DEFAULTS.cycleSecs),
     };
   } catch {
     return DEFAULTS;
@@ -72,22 +58,22 @@ function saveSettings(s: VisualizerSettings): void {
   }
 }
 
-/* ---- embedded-visualizer preset selection + favorites (persisted) -------- */
+/* ---- preset selection + favorites (persisted) ---------------------------- */
 
 const PRESETS_KEY = "hm.visualizer.presets";
 
 interface PresetPrefs {
-  /** Starred preset names, shown first in the picker. */
+  /** Starred preset names, shown first in the browser. */
   favorites: string[];
-  /** The preset that was showing last, restored on reopen. */
-  lastPreset: string | null;
+  /** The selected preset, restored across sessions. */
+  current: string | null;
   /** Cut to a fresh preset each time the playing track changes. */
   autoChange: boolean;
 }
 
 const DEFAULT_PREFS: PresetPrefs = {
   favorites: [],
-  lastPreset: null,
+  current: null,
   autoChange: true,
 };
 
@@ -100,7 +86,7 @@ function loadPresetPrefs(): PresetPrefs {
       favorites: Array.isArray(p.favorites)
         ? p.favorites.filter((x): x is string => typeof x === "string")
         : [],
-      lastPreset: typeof p.lastPreset === "string" ? p.lastPreset : null,
+      current: typeof p.current === "string" ? p.current : null,
       autoChange: typeof p.autoChange === "boolean" ? p.autoChange : true,
     };
   } catch {
@@ -116,47 +102,36 @@ function savePresetPrefs(p: PresetPrefs): void {
   }
 }
 
-/** Map settings to the sidecar launch args. */
-const startArgs = (s: VisualizerSettings) => ({
-  fps: s.fps,
-  beat: s.beat,
-  presetSecs: s.autoCycle ? s.cycleSecs : NEVER_CYCLE_SECS,
-});
-
 interface VisualizerStore {
   /** Whether the native sidecar is bundled in this build (probed once). */
   available: boolean;
   /** Whether the visualizer window is currently open. */
   running: boolean;
-  /** Persisted render settings. */
+  /** Persisted render settings (applied at window launch). */
   settings: VisualizerSettings;
 
-  /** Starred preset names for the embedded visualizer (persisted). */
+  /** Starred preset names (persisted). */
   favorites: string[];
-  /** Last preset shown in the embedded visualizer (persisted). */
-  lastPreset: string | null;
+  /** The selected preset name (persisted), shown in the window. */
+  current: string | null;
   /** Cut to a fresh preset on every track change (persisted). */
   autoChangePreset: boolean;
-  /** Star / unstar a preset by name. */
-  toggleFavorite: (name: string) => void;
-  /** Remember the preset currently showing (restored on reopen). */
-  setLastPreset: (name: string) => void;
-  /** Enable/disable cutting to a new preset per track. */
-  setAutoChangePreset: (on: boolean) => void;
 
   /** Probe sidecar availability — call once on mount. */
   probe: () => void;
-  /** Open the visualizer window with the current settings. */
+  /** Open the visualizer window on the current preset + settings. */
   start: () => Promise<void>;
   /** Close the visualizer window. */
   stop: () => Promise<void>;
   /** Open if closed, close if open. */
   toggle: () => void;
-  /**
-   * Persist a settings change. The sidecar reads its config once at launch, so
-   * the new values take effect the next time the window opens; while it's open
-   * use {@link VisualizerStore.start} ("Restart to apply") to relaunch it.
-   */
+  /** Select a preset: persist it and push it to the window if it's open. */
+  selectPreset: (name: string) => void;
+  /** Star / unstar a preset by name. */
+  toggleFavorite: (name: string) => void;
+  /** Enable/disable cutting to a new preset per track. */
+  setAutoChangePreset: (on: boolean) => void;
+  /** Persist a render-settings change (takes effect next window launch). */
   update: (patch: Partial<VisualizerSettings>) => void;
 }
 
@@ -167,39 +142,8 @@ export const useVisualizerStore = create<VisualizerStore>((set, get) => ({
   running: false,
   settings: loadSettings(),
   favorites: initialPrefs.favorites,
-  lastPreset: initialPrefs.lastPreset,
+  current: initialPrefs.current,
   autoChangePreset: initialPrefs.autoChange,
-
-  toggleFavorite: (name) => {
-    const has = get().favorites.includes(name);
-    const favorites = has
-      ? get().favorites.filter((n) => n !== name)
-      : [...get().favorites, name];
-    savePresetPrefs({
-      favorites,
-      lastPreset: get().lastPreset,
-      autoChange: get().autoChangePreset,
-    });
-    set({ favorites });
-  },
-
-  setLastPreset: (name) => {
-    savePresetPrefs({
-      favorites: get().favorites,
-      lastPreset: name,
-      autoChange: get().autoChangePreset,
-    });
-    set({ lastPreset: name });
-  },
-
-  setAutoChangePreset: (on) => {
-    savePresetPrefs({
-      favorites: get().favorites,
-      lastPreset: get().lastPreset,
-      autoChange: on,
-    });
-    set({ autoChangePreset: on });
-  },
 
   probe: () => {
     visualizerAvailable()
@@ -208,10 +152,13 @@ export const useVisualizerStore = create<VisualizerStore>((set, get) => ({
   },
 
   start: async () => {
+    const { settings, current } = get();
     try {
-      // visualizer_start replaces any instance already open, so this doubles
-      // as "restart with the latest settings".
-      await visualizerStart(startArgs(get().settings));
+      await visualizerStart({
+        fps: settings.fps,
+        beat: settings.beat,
+        preset: current ?? undefined,
+      });
       set({ running: true });
     } catch {
       set({ running: false });
@@ -230,6 +177,40 @@ export const useVisualizerStore = create<VisualizerStore>((set, get) => ({
   toggle: () => {
     const { running, start, stop } = get();
     void (running ? stop() : start());
+  },
+
+  selectPreset: (name) => {
+    savePresetPrefs({
+      favorites: get().favorites,
+      current: name,
+      autoChange: get().autoChangePreset,
+    });
+    set({ current: name });
+    if (get().running) {
+      void visualizerSetPreset(name).catch(() => {});
+    }
+  },
+
+  toggleFavorite: (name) => {
+    const has = get().favorites.includes(name);
+    const favorites = has
+      ? get().favorites.filter((n) => n !== name)
+      : [...get().favorites, name];
+    savePresetPrefs({
+      favorites,
+      current: get().current,
+      autoChange: get().autoChangePreset,
+    });
+    set({ favorites });
+  },
+
+  setAutoChangePreset: (on) => {
+    savePresetPrefs({
+      favorites: get().favorites,
+      current: get().current,
+      autoChange: on,
+    });
+    set({ autoChangePreset: on });
   },
 
   update: (patch) => {

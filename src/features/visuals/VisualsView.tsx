@@ -1,29 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  AudioLines,
-  ChevronLeft,
-  ChevronRight,
-  ListMusic,
-  Maximize2,
-  Search,
-  Shuffle,
-  Star,
-  X,
-} from "lucide-react";
+import { Monitor, Search, Shuffle, Sparkles, Star, X } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
 import { useVisualizerStore } from "@/stores/visualizer";
 import { useEngineStore } from "@/stores/engine";
+import { visualizerPresetNames } from "@/lib/ipc";
 import { cn } from "@/lib/cn";
-import { useButterchurn } from "./useButterchurn";
 
-/** Strip butterchurn's author/prefix noise into a friendlier label. */
+/** Strip author/prefix noise from a `.milk` name into a friendlier label. */
 function prettyName(name: string): string {
-  return name.replace(/^[_$\s]+/, "").replace(/\s*\(\d+\)\s*$/, "").trim() || name;
+  return name.replace(/^[_$\s]+/, "").trim() || name;
 }
 
-/** Pick a random preset to cut to — favorites first if any, never the current one. */
+/** Pick a random preset to cut to — favorites first if any, never the current. */
 function pickPreset(
   all: string[],
   favorites: string[],
@@ -37,55 +27,49 @@ function pickPreset(
 }
 
 /**
- * Embedded MilkDrop visualizer (butterchurn) that fills the middle section and
- * dances to whatever's playing. A slide-in picker lets you browse presets and
- * star favorites; "Fullscreen" pops the higher-fidelity native window (or, when
- * that isn't bundled, takes the canvas fullscreen).
+ * Visuals — a browser for the bundled MilkDrop (`.milk`) presets that drives the
+ * native visualizer window. Selecting a preset shows it in the window live (when
+ * open); "Auto" cuts to a fresh preset on every track change. The visuals
+ * themselves render in the separate window (a webview can't host native GL).
  */
 export function VisualsView() {
   const route = routeById("visuals");
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  const available = useVisualizerStore((s) => s.available);
+  const running = useVisualizerStore((s) => s.running);
+  const current = useVisualizerStore((s) => s.current);
   const favorites = useVisualizerStore((s) => s.favorites);
-  const toggleFavorite = useVisualizerStore((s) => s.toggleFavorite);
-  const lastPreset = useVisualizerStore((s) => s.lastPreset);
-  const setLastPreset = useVisualizerStore((s) => s.setLastPreset);
   const autoChange = useVisualizerStore((s) => s.autoChangePreset);
-  const setAutoChange = useVisualizerStore((s) => s.setAutoChangePreset);
-  const nativeAvailable = useVisualizerStore((s) => s.available);
   const probe = useVisualizerStore((s) => s.probe);
-  const startNative = useVisualizerStore((s) => s.start);
+  const start = useVisualizerStore((s) => s.start);
+  const stop = useVisualizerStore((s) => s.stop);
+  const selectPreset = useVisualizerStore((s) => s.selectPreset);
+  const toggleFavorite = useVisualizerStore((s) => s.toggleFavorite);
+  const setAutoChange = useVisualizerStore((s) => s.setAutoChangePreset);
 
-  // The playing track's id — our signal to cut to a new preset per song.
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
 
-  const [current, setCurrent] = useState<string | null>(lastPreset);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [names, setNames] = useState<string[]>([]);
   const [query, setQuery] = useState("");
 
-  const { ready, error, presetNames, loadPreset } = useButterchurn(
-    canvasRef,
-    lastPreset,
-    (name) => {
-      setCurrent(name);
-      setLastPreset(name);
-    },
-  );
-
-  // Probe native availability so we know whether Fullscreen pops the native
-  // window or falls back to the canvas.
   useEffect(() => {
     probe();
   }, [probe]);
 
+  useEffect(() => {
+    if (!available) return;
+    visualizerPresetNames()
+      .then(setNames)
+      .catch(() => setNames([]));
+  }, [available]);
+
   // Cut to a fresh preset whenever the track changes (read inputs via refs so
-  // this effect fires *only* on a track change, not on every preset/star edit).
+  // this fires only on a track change). selectPreset pushes to the window if it
+  // is open, and remembers the choice either way.
   const autoRef = useRef(autoChange);
   autoRef.current = autoChange;
-  const readyRef = useRef(ready);
-  readyRef.current = ready;
-  const namesRef = useRef(presetNames);
-  namesRef.current = presetNames;
+  const namesRef = useRef(names);
+  namesRef.current = names;
   const favRef = useRef(favorites);
   favRef.current = favorites;
   const curRef = useRef(current);
@@ -95,50 +79,39 @@ export function VisualsView() {
   useEffect(() => {
     if (nowPlaying === prevTrackRef.current) return;
     prevTrackRef.current = nowPlaying;
-    if (!autoRef.current || !readyRef.current || !nowPlaying) return;
-    if (namesRef.current.length === 0) return;
+    if (!autoRef.current || !nowPlaying || namesRef.current.length === 0) return;
     const next = pickPreset(namesRef.current, favRef.current, curRef.current);
-    if (next) {
-      loadPreset(next, 0); // fast cut, no morph
-      setCurrent(next);
-      setLastPreset(next);
-    }
-  }, [nowPlaying, loadPreset, setLastPreset]);
-
-  const select = (name: string) => {
-    loadPreset(name);
-    setCurrent(name);
-    setLastPreset(name);
-  };
-
-  const step = (dir: 1 | -1) => {
-    if (presetNames.length === 0) return;
-    const idx = current ? presetNames.indexOf(current) : -1;
-    const next =
-      presetNames[(idx + dir + presetNames.length) % presetNames.length];
-    if (next) select(next);
-  };
-
-  const goFullscreen = () => {
-    if (nativeAvailable) {
-      void startNative();
-    } else {
-      void canvasRef.current?.parentElement?.requestFullscreen?.().catch(() => {});
-    }
-  };
+    if (next) selectPreset(next);
+  }, [nowPlaying, selectPreset]);
 
   const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
-  const isFavorite = current ? favoriteSet.has(current) : false;
 
-  // Picker order: favorites first, then the rest; filtered by the search box.
   const ordered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const match = (n: string) =>
       q === "" || prettyName(n).toLowerCase().includes(q) || n.toLowerCase().includes(q);
-    const favs = presetNames.filter((n) => favoriteSet.has(n) && match(n));
-    const rest = presetNames.filter((n) => !favoriteSet.has(n) && match(n));
+    const favs = names.filter((n) => favoriteSet.has(n) && match(n));
+    const rest = names.filter((n) => !favoriteSet.has(n) && match(n));
     return { favs, rest };
-  }, [presetNames, favoriteSet, query]);
+  }, [names, favoriteSet, query]);
+
+  if (!available) {
+    return (
+      <div className="flex h-full flex-col">
+        <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
+        <div className="grid flex-1 place-items-center">
+          <div className="max-w-sm text-center text-sm text-text-muted">
+            <Sparkles className="mx-auto mb-3 size-6 text-text-faint" aria-hidden="true" />
+            <p className="font-medium text-text">Visualizer not available</p>
+            <p className="mt-1">
+              This build doesn&rsquo;t include the native MilkDrop renderer. See
+              docs for enabling the visualizer.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -157,162 +130,91 @@ export function VisualsView() {
               <Shuffle className="size-4" aria-hidden="true" />
               Auto
             </Button>
-            <Button
-              variant={pickerOpen ? "primary" : "secondary"}
-              onClick={() => setPickerOpen((v) => !v)}
-            >
-              <ListMusic className="size-4" aria-hidden="true" />
-              Presets
-            </Button>
-            <Button variant="secondary" onClick={goFullscreen}>
-              <Maximize2 className="size-4" aria-hidden="true" />
-              {nativeAvailable ? "Pop out" : "Fullscreen"}
-            </Button>
+            {running ? (
+              <Button variant="secondary" onClick={() => void stop()}>
+                <X className="size-4" aria-hidden="true" />
+                Close window
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={() => void start()}>
+                <Monitor className="size-4" aria-hidden="true" />
+                Open visualizer
+              </Button>
+            )}
           </div>
         }
       />
 
-      {/* The visual stage: butterchurn fills this; overlays sit on top. */}
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-card bg-black ring-1 ring-border">
-        <canvas ref={canvasRef} className="block size-full" aria-hidden="true" />
-
-        {/* Loading / error states */}
-        {!ready && !error && (
-          <div className="absolute inset-0 grid place-items-center text-sm text-text-muted">
-            <div className="flex items-center gap-2">
-              <AudioLines className="size-4 animate-pulse text-accent" aria-hidden="true" />
-              Loading visualizer…
-            </div>
-          </div>
-        )}
-        {error && (
-          <div className="absolute inset-0 grid place-items-center p-6 text-center">
-            <div className="max-w-sm text-sm text-text-muted">
-              <p className="mb-1 font-medium text-text">Visualizer unavailable</p>
-              <p>{error}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Bottom control bar: prev · current preset · favorite · next */}
-        {ready && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 bg-gradient-to-t from-black/70 to-transparent p-4">
-            <button
-              type="button"
-              onClick={() => step(-1)}
-              aria-label="Previous preset"
-              className="pointer-events-auto grid size-9 place-items-center rounded-full bg-white/10 text-text backdrop-blur transition-colors hover:bg-white/20"
-            >
-              <ChevronLeft className="size-5" aria-hidden="true" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPickerOpen(true)}
-              title="Browse presets"
-              className="pointer-events-auto max-w-[46%] truncate rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-text backdrop-blur transition-colors hover:bg-white/20"
-            >
-              {current ? prettyName(current) : "—"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => current && toggleFavorite(current)}
-              disabled={!current}
-              aria-pressed={isFavorite}
-              aria-label={isFavorite ? "Unfavorite preset" : "Favorite preset"}
-              className={cn(
-                "pointer-events-auto grid size-9 place-items-center rounded-full backdrop-blur transition-colors disabled:opacity-40",
-                isFavorite
-                  ? "bg-accent text-text hover:bg-accent-strong"
-                  : "bg-white/10 text-text hover:bg-white/20",
-              )}
-            >
-              <Star
-                className={cn("size-4", isFavorite && "fill-current")}
-                aria-hidden="true"
-              />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => step(1)}
-              aria-label="Next preset"
-              className="pointer-events-auto grid size-9 place-items-center rounded-full bg-white/10 text-text backdrop-blur transition-colors hover:bg-white/20"
-            >
-              <ChevronRight className="size-5" aria-hidden="true" />
-            </button>
-          </div>
-        )}
-
-        {/* Slide-in preset picker */}
-        <div
+      {/* Status: which preset is showing + where */}
+      <div className="mb-3 flex items-center gap-3 rounded-card border border-border bg-surface-raised px-4 py-3">
+        <span
           className={cn(
-            "absolute inset-y-0 right-0 z-10 flex w-80 max-w-[80%] flex-col border-l border-border bg-[#0b0c10]/95 backdrop-blur transition-transform duration-200",
-            pickerOpen ? "translate-x-0" : "translate-x-full",
+            "size-2 shrink-0 rounded-full",
+            running ? "bg-accent" : "bg-border-strong",
           )}
-          aria-hidden={!pickerOpen}
-        >
-          <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-            <span className="text-sm font-semibold">Presets</span>
-            <button
-              type="button"
-              onClick={() => setPickerOpen(false)}
-              aria-label="Close presets"
-              className="grid size-7 place-items-center rounded-full text-text-muted transition-colors hover:bg-surface-raised hover:text-text"
-            >
-              <X className="size-4" aria-hidden="true" />
-            </button>
-          </div>
+          aria-hidden="true"
+        />
+        <div className="min-w-0 flex-1 text-sm">
+          <p className="truncate font-medium">
+            {current ? prettyName(current) : "No preset selected"}
+          </p>
+          <p className="text-xs text-text-muted">
+            {running
+              ? "Showing in the visualizer window"
+              : "Open the window to see it — selections apply live once it's open"}
+          </p>
+        </div>
+        <span className="shrink-0 text-xs tabular-nums text-text-faint">
+          {names.length.toLocaleString()} presets
+        </span>
+      </div>
 
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2">
-              <Search className="size-4 shrink-0 text-text-faint" aria-hidden="true" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search presets"
-                className="w-full bg-transparent text-sm text-text placeholder:text-text-faint focus:outline-none"
-              />
-            </div>
-          </div>
+      {/* Search */}
+      <div className="mb-3 flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2">
+        <Search className="size-4 shrink-0 text-text-faint" aria-hidden="true" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search presets"
+          className="w-full bg-transparent text-sm text-text placeholder:text-text-faint focus:outline-none"
+        />
+      </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-            {ordered.favs.length > 0 && (
-              <>
-                <p className="px-2 py-1.5 text-xs font-medium uppercase tracking-wider text-text-faint">
-                  Favorites
-                </p>
-                {ordered.favs.map((name) => (
-                  <PresetRow
-                    key={name}
-                    name={name}
-                    active={name === current}
-                    favorite
-                    onSelect={() => select(name)}
-                    onToggleFavorite={() => toggleFavorite(name)}
-                  />
-                ))}
-                <div className="my-2 border-t border-border/60" />
-              </>
-            )}
-            {ordered.rest.map((name) => (
+      {/* Preset list */}
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-card border border-border bg-surface-raised p-2">
+        {ordered.favs.length > 0 && (
+          <>
+            <p className="px-2 py-1.5 text-xs font-medium uppercase tracking-wider text-text-faint">
+              Favorites
+            </p>
+            {ordered.favs.map((name) => (
               <PresetRow
                 key={name}
                 name={name}
                 active={name === current}
-                favorite={false}
-                onSelect={() => select(name)}
+                favorite
+                onSelect={() => selectPreset(name)}
                 onToggleFavorite={() => toggleFavorite(name)}
               />
             ))}
-            {ordered.favs.length === 0 && ordered.rest.length === 0 && (
-              <p className="px-2 py-6 text-center text-sm text-text-muted">
-                {presetNames.length === 0 ? "Loading presets…" : "No matches."}
-              </p>
-            )}
-          </div>
-        </div>
+            <div className="my-2 border-t border-border/60" />
+          </>
+        )}
+        {ordered.rest.map((name) => (
+          <PresetRow
+            key={name}
+            name={name}
+            active={name === current}
+            favorite={false}
+            onSelect={() => selectPreset(name)}
+            onToggleFavorite={() => toggleFavorite(name)}
+          />
+        ))}
+        {ordered.favs.length === 0 && ordered.rest.length === 0 && (
+          <p className="px-2 py-8 text-center text-sm text-text-muted">
+            {names.length === 0 ? "Loading presets…" : "No matches."}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -335,7 +237,7 @@ function PresetRow({
     <div
       className={cn(
         "group flex items-center gap-1 rounded-control pl-3 pr-1.5",
-        active ? "bg-accent-muted" : "hover:bg-surface-raised",
+        active ? "bg-accent-muted" : "hover:bg-surface-overlay",
       )}
     >
       <button

@@ -373,17 +373,30 @@ export function visualizerAvailable(): Promise<boolean> {
   return invoke<boolean>("visualizer_available");
 }
 
-/** Open the MilkDrop visualizer window and stream the engine's audio to it. */
+/** Every bundled `.milk` preset name (file stem), sorted. */
+export function visualizerPresetNames(): Promise<string[]> {
+  return invoke<string[]>("visualizer_preset_names");
+}
+
+/** Open the visualizer window, streaming audio to it and (optionally) starting
+ *  on a given preset. */
 export function visualizerStart(opts?: {
   fps?: number;
   beat?: number;
   presetSecs?: number;
+  preset?: string;
 }): Promise<void> {
   return invoke<void>("visualizer_start", {
     fps: opts?.fps ?? null,
     beat: opts?.beat ?? null,
     presetSecs: opts?.presetSecs ?? null,
+    preset: opts?.preset ?? null,
   });
+}
+
+/** Switch the open visualizer window to a preset (a `.milk` file stem). */
+export function visualizerSetPreset(preset: string): Promise<void> {
+  return invoke<void>("visualizer_set_preset", { preset });
 }
 
 /** Close the visualizer window. */
@@ -391,23 +404,9 @@ export function visualizerStop(): Promise<void> {
   return invoke<void>("visualizer_stop");
 }
 
-/** Start streaming the engine's mono waveform to the webview (over the
- *  `visualizer:pcm` event) for the embedded butterchurn visualizer. */
-export function visualizerPcmStart(): Promise<void> {
-  return invoke<void>("visualizer_pcm_start");
-}
-
-/** Stop the embedded visualizer's PCM stream. */
-export function visualizerPcmStop(): Promise<void> {
-  return invoke<void>("visualizer_pcm_stop");
-}
-
-/** Subscribe to the engine's mono waveform frames (512 samples in [-1, 1]),
- *  emitted ~45 fps while {@link visualizerPcmStart} is active. */
-export function onVisualizerPcm(
-  handler: (samples: number[]) => void,
-): Promise<UnlistenFn> {
-  return listen<number[]>("visualizer:pcm", (e) => handler(e.payload));
+/** Whether the visualizer window is currently open. */
+export function visualizerIsOpen(): Promise<boolean> {
+  return invoke<boolean>("visualizer_is_open");
 }
 
 /** Whether audio is currently playing. */

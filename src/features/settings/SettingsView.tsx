@@ -145,12 +145,11 @@ function VisualizerCard() {
     >
       <div className="flex flex-col gap-4">
         <p className="text-sm text-text-muted">
-          These apply to the fullscreen pop-out window (the native MilkDrop
-          renderer you open from the Visuals view) — the embedded view in the
-          middle section always runs. Use{" "}
+          These apply to the visualizer window opened from the Visuals view. Pick
+          which preset it shows over there; use{" "}
           <span className="text-text">&larr;</span> /{" "}
-          <span className="text-text">&rarr;</span> in that window to change
-          presets by hand.
+          <span className="text-text">&rarr;</span> in the window to browse by
+          hand.
         </p>
 
         <SliderRow
@@ -171,31 +170,6 @@ function VisualizerCard() {
           value={settings.beat}
           display={settings.beat.toFixed(1)}
           onChange={(v) => update({ beat: v })}
-        />
-
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0 text-sm">
-            <p className="font-medium">Auto-cycle presets</p>
-            <p className="text-xs text-text-muted">
-              Move to the next preset automatically over time.
-            </p>
-          </div>
-          <Switch
-            checked={settings.autoCycle}
-            onChange={(v) => update({ autoCycle: v })}
-            label="Auto-cycle presets"
-          />
-        </div>
-
-        <SliderRow
-          label="Cycle every"
-          min={VISUALIZER_LIMITS.cycleSecs.min}
-          max={VISUALIZER_LIMITS.cycleSecs.max}
-          step={VISUALIZER_LIMITS.cycleSecs.step}
-          value={settings.cycleSecs}
-          display={`${settings.cycleSecs}s`}
-          disabled={!settings.autoCycle}
-          onChange={(v) => update({ cycleSecs: v })}
         />
       </div>
     </Card>

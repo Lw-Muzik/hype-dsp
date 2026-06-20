@@ -135,10 +135,14 @@ interface VisualizerStore {
   favorites: string[];
   /** Last preset shown in the embedded visualizer (persisted). */
   lastPreset: string | null;
+  /** Cut to a fresh preset on every track change (persisted). */
+  autoChangePreset: boolean;
   /** Star / unstar a preset by name. */
   toggleFavorite: (name: string) => void;
   /** Remember the preset currently showing (restored on reopen). */
   setLastPreset: (name: string) => void;
+  /** Enable/disable cutting to a new preset per track. */
+  setAutoChangePreset: (on: boolean) => void;
 
   /** Probe sidecar availability — call once on mount. */
   probe: () => void;
@@ -164,19 +168,37 @@ export const useVisualizerStore = create<VisualizerStore>((set, get) => ({
   settings: loadSettings(),
   favorites: initialPrefs.favorites,
   lastPreset: initialPrefs.lastPreset,
+  autoChangePreset: initialPrefs.autoChange,
 
   toggleFavorite: (name) => {
     const has = get().favorites.includes(name);
     const favorites = has
       ? get().favorites.filter((n) => n !== name)
       : [...get().favorites, name];
-    savePresetPrefs({ favorites, lastPreset: get().lastPreset });
+    savePresetPrefs({
+      favorites,
+      lastPreset: get().lastPreset,
+      autoChange: get().autoChangePreset,
+    });
     set({ favorites });
   },
 
   setLastPreset: (name) => {
-    savePresetPrefs({ favorites: get().favorites, lastPreset: name });
+    savePresetPrefs({
+      favorites: get().favorites,
+      lastPreset: name,
+      autoChange: get().autoChangePreset,
+    });
     set({ lastPreset: name });
+  },
+
+  setAutoChangePreset: (on) => {
+    savePresetPrefs({
+      favorites: get().favorites,
+      lastPreset: get().lastPreset,
+      autoChange: on,
+    });
+    set({ autoChangePreset: on });
   },
 
   probe: () => {

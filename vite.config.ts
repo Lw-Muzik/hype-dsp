@@ -22,5 +22,9 @@ export default defineConfig({
     target: "es2022",
     outDir: "dist",
     emptyOutDir: true,
+    // three.js (~520 kB) is a single lazy chunk, only fetched when a 3D
+    // visualizer scene is opened — it can't be split further, so lift the
+    // warning threshold above it (other oversized chunks still warn).
+    chunkSizeWarningLimit: 700,
   },
 });

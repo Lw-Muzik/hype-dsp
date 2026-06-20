@@ -6,5 +6,14 @@
 	<string>HypeMuzik captures system audio so it can apply your equalizer and effects to everything you hear.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>HypeMuzik can route a microphone or input device through its audio chain.</string>
+	<!-- Phone Link discovers phones over mDNS/Bonjour. On macOS 14+ the app is
+	     denied local-network access (so discovery silently finds nothing) unless
+	     it declares this usage string and the Bonjour service type it browses. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>HypeMuzik finds and streams music from your phone on the same Wi‑Fi network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_hypemuzik._tcp</string>
+	</array>
 </dict>
 </plist>

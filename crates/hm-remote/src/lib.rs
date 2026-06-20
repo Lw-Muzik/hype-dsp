@@ -28,6 +28,11 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 
+pub mod manager;
+pub mod secret;
+
+pub use manager::{PairedPhone, PairingInfo, RemoteManager, RemotePhoneStatus};
+
 /// ALPN for the media tunnel (desktop ⇄ phone shelf).
 pub const ALPN_LINK: &[u8] = b"hypemuzik/link/0";
 /// ALPN for the pairing control stream (added in M2).

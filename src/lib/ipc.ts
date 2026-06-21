@@ -571,6 +571,45 @@ export function accountHeartbeat(
   return invoke<void>("account_heartbeat", { platform, appVersion });
 }
 
+/* ----------------------------------------------------------------- stems */
+
+export interface StemStatus {
+  /** The separator (Demucs sidecar + model) is installed. */
+  available: boolean;
+  /** This track has already been separated in this mode (cached). */
+  separated: boolean;
+}
+
+/** 4 stems (vocals/drums/bass/other) or 2 (vocals/instrumental, ~2× faster). */
+export type StemMode = "four" | "two";
+
+export function stemsStatus(
+  trackPath: string,
+  mode: StemMode,
+): Promise<StemStatus> {
+  return invoke<StemStatus>("stems_status", { trackPath, mode });
+}
+/** Separate the track and start stem playback (emits `stems:progress`). */
+export function stemsSeparate(
+  trackPath: string,
+  mode: StemMode,
+): Promise<void> {
+  return invoke<void>("stems_separate", { trackPath, mode });
+}
+/** Set a stem's gain live (0 = muted). Stem order: 0 vocals, 1 drums, 2 bass, 3 other. */
+export function stemsSetGain(stem: number, gain: number): Promise<void> {
+  return invoke<void>("stems_set_gain", { stem, gain });
+}
+export function stemsGains(): Promise<number[]> {
+  return invoke<number[]>("stems_gains");
+}
+/** Separation progress, 0..1. */
+export function onStemsProgress(
+  handler: (value: number) => void,
+): Promise<UnlistenFn> {
+  return listen<number>("stems:progress", (e) => handler(e.payload));
+}
+
 /* --------------------------------------------------------------- library */
 
 /** Recursively scan a folder into the library; returns tracks added. */

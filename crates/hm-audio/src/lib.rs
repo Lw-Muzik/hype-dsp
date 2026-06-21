@@ -21,6 +21,7 @@ pub mod meta;
 pub mod queue;
 pub mod sources;
 pub mod spectrum;
+pub mod stems;
 pub mod streaming;
 #[cfg(target_os = "macos")]
 pub mod system_tap;
@@ -58,6 +59,7 @@ pub use error::AudioError;
 pub use meta::{extract_metadata, extract_tags, TrackTags};
 pub use queue::QueuePlaybackSource;
 pub use sources::FilePlaybackSource;
+pub use stems::{StemGains, StemPlaybackSource, STEM_COUNT};
 pub use spectrum::{SpectrumTap, SPECTRUM_BANDS};
 pub use streaming::{fetch_stream_metadata, RadioStreamSource};
 

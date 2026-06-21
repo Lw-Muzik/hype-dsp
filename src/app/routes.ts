@@ -1,5 +1,6 @@
 import {
   AudioLines,
+  Layers,
   Music2,
   Radio,
   Settings,
@@ -52,6 +53,13 @@ export const ROUTES: readonly NavRoute[] = [
     icon: SlidersHorizontal,
     group: "main",
     tagline: "Per-application volume and mute.",
+  },
+  {
+    id: "stems",
+    label: "Stems",
+    icon: Layers,
+    group: "main",
+    tagline: "Split the track into vocals, drums, bass and instruments — then remix.",
   },
   {
     id: "radio",

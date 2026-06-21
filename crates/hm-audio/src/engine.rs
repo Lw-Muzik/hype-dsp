@@ -35,6 +35,7 @@ use crate::error::AudioError;
 use crate::queue::QueuePlaybackSource;
 use crate::sources::FilePlaybackSource;
 use crate::spectrum::{Analyzer, SpectrumTap};
+use crate::stems::{StemGains, StemPlaybackSource, STEM_COUNT};
 use crate::streaming::RadioStreamSource;
 #[cfg(target_os = "macos")]
 use crate::system_tap::SystemTapSource;
@@ -334,6 +335,9 @@ enum EngineCommand {
         start: usize,
     },
     PlayCapture,
+    /// Play four separated stems together, mixed live by the engine's stem gains.
+    /// Boxed because four decoded buffers make a large variant.
+    PlayStems(Box<[DecodedAudio; STEM_COUNT]>),
     /// Play an already-constructed live source (e.g. the macOS system tap).
     PlaySource(Box<dyn AudioSource>),
     Pause,
@@ -362,6 +366,9 @@ pub struct AudioEngine {
     /// Live crossfade duration in seconds (f32 bits), read by the active queue
     /// each block so slider changes apply to the current queue immediately.
     crossfade: Arc<AtomicU32>,
+    /// Live per-stem gains, shared with the active stem-playback source so the
+    /// UI's faders apply to the current track instantly.
+    stem_gains: Arc<StemGains>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     /// Active self-contained system-wide EQ pipeline (Linux/Windows re-routing).
     /// Held only to keep it running; dropping it tears the routing down. `Send`-
@@ -407,6 +414,7 @@ impl AudioEngine {
         let meta_version = Arc::new(AtomicU64::new(0));
         let queue_index = Arc::new(AtomicUsize::new(0));
         let crossfade = Arc::new(AtomicU32::new(initial.playback.crossfade_secs.to_bits()));
+        let stem_gains = Arc::new(StemGains::default());
         let (tx, rx) = mpsc::channel();
 
         let thread = {
@@ -420,6 +428,7 @@ impl AudioEngine {
             let meta_version = meta_version.clone();
             let queue_index = queue_index.clone();
             let crossfade = crossfade.clone();
+            let stem_gains = stem_gains.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
                 .spawn(move || {
@@ -435,6 +444,7 @@ impl AudioEngine {
                         meta_version,
                         queue_index,
                         crossfade,
+                        stem_gains,
                     })
                 })
                 .expect("failed to spawn hm-audio engine thread")
@@ -452,6 +462,7 @@ impl AudioEngine {
             meta_version,
             queue_index,
             crossfade,
+            stem_gains,
             ctrl: Mutex::new(tx),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             system_eq: Mutex::new(None),
@@ -695,6 +706,27 @@ impl AudioEngine {
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
+    /// Play four separated stems (decoded; any rate) together, mixed live by the
+    /// shared [`StemGains`]. Each is resampled to the device rate on the engine
+    /// thread; the DSP chain still applies to the mixed result.
+    pub fn play_stems(&self, stems: [DecodedAudio; STEM_COUNT]) -> Result<(), AudioError> {
+        self.ctrl
+            .lock()
+            .expect("engine ctrl poisoned")
+            .send(EngineCommand::PlayStems(Box::new(stems)))
+            .map_err(|_| AudioError::Stream("engine thread stopped".into()))
+    }
+
+    /// Set a stem's gain (0 = muted, 1 = unity), applied live + smoothed.
+    pub fn set_stem_gain(&self, stem: usize, gain: f32) {
+        self.stem_gains.set(stem, gain);
+    }
+
+    /// The shared stem gains (e.g. to read current fader positions).
+    pub fn stem_gains(&self) -> Arc<StemGains> {
+        self.stem_gains.clone()
+    }
+
     /// Stream and play an internet radio URL through the chain.
     pub fn play_radio(&self, url: String) -> Result<(), AudioError> {
         self.ctrl
@@ -850,6 +882,7 @@ struct ControlCtx {
     meta_version: Arc<AtomicU64>,
     queue_index: Arc<AtomicUsize>,
     crossfade: Arc<AtomicU32>,
+    stem_gains: Arc<StemGains>,
 }
 
 fn control_loop(ctx: ControlCtx) {
@@ -865,6 +898,7 @@ fn control_loop(ctx: ControlCtx) {
         meta_version,
         queue_index,
         crossfade,
+        stem_gains,
     } = ctx;
     let setup = output_setup().ok();
     // The active stream is held only to keep audio flowing (RAII); replacing or
@@ -890,6 +924,44 @@ fn control_loop(ctx: ControlCtx) {
                 // Publish the file's tags + cover for the now-playing UI.
                 track_meta.store(Arc::new(audio.meta));
                 meta_version.fetch_add(1, Ordering::Release);
+
+                match build_output_stream(
+                    device,
+                    *config,
+                    source,
+                    shared.clone(),
+                    meters.clone(),
+                    spectrum.clone(),
+                    pos.clone(),
+                    playing.clone(),
+                    channels,
+                    sample_rate as f32,
+                ) {
+                    Ok(s) if s.play().is_ok() => {
+                        playing.store(true, Ordering::Relaxed);
+                        active = Some(s);
+                    }
+                    _ => playing.store(false, Ordering::Relaxed),
+                }
+            }
+            EngineCommand::PlayStems(stems) => {
+                drop(active.take());
+                meters.zero();
+                spectrum.zero();
+                paused.store(false, Ordering::Relaxed);
+                let Some((device, config)) = &setup else {
+                    playing.store(false, Ordering::Relaxed);
+                    continue;
+                };
+                let sample_rate = config.sample_rate;
+                let channels = config.channels as usize;
+                // Resample each stem to the device rate (they share a length).
+                let stems = *stems;
+                let resampled: [Vec<f32>; STEM_COUNT] = stems
+                    .map(|s| resample_stereo(&s.samples, s.sample_rate, sample_rate));
+                let frames = resampled.iter().map(|s| s.len() / 2).min().unwrap_or(0);
+                pos.prepare(sample_rate, frames);
+                let source = Box::new(StemPlaybackSource::new(resampled, stem_gains.clone()));
 
                 match build_output_stream(
                     device,

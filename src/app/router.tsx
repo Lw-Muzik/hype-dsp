@@ -7,6 +7,7 @@ import { MixerView } from "@/features/mixer/MixerView";
 import { PlayerView } from "@/features/player/PlayerView";
 import { RadioView } from "@/features/radio/RadioView";
 import { SettingsView } from "@/features/settings/SettingsView";
+import { StemsPanel } from "@/features/stems/StemsPanel";
 import { VisualsView } from "@/features/visuals/VisualsView";
 
 /**
@@ -17,6 +18,7 @@ const VIEWS: Record<Route, FC> = {
   enhancer: EnhancerView,
   equalizer: EqualizerView,
   mixer: MixerView,
+  stems: StemsPanel,
   player: PlayerView,
   radio: RadioView,
   visuals: VisualsView,

@@ -204,6 +204,8 @@ interface EngineStore {
   nowPlaying: string | null;
   /** Rich now-playing metadata (tags + cover) for the docked bar. */
   nowPlayingMeta: TrackMeta | null;
+  /** The current track's local file path (null for phone/cloud/radio). */
+  currentTrackPath: string | null;
   positionSecs: number;
   durationSecs: number | null;
   /** Whether the active source can be scrubbed (false for live radio). */
@@ -300,6 +302,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     meters: idleMeters,
     nowPlaying: null,
     nowPlayingMeta: null,
+    currentTrackPath: null,
     positionSecs: 0,
     durationSecs: null,
     seekable: false,
@@ -321,6 +324,8 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       orderPos: pos,
       nowPlaying: item.title,
       nowPlayingMeta: itemMeta(item),
+      // Only local files can be stem-separated.
+      currentTrackPath: item.source === "local" ? (item.track?.path ?? null) : null,
       playing: true,
       paused: false,
       positionSecs: 0,
@@ -486,6 +491,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     paused: false,
     nowPlaying: null,
     nowPlayingMeta: null,
+    currentTrackPath: null,
     positionSecs: 0,
     durationSecs: null,
     seekable: false,

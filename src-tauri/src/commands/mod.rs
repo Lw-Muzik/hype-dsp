@@ -20,4 +20,5 @@ pub mod presets;
 pub mod profiles;
 pub mod radio;
 pub mod scenes;
+pub mod stems;
 pub mod visualizer;

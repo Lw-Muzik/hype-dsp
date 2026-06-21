@@ -234,6 +234,26 @@ pub fn run() {
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_account.json"));
             app.manage(commands::account::AccountState::open(account_path));
 
+            // Stem separation (Demucs). The sidecar binary + ggml model are
+            // placed under <app data>/stems by scripts/build_demucs.sh; results
+            // are cached per track.
+            let stem_root = app
+                .path()
+                .app_data_dir()
+                .map(|d| d.join("stems"))
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_stems"));
+            let sidecar_name = if cfg!(windows) { "hm-demucs.exe" } else { "hm-demucs" };
+            let _ = std::fs::create_dir_all(stem_root.join("tmp"));
+            let _ = std::fs::create_dir_all(stem_root.join("cache"));
+            app.manage(commands::stems::StemState {
+                demucs: hm_stems::Demucs::new(
+                    stem_root.join(sidecar_name),
+                    stem_root.join("model"),
+                    stem_root.join("cache"),
+                ),
+                temp_dir: stem_root.join("tmp"),
+            });
+
             // Per-app mixer controller (real on Windows; unsupported stub on macOS).
             app.manage::<commands::mixer::Mixer>(Mutex::new(hm_platform::default_controller()));
 
@@ -503,6 +523,10 @@ pub fn run() {
             commands::account::account_verify,
             commands::account::account_logout,
             commands::account::account_heartbeat,
+            commands::stems::stems_status,
+            commands::stems::stems_separate,
+            commands::stems::stems_set_gain,
+            commands::stems::stems_gains,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the HypeMuzik application");

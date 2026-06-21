@@ -2495,6 +2495,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hm-stems"
+version = "0.1.5"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "hm-visualizer"
 version = "0.1.5"
 dependencies = [
@@ -2585,6 +2594,8 @@ dependencies = [
  "hm-media",
  "hm-platform",
  "hm-remote",
+ "hm-stems",
+ "hound",
  "lofty",
  "objc2-app-kit",
  "reqwest",

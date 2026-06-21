@@ -48,6 +48,8 @@ hm-media = { workspace = true }
 hm-platform = { workspace = true }
 hm-link = { workspace = true }
 hm-remote = { workspace = true }
+hm-stems = { workspace = true }
+hound = { workspace = true }
 lofty = "0.24.0"
 
 

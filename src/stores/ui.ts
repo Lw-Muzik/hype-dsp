@@ -6,6 +6,7 @@ export type Route =
   | "enhancer"
   | "equalizer"
   | "mixer"
+  | "stems"
   | "player"
   | "radio"
   | "visuals"

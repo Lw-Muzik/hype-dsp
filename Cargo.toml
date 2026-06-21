@@ -7,6 +7,7 @@ members = [
     "crates/hm-platform",
     "crates/hm-link",
     "crates/hm-remote",
+    "crates/hm-stems",
     "crates/hm-core",
     "crates/hm-visualizer",
     "src-tauri",
@@ -73,6 +74,7 @@ hm-media = { path = "crates/hm-media" }
 hm-platform = { path = "crates/hm-platform" }
 hm-link = { path = "crates/hm-link" }
 hm-remote = { path = "crates/hm-remote" }
+hm-stems = { path = "crates/hm-stems" }
 hm-core = { path = "crates/hm-core" }
 
 # Release profile tuned for real-time audio: optimize hard, keep panic=unwind

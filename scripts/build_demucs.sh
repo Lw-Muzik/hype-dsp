@@ -31,7 +31,12 @@ echo "Installing into: $STEMS_DIR"
 if [ ! -d "$BUILD_DIR/demucs.cpp" ]; then
   git clone --recurse-submodules https://github.com/sevagh/demucs.cpp "$BUILD_DIR/demucs.cpp"
 fi
-cmake -S "$BUILD_DIR/demucs.cpp" -B "$BUILD_DIR/demucs.cpp/build" -DCMAKE_BUILD_TYPE=Release
+# `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` lets CMake 4.x configure demucs.cpp's
+# older sub-projects (they declare cmake_minimum_required < 3.5, which CMake 4
+# otherwise rejects).
+cmake -S "$BUILD_DIR/demucs.cpp" -B "$BUILD_DIR/demucs.cpp/build" \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build "$BUILD_DIR/demucs.cpp/build" -j
 
 # The CLI binary name varies by version — find it.

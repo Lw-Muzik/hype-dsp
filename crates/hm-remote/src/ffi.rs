@@ -28,6 +28,7 @@ pub(crate) fn diag(msg: &str) {
     #[cfg(target_os = "android")]
     {
         use std::os::raw::{c_char as cc, c_int};
+        #[link(name = "log")]
         extern "C" {
             // liblog: int __android_log_write(int prio, const char* tag, const char* text)
             fn __android_log_write(prio: c_int, tag: *const cc, text: *const cc) -> c_int;
@@ -142,7 +143,10 @@ pub unsafe extern "C" fn hm_phone_pair(
         };
         match node.pair(ep, pin, name, token) {
             Ok(desktop_name) => into_c_string(desktop_name),
-            Err(_) => std::ptr::null_mut(),
+            Err(e) => {
+                diag(&format!("pair (dial) failed: {e:#}"));
+                std::ptr::null_mut()
+            }
         }
     })
 }

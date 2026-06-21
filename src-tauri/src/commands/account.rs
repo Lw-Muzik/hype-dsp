@@ -114,22 +114,12 @@ impl AccountState {
         self.save(&s);
     }
 
-    fn authenticate(&self, path: &str, body: serde_json::Value) -> Result<(), String> {
-        let resp = self
-            .client
+    fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::blocking::Response, String> {
+        self.client
             .post(self.url(path))
             .json(&body)
             .send()
-            .map_err(|e| format!("couldn't reach the server: {e}"))?;
-        match resp.status().as_u16() {
-            200 | 201 => {}
-            401 | 403 => return Err("Invalid email or password".into()),
-            409 => return Err("That email is already registered".into()),
-            code => return Err(format!("Sign in failed ({code})")),
-        }
-        let dto: AuthDto = resp.json().map_err(|e| e.to_string())?;
-        self.store_session(dto);
-        Ok(())
+            .map_err(|e| format!("couldn't reach the server: {e}"))
     }
 
     fn refresh(&self) -> bool {
@@ -170,18 +160,40 @@ impl AccountState {
         Some(resp)
     }
 
-    pub fn login(&self, email: &str, password: &str) -> Result<(), String> {
-        self.authenticate(
-            "/auth/login",
-            serde_json::json!({ "email": email, "password": password }),
-        )
+    /// Create a passwordless account (with details) — the server emails a code.
+    pub fn signup(&self, email: &str, name: Option<&str>) -> Result<(), String> {
+        let resp = self.post("/auth/signup", serde_json::json!({ "email": email, "name": name }))?;
+        match resp.status().as_u16() {
+            200 | 201 => Ok(()),
+            409 => Err("That email is already registered — sign in instead".into()),
+            code => Err(format!("Sign up failed ({code})")),
+        }
     }
 
-    pub fn signup(&self, email: &str, password: &str, name: Option<&str>) -> Result<(), String> {
-        self.authenticate(
-            "/auth/signup",
-            serde_json::json!({ "email": email, "password": password, "name": name }),
-        )
+    /// Request a sign-in code for an existing account.
+    pub fn request_otp(&self, email: &str) -> Result<(), String> {
+        let resp = self.post("/auth/request-otp", serde_json::json!({ "email": email }))?;
+        match resp.status().as_u16() {
+            200 | 201 => Ok(()),
+            404 => Err("No account for that email — sign up first".into()),
+            code => Err(format!("Couldn't send a code ({code})")),
+        }
+    }
+
+    /// Verify an emailed code and start a session.
+    pub fn verify(&self, email: &str, code: &str) -> Result<(), String> {
+        let resp = self.post(
+            "/auth/verify-otp",
+            serde_json::json!({ "email": email, "code": code }),
+        )?;
+        match resp.status().as_u16() {
+            200 | 201 => {}
+            401 => return Err("Invalid or expired code".into()),
+            code => return Err(format!("Verification failed ({code})")),
+        }
+        let dto: AuthDto = resp.json().map_err(|e| e.to_string())?;
+        self.store_session(dto);
+        Ok(())
     }
 
     pub fn logout(&self) {
@@ -253,26 +265,34 @@ pub fn account_status(account: State<'_, AccountState>) -> AccountStatus {
 }
 
 #[tauri::command(async)]
-pub fn account_login(
-    account: State<'_, AccountState>,
-    email: String,
-    password: String,
-) -> Result<AccountStatus, IpcError> {
-    account
-        .login(&email, &password)
-        .map_err(|e| IpcError::new("account", e))?;
-    Ok(account.status())
-}
-
-#[tauri::command(async)]
 pub fn account_signup(
     account: State<'_, AccountState>,
     email: String,
-    password: String,
     name: Option<String>,
+) -> Result<(), IpcError> {
+    account
+        .signup(&email, name.as_deref())
+        .map_err(|e| IpcError::new("account", e))
+}
+
+#[tauri::command(async)]
+pub fn account_request_otp(
+    account: State<'_, AccountState>,
+    email: String,
+) -> Result<(), IpcError> {
+    account
+        .request_otp(&email)
+        .map_err(|e| IpcError::new("account", e))
+}
+
+#[tauri::command(async)]
+pub fn account_verify(
+    account: State<'_, AccountState>,
+    email: String,
+    code: String,
 ) -> Result<AccountStatus, IpcError> {
     account
-        .signup(&email, &password, name.as_deref())
+        .verify(&email, &code)
         .map_err(|e| IpcError::new("account", e))?;
     Ok(account.status())
 }

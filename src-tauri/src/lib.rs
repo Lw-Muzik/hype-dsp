@@ -498,8 +498,9 @@ pub fn run() {
             commands::license::license_activate,
             commands::license::license_deactivate,
             commands::account::account_status,
-            commands::account::account_login,
             commands::account::account_signup,
+            commands::account::account_request_otp,
+            commands::account::account_verify,
             commands::account::account_logout,
             commands::account::account_heartbeat,
         ])

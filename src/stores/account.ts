@@ -1,10 +1,11 @@
 import { create } from "zustand";
 import type { AccountStatus, LicenseStatus } from "@/lib/types";
 import {
-  accountLogin,
   accountLogout,
+  accountRequestOtp,
   accountSignup,
   accountStatus,
+  accountVerify,
 } from "@/lib/ipc";
 
 interface AccountStore {
@@ -12,8 +13,12 @@ interface AccountStore {
   loading: boolean;
   /** Re-fetch the account + license from the server. */
   refresh: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name?: string) => Promise<void>;
+  /** Create an account (email + optional name); the server emails a code. */
+  signup: (email: string, name?: string) => Promise<void>;
+  /** Request a sign-in code for an existing account. */
+  requestOtp: (email: string) => Promise<void>;
+  /** Verify the emailed code → starts the session. */
+  verify: (email: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -28,12 +33,10 @@ export const useAccountStore = create<AccountStore>((set) => ({
       set({ loading: false });
     }
   },
-  login: async (email, password) => {
-    const status = await accountLogin(email, password);
-    set({ status });
-  },
-  signup: async (email, password, name) => {
-    const status = await accountSignup(email, password, name);
+  signup: (email, name) => accountSignup(email, name),
+  requestOtp: (email) => accountRequestOtp(email),
+  verify: async (email, code) => {
+    const status = await accountVerify(email, code);
     set({ status });
   },
   logout: async () => {

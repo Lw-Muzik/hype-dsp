@@ -546,22 +546,20 @@ export function licenseDeactivate(): Promise<void> {
 export function accountStatus(): Promise<AccountStatus> {
   return invoke<AccountStatus>("account_status");
 }
-export function accountLogin(
-  email: string,
-  password: string,
-): Promise<AccountStatus> {
-  return invoke<AccountStatus>("account_login", { email, password });
+/** Create a passwordless account — the server emails a sign-in code. */
+export function accountSignup(email: string, name?: string): Promise<void> {
+  return invoke<void>("account_signup", { email, name: name ?? null });
 }
-export function accountSignup(
+/** Email a sign-in code to an existing account. */
+export function accountRequestOtp(email: string): Promise<void> {
+  return invoke<void>("account_request_otp", { email });
+}
+/** Verify an emailed code → starts the session, returns the account status. */
+export function accountVerify(
   email: string,
-  password: string,
-  name?: string,
+  code: string,
 ): Promise<AccountStatus> {
-  return invoke<AccountStatus>("account_signup", {
-    email,
-    password,
-    name: name ?? null,
-  });
+  return invoke<AccountStatus>("account_verify", { email, code });
 }
 export function accountLogout(): Promise<void> {
   return invoke<void>("account_logout");

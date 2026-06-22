@@ -9,7 +9,7 @@ model (no mean/std normalization — hm-stems does that in Rust).
 
 Run on a machine with PyTorch + Demucs:
 
-    pip install "torch>=2.1" demucs onnx
+    pip install "torch>=2.1" demucs onnx onnxscript
     python3 scripts/export_demucs_onnx.py --out <stems>/model/htdemucs.onnx
 
 Writes `htdemucs.onnx` + a sidecar `htdemucs.onnx.json` describing the I/O.

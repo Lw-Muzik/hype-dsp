@@ -1,16 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AudioLines,
-  Cpu,
-  Disc3,
-  Drum,
-  Guitar,
-  Loader2,
-  Mic2,
-  Music2,
-  Sparkles,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { AudioLines, Cpu, Loader2, Sparkles } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
 import {
   ipcErrorMessage,
@@ -19,50 +8,79 @@ import {
   stemsReset,
   stemsSetGain,
   stemsStatus,
-  type StemMode,
 } from "@/lib/ipc";
 import { cn } from "@/lib/cn";
 
-/** A fader. In 4-stem mode each controls one slot; in 2-stem mode the
- *  Instrumental fader controls drums+bass+other (slots 1,2,3) together. */
-interface StemControl {
+// Mix elements (must match hm-audio::stems): drums are split into kick + hihat.
+const EL = { vocals: 0, kick: 1, hihat: 2, bass: 3, melody: 4 } as const;
+const ELEMENT_COUNT = 5;
+
+type PadKind = "mute" | "solo";
+interface Pad {
   id: string;
   label: string;
-  icon: LucideIcon;
-  color: string;
-  slots: number[];
+  kind: PadKind;
+  group: number[];
+  /** [engaged classes, idle classes] */
+  engaged: string;
+  idle: string;
+  combo?: boolean;
 }
 
-const LAYOUTS: Record<StemMode, StemControl[]> = {
-  four: [
-    { id: "vocals", label: "Vocals", icon: Mic2, color: "bg-accent", slots: [0] },
-    { id: "drums", label: "Drums", icon: Drum, color: "bg-danger", slots: [1] },
-    { id: "bass", label: "Bass", icon: Music2, color: "bg-sky-500", slots: [2] },
-    { id: "other", label: "Instruments", icon: Guitar, color: "bg-success", slots: [3] },
-  ],
-  two: [
-    { id: "vocals", label: "Vocals", icon: Mic2, color: "bg-accent", slots: [0] },
-    { id: "inst", label: "Instrumental", icon: Disc3, color: "bg-success", slots: [1, 2, 3] },
-  ],
-};
-
-const MODES: { id: StemMode; label: string }[] = [
-  { id: "two", label: "Vocals · Instrumental" },
-  { id: "four", label: "4 stems" },
+// Order = VirtualDJ's grid: row 1 then row 2.
+const PADS: Pad[] = [
+  {
+    id: "vocal", label: "Vocal", kind: "mute", group: [EL.vocals],
+    engaged: "bg-emerald-500 text-white border-emerald-500",
+    idle: "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10",
+  },
+  {
+    id: "instru", label: "Instru", kind: "mute", group: [EL.kick, EL.hihat, EL.bass, EL.melody],
+    engaged: "bg-amber-500 text-white border-amber-500",
+    idle: "border-amber-500/40 text-amber-400 hover:bg-amber-500/10",
+  },
+  {
+    id: "bass", label: "Bass", kind: "mute", group: [EL.bass],
+    engaged: "bg-rose-500 text-white border-rose-500",
+    idle: "border-rose-500/40 text-rose-400 hover:bg-rose-500/10",
+  },
+  {
+    id: "acapella", label: "Acapella", kind: "solo", group: [EL.vocals], combo: true,
+    engaged: "bg-emerald-500/90 text-white border-emerald-400",
+    idle: "border-border text-text-faint hover:bg-surface-raised",
+  },
+  {
+    id: "kick", label: "Kick", kind: "mute", group: [EL.kick],
+    engaged: "bg-sky-500 text-white border-sky-500",
+    idle: "border-sky-500/40 text-sky-400 hover:bg-sky-500/10",
+  },
+  {
+    id: "hihat", label: "HiHat", kind: "mute", group: [EL.hihat],
+    engaged: "bg-cyan-500 text-white border-cyan-500",
+    idle: "border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10",
+  },
+  {
+    id: "melody", label: "FX: Melody", kind: "mute", group: [EL.melody],
+    engaged: "bg-violet-500 text-white border-violet-500",
+    idle: "border-violet-500/40 text-violet-400 hover:bg-violet-500/10",
+  },
+  {
+    id: "instrument", label: "Instrument", kind: "solo", group: [EL.kick, EL.hihat, EL.bass, EL.melody], combo: true,
+    engaged: "bg-amber-500/90 text-white border-amber-400",
+    idle: "border-border text-text-faint hover:bg-surface-raised",
+  },
 ];
 
-const STEM_COUNT = 4;
 const sameSet = (a: number[], b: number[]) =>
   a.length === b.length && a.every((x) => b.includes(x));
 
-/** VirtualDJ-style stems: the current track auto-separates in the background
- *  (htdemucs on CoreML) while it keeps playing, then the faders go live so you
- *  can tap a stem to isolate/mute it instantly — no "separate" step. */
+/** VirtualDJ-style stems pad grid: the playing track auto-separates in the
+ *  background (htdemucs on CoreML, drums split into kick/hihat), then the pads
+ *  go live — tap to mute a stem, tap a combo pad to isolate. No "separate" step. */
 export function StemsPanel() {
   const trackPath = useEngineStore((s) => s.currentTrackPath);
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
 
-  const [mode, setMode] = useState<StemMode>("four");
   const [available, setAvailable] = useState(true);
   const [accelerated, setAccelerated] = useState(false);
   const [armed, setArmed] = useState(false);
@@ -70,23 +88,17 @@ export function StemsPanel() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Per-slot mix state (the 2-stem layout writes/reads slot groups).
-  const [gains, setGains] = useState<number[]>([1, 1, 1, 1]);
-  const [muted, setMuted] = useState<boolean[]>([false, false, false, false]);
+  const [muted, setMuted] = useState<boolean[]>(() => Array(ELEMENT_COUNT).fill(false));
   const [solo, setSolo] = useState<number[] | null>(null);
   const armedFor = useRef<string | null>(null);
 
-  /** Push effective gains (factoring mute + solo) to all four slots. */
-  const applyAll = useCallback(
-    (g: number[], m: boolean[], s: number[] | null) => {
-      for (let i = 0; i < STEM_COUNT; i++) {
-        const gi = g[i] ?? 1;
-        const effective = s !== null ? (s.includes(i) ? gi : 0) : (m[i] ?? false) ? 0 : gi;
-        void stemsSetGain(i, effective).catch(() => {});
-      }
-    },
-    [],
-  );
+  /** Push effective gains (mute = 0; solo isolates its group) to all elements. */
+  const applyAll = useCallback((m: boolean[], s: number[] | null) => {
+    for (let e = 0; e < ELEMENT_COUNT; e++) {
+      const gain = s !== null ? (s.includes(e) ? 1 : 0) : (m[e] ? 0 : 1);
+      void stemsSetGain(e, gain).catch(() => {});
+    }
+  }, []);
 
   // Live separation progress (0..1).
   useEffect(() => {
@@ -124,12 +136,10 @@ export function StemsPanel() {
         if (cancelled) return;
 
         armedFor.current = trackPath;
-        const g = [1, 1, 1, 1];
-        const m = [false, false, false, false];
-        setGains(g);
+        const m = Array(ELEMENT_COUNT).fill(false);
         setMuted(m);
         setSolo(null);
-        applyAll(g, m, null);
+        applyAll(m, null);
         setArmed(true);
       } catch (e) {
         if (!cancelled) setError(ipcErrorMessage(e));
@@ -142,31 +152,36 @@ export function StemsPanel() {
     };
   }, [trackPath, applyAll]);
 
-  // Leaving the Stems view: restore the original mix (all stems to unity).
+  // Leaving the Stems view: restore the original mix (all elements to unity).
   useEffect(() => {
     return () => {
       void stemsReset().catch(() => {});
     };
   }, []);
 
-  const setControlGain = (slots: number[], v: number) => {
-    const g = gains.slice();
-    slots.forEach((i) => (g[i] = v));
-    setGains(g);
-    applyAll(g, muted, solo);
+  const tapPad = (pad: Pad) => {
+    if (!armed) return;
+    if (pad.kind === "mute") {
+      const m = muted.slice();
+      const allMuted = pad.group.every((e) => m[e]);
+      pad.group.forEach((e) => (m[e] = !allMuted));
+      setMuted(m);
+      setSolo(null); // mute and solo are distinct modes
+      applyAll(m, null);
+    } else {
+      const active = solo !== null && sameSet(solo, pad.group);
+      const s = active ? null : pad.group;
+      const m = Array(ELEMENT_COUNT).fill(false);
+      setMuted(m);
+      setSolo(s);
+      applyAll(m, s);
+    }
   };
-  const toggleMute = (slots: number[]) => {
-    const next = !(muted[slots[0]!] ?? false);
-    const m = muted.slice();
-    slots.forEach((i) => (m[i] = next));
-    setMuted(m);
-    applyAll(gains, m, solo);
-  };
-  const toggleSolo = (slots: number[]) => {
-    const s = solo !== null && sameSet(solo, slots) ? null : slots;
-    setSolo(s);
-    applyAll(gains, muted, s);
-  };
+
+  const isEngaged = (pad: Pad) =>
+    pad.kind === "mute"
+      ? pad.group.every((e) => muted[e])
+      : solo !== null && sameSet(solo, pad.group);
 
   if (!trackPath) {
     return (
@@ -186,37 +201,17 @@ export function StemsPanel() {
     );
   }
 
-  const layout = LAYOUTS[mode];
-
   return (
     <Shell accelerated={accelerated}>
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{nowPlaying ?? "—"}</p>
-          <p className="text-xs text-text-faint">
-            {busy
-              ? "Preparing stems — the track keeps playing…"
-              : armed
-                ? "Tap a stem to isolate or mute it — live"
-                : "Ready"}
-          </p>
-        </div>
-        {/* Mode is a free, instant regrouping of the same separation. */}
-        <div className="inline-flex shrink-0 rounded-control border border-border bg-surface p-0.5">
-          {MODES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => setMode(m.id)}
-              className={cn(
-                "rounded-[8px] px-3 py-1.5 text-xs font-medium transition-colors",
-                mode === m.id ? "bg-accent text-surface" : "text-text-muted hover:text-text",
-              )}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
+      <div className="mb-4">
+        <p className="truncate text-sm font-medium">{nowPlaying ?? "—"}</p>
+        <p className="text-xs text-text-faint">
+          {busy
+            ? "Preparing stems — the track keeps playing…"
+            : armed
+              ? "Tap a pad to mute a stem · tap a combo pad to isolate"
+              : "Ready"}
+        </p>
       </div>
 
       {busy && (
@@ -240,82 +235,30 @@ export function StemsPanel() {
 
       <div
         className={cn(
-          "grid gap-3 transition-opacity",
-          mode === "two" ? "grid-cols-2" : "grid-cols-4",
+          "grid grid-cols-4 gap-2 transition-opacity",
           armed ? "opacity-100" : "pointer-events-none opacity-50",
         )}
       >
-        {layout.map((ctrl) => {
-          const gain = gains[ctrl.slots[0]!] ?? 1;
-          const isMuted = muted[ctrl.slots[0]!] ?? false;
-          const isSolo = solo !== null && sameSet(solo, ctrl.slots);
-          const dimmed = isMuted || (solo !== null && !isSolo);
-          const Icon = ctrl.icon;
-          return (
-            <div
-              key={ctrl.id}
-              className="flex flex-col items-center gap-3 rounded-card border border-border bg-surface p-3"
-            >
-              <div className="flex items-center gap-1.5 text-sm font-medium">
-                <Icon className="size-4 text-text-muted" aria-hidden="true" />
-                {ctrl.label}
-              </div>
-              <div className="flex h-44 items-end">
-                <input
-                  type="range"
-                  min={0}
-                  max={1.5}
-                  step={0.01}
-                  value={gain}
-                  disabled={!armed}
-                  onChange={(e) => setControlGain(ctrl.slots, Number(e.target.value))}
-                  aria-label={`${ctrl.label} volume`}
-                  className="h-44 accent-accent"
-                  style={{ writingMode: "vertical-lr", direction: "rtl" }}
-                />
-              </div>
-              <span className="text-xs tabular-nums text-text-faint">
-                {Math.round(gain * 100)}%
-              </span>
-              <div className="flex w-full gap-1.5">
-                <button
-                  type="button"
-                  disabled={!armed}
-                  onClick={() => toggleMute(ctrl.slots)}
-                  className={cn(
-                    "flex-1 rounded-control py-1 text-xs font-semibold transition-colors disabled:opacity-50",
-                    isMuted
-                      ? "bg-danger/20 text-danger"
-                      : "bg-surface-raised text-text-muted hover:text-text",
-                  )}
-                >
-                  {isMuted ? "Muted" : "Mute"}
-                </button>
-                <button
-                  type="button"
-                  disabled={!armed}
-                  onClick={() => toggleSolo(ctrl.slots)}
-                  className={cn(
-                    "flex-1 rounded-control py-1 text-xs font-semibold transition-colors disabled:opacity-50",
-                    isSolo
-                      ? "bg-accent text-surface"
-                      : "bg-surface-raised text-text-muted hover:text-text",
-                  )}
-                >
-                  Solo
-                </button>
-              </div>
-              <div
-                className={cn(
-                  "h-1 w-full rounded-full transition-opacity",
-                  ctrl.color,
-                  dimmed ? "opacity-20" : "opacity-100",
-                )}
-              />
-            </div>
-          );
-        })}
+        {PADS.map((pad) => (
+          <button
+            key={pad.id}
+            type="button"
+            disabled={!armed}
+            onClick={() => tapPad(pad)}
+            className={cn(
+              "flex h-16 items-center justify-center rounded-card border-2 px-2 text-sm font-semibold transition-colors",
+              pad.combo && "italic",
+              isEngaged(pad) ? pad.engaged : pad.idle,
+            )}
+          >
+            {pad.combo ? `(${pad.label})` : pad.label}
+          </button>
+        ))}
       </div>
+
+      <p className="mt-4 text-center text-[11px] text-text-faint">
+        Kick / HiHat are a crossover split of the isolated drum stem.
+      </p>
     </Shell>
   );
 }
@@ -333,7 +276,7 @@ function Shell({
         <div>
           <h1 className="text-xl font-semibold">Stems</h1>
           <p className="text-sm text-text-muted">
-            Split the playing track into vocals, drums, bass and instruments — mix them live.
+            Isolate or drop vocals, bass, kick, hihat and melody from the playing track — live.
           </p>
         </div>
         <span
@@ -356,7 +299,7 @@ function Shell({
   );
 }
 
-function Empty({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
+function Empty({ icon: Icon, text }: { icon: typeof AudioLines; text: string }) {
   return (
     <div className="flex flex-col items-center gap-3 py-10 text-center">
       <Icon className="size-8 text-text-faint" aria-hidden="true" />

@@ -976,7 +976,8 @@ fn control_loop(ctx: ControlCtx) {
                     .map(|s| resample_stereo(&s.samples, s.sample_rate, sample_rate));
                 let frames = resampled.iter().map(|s| s.len() / 2).max().unwrap_or(0);
                 pos.prepare(sample_rate, frames);
-                let mut stem_source = StemPlaybackSource::new(resampled, stem_gains.clone());
+                let mut stem_source =
+                    StemPlaybackSource::new(resampled, stem_gains.clone(), sample_rate as f32);
                 // Start at the live playhead so swapping stems in mid-track is gapless.
                 let start_frame =
                     ((start_secs.max(0.0)) * sample_rate as f64).round() as usize;

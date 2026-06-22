@@ -34,7 +34,7 @@ esac
 
 if [ ! -f "$STEMS_DIR/$DYLIB" ]; then
   URL="https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VER/$ORT_PKG.tgz"
-  echo "Fetching ONNX Runtime $ORT_VER…"
+  echo "Fetching ONNX Runtime $ORT_VER..."
   curl -fL "$URL" -o "$BUILD_DIR/$ORT_PKG.tgz"
   tar -xzf "$BUILD_DIR/$ORT_PKG.tgz" -C "$BUILD_DIR"
   # The dylib is versioned (libonnxruntime.1.20.1.dylib) — copy to the bare name.
@@ -45,9 +45,22 @@ if [ ! -f "$STEMS_DIR/$DYLIB" ]; then
 fi
 
 # 2. htdemucs → ONNX --------------------------------------------------------
+# Use HM_PYTHON to point at the interpreter that has torch/demucs (pip and
+# python3 often resolve to different installs on macOS).
+PY="${HM_PYTHON:-python3}"
 if [ ! -f "$STEMS_DIR/model/htdemucs.onnx" ]; then
-  echo "Exporting htdemucs to ONNX (first run downloads the ~80 MB weights)…"
-  python3 "$(dirname "$0")/export_demucs_onnx.py" --out "$STEMS_DIR/model/htdemucs.onnx"
+  if ! "$PY" -c "import torch, demucs, onnxscript" >/dev/null 2>&1; then
+    echo "error: '$PY' ($("$PY" -c 'import sys;print(sys.executable)' 2>/dev/null || echo '?')) is missing torch/demucs/onnxscript." >&2
+    echo "  Install into the SAME interpreter the script uses:" >&2
+    echo "    $PY -m pip install 'torch>=2.1' demucs onnx onnxscript" >&2
+    echo "  If that says 'externally managed environment', use a venv:" >&2
+    echo "    python3 -m venv ~/.hm-stems-venv" >&2
+    echo "    ~/.hm-stems-venv/bin/pip install 'torch>=2.1' demucs onnx onnxscript" >&2
+    echo "    HM_PYTHON=~/.hm-stems-venv/bin/python ./scripts/get_stems_model.sh" >&2
+    exit 1
+  fi
+  echo "Exporting htdemucs to ONNX (first run downloads the ~80 MB weights)..."
+  "$PY" "$(dirname "$0")/export_demucs_onnx.py" --out "$STEMS_DIR/model/htdemucs.onnx"
 fi
 
 echo

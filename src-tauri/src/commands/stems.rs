@@ -11,7 +11,7 @@
 
 use std::path::Path;
 
-use hm_audio::{decode_file, resample_stereo, AudioEngine, DecodedAudio, STEM_COUNT};
+use hm_audio::{decode_file, resample_stereo, AudioEngine, DecodedAudio, ELEMENT_COUNT, STEM_COUNT};
 use hm_core::{IpcError, TrackMeta};
 use hm_stems::{Separator, StemSet, STEM_SR};
 use serde::Serialize;
@@ -85,25 +85,25 @@ pub fn stems_arm(
     Ok(())
 }
 
-/// Set a stem's gain live (0 = muted, 1 = unity, up to 1.5 = boost). Slots:
-/// 0 vocals, 1 drums, 2 bass, 3 other.
+/// Set an element's gain live (0 = muted, 1 = unity). Elements: 0 vocals,
+/// 1 kick, 2 hihat, 3 bass, 4 melody.
 #[tauri::command]
 pub fn stems_set_gain(engine: State<'_, AudioEngine>, stem: usize, gain: f32) {
     engine.set_stem_gain(stem, gain);
 }
 
-/// Reset every stem to unity so the mix sounds like the original track again
+/// Reset every element to unity so the mix sounds like the original track again
 /// (used when leaving the Stems view).
 #[tauri::command]
 pub fn stems_reset(engine: State<'_, AudioEngine>) {
-    for s in 0..STEM_COUNT {
-        engine.set_stem_gain(s, 1.0);
+    for e in 0..ELEMENT_COUNT {
+        engine.set_stem_gain(e, 1.0);
     }
 }
 
-/// Current per-stem gains.
+/// Current per-element gains (vocals, kick, hihat, bass, melody).
 #[tauri::command]
 pub fn stems_gains(engine: State<'_, AudioEngine>) -> Vec<f32> {
     let gains = engine.stem_gains();
-    (0..STEM_COUNT).map(|i| gains.get(i)).collect()
+    (0..ELEMENT_COUNT).map(|i| gains.get(i)).collect()
 }

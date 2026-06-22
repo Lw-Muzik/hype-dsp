@@ -1,10 +1,23 @@
 //! Real-time multi-stem playback — the mixing side of stem separation.
 //!
-//! Demucs separates a track **offline** into four stems (vocals, drums, bass,
-//! other); [`StemPlaybackSource`] then plays them back **in sync**, summing them
-//! with live, per-stem gains so the UI's faders / mute / solo are instant. It's
-//! an [`AudioSource`](crate::AudioSource), so it drops into the engine exactly
-//! like normal file playback — the DSP chain still applies to the mixed result.
+//! htdemucs separates a track into four buffers (vocals, drums, bass, other);
+//! [`StemPlaybackSource`] plays them back **in sync**, but exposes **five live,
+//! controllable elements** to match VirtualDJ's pad grid: the drum buffer is
+//! split in the audio thread by a complementary crossover into **Kick** (lows)
+//! and **HiHat** (highs). So the elements are:
+//!
+//! | element | index | source |
+//! |---------|-------|--------|
+//! | Vocals  | 0 | vocals buffer |
+//! | Kick    | 1 | drums buffer, low band |
+//! | HiHat   | 2 | drums buffer, high band |
+//! | Bass    | 3 | bass buffer |
+//! | Melody  | 4 | other buffer |
+//!
+//! The UI's "Instru / Acapella / Instrument" pads are just mute/solo groups over
+//! these. Per-element gains are live, lock-free, and smoothed (no zipper noise).
+//! It's an [`AudioSource`](crate::AudioSource), so it drops into the engine like
+//! normal file playback and the DSP chain still applies to the mixed result.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -12,89 +25,156 @@ use std::sync::Arc;
 use crate::error::AudioError;
 use crate::{AudioSource, StreamFormat};
 
-/// The four Demucs stems, in a fixed order.
+/// Number of separated input buffers (vocals, drums, bass, other).
 pub const STEM_COUNT: usize = 4;
-pub const STEM_VOCALS: usize = 0;
-pub const STEM_DRUMS: usize = 1;
-pub const STEM_BASS: usize = 2;
-pub const STEM_OTHER: usize = 3;
 
-/// Live, lock-free per-stem gains shared between the UI (writer) and the audio
-/// thread (reader). Each gain is an `f32` stored in an `AtomicU32`.
+/// Number of live, controllable mix elements (drums split into kick + hihat).
+pub const ELEMENT_COUNT: usize = 5;
+pub const EL_VOCALS: usize = 0;
+pub const EL_KICK: usize = 1;
+pub const EL_HIHAT: usize = 2;
+pub const EL_BASS: usize = 3;
+pub const EL_MELODY: usize = 4;
+
+/// Input-buffer indices (what htdemucs produces).
+const BUF_VOCALS: usize = 0;
+const BUF_DRUMS: usize = 1;
+const BUF_BASS: usize = 2;
+const BUF_OTHER: usize = 3;
+
+/// Kick/HiHat crossover on the isolated drum stem. Below = Kick, above = HiHat.
+const CROSSOVER_HZ: f32 = 150.0;
+
+/// Live, lock-free per-element gains shared between the UI (writer) and the
+/// audio thread (reader). Each gain is an `f32` stored in an `AtomicU32`.
 pub struct StemGains {
-    gains: [AtomicU32; STEM_COUNT],
+    gains: [AtomicU32; ELEMENT_COUNT],
 }
 
 impl Default for StemGains {
     fn default() -> Self {
         Self {
-            gains: [
-                AtomicU32::new(1.0f32.to_bits()),
-                AtomicU32::new(1.0f32.to_bits()),
-                AtomicU32::new(1.0f32.to_bits()),
-                AtomicU32::new(1.0f32.to_bits()),
-            ],
+            gains: std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits())),
         }
     }
 }
 
 impl StemGains {
-    pub fn set(&self, stem: usize, gain: f32) {
-        if stem < STEM_COUNT {
-            self.gains[stem].store(gain.clamp(0.0, 2.0).to_bits(), Ordering::Relaxed);
+    pub fn set(&self, element: usize, gain: f32) {
+        if element < ELEMENT_COUNT {
+            self.gains[element].store(gain.clamp(0.0, 2.0).to_bits(), Ordering::Relaxed);
         }
     }
 
-    pub fn get(&self, stem: usize) -> f32 {
-        if stem < STEM_COUNT {
-            f32::from_bits(self.gains[stem].load(Ordering::Relaxed))
+    pub fn get(&self, element: usize) -> f32 {
+        if element < ELEMENT_COUNT {
+            f32::from_bits(self.gains[element].load(Ordering::Relaxed))
         } else {
             0.0
         }
     }
 
-    fn snapshot(&self) -> [f32; STEM_COUNT] {
-        [self.get(0), self.get(1), self.get(2), self.get(3)]
+    fn snapshot(&self) -> [f32; ELEMENT_COUNT] {
+        std::array::from_fn(|i| self.get(i))
     }
 }
 
-/// Per-frame smoothing toward the target gain (~5 ms at 48 kHz) so moving a
-/// fader doesn't click ("zipper noise").
+/// Per-frame smoothing toward the target gain (~5 ms at 48 kHz) so toggling a
+/// pad doesn't click ("zipper noise").
 const GAIN_SMOOTH: f32 = 0.0025;
 
-/// Plays four pre-decoded, interleaved **stereo** stems (all at the engine rate)
-/// mixed by live gains. `read` is allocation-free and real-time safe.
+/// A second-order (RBJ) biquad lowpass; `process` returns the low band, the
+/// complementary high band is `input - low` (reconstructs exactly at unity).
+#[derive(Clone, Copy)]
+struct Biquad {
+    b0: f32,
+    b1: f32,
+    b2: f32,
+    a1: f32,
+    a2: f32,
+    x1: f32,
+    x2: f32,
+    y1: f32,
+    y2: f32,
+}
+
+impl Biquad {
+    fn lowpass(sample_rate: f32, fc: f32, q: f32) -> Self {
+        let w0 = 2.0 * std::f32::consts::PI * fc / sample_rate.max(1.0);
+        let (sin_w0, cos_w0) = w0.sin_cos();
+        let alpha = sin_w0 / (2.0 * q);
+        let a0 = 1.0 + alpha;
+        Self {
+            b0: ((1.0 - cos_w0) / 2.0) / a0,
+            b1: (1.0 - cos_w0) / a0,
+            b2: ((1.0 - cos_w0) / 2.0) / a0,
+            a1: (-2.0 * cos_w0) / a0,
+            a2: (1.0 - alpha) / a0,
+            x1: 0.0,
+            x2: 0.0,
+            y1: 0.0,
+            y2: 0.0,
+        }
+    }
+
+    #[inline]
+    fn process(&mut self, x: f32) -> f32 {
+        let mut y =
+            self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2 - self.a1 * self.y1 - self.a2 * self.y2;
+        if y.is_subnormal() {
+            y = 0.0;
+        }
+        self.x2 = self.x1;
+        self.x1 = x;
+        self.y2 = self.y1;
+        self.y1 = y;
+        y
+    }
+}
+
+/// Plays four pre-decoded, interleaved **stereo** stems (all at the engine rate),
+/// splitting drums into kick/hihat and mixing all five elements by live gains.
+/// `read` is allocation-free and real-time safe.
 pub struct StemPlaybackSource {
     stems: [Vec<f32>; STEM_COUNT],
-    /// Frame count of each stem; an empty stem (2-stem mode leaves two empty)
-    /// simply contributes silence rather than truncating playback.
+    /// Frame count of each buffer; an empty buffer simply contributes silence.
     stem_frames: [usize; STEM_COUNT],
     gains: Arc<StemGains>,
-    smoothed: [f32; STEM_COUNT],
+    smoothed: [f32; ELEMENT_COUNT],
+    /// Drum crossover lowpass, one per channel (L, R).
+    drum_lp: [Biquad; 2],
     cursor: usize,
     len_frames: usize,
 }
 
 impl StemPlaybackSource {
-    /// `stems` are interleaved-stereo buffers at the target rate; playback runs
-    /// to the longest one (empty stems are skipped). `gains` is shared with the
-    /// engine for live faders.
-    pub fn new(stems: [Vec<f32>; STEM_COUNT], gains: Arc<StemGains>) -> Self {
-        let stem_frames = [
-            stems[0].len() / 2,
-            stems[1].len() / 2,
-            stems[2].len() / 2,
-            stems[3].len() / 2,
-        ];
+    /// `stems` are interleaved-stereo buffers at the target rate (in buffer order
+    /// vocals, drums, bass, other); playback runs to the longest. `gains` is
+    /// shared with the engine for live pads. `sample_rate` sets the kick/hihat
+    /// crossover.
+    pub fn new(stems: [Vec<f32>; STEM_COUNT], gains: Arc<StemGains>, sample_rate: f32) -> Self {
+        let stem_frames = std::array::from_fn(|i| stems[i].len() / 2);
         let len_frames = stem_frames.iter().copied().max().unwrap_or(0);
         let smoothed = gains.snapshot();
+        let lp = Biquad::lowpass(sample_rate, CROSSOVER_HZ, std::f32::consts::FRAC_1_SQRT_2);
         Self {
             stems,
             stem_frames,
             gains,
             smoothed,
+            drum_lp: [lp, lp],
             cursor: 0,
             len_frames,
+        }
+    }
+
+    /// Sample from buffer `b` at interleaved index `idx`, or 0 past its end.
+    #[inline]
+    fn sample(&self, b: usize, idx: usize) -> f32 {
+        if self.cursor < self.stem_frames[b] {
+            self.stems[b][idx]
+        } else {
+            0.0
         }
     }
 }
@@ -114,24 +194,33 @@ impl AudioSource for StemPlaybackSource {
 
         for f in 0..out_frames {
             let base = f * channels;
-            // Glide each stem's gain toward its target this frame.
-            for s in 0..STEM_COUNT {
-                self.smoothed[s] += (target[s] - self.smoothed[s]) * GAIN_SMOOTH;
+            for (sm, &t) in self.smoothed.iter_mut().zip(target.iter()) {
+                *sm += (t - *sm) * GAIN_SMOOTH;
             }
 
             if self.cursor < self.len_frames {
                 let i = self.cursor * 2;
-                let mut l = 0.0f32;
-                let mut r = 0.0f32;
-                for s in 0..STEM_COUNT {
-                    // Skip stems that are empty or have already ended.
-                    if self.cursor >= self.stem_frames[s] {
-                        continue;
-                    }
-                    let g = self.smoothed[s];
-                    l += self.stems[s][i] * g;
-                    r += self.stems[s][i + 1] * g;
-                }
+                let g = &self.smoothed;
+
+                // Drums → kick (low) + hihat (high), per channel.
+                let dl = self.sample(BUF_DRUMS, i);
+                let dr = self.sample(BUF_DRUMS, i + 1);
+                let kick_l = self.drum_lp[0].process(dl);
+                let kick_r = self.drum_lp[1].process(dr);
+                let hat_l = dl - kick_l;
+                let hat_r = dr - kick_r;
+
+                let l = self.sample(BUF_VOCALS, i) * g[EL_VOCALS]
+                    + kick_l * g[EL_KICK]
+                    + hat_l * g[EL_HIHAT]
+                    + self.sample(BUF_BASS, i) * g[EL_BASS]
+                    + self.sample(BUF_OTHER, i) * g[EL_MELODY];
+                let r = self.sample(BUF_VOCALS, i + 1) * g[EL_VOCALS]
+                    + kick_r * g[EL_KICK]
+                    + hat_r * g[EL_HIHAT]
+                    + self.sample(BUF_BASS, i + 1) * g[EL_BASS]
+                    + self.sample(BUF_OTHER, i + 1) * g[EL_MELODY];
+
                 self.cursor += 1;
                 produced += 1;
                 if channels == 1 {
@@ -174,48 +263,76 @@ mod tests {
     use super::*;
 
     fn settle(src: &mut StemPlaybackSource, frames: usize) {
-        // Run enough silence-free frames for the smoothing to converge.
+        // Run enough frames for the gain smoothing + filter to converge.
         let mut sink = vec![0.0f32; frames * 2];
         src.read(&mut sink, 2);
     }
 
     #[test]
-    fn mutes_a_stem_via_gain() {
-        // vocals = +1 const, drums = -1 const, others silent.
-        let n = 4096;
-        let vocals = vec![1.0f32; n * 2];
-        let drums = vec![-1.0f32; n * 2];
-        let bass = vec![0.0f32; n * 2];
-        let other = vec![0.0f32; n * 2];
+    fn mutes_an_element_via_gain() {
+        // vocals = +1 const; drums = +0.5 const (DC → all in the kick band).
+        let n = 8192;
         let gains = Arc::new(StemGains::default());
-        gains.set(STEM_VOCALS, 1.0);
-        gains.set(STEM_DRUMS, 0.0); // mute drums
-        let mut src = StemPlaybackSource::new([vocals, drums, bass, other], gains);
+        gains.set(EL_KICK, 0.0); // mute kick → the DC drum disappears
+        let mut src = StemPlaybackSource::new(
+            [
+                vec![1.0f32; n * 2], // vocals
+                vec![0.5f32; n * 2], // drums (DC)
+                vec![0.0f32; n * 2], // bass
+                vec![0.0f32; n * 2], // other
+            ],
+            gains,
+            48_000.0,
+        );
 
-        settle(&mut src, 2000); // let the gain glide settle
+        settle(&mut src, 4000);
         let mut out = vec![0.0f32; 2];
         src.read(&mut out, 2);
-        // Only vocals (gain 1) should remain → ~+1.0, drums muted out.
+        // Drums (DC) routed entirely to kick, which is muted → only vocals (1).
         assert!((out[0] - 1.0).abs() < 0.02, "got {}", out[0]);
         assert!((out[1] - 1.0).abs() < 0.02, "got {}", out[1]);
     }
 
     #[test]
+    fn drum_bands_reconstruct_at_unity() {
+        // Only drums present; kick+hihat at unity must sum back to the drum.
+        let n = 8192;
+        let gains = Arc::new(StemGains::default());
+        gains.set(EL_VOCALS, 0.0);
+        gains.set(EL_BASS, 0.0);
+        gains.set(EL_MELODY, 0.0);
+        let mut src = StemPlaybackSource::new(
+            [
+                vec![0.0f32; n * 2],
+                vec![0.3f32; n * 2], // drums (DC)
+                vec![0.0f32; n * 2],
+                vec![0.0f32; n * 2],
+            ],
+            gains,
+            48_000.0,
+        );
+        settle(&mut src, 4000);
+        let mut out = vec![0.0f32; 2];
+        src.read(&mut out, 2);
+        assert!((out[0] - 0.3).abs() < 0.01, "got {}", out[0]);
+    }
+
+    #[test]
     fn plays_to_longest_stem_skipping_empty_ones() {
-        // 2-stem shape: vocals + instrumental present, drums/bass empty.
+        // vocals + other present, drums/bass empty.
         let gains = Arc::new(StemGains::default());
         let src_stems = [
             vec![1.0, 1.0, 1.0, 1.0], // vocals: 2 frames
             vec![],                   // drums: empty
             vec![],                   // bass: empty
-            vec![0.5, 0.5],           // instrumental: 1 frame
+            vec![0.5, 0.5],           // other/melody: 1 frame
         ];
-        let mut src = StemPlaybackSource::new(src_stems, gains);
+        let mut src = StemPlaybackSource::new(src_stems, gains, 48_000.0);
         assert_eq!(src.total_frames(), 2); // longest
         let mut out = vec![0.0f32; 8]; // 4 frames requested
         let produced = src.read(&mut out, 2);
         assert_eq!(produced, 2);
-        // Frame 0: vocals(1) + instrumental(0.5) = 1.5; frame 1: vocals only = 1.0.
+        // Frame 0: vocals(1) + melody(0.5) = 1.5; frame 1: vocals only = 1.0.
         assert!((out[0] - 1.5).abs() < 0.01, "f0 = {}", out[0]);
         assert!((out[2] - 1.0).abs() < 0.01, "f1 = {}", out[2]);
     }

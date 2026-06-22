@@ -582,10 +582,6 @@ export interface StemStatus {
   accelerated: boolean;
 }
 
-/** UI grouping of the one 4-stem result: full 4 faders, or vocals + everything
- *  else. Switching is free — htdemucs always separates 4 stems in one pass. */
-export type StemMode = "four" | "two";
-
 export function stemsStatus(trackPath: string): Promise<StemStatus> {
   return invoke<StemStatus>("stems_status", { trackPath });
 }

@@ -105,9 +105,11 @@ function buildFor(triple, host) {
 }
 
 const host = hostTriple();
+const requested = process.env.TAURI_ENV_TARGET_TRIPLE || host;
 const binDir = join(root, "src-tauri", "binaries");
 mkdirSync(binDir, { recursive: true });
 
+const staged = [];
 for (const triple of targetsToBuild()) {
   const built = buildFor(triple, host);
   const dest = join(
@@ -115,7 +117,20 @@ for (const triple of targetsToBuild()) {
     isWin ? `hm-visualizer-${triple}.exe` : `hm-visualizer-${triple}`,
   );
   copyFileSync(built, dest);
+  staged.push(dest);
   console.log(`[sidecar] staged ${dest}`);
+}
+
+// A universal-apple-darwin build needs THREE files: the two per-arch sidecars
+// (which satisfy Tauri's per-arch resource check during each sub-build, staged
+// above) AND a single fat `hm-visualizer-universal-apple-darwin` that the final
+// `.app` bundle step copies in — `lipo` the two arches into it.
+if (requested === "universal-apple-darwin") {
+  const universal = join(binDir, "hm-visualizer-universal-apple-darwin");
+  execFileSync("lipo", ["-create", ...staged, "-output", universal], {
+    stdio: "inherit",
+  });
+  console.log(`[sidecar] lipo'd universal ${universal}`);
 }
 
 if (isWin) {

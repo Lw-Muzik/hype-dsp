@@ -1,0 +1,43 @@
+name: hypemuzik
+base: core22
+# Stamped from src-tauri/tauri.conf.json by the release workflow before build.
+version: '0.0.0'
+summary: System-wide audio enhancer & music player
+description: |
+  HypeMuzik is a desktop audio enhancer and player: a real-time DSP chain
+  (EQ, bass boost, surround, room reverb), local / cloud / phone music
+  libraries, MilkDrop and in-app visualizers, lyrics, and more.
+grade: stable
+confinement: strict
+compression: lzo
+
+apps:
+  hypemuzik:
+    command: usr/bin/hypemuzik
+    # Provides the GTK/WebKitGTK runtime + desktop integration the Tauri
+    # webview needs, and fixes up the bundled .desktop file.
+    extensions: [gnome]
+    desktop: usr/share/applications/HypeMuzik.desktop
+    plugs:
+      - home            # open/play files from the user's folders
+      - removable-media # ...and from mounted drives
+      - network         # cloud (Drive/Dropbox) + radio streaming
+      - network-bind    # Phone Link LAN server
+      - audio-playback
+      - audio-record    # audio capture / system-tap features
+      - opengl          # visualizer sidecar (SDL2/GL)
+      - avahi-observe   # mDNS discovery for Phone Link
+
+parts:
+  hypemuzik:
+    plugin: nil
+    # The release build's Linux .deb is staged next to this file as `app.deb`
+    # by CI; extract its payload (binary + desktop file + icons + visualizer
+    # sidecar + presets) so the snap reuses exactly what Tauri already bundled,
+    # with no recompile.
+    override-build: |
+      dpkg-deb -x "$CRAFT_PROJECT_DIR/app.deb" "$CRAFT_PART_INSTALL"
+    # Bundle WebKitGTK (not part of the GNOME platform snap) so the webview
+    # loads under strict confinement.
+    stage-packages:
+      - libwebkit2gtk-4.1-0

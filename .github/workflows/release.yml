@@ -126,3 +126,52 @@ jobs:
             target/*/release/bundle/**/*.AppImage
             target/*/release/bundle/**/*.msi
             target/*/release/bundle/**/*.exe
+
+  # Tauri's bundler has no Snap target, so build one separately by repackaging
+  # the Linux .deb the build job produced (no recompile) via snapcraft, then
+  # attach the .snap to the release. Manual (workflow_dispatch) runs still get a
+  # downloadable .snap artifact even though there's no release to attach to.
+  snap:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the Linux build artifacts (.deb)
+        uses: actions/download-artifact@v4
+        with:
+          name: hypemuzik-ubuntu-22.04
+          path: linux-build
+
+      - name: Stage the .deb and stamp the snap version
+        run: |
+          deb="$(find linux-build -name '*.deb' | head -1)"
+          if [ -z "$deb" ]; then
+            echo "::error::no .deb found in the Linux build artifacts"
+            exit 1
+          fi
+          cp "$deb" app.deb
+          ver="$(jq -r .version src-tauri/tauri.conf.json)"
+          sed -i "s/^version:.*/version: '$ver'/" snap/snapcraft.yaml
+          echo "Building snap $ver from $(basename "$deb")"
+
+      - name: Build the snap
+        id: snap
+        uses: snapcore/action-build@v1
+
+      - name: Upload the .snap as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hypemuzik-snap
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ steps.snap.outputs.snap }}
+
+      - name: Attach the .snap to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          files: ${{ steps.snap.outputs.snap }}

@@ -5,9 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Offline stem separation (Demucs) — orchestrates the native separator sidecar, caches results, and manages the model."
+description = "Real-time stem separation (htdemucs ONNX, CoreML-accelerated) — separates a track into vocals/drums/bass/other in-process so the player's faders feel instant."
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+ort = { workspace = true }
+hound = { workspace = true }

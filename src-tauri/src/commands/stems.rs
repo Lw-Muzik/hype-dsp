@@ -1,104 +1,104 @@
-//! Stem-separation commands. Separates a track into stems via the Demucs sidecar
-//! (offline, cached), then plays them through the engine where the UI's faders
-//! mix them live. 4-stem (vocals/drums/bass/other) or 2-stem (vocals/instrumental,
-//! ~2× faster). See `hm_stems` + `hm_audio::stems`.
+//! Stem-separation commands. Separates the **currently playing** track into four
+//! stems in-process (htdemucs on CoreML, cached), then swaps them in at the live
+//! playhead so the UI's faders mix them instantly — VirtualDJ-style.
+//!
+//! There's no manual "separate" step: the Stems view *arms* the current track
+//! automatically, the track keeps playing while htdemucs runs (a few seconds on
+//! Apple Silicon), then the stems swap in seamlessly (at unity gain they sum
+//! back to the original mix). "2-stem" vs "4-stem" is a pure UI regrouping of
+//! the same one-pass result, so switching modes is free. See `hm_stems` +
+//! `hm_audio::stems`.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use hm_audio::{decode_file, AudioEngine, DecodedAudio, STEM_COUNT};
-use hm_core::IpcError;
-use hm_stems::{Demucs, StemMode, Stems};
+use hm_audio::{decode_file, resample_stereo, AudioEngine, DecodedAudio, STEM_COUNT};
+use hm_core::{IpcError, TrackMeta};
+use hm_stems::{Separator, StemSet, STEM_SR};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-/// Managed state: the configured separator + a scratch dir for the input WAV.
+/// Managed state: the configured htdemucs separator (model + on-disk cache).
 pub struct StemState {
-    pub demucs: Demucs,
-    pub temp_dir: PathBuf,
+    pub separator: Separator,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StemStatus {
-    /// The separator (sidecar + model) is installed.
+    /// The model (and ONNX Runtime) are installed — separation can run.
     available: bool,
-    /// This track has already been separated in this mode (cached).
+    /// This track is already separated (cached) — arming is instant.
     separated: bool,
+    /// CoreML (Neural Engine / GPU) is driving inference, vs. the CPU fallback.
+    accelerated: bool,
 }
 
 #[tauri::command]
-pub fn stems_status(
-    stems: State<'_, StemState>,
-    track_path: String,
-    mode: StemMode,
-) -> StemStatus {
+pub fn stems_status(stems: State<'_, StemState>, track_path: String) -> StemStatus {
+    let available = stems.separator.available();
     StemStatus {
-        available: stems.demucs.available(),
-        separated: stems.demucs.cached(Path::new(&track_path), mode).is_some(),
+        available,
+        separated: stems.separator.cached(Path::new(&track_path)).is_some(),
+        accelerated: available && stems.separator.accelerated().unwrap_or(false),
     }
 }
 
-/// Separate `track_path` for `mode` (using the cache if present) and start stem
-/// playback. Emits `stems:progress` (0.0..=1.0) while separating.
+/// Arm stems for `track_path`: separate it (using the cache if present) and swap
+/// the stems in at the live playhead. Emits `stems:progress` (0.0..=1.0) while
+/// htdemucs runs — the track keeps playing throughout.
 #[tauri::command(async)]
-pub fn stems_separate(
+pub fn stems_arm(
     app: AppHandle,
     stems: State<'_, StemState>,
     engine: State<'_, AudioEngine>,
     track_path: String,
-    mode: StemMode,
 ) -> Result<(), IpcError> {
     let track = Path::new(&track_path);
 
-    let result: Stems = if let Some(cached) = stems.demucs.cached(track, mode) {
+    let set: StemSet = if let Some(cached) = stems.separator.cached(track) {
         let _ = app.emit("stems:progress", 1.0_f32);
         cached
     } else {
         let decoded = decode_file(track).map_err(|e| IpcError::new("stems", e.to_string()))?;
-        let input_wav = stems.temp_dir.join("stem_input.wav");
-        write_wav_f32(&input_wav, &decoded.samples, decoded.sample_rate)
-            .map_err(|e| IpcError::new("stems", e))?;
+        // htdemucs runs at 44.1 kHz; resample the mixture up front.
+        let mix = resample_stereo(&decoded.samples, decoded.sample_rate, STEM_SR);
         let progress_app = app.clone();
         stems
-            .demucs
-            .separate(&input_wav, mode, move |p| {
+            .separator
+            .separate(&mix, track, move |p| {
                 let _ = progress_app.emit("stems:progress", p);
             })
             .map_err(|e| IpcError::new("stems", e.to_string()))?
     };
 
-    // Decode each stem into its playback slot; empty slots play as silence.
-    let mut decoded: Vec<(usize, DecodedAudio)> = Vec::new();
-    for sp in &result.stems {
-        let d = decode_file(&sp.path).map_err(|e| IpcError::new("stems", e.to_string()))?;
-        decoded.push((sp.slot, d));
-    }
-    let Some((_, first)) = decoded.first() else {
-        return Err(IpcError::new("stems", "no stems produced".to_string()));
-    };
-    let rate = first.sample_rate;
-    let meta = first.meta.clone();
-    let mut buffers: [DecodedAudio; STEM_COUNT] = std::array::from_fn(|_| DecodedAudio {
-        samples: Vec::new(),
-        sample_rate: rate,
-        meta: meta.clone(),
+    let buffers: [DecodedAudio; STEM_COUNT] = set.map(|samples| DecodedAudio {
+        samples,
+        sample_rate: STEM_SR,
+        meta: TrackMeta::default(),
     });
-    for (slot, d) in decoded {
-        if slot < STEM_COUNT {
-            buffers[slot] = d;
-        }
-    }
 
+    // Swap in at the live playhead so the track continues without a gap.
+    let start = engine.pos().position_secs();
     engine
-        .play_stems(buffers)
+        .play_stems(buffers, start)
         .map_err(|e| IpcError::new("stems", e.to_string()))?;
     Ok(())
 }
 
-/// Set a stem's gain live (0 = muted, 1 = unity). Slots: 0 vocals, 1 drums/
-/// instrumental, 2 bass, 3 other.
+/// Set a stem's gain live (0 = muted, 1 = unity, up to 1.5 = boost). Slots:
+/// 0 vocals, 1 drums, 2 bass, 3 other.
 #[tauri::command]
 pub fn stems_set_gain(engine: State<'_, AudioEngine>, stem: usize, gain: f32) {
     engine.set_stem_gain(stem, gain);
+}
+
+/// Reset every stem to unity so the mix sounds like the original track again
+/// (used when leaving the Stems view).
+#[tauri::command]
+pub fn stems_reset(engine: State<'_, AudioEngine>) {
+    for s in 0..STEM_COUNT {
+        engine.set_stem_gain(s, 1.0);
+    }
 }
 
 /// Current per-stem gains.
@@ -106,19 +106,4 @@ pub fn stems_set_gain(engine: State<'_, AudioEngine>, stem: usize, gain: f32) {
 pub fn stems_gains(engine: State<'_, AudioEngine>) -> Vec<f32> {
     let gains = engine.stem_gains();
     (0..STEM_COUNT).map(|i| gains.get(i)).collect()
-}
-
-/// Write interleaved-stereo float samples to a 32-bit float WAV.
-fn write_wav_f32(path: &Path, samples: &[f32], sample_rate: u32) -> Result<(), String> {
-    let spec = hound::WavSpec {
-        channels: 2,
-        sample_rate,
-        bits_per_sample: 32,
-        sample_format: hound::SampleFormat::Float,
-    };
-    let mut writer = hound::WavWriter::create(path, spec).map_err(|e| e.to_string())?;
-    for &s in samples {
-        writer.write_sample(s).map_err(|e| e.to_string())?;
-    }
-    writer.finalize().map_err(|e| e.to_string())
 }

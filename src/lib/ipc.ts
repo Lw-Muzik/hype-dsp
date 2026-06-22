@@ -574,31 +574,33 @@ export function accountHeartbeat(
 /* ----------------------------------------------------------------- stems */
 
 export interface StemStatus {
-  /** The separator (Demucs sidecar + model) is installed. */
+  /** The separator (htdemucs model + ONNX Runtime) is installed. */
   available: boolean;
-  /** This track has already been separated in this mode (cached). */
+  /** This track is already separated (cached) — arming is instant. */
   separated: boolean;
+  /** CoreML (Neural Engine / GPU) is driving inference, vs. CPU fallback. */
+  accelerated: boolean;
 }
 
-/** 4 stems (vocals/drums/bass/other) or 2 (vocals/instrumental, ~2× faster). */
+/** UI grouping of the one 4-stem result: full 4 faders, or vocals + everything
+ *  else. Switching is free — htdemucs always separates 4 stems in one pass. */
 export type StemMode = "four" | "two";
 
-export function stemsStatus(
-  trackPath: string,
-  mode: StemMode,
-): Promise<StemStatus> {
-  return invoke<StemStatus>("stems_status", { trackPath, mode });
+export function stemsStatus(trackPath: string): Promise<StemStatus> {
+  return invoke<StemStatus>("stems_status", { trackPath });
 }
-/** Separate the track and start stem playback (emits `stems:progress`). */
-export function stemsSeparate(
-  trackPath: string,
-  mode: StemMode,
-): Promise<void> {
-  return invoke<void>("stems_separate", { trackPath, mode });
+/** Arm stems for the current track: separate it (cached if available) and swap
+ *  the stems in at the live playhead. Emits `stems:progress` while it runs. */
+export function stemsArm(trackPath: string): Promise<void> {
+  return invoke<void>("stems_arm", { trackPath });
 }
 /** Set a stem's gain live (0 = muted). Stem order: 0 vocals, 1 drums, 2 bass, 3 other. */
 export function stemsSetGain(stem: number, gain: number): Promise<void> {
   return invoke<void>("stems_set_gain", { stem, gain });
+}
+/** Reset every stem to unity — the mix sounds like the original track again. */
+export function stemsReset(): Promise<void> {
+  return invoke<void>("stems_reset");
 }
 export function stemsGains(): Promise<number[]> {
   return invoke<number[]>("stems_gains");

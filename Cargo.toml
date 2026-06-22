@@ -64,6 +64,17 @@ mdns-sd = "0.13"
 # Persistence
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 
+# Stem separation (htdemucs ONNX). `load-dynamic` links libonnxruntime at
+# runtime (the CoreML-enabled Apple build) instead of downloading a binary at
+# build time — so the workspace builds offline and we bundle the dylib for
+# packaging. `coreml` enables the Neural-Engine/GPU EP (auto CPU fallback).
+# Pinned exactly — rc.12 has a compile bug in its VitisAI EP bindings.
+ort = { version = "=2.0.0-rc.10", default-features = false, features = [
+    "std",
+    "load-dynamic",
+    "coreml",
+] }
+
 # Dev-only
 hound = "3.5.1"
 

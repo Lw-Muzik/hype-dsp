@@ -234,24 +234,36 @@ pub fn run() {
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_account.json"));
             app.manage(commands::account::AccountState::open(account_path));
 
-            // Stem separation (Demucs). The sidecar binary + ggml model are
-            // placed under <app data>/stems by scripts/build_demucs.sh; results
-            // are cached per track.
+            // Stem separation (htdemucs ONNX, CoreML-accelerated). The model
+            // (htdemucs.onnx + sidecar .json) and the ONNX Runtime dylib are
+            // placed under <app data>/stems by scripts/get_stems_model.sh;
+            // separated stems cache per track.
             let stem_root = app
                 .path()
                 .app_data_dir()
                 .map(|d| d.join("stems"))
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_stems"));
-            let sidecar_name = if cfg!(windows) { "hm-demucs.exe" } else { "hm-demucs" };
-            let _ = std::fs::create_dir_all(stem_root.join("tmp"));
             let _ = std::fs::create_dir_all(stem_root.join("cache"));
+            // Point `ort` (load-dynamic) at a libonnxruntime placed next to the
+            // model; otherwise it searches the system library path.
+            let dylib_name = if cfg!(windows) {
+                "onnxruntime.dll"
+            } else if cfg!(target_os = "macos") {
+                "libonnxruntime.dylib"
+            } else {
+                "libonnxruntime.so"
+            };
+            let dylib = stem_root.join(dylib_name);
+            if dylib.is_file() {
+                // Set once during single-threaded setup, before any separator
+                // session is created.
+                std::env::set_var("ORT_DYLIB_PATH", &dylib);
+            }
             app.manage(commands::stems::StemState {
-                demucs: hm_stems::Demucs::new(
-                    stem_root.join(sidecar_name),
-                    stem_root.join("model"),
+                separator: hm_stems::Separator::new(
+                    stem_root.join("model").join("htdemucs.onnx"),
                     stem_root.join("cache"),
                 ),
-                temp_dir: stem_root.join("tmp"),
             });
 
             // Per-app mixer controller (real on Windows; unsupported stub on macOS).
@@ -524,8 +536,9 @@ pub fn run() {
             commands::account::account_logout,
             commands::account::account_heartbeat,
             commands::stems::stems_status,
-            commands::stems::stems_separate,
+            commands::stems::stems_arm,
             commands::stems::stems_set_gain,
+            commands::stems::stems_reset,
             commands::stems::stems_gains,
         ])
         .run(tauri::generate_context!())

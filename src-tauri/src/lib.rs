@@ -163,6 +163,22 @@ pub fn run() {
     let queue_index = engine.queue_index_handle();
 
     tauri::Builder::default()
+        // MUST be the first plugin: a second launch (e.g. opening an audio file
+        // from the file manager while the app runs) forwards its argv here and
+        // exits, instead of spawning a duplicate. We pull the audio paths out,
+        // hand them to the running UI, and focus the window. (macOS routes file
+        // opens through `RunEvent::Opened` instead — see the run loop below.)
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let paths = commands::open_with::audio_paths(argv.into_iter().skip(1));
+            if !paths.is_empty() {
+                app.state::<commands::open_with::PendingOpen>().push(paths.clone());
+                let _ = app.emit("app:open_files", paths);
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
@@ -183,7 +199,13 @@ pub fn run() {
             Menu::with_items(handle, &[&app_menu])
         })
         .manage(engine)
+        .manage(commands::open_with::PendingOpen::default())
         .setup(move |app| {
+            // Audio files passed on the command line (Windows/Linux cold launch,
+            // or "Open With" before the window mounts) — buffer them for the UI
+            // to drain on init. macOS delivers these via `RunEvent::Opened`.
+            app.state::<commands::open_with::PendingOpen>()
+                .push(std::env::args().skip(1));
             // Open the preset store in the app data dir; fall back to an
             // in-memory store so the app still runs if the disk path fails.
             let store = app
@@ -554,9 +576,35 @@ pub fn run() {
             commands::stems::stems_set_gain,
             commands::stems::stems_reset,
             commands::stems::stems_gains,
+            commands::open_with::open_files,
+            commands::open_with::take_pending_open,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running the HypeMuzik application");
+        .build(tauri::generate_context!())
+        .expect("error while building the HypeMuzik application")
+        .run(|_app, _event| {
+            // macOS delivers file-manager opens (and "Open With") as an Apple
+            // "open documents" event, both at cold launch and while running —
+            // never as argv. Buffer the audio paths for the UI to drain on init
+            // and emit a warm event so an already-open app plays them at once.
+            // (`RunEvent::Opened` only exists on macOS/iOS, hence the cfg gate;
+            // Windows/Linux take the argv + single-instance paths above.)
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                let paths = commands::open_with::audio_paths(
+                    urls.into_iter()
+                        .filter_map(|u| u.to_file_path().ok())
+                        .map(|p| p.to_string_lossy().into_owned()),
+                );
+                if !paths.is_empty() {
+                    _app.state::<commands::open_with::PendingOpen>().push(paths.clone());
+                    let _ = _app.emit("app:open_files", paths);
+                    if let Some(window) = _app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+        });
 
     // The app's event loop has ended. ONNX Runtime (the stem separator) aborts
     // ("mutex lock failed") if its global environment is torn down by C++ static

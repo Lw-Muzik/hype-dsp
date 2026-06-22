@@ -16,7 +16,7 @@ const MAX_DEPTH: usize = 8;
 /// small enough to keep progress smooth and memory bounded over huge libraries.
 const SCAN_CHUNK: usize = 256;
 
-fn is_audio(path: &Path) -> bool {
+pub(crate) fn is_audio(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .map(|e| AUDIO_EXTS.contains(&e.to_ascii_lowercase().as_str()))
@@ -50,6 +50,27 @@ fn collect_audio_paths(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
     }
 }
 
+/// Read a file's tags + duration and build a [`LibraryTrack`] (title falls back
+/// to the filename). One file open for both — the same extractor the
+/// now-playing card uses, so the listing matches it. Shared by the folder scan,
+/// the tag refresh, and opening files from the file manager.
+pub(crate) fn track_from_path(path: &Path) -> LibraryTrack {
+    let (tags, duration) = probe_track(path);
+    let filename = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+    LibraryTrack {
+        path: path.to_string_lossy().into_owned(),
+        title: tags.title.filter(|t| !t.trim().is_empty()).unwrap_or(filename),
+        artist: tags.artist,
+        album: tags.album,
+        genre: tags.genre,
+        duration_secs: duration,
+    }
+}
+
 /// Read tags + duration for `paths` and upsert them in batched transactions,
 /// emitting `library:scan_progress` as it goes. Shared by the folder scan and
 /// the tag refresh. Returns the number indexed.
@@ -58,27 +79,7 @@ fn index_paths(app: &tauri::AppHandle, store: &MediaStore, paths: &[PathBuf]) ->
     let _ = app.emit("library:scan_progress", ScanProgress { done: 0, total });
     let mut done = 0;
     for chunk in paths.chunks(SCAN_CHUNK) {
-        let batch: Vec<LibraryTrack> = chunk
-            .iter()
-            .map(|p| {
-                // One file open for both tags and duration — the same extractor
-                // the now-playing card uses, so the listing matches it.
-                let (tags, duration) = probe_track(p);
-                let filename = p
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Unknown")
-                    .to_string();
-                LibraryTrack {
-                    path: p.to_string_lossy().into_owned(),
-                    title: tags.title.filter(|t| !t.trim().is_empty()).unwrap_or(filename),
-                    artist: tags.artist,
-                    album: tags.album,
-                    genre: tags.genre,
-                    duration_secs: duration,
-                }
-            })
-            .collect();
+        let batch: Vec<LibraryTrack> = chunk.iter().map(|p| track_from_path(p)).collect();
         if store.upsert_tracks(&batch).is_ok() {
             done += batch.len();
         }

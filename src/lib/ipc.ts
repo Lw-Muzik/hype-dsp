@@ -663,6 +663,28 @@ export function libraryList(): Promise<LibraryTrack[]> {
   return invoke<LibraryTrack[]>("library_list");
 }
 
+/* ----------------------------------------------- open from the file manager */
+
+/** Import audio files opened from the OS file manager (or "Open With") into the
+ *  library and return the resolved tracks, so the caller can enqueue and play
+ *  them. Non-audio / unreadable paths are dropped. */
+export function openFiles(paths: string[]): Promise<LibraryTrack[]> {
+  return invoke<LibraryTrack[]>("open_files", { paths });
+}
+
+/** Drain audio paths the OS handed the app before the UI was ready (a cold
+ *  launch or "Open With" before the window mounted). `[]` when none pending. */
+export function takePendingOpenFiles(): Promise<string[]> {
+  return invoke<string[]>("take_pending_open");
+}
+
+/** Subscribe to audio files opened while the app is already running (warm). */
+export function onOpenFiles(
+  handler: (paths: string[]) => void,
+): Promise<UnlistenFn> {
+  return listen<string[]>("app:open_files", (e) => handler(e.payload));
+}
+
 /** Remove a track from the library. */
 export function libraryRemove(path: string): Promise<void> {
   return invoke<void>("library_remove", { path });

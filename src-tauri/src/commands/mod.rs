@@ -16,6 +16,7 @@ pub mod link;
 pub mod license;
 pub mod lyrics;
 pub mod mixer;
+pub mod open_with;
 pub mod presets;
 pub mod profiles;
 pub mod radio;

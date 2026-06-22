@@ -23,6 +23,9 @@ libc = "0.2"
 tauri-plugin-opener = "2.5.4"
 tauri-plugin-store = "2.4.3"
 tauri-plugin-dialog = "2.7.1"
+# Forwards a "open this file" second launch (Windows/Linux) to the running
+# instance so file-manager opens don't spawn a duplicate app.
+tauri-plugin-single-instance = "2"
 
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -8,12 +8,16 @@ import {
   onLinkNowPlaying,
   onMediaCommand,
   onNowPlaying,
+  onOpenFiles,
   onProgress,
   onQueueIndex,
   onTransport,
+  openFiles,
+  takePendingOpenFiles,
 } from "@/lib/ipc";
 import { useUiStore } from "@/stores/ui";
-import { useEngineStore } from "@/stores/engine";
+import { useEngineStore, localItem } from "@/stores/engine";
+import { useLibraryStore } from "@/stores/library";
 
 /**
  * App-wide startup effects. Loads `AppInfo` and the engine state, then
@@ -30,10 +34,32 @@ export function Providers({ children }: { children: ReactNode }) {
   const applyNowPlaying = useEngineStore((s) => s.applyNowPlaying);
   const applyQueueIndex = useEngineStore((s) => s.applyQueueIndex);
   const handleMediaCommand = useEngineStore((s) => s.handleMediaCommand);
+  const playQueueItems = useEngineStore((s) => s.playQueueItems);
+  const refreshLibrary = useLibraryStore((s) => s.refresh);
 
   useEffect(() => {
     let cancelled = false;
     const unlisteners: UnlistenFn[] = [];
+
+    // Files opened from the OS file manager: import them (so they persist under
+    // Local), then play immediately — the first plays and the rest queue behind
+    // it. Drained once for cold-launch/"Open With" before the UI mounted, and
+    // again per warm `app:open_files` event while the app runs.
+    const handleOpenFiles = async (paths: string[]) => {
+      if (!paths.length) return;
+      try {
+        const tracks = await openFiles(paths);
+        if (cancelled || !tracks.length) return;
+        playQueueItems(tracks.map(localItem), 0);
+        refreshLibrary();
+      } catch {
+        // Opening is best-effort; a failure shouldn't break startup.
+      }
+    };
+    takePendingOpenFiles().then(handleOpenFiles).catch(() => {});
+    onOpenFiles(handleOpenFiles)
+      .then((un) => (cancelled ? un() : unlisteners.push(un)))
+      .catch(() => {});
 
     appInfo()
       .then((info) => !cancelled && setAppInfo(info))
@@ -85,6 +111,8 @@ export function Providers({ children }: { children: ReactNode }) {
     applyNowPlaying,
     applyQueueIndex,
     handleMediaCommand,
+    playQueueItems,
+    refreshLibrary,
   ]);
 
   return <>{children}</>;

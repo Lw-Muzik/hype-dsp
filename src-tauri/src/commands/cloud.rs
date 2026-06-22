@@ -1,11 +1,26 @@
 //! Cloud music commands (Google Drive / Dropbox): connect, list, play.
 
+use std::collections::HashMap;
+
 use hm_audio::AudioEngine;
 use hm_core::IpcError;
+use serde::Serialize;
 use tauri::State;
 
 use crate::cloud::{CloudEntry, CloudProvider, CloudState, CloudStatus};
+use crate::cloud_list::CloudListCache;
 use crate::cloud_meta::{CloudMetaCache, CloudTrackMeta};
+
+/// A flat account-wide audio listing plus whether it was served from the
+/// on-disk cache. `fromCache` lets the front-end show it instantly and then
+/// quietly re-list in the background, rather than re-fetching a list it just
+/// fetched fresh.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudAudioPage {
+    pub entries: Vec<CloudEntry>,
+    pub from_cache: bool,
+}
 
 /// Which providers are configured (have credentials) and connected.
 #[tauri::command]
@@ -22,10 +37,16 @@ pub fn cloud_connect(cloud: State<'_, CloudState>, provider: CloudProvider) -> R
         .map_err(|e| IpcError::new("cloud", e))
 }
 
-/// Forget the stored tokens for `provider`.
+/// Forget the stored tokens for `provider`, and drop its cached listing so a
+/// reconnect (possibly a different account) starts clean.
 #[tauri::command]
-pub fn cloud_disconnect(cloud: State<'_, CloudState>, provider: CloudProvider) {
+pub fn cloud_disconnect(
+    cloud: State<'_, CloudState>,
+    list_cache: State<'_, CloudListCache>,
+    provider: CloudProvider,
+) {
     cloud.disconnect(provider);
+    list_cache.clear(provider);
 }
 
 /// List the contents of one cloud folder (subfolders + audio files). `folder`
@@ -44,14 +65,44 @@ pub fn cloud_list(
 /// Every audio file in the account, flat (all folders) — for the Player's
 /// unified library. Mirrors the mobile app's account-wide listing so songs
 /// nested in subfolders are included, unlike folder-by-folder `cloud_list`.
+///
+/// The result is cached on disk per provider: when `refresh` is false a cached
+/// listing is returned instantly (no network) so reopening the app is fast;
+/// `refresh` (or a cold cache) re-lists from the provider and updates the cache.
 #[tauri::command(async)]
 pub fn cloud_all_audio(
     cloud: State<'_, CloudState>,
+    list_cache: State<'_, CloudListCache>,
     provider: CloudProvider,
-) -> Result<Vec<CloudEntry>, IpcError> {
-    cloud
+    refresh: bool,
+) -> Result<CloudAudioPage, IpcError> {
+    if !refresh {
+        if let Some(entries) = list_cache.get(provider) {
+            return Ok(CloudAudioPage {
+                entries,
+                from_cache: true,
+            });
+        }
+    }
+    let entries = cloud
         .all_audio(provider)
-        .map_err(|e| IpcError::new("cloud", e))
+        .map_err(|e| IpcError::new("cloud", e))?;
+    list_cache.put(provider, entries.clone());
+    Ok(CloudAudioPage {
+        entries,
+        from_cache: false,
+    })
+}
+
+/// Every cached tag/cover for `provider`, keyed by file id (from the on-disk
+/// metadata cache). Lets the library hydrate covers/titles in one call on
+/// launch instead of one round-trip per track.
+#[tauri::command]
+pub fn cloud_cached_metadata(
+    cache: State<'_, CloudMetaCache>,
+    provider: CloudProvider,
+) -> HashMap<String, CloudTrackMeta> {
+    cache.snapshot_for(&format!("{provider:?}"))
 }
 
 /// Read a cloud track's embedded tags (title/artist/album + cover) by fetching

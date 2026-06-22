@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   cloudAllAudio,
+  cloudCachedMetadata,
   cloudStatus,
   cloudTrackMetadata,
   libraryList,
@@ -9,7 +10,7 @@ import {
 } from "@/lib/ipc";
 import { cloudItem, localItem, phoneItem } from "@/stores/engine";
 import type { QueueItem } from "@/stores/engine";
-import type { CloudProvider, CloudTrackMeta } from "@/lib/types";
+import type { CloudAudioPage, CloudEntry, CloudProvider, CloudTrackMeta } from "@/lib/types";
 
 /** A browsable track from any source, ready to enqueue (it's a `QueueItem`). */
 export interface MusicTrack extends QueueItem {
@@ -50,16 +51,13 @@ function parentFolder(path: string): string | null {
   return parts.length >= 2 ? parts[parts.length - 2]! : null;
 }
 
-/** Collect a connected provider's audio files in one flat, account-wide listing
- *  (all folders) — mirrors the mobile app, so songs nested in subfolders are
- *  included rather than truncated by a bounded folder walk. */
-async function scanCloud(provider: CloudProvider): Promise<MusicTrack[]> {
-  let entries;
-  try {
-    entries = await cloudAllAudio(provider);
-  } catch {
-    return [];
-  }
+/** Map a provider's flat, account-wide audio entries (all folders — mirrors the
+ *  mobile app, so songs nested in subfolders are included) into browsable
+ *  `MusicTrack`s. Pure: the listing is fetched (and cached) in `ensureCloud`. */
+function entriesToTracks(
+  provider: CloudProvider,
+  entries: CloudEntry[],
+): MusicTrack[] {
   return entries.map((e) => ({
     ...cloudItem(e),
     source: "cloud" as const,
@@ -240,19 +238,87 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
           set({ cloudBase: [], cloudConnected: false, cloudLoad: "ready" });
           return;
         }
-        const lists = await Promise.all(connected.map(scanCloud));
+
+        // ---- Phase 1: instant. The cached listing + cached tags are pure disk
+        // reads when warm (a relaunch), so the library appears immediately
+        // rather than re-walking the account over the network as if just
+        // connected. A cold cache (first connect) fetches once, here.
+        const pages = await Promise.all(
+          connected.map((provider) =>
+            cloudAllAudio(provider, false)
+              .then((page) => ({ provider, page }))
+              .catch(() => ({
+                provider,
+                page: { entries: [], fromCache: false } as CloudAudioPage,
+              })),
+          ),
+        );
         if (gen !== cloudGen) return;
-        const merged = lists.flat();
-        set({ cloudBase: merged, cloudConnected: true, cloudLoad: "ready" });
-        // Resolve tags (title/artist/album + cover) in the background, merging
-        // each result in by uid as it arrives. Cancelled if the source is
-        // invalidated mid-flight (the generation token won't match).
-        void preloadCloudMeta(
-          merged,
-          (uid, meta) => {
+        const base = pages.flatMap(({ provider, page }) =>
+          entriesToTracks(provider, page.entries),
+        );
+
+        const cached = await Promise.all(
+          connected.map((provider) =>
+            cloudCachedMetadata(provider)
+              .then((meta) => ({ provider, meta }))
+              .catch(() => ({
+                provider,
+                meta: {} as Record<string, CloudTrackMeta>,
+              })),
+          ),
+        );
+        if (gen !== cloudGen) return;
+        const meta = new Map<string, CloudTrackMeta>();
+        for (const { provider, meta: m } of cached) {
+          for (const [fileId, value] of Object.entries(m)) {
+            meta.set(`cloud:${provider}:${fileId}`, value);
+          }
+        }
+        set({ cloudBase: base, cloudMeta: meta, cloudConnected: true, cloudLoad: "ready" });
+
+        // ---- Phase 2: background refresh. Re-list providers served from cache
+        // so newly added/removed files surface, then resolve tags only for
+        // tracks we don't already have cached (first sight). Everything below is
+        // keyed on `gen`, so an invalidate/disconnect mid-flight discards it.
+        const staleProviders = pages
+          .filter(({ page }) => page.fromCache)
+          .map(({ provider }) => provider);
+        if (staleProviders.length > 0) {
+          const fresh = await Promise.all(
+            staleProviders.map((provider) =>
+              cloudAllAudio(provider, true)
+                .then((page) => ({ provider, entries: page.entries }))
+                .catch(() => null),
+            ),
+          );
+          if (gen !== cloudGen) return;
+          const freshByProvider = new Map(
+            fresh
+              .filter(
+                (f): f is { provider: CloudProvider; entries: CloudEntry[] } =>
+                  f !== null,
+              )
+              .map((f) => [f.provider, f.entries]),
+          );
+          // Rebuild from fresh listings where we re-listed, else the phase-1 copy.
+          const rebuilt = pages.flatMap(({ provider, page }) =>
+            entriesToTracks(provider, freshByProvider.get(provider) ?? page.entries),
+          );
+          set({ cloudBase: rebuilt });
+        }
+
+        // Only tracks without cached metadata need a network read; the rest
+        // already showed instantly from the cache in phase 1.
+        const currentMeta = get().cloudMeta;
+        const needMeta = get().cloudBase.filter((t) => !currentMeta.has(t.uid));
+        if (needMeta.length === 0) return;
+        await preloadCloudMeta(
+          needMeta,
+          (uid, resolved) => {
             if (gen !== cloudGen) return;
             const nextMeta = new Map(get().cloudMeta);
-            nextMeta.set(uid, meta);
+            nextMeta.set(uid, resolved);
             set({ cloudMeta: nextMeta });
           },
           () => gen !== cloudGen,

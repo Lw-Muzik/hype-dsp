@@ -7,6 +7,7 @@
 //! is the thin, well-documented bridge between Rust and React.
 
 mod cloud;
+mod cloud_list;
 mod cloud_meta;
 mod commands;
 mod control;
@@ -292,6 +293,18 @@ pub fn run() {
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_cloud_meta.json"));
             app.manage(cloud_meta::CloudMetaCache::load(cloud_meta_path));
 
+            // Cloud account listing cache, so reopening the app serves the
+            // library instantly instead of re-walking the account over the wire.
+            let cloud_list_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("cloud-list.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_cloud_list.json"));
+            app.manage(cloud_list::CloudListCache::load(cloud_list_path));
+
             // MilkDrop visualizer sidecar process handle.
             app.manage(commands::visualizer::VisualizerState::default());
 
@@ -452,6 +465,7 @@ pub fn run() {
             commands::cloud::cloud_disconnect,
             commands::cloud::cloud_list,
             commands::cloud::cloud_all_audio,
+            commands::cloud::cloud_cached_metadata,
             commands::cloud::cloud_track_metadata,
             commands::cloud::cloud_play,
             commands::link::link_discover,

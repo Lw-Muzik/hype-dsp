@@ -6,6 +6,12 @@
 // Run automatically by `beforeBuildCommand` (see tauri.conf.json) and usable on
 // its own: `node scripts/build-sidecar.mjs`. Requires the native toolchain
 // (CMake + OpenGL/GLEW; on Windows, vcpkg) — see docs/system-eq.md siblings.
+//
+// Universal macOS: `tauri build --target universal-apple-darwin` runs this hook
+// once with TAURI_ENV_TARGET_TRIPLE=universal-apple-darwin, but the per-arch
+// bundler then needs BOTH `hm-visualizer-aarch64-apple-darwin` and
+// `hm-visualizer-x86_64-apple-darwin`. So a universal target is expanded into
+// its two arches: the host arch builds natively, the other is cross-built.
 
 import { execFileSync } from "node:child_process";
 import {
@@ -22,15 +28,22 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const isWin = process.platform === "win32";
 const exeName = isWin ? "hm-visualizer.exe" : "hm-visualizer";
 
-/** Target triple: Tauri sets TAURI_ENV_TARGET_TRIPLE during a bundle; else host. */
-function targetTriple() {
-  if (process.env.TAURI_ENV_TARGET_TRIPLE) {
-    return process.env.TAURI_ENV_TARGET_TRIPLE;
-  }
+/** The rustc host triple (what a plain `cargo build` targets). */
+function hostTriple() {
   const out = execFileSync("rustc", ["-vV"], { encoding: "utf8" });
   const m = out.match(/^host:\s*(.+)$/m);
   if (!m) throw new Error("could not determine the rustc host triple");
   return m[1].trim();
+}
+
+/** The arch triples to build. Tauri sets TAURI_ENV_TARGET_TRIPLE during a
+ *  bundle; a universal macOS target fans out to its two concrete arches. */
+function targetsToBuild() {
+  const requested = process.env.TAURI_ENV_TARGET_TRIPLE || hostTriple();
+  if (requested === "universal-apple-darwin") {
+    return ["aarch64-apple-darwin", "x86_64-apple-darwin"];
+  }
+  return [requested];
 }
 
 /** First file named `name` found anywhere under `dir` (recursive), or null. */
@@ -49,30 +62,61 @@ function findFile(dir, name) {
   return null;
 }
 
-console.log("[sidecar] building hm-visualizer (release, milkdrop)…");
-execFileSync(
-  "cargo",
-  ["build", "--release", "-p", "hm-visualizer", "--features", "milkdrop"],
-  {
+/** Best-effort `rustup target add` so a cross-build doesn't fail on a missing
+ *  std (CI installs targets up front; this covers local universal builds). */
+function ensureTarget(triple) {
+  try {
+    execFileSync("rustup", ["target", "add", triple], { stdio: "inherit" });
+  } catch {
+    // rustup may be absent (e.g. distro-packaged Rust) — let the build surface
+    // the real error if the target genuinely isn't available.
+  }
+}
+
+/** Build hm-visualizer for `triple` and return the path to the binary. When
+ *  `triple` is the host, build without `--target` (output `target/release`, no
+ *  redundant per-target dir); otherwise cross-build into `target/<triple>`. */
+function buildFor(triple, host) {
+  const cross = triple !== host;
+  console.log(
+    `[sidecar] building hm-visualizer (release, milkdrop) for ${triple}` +
+      (cross ? " [cross]" : "") +
+      "…",
+  );
+  if (cross) ensureTarget(triple);
+
+  const args = ["build", "--release", "-p", "hm-visualizer", "--features", "milkdrop"];
+  if (cross) args.push("--target", triple);
+  execFileSync("cargo", args, {
     cwd: root,
     stdio: "inherit",
     // CMake 4 dropped compat with SDL2's old `cmake_minimum_required`.
     env: { ...process.env, CMAKE_POLICY_VERSION_MINIMUM: "3.5" },
-  },
-);
+  });
 
-const built = join(root, "target", "release", exeName);
-if (!existsSync(built)) {
-  throw new Error(`sidecar binary not found at ${built}`);
+  const outDir = cross
+    ? join(root, "target", triple, "release")
+    : join(root, "target", "release");
+  const built = join(outDir, exeName);
+  if (!existsSync(built)) {
+    throw new Error(`sidecar binary not found at ${built}`);
+  }
+  return built;
 }
 
+const host = hostTriple();
 const binDir = join(root, "src-tauri", "binaries");
 mkdirSync(binDir, { recursive: true });
 
-const triple = targetTriple();
-const dest = join(binDir, isWin ? `hm-visualizer-${triple}.exe` : `hm-visualizer-${triple}`);
-copyFileSync(built, dest);
-console.log(`[sidecar] staged ${dest}`);
+for (const triple of targetsToBuild()) {
+  const built = buildFor(triple, host);
+  const dest = join(
+    binDir,
+    isWin ? `hm-visualizer-${triple}.exe` : `hm-visualizer-${triple}`,
+  );
+  copyFileSync(built, dest);
+  console.log(`[sidecar] staged ${dest}`);
+}
 
 if (isWin) {
   // projectM is a shared lib on Windows (its static feature is broken in

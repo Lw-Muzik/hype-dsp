@@ -56,6 +56,17 @@ impl CloudMetaCache {
         self.inner.lock().ok()?.get(key).cloned()
     }
 
+    /// Every cached entry whose key starts with `"{prefix}:"`, re-keyed by the
+    /// remaining file id. Lets the front-end hydrate all of a provider's known
+    /// tags/covers in one call on launch instead of one round-trip per track.
+    pub fn snapshot_for(&self, prefix: &str) -> HashMap<String, CloudTrackMeta> {
+        let want = format!("{prefix}:");
+        let map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        map.iter()
+            .filter_map(|(k, v)| k.strip_prefix(&want).map(|id| (id.to_string(), v.clone())))
+            .collect()
+    }
+
     /// Insert `meta` and persist the whole map (write-then-rename, like the
     /// token store).
     pub fn put(&self, key: String, meta: CloudTrackMeta) {

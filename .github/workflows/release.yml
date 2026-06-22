@@ -30,7 +30,11 @@ jobs:
             args: ""
             rust-targets: ""
           # Windows → .msi (WiX) + .exe (NSIS)
-          - platform: windows-latest
+          # Pinned to 2022: the cmake-rs crate (v0.1.58, via projectm-sys) only
+          # knows the "Visual Studio 17 2022" generator, but windows-latest now
+          # ships VS 18 — so the sidecar's CMake configure fails to find VS.
+          # windows-2022 has the matching toolchain (same pin as ci.yml).
+          - platform: windows-2022
             args: ""
             rust-targets: ""
 

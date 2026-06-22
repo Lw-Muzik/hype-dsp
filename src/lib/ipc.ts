@@ -14,6 +14,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AccountStatus,
   AppInfo,
+  CloudAudioPage,
   CloudEntry,
   CloudProvider,
   CloudStatus,
@@ -144,9 +145,25 @@ export function cloudList(
 }
 
 /** Every audio file in the account, flat (all folders), for the Player's
- *  unified library. Mirrors the mobile app's account-wide listing. */
-export function cloudAllAudio(provider: CloudProvider): Promise<CloudEntry[]> {
-  return invoke<CloudEntry[]>("cloud_all_audio", { provider });
+ *  unified library. Mirrors the mobile app's account-wide listing. The listing
+ *  is cached on disk per provider: by default a cached copy is returned
+ *  instantly (with `fromCache: true`); pass `refresh` to re-list from the
+ *  provider and update the cache. */
+export function cloudAllAudio(
+  provider: CloudProvider,
+  refresh = false,
+): Promise<CloudAudioPage> {
+  return invoke<CloudAudioPage>("cloud_all_audio", { provider, refresh });
+}
+
+/** Every cached tag/cover for a provider, keyed by file id — hydrates the
+ *  library's covers/titles instantly on launch without a per-track round-trip. */
+export function cloudCachedMetadata(
+  provider: CloudProvider,
+): Promise<Record<string, CloudTrackMeta>> {
+  return invoke<Record<string, CloudTrackMeta>>("cloud_cached_metadata", {
+    provider,
+  });
 }
 
 /** Read a cloud track's embedded tags (title/artist/album + cover) from the

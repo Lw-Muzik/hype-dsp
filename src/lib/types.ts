@@ -286,6 +286,13 @@ export interface CloudEntry {
   folder?: string | null;
 }
 
+/** A flat account-wide audio listing. `fromCache` is true when it was served
+ *  from the on-disk cache (so the caller can refresh it in the background). */
+export interface CloudAudioPage {
+  entries: CloudEntry[];
+  fromCache: boolean;
+}
+
 /** A cloud track's embedded tags, read from the file's leading bytes. */
 export interface CloudTrackMeta {
   title: string | null;

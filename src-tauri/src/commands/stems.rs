@@ -39,7 +39,7 @@ pub fn stems_status(stems: State<'_, StemState>, track_path: String) -> StemStat
     StemStatus {
         available,
         separated: stems.separator.cached(Path::new(&track_path)).is_some(),
-        accelerated: available && stems.separator.accelerated().unwrap_or(false),
+        accelerated: available && stems.separator.accelerated(),
     }
 }
 

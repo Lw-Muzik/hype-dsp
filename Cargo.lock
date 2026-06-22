@@ -2598,6 +2598,7 @@ dependencies = [
  "hm-remote",
  "hm-stems",
  "hound",
+ "libc",
  "lofty",
  "objc2-app-kit",
  "reqwest",

@@ -261,7 +261,7 @@ pub fn run() {
             }
             app.manage(commands::stems::StemState {
                 separator: hm_stems::Separator::new(
-                    stem_root.join("model").join("htdemucs.onnx"),
+                    stem_root.join("model"),
                     stem_root.join("cache"),
                 ),
             });
@@ -543,4 +543,11 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running the HypeMuzik application");
+
+    // The app's event loop has ended. ONNX Runtime (the stem separator) aborts
+    // ("mutex lock failed") if its global environment is torn down by C++ static
+    // destructors during normal process exit. We're done — skip those
+    // destructors entirely with `_exit` (state is already autosaved). `exit`
+    // would still run them, so this must be `_exit`.
+    unsafe { libc::_exit(0) };
 }

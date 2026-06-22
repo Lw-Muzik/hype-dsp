@@ -1,22 +1,18 @@
-//! Real-time stem separation via **htdemucs** (Demucs v4) running in-process on
-//! ONNX Runtime — VirtualDJ-grade clean stems (~9 dB SDR), GPU-accelerated.
+//! Real-time stem separation via **htdemucs_ft** (Demucs v4, fine-tuned) running
+//! in-process on ONNX Runtime — VirtualDJ-grade clean stems, GPU-accelerated.
 //!
-//! On Apple Silicon htdemucs separates ~30× faster than real-time (a 4-minute
-//! track in a few seconds), so the player can separate a track **the moment it
-//! loads**, transparently, and the UI's faders feel instant — exactly how
-//! VirtualDJ behaves on capable hardware (it pre-renders to disk only as a
-//! fallback for weak machines). The actual mixing — live, click-free per-stem
-//! gains driving the faders/mute/solo — lives in `hm-audio::stems`.
+//! Uses StemSplit's parity-verified ONNX export: **four per-stem specialist
+//! models** (drums, bass, other, vocals), each waveform→waveform with the
+//! STFT/iSTFT and normalization baked into the graph (so no PyTorch and no
+//! host-side spectral maths). On Apple Silicon CoreML drives them on the Neural
+//! Engine, so the player separates a loaded track in a few seconds and the UI's
+//! pads feel instant. The mixing — live, click-free per-element gains with the
+//! drum stem split into kick/hihat — lives in `hm-audio::stems`.
 //!
-//! Pipeline: decode → resample to 44.1 kHz → **normalize** (htdemucs expects a
-//! zero-mean/unit-std mixture) → split into overlapping segments → run each on
-//! CoreML (auto CPU fallback) → triangular **overlap-add** → denormalize → four
-//! interleaved-stereo stem buffers. Results are cached to disk per source file
-//! so re-opening a track is instant.
-//!
-//! "2-stem" vs "4-stem" is **not** a separate (slower) run: htdemucs always
-//! emits four sources in one pass, so the UI simply regroups them
-//! (vocals / everything-else) — switching modes is free.
+//! Pipeline (mirrors the repo's `bag_infer.py`): decode → resample to 44.1 kHz →
+//! split into overlapping segments → run all 4 specialists per segment, keeping
+//! each one's own source row → trapezoidal **overlap-add** → four interleaved-
+//! stereo stem buffers. Results cache to disk per source file.
 
 mod onnx;
 
@@ -26,14 +22,26 @@ use std::time::SystemTime;
 
 use onnx::Model;
 
-/// The four htdemucs stems, in their fixed playback-slot order.
+/// Number of separated stems (vocals, drums, bass, other).
 pub const STEM_COUNT: usize = 4;
 /// htdemucs operates at 44.1 kHz; every stem buffer comes back at this rate.
 pub const STEM_SR: u32 = 44_100;
 /// Overlap fraction between adjacent inference segments (htdemucs default).
-const OVERLAP: f32 = 0.25;
+const OVERLAP_DIV: usize = 4; // overlap = segment / 4
 
+/// Output stem names in playback-slot order (slot 0 vocals … 3 other).
 const STEM_NAMES: [&str; STEM_COUNT] = ["vocals", "drums", "bass", "other"];
+
+/// The four specialist models: `(filename, output row this model is trusted for,
+/// destination playback slot)`. htdemucs' native source order is
+/// `[drums, bass, other, vocals]`, so each specialist's row index differs from
+/// our slot order `[vocals, drums, bass, other]`.
+const MODELS: [(&str, usize, usize); STEM_COUNT] = [
+    ("htdemucs_ft_vocals.onnx", 3, 0), // vocals row 3 → slot 0
+    ("htdemucs_ft_drums.onnx", 0, 1),  // drums  row 0 → slot 1
+    ("htdemucs_ft_bass.onnx", 1, 2),   // bass   row 1 → slot 2
+    ("htdemucs_ft_other.onnx", 2, 3),  // other  row 2 → slot 3
+];
 
 /// Four separated stems, interleaved stereo at [`STEM_SR`], in slot order
 /// (0 vocals, 1 drums, 2 bass, 3 other).
@@ -41,7 +49,7 @@ pub type StemSet = [Vec<f32>; STEM_COUNT];
 
 #[derive(Debug, thiserror::Error)]
 pub enum StemError {
-    #[error("the stem separator isn't installed yet (htdemucs.onnx + libonnxruntime)")]
+    #[error("the stem models aren't installed yet (run scripts/get_stems_model.sh)")]
     Unavailable,
     #[error("stem engine error: {0}")]
     Engine(String),
@@ -49,26 +57,34 @@ pub enum StemError {
     Io(String),
 }
 
-/// In-process htdemucs separator with on-disk result caching. The ONNX session
-/// is loaded lazily on first use and reused (cheap to keep resident).
+/// In-process htdemucs_ft separator with on-disk result caching. The four ONNX
+/// sessions are loaded lazily on first use and reused.
 pub struct Separator {
-    model_path: PathBuf,
+    model_dir: PathBuf,
     cache_dir: PathBuf,
-    model: Mutex<Option<Model>>,
+    models: Mutex<Option<Vec<Model>>>,
 }
 
 impl Separator {
-    pub fn new(model_path: PathBuf, cache_dir: PathBuf) -> Self {
+    pub fn new(model_dir: PathBuf, cache_dir: PathBuf) -> Self {
         Self {
-            model_path,
+            model_dir,
             cache_dir,
-            model: Mutex::new(None),
+            models: Mutex::new(None),
         }
     }
 
-    /// Whether the model file is present (the separator can run).
+    /// Whether all four model files are present (the separator can run).
     pub fn available(&self) -> bool {
-        self.model_path.is_file()
+        MODELS
+            .iter()
+            .all(|(file, _, _)| self.model_dir.join(file).is_file())
+    }
+
+    /// Whether CoreML acceleration will be used (opt-in via `HM_STEMS_COREML`,
+    /// and only if the runtime has the EP) — cheap, doesn't load the models.
+    pub fn accelerated(&self) -> bool {
+        std::env::var("HM_STEMS_COREML").is_ok() && onnx::coreml_available()
     }
 
     fn cache_slot(&self, input: &Path) -> PathBuf {
@@ -85,23 +101,19 @@ impl Separator {
         Some(set)
     }
 
-    /// Whether CoreML acceleration is active (vs. CPU). Loads the model if
-    /// needed; `None` if it can't be loaded.
-    pub fn accelerated(&self) -> Option<bool> {
-        let mut guard = self.model.lock().ok()?;
-        self.ensure_loaded(&mut guard).ok()?;
-        guard.as_ref().map(|m| m.accelerated)
-    }
-
     fn ensure_loaded<'a>(
         &self,
-        guard: &'a mut Option<Model>,
-    ) -> Result<&'a mut Model, StemError> {
+        guard: &'a mut Option<Vec<Model>>,
+    ) -> Result<&'a mut Vec<Model>, StemError> {
         if guard.is_none() {
             if !self.available() {
                 return Err(StemError::Unavailable);
             }
-            *guard = Some(Model::load(&self.model_path)?);
+            let mut models = Vec::with_capacity(STEM_COUNT);
+            for (file, row, _slot) in MODELS {
+                models.push(Model::load(&self.model_dir.join(file), row)?);
+            }
+            *guard = Some(models);
         }
         Ok(guard.as_mut().expect("just loaded"))
     }
@@ -120,33 +132,30 @@ impl Separator {
             return Ok(cached);
         }
 
-        let mut guard = self.model.lock().map_err(|_| {
-            StemError::Engine("separator lock poisoned".into())
-        })?;
-        let model = self.ensure_loaded(&mut guard)?;
-        let segment = model.segment;
+        let mut guard = self
+            .models
+            .lock()
+            .map_err(|_| StemError::Engine("separator lock poisoned".into()))?;
+        let models = self.ensure_loaded(&mut guard)?;
+        let segment = models[0].segment;
 
         let frames = mix.len() / 2;
         if frames == 0 {
             return Err(StemError::Engine("empty input".into()));
         }
 
-        // --- Normalize: htdemucs expects a zero-mean / unit-std mixture. -----
-        let (mean, std) = mono_mean_std(mix, frames);
-        let inv_std = if std > 1e-8 { 1.0 / std } else { 1.0 };
-        // Planar, normalized channels.
+        // Planar channels (NO normalization — it's baked into the ONNX graph).
         let mut left = vec![0.0f32; frames];
         let mut right = vec![0.0f32; frames];
         for f in 0..frames {
-            left[f] = (mix[2 * f] - mean) * inv_std;
-            right[f] = (mix[2 * f + 1] - mean) * inv_std;
+            left[f] = mix[2 * f];
+            right[f] = mix[2 * f + 1];
         }
 
-        // --- Overlap-add segmentation. --------------------------------------
-        let weight = triangular_weight(segment);
-        let stride = (((1.0 - OVERLAP) * segment as f32) as usize).max(1);
+        let window = transition_window(segment);
+        let stride = (segment - segment / OVERLAP_DIV).max(1);
 
-        // Per-source, per-channel accumulators + shared per-sample weight sum.
+        // Per-slot, per-channel accumulators + shared per-sample weight sum.
         let mut acc: Vec<[Vec<f32>; 2]> = (0..STEM_COUNT)
             .map(|_| [vec![0.0f32; frames], vec![0.0f32; frames]])
             .collect();
@@ -158,37 +167,34 @@ impl Separator {
 
         for (si, &off) in offsets.iter().enumerate() {
             let take = segment.min(frames - off);
-            // Build planar [L(segment), R(segment)], zero-padded past `take`.
-            seg_in[..segment].fill(0.0);
-            seg_in[segment..].fill(0.0);
+            seg_in.fill(0.0);
             seg_in[..take].copy_from_slice(&left[off..off + take]);
             seg_in[segment..segment + take].copy_from_slice(&right[off..off + take]);
 
-            let out = model.run_segment(&seg_in)?; // [4 × 2 × segment], source-major
-
-            for s in 0..STEM_COUNT {
+            for (mi, (_, _, slot)) in MODELS.iter().enumerate() {
+                let stem = models[mi].run_segment(&seg_in)?; // [2 × segment], channel-major
+                let dst = &mut acc[*slot];
                 for c in 0..2 {
-                    let plane = &out[(s * 2 + c) * segment..(s * 2 + c) * segment + take];
-                    let dst = &mut acc[s][c][off..off + take];
+                    let plane = &stem[c * segment..c * segment + take];
                     for i in 0..take {
-                        dst[i] += plane[i] * weight[i];
+                        dst[c][off + i] += plane[i] * window[i];
                     }
                 }
             }
             for i in 0..take {
-                wsum[off + i] += weight[i];
+                wsum[off + i] += window[i];
             }
             on_progress(0.02 + (si + 1) as f32 / total as f32 * 0.96);
         }
 
-        // --- Normalize by accumulated weight, denormalize, re-interleave. ----
+        // Normalize by accumulated weight, re-interleave.
         let mut set: StemSet = Default::default();
-        for s in 0..STEM_COUNT {
+        for (s, channels) in acc.into_iter().enumerate() {
             let mut inter = vec![0.0f32; frames * 2];
             for f in 0..frames {
                 let w = if wsum[f] > 1e-8 { 1.0 / wsum[f] } else { 0.0 };
-                inter[2 * f] = acc[s][0][f] * w * std + mean;
-                inter[2 * f + 1] = acc[s][1][f] * w * std + mean;
+                inter[2 * f] = channels[0][f] * w;
+                inter[2 * f + 1] = channels[1][f] * w;
             }
             set[s] = inter;
         }
@@ -209,37 +215,19 @@ impl Separator {
     }
 }
 
-/// Mean and standard deviation of the channel-averaged (mono) mixture.
-fn mono_mean_std(mix: &[f32], frames: usize) -> (f32, f32) {
-    let mut sum = 0.0f64;
-    for f in 0..frames {
-        sum += 0.5 * (mix[2 * f] as f64 + mix[2 * f + 1] as f64);
-    }
-    let mean = (sum / frames as f64) as f32;
-    let mut var = 0.0f64;
-    for f in 0..frames {
-        let m = 0.5 * (mix[2 * f] as f64 + mix[2 * f + 1] as f64) - mean as f64;
-        var += m * m;
-    }
-    let std = (var / frames as f64).sqrt() as f32;
-    (mean, std)
-}
-
-/// htdemucs' triangular overlap-add window: ramps 1→mid up then mid→1 down, so
-/// the seam between segments is cross-faded and edges stay weighted (never 0).
-fn triangular_weight(segment: usize) -> Vec<f32> {
-    let half = segment / 2;
-    let mut w = vec![0.0f32; segment];
-    for (i, wi) in w.iter_mut().enumerate() {
-        *wi = if i < half {
-            (i + 1) as f32
+/// htdemucs_ft's overlap-add window (per `bag_infer.py`): flat 1.0 with linear
+/// fades over the first/last `segment/4` samples — so segment seams cross-fade.
+fn transition_window(segment: usize) -> Vec<f32> {
+    let transition = (segment / OVERLAP_DIV).max(1);
+    let mut w = vec![1.0f32; segment];
+    for k in 0..transition.min(segment) {
+        let v = if transition > 1 {
+            k as f32 / (transition - 1) as f32
         } else {
-            (segment - i) as f32
+            1.0
         };
-    }
-    let max = w.iter().cloned().fold(1.0f32, f32::max);
-    for wi in &mut w {
-        *wi /= max;
+        w[k] = v; // fade in
+        w[segment - 1 - k] = v; // fade out (mirror)
     }
     w
 }
@@ -296,8 +284,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unavailable_without_model() {
-        let s = Separator::new("/no/such/htdemucs.onnx".into(), std::env::temp_dir());
+    fn unavailable_without_models() {
+        let s = Separator::new("/no/such/models".into(), std::env::temp_dir());
         assert!(!s.available());
         assert!(matches!(
             s.separate(&[0.0, 0.0], Path::new("/tmp/x.wav"), |_| {}),
@@ -313,25 +301,67 @@ mod tests {
     }
 
     #[test]
-    fn triangular_weight_peaks_in_the_middle_and_is_positive() {
-        let w = triangular_weight(8);
+    fn transition_window_is_trapezoidal() {
+        let w = transition_window(8); // transition = 2
         assert_eq!(w.len(), 8);
-        assert!(w.iter().all(|&x| x > 0.0));
-        let max_i = w
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .unwrap()
-            .0;
-        assert!((3..=4).contains(&max_i), "peak at {max_i}");
-        assert!(w[0] < w[3] && w[7] < w[4]); // edges below the peak
+        assert_eq!(w[0], 0.0); // fade starts at 0
+        assert_eq!(w[7], 0.0); // and ends at 0
+        assert_eq!(w[3], 1.0); // flat in the middle
+        assert_eq!(w[4], 1.0);
+        assert!(w.iter().all(|&x| (0.0..=1.0).contains(&x)));
     }
 
     #[test]
-    fn mono_stats_match_known_signal() {
-        // L/R both constant 1.0 → mono mean 1.0, std 0.0.
-        let (mean, std) = mono_mean_std(&[1.0, 1.0, 1.0, 1.0], 2);
-        assert!((mean - 1.0).abs() < 1e-6);
-        assert!(std < 1e-6);
+    fn model_table_maps_rows_to_distinct_slots() {
+        let mut slots: Vec<usize> = MODELS.iter().map(|(_, _, s)| *s).collect();
+        slots.sort_unstable();
+        assert_eq!(slots, vec![0, 1, 2, 3]);
+        // vocals specialist feeds slot 0.
+        assert_eq!(MODELS[0], ("htdemucs_ft_vocals.onnx", 3, 0));
+    }
+
+    /// End-to-end run against the real downloaded models + ONNX Runtime dylib.
+    /// Ignored by default (needs ~1.3 GB of models). Run with:
+    ///   ORT_DYLIB_PATH=<…/stems/libonnxruntime.dylib> \
+    ///   cargo test -p hm-stems -- --ignored --nocapture
+    #[test]
+    #[ignore = "needs the downloaded htdemucs_ft models + ORT dylib"]
+    fn separates_real_models_end_to_end() {
+        let home = std::env::var("HOME").unwrap();
+        let stems_root = format!("{home}/Library/Application Support/com.hypemuzik.desktop/stems");
+        if std::env::var("ORT_DYLIB_PATH").is_err() {
+            std::env::set_var("ORT_DYLIB_PATH", format!("{stems_root}/libonnxruntime.dylib"));
+        }
+        let cache = std::env::temp_dir().join("hm_stems_test_cache");
+        let _ = std::fs::remove_dir_all(&cache);
+        let sep = Separator::new(format!("{stems_root}/model").into(), cache);
+        assert!(sep.available(), "models not found under {stems_root}/model");
+
+        // 2 s of stereo: L 220 Hz, R 440 Hz.
+        let n = STEM_SR as usize * 2;
+        let mut mix = vec![0.0f32; n * 2];
+        for f in 0..n {
+            let t = f as f32 / STEM_SR as f32;
+            mix[2 * f] = 0.2 * (std::f32::consts::TAU * 220.0 * t).sin();
+            mix[2 * f + 1] = 0.2 * (std::f32::consts::TAU * 440.0 * t).sin();
+        }
+        let input = std::env::temp_dir().join("hm_stems_test_input.wav");
+        std::fs::write(&input, b"test").unwrap();
+
+        let last = std::cell::Cell::new(0.0f32);
+        let stems = sep
+            .separate(&mix, &input, |p| last.set(p))
+            .expect("separation failed");
+
+        assert_eq!(stems.len(), STEM_COUNT);
+        let mut total_energy = 0.0f64;
+        for (i, s) in stems.iter().enumerate() {
+            assert_eq!(s.len(), n * 2, "stem {i} wrong length");
+            assert!(s.iter().all(|x| x.is_finite()), "stem {i} has non-finite samples");
+            total_energy += s.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>();
+        }
+        assert_eq!(last.get(), 1.0);
+        assert!(total_energy > 0.0, "all stems are silent");
+        println!("end-to-end OK: 4 stems × {} frames, total energy {total_energy:.3}", n);
     }
 }

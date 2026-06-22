@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   List,
   ListMusic,
+  Loader2,
   Music2,
   Play,
   Search,
@@ -179,10 +180,35 @@ export function MusicLibrary() {
 
   const playAt = (list: MusicTrack[], index: number) => playQueueItems(list, index);
 
-  // Phone/Cloud selected but not connected → offer to set them up.
+  // Has the active source finished its first load? For "All" we wait on every
+  // source so we don't flash an empty state while others are still arriving.
+  const activeReady =
+    sourceFilter === "all"
+      ? library.ready && phone.ready && cloud.ready
+      : sourceFilter === "local"
+        ? library.ready
+        : sourceFilter === "phone"
+          ? phone.ready
+          : cloud.ready;
+
+  // Phone/Cloud selected, finished checking, and genuinely not connected →
+  // offer to set them up (only *after* the status check, never mid-load).
   const needsConnect =
-    (sourceFilter === "phone" && !phone.connected) ||
-    (sourceFilter === "cloud" && !cloud.connected);
+    (sourceFilter === "phone" && phone.ready && !phone.connected) ||
+    (sourceFilter === "cloud" && cloud.ready && !cloud.connected);
+
+  // First load still running with nothing to show yet → show a loading state
+  // instead of a blank pane or a misleading "not connected" prompt.
+  const showLoading = !activeReady && !needsConnect && filtered.length === 0;
+  const loadingMessage =
+    sourceFilter === "phone"
+      ? "Loading music from your phone…"
+      : sourceFilter === "cloud"
+        ? "Loading your cloud library…"
+        : "Loading your music…";
+
+  // A source is still streaming in behind already-visible tracks.
+  const stillLoading = library.loading || phone.loading || cloud.loading;
 
   return (
     <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-2">
@@ -232,13 +258,15 @@ export function MusicLibrary() {
         </div>
       </div>
 
-      {needsConnect ? (
+      {showLoading ? (
+        <LibraryLoading message={loadingMessage} />
+      ) : needsConnect ? (
         <ConnectPrompt
           kind={sourceFilter === "phone" ? "phone" : "cloud"}
           onConnect={() => setRoute("settings")}
         />
-      ) : tracks.length === 0 && !library.loading ? (
-        <EmptyAll />
+      ) : filtered.length === 0 ? (
+        <EmptySource source={sourceFilter} />
       ) : (
         <>
           {/* Hero deck (Songs facet only) */}
@@ -368,8 +396,11 @@ export function MusicLibrary() {
         </>
       )}
 
-      {(phone.loading || cloud.loading) && (
-        <p className="px-2 text-center text-xs text-text-faint">Loading other sources…</p>
+      {stillLoading && !showLoading && filtered.length > 0 && (
+        <p className="flex items-center justify-center gap-2 px-2 text-center text-xs text-text-faint">
+          <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+          Loading more music…
+        </p>
       )}
     </div>
   );
@@ -609,7 +640,36 @@ function Empty({ message }: { message: string }) {
   return <p className="px-2 py-10 text-center text-sm text-text-muted">{message}</p>;
 }
 
-function EmptyAll() {
+/** A centred spinner shown while a source is loading for the first time. */
+function LibraryLoading({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+      <Loader2 className="size-7 animate-spin text-accent" aria-hidden="true" />
+      <p className="text-sm text-text-muted">{message}</p>
+    </div>
+  );
+}
+
+/** Empty state, worded for whichever source is selected (and confirmed empty). */
+function EmptySource({ source }: { source: SourceFilter }) {
+  if (source === "phone") {
+    return (
+      <CenteredEmpty
+        icon={Smartphone}
+        title="No music on this phone"
+        body="This phone is paired but no music came through. Open Hype Muzik on it and make sure your library has finished scanning."
+      />
+    );
+  }
+  if (source === "cloud") {
+    return (
+      <CenteredEmpty
+        icon={Cloud}
+        title="No music in your cloud"
+        body="Your cloud account is connected, but no audio files were found in it."
+      />
+    );
+  }
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       <div className="grid size-14 place-items-center rounded-2xl bg-surface-raised ring-1 ring-border">
@@ -622,6 +682,28 @@ function EmptyAll() {
         </p>
       </div>
       <p className="text-xs text-text-faint">Settings → Music library → Add folder</p>
+    </div>
+  );
+}
+
+function CenteredEmpty({
+  icon: Icon,
+  title,
+  body,
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+      <div className="grid size-14 place-items-center rounded-2xl bg-surface-raised ring-1 ring-border">
+        <Icon className="size-7 text-text-faint" aria-hidden="true" />
+      </div>
+      <div>
+        <p className="text-base font-medium">{title}</p>
+        <p className="mt-1 max-w-xs text-sm text-text-muted">{body}</p>
+      </div>
     </div>
   );
 }

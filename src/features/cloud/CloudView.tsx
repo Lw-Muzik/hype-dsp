@@ -11,6 +11,7 @@ import {
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { useEngineStore } from "@/stores/engine";
+import { useMusicLibraryStore } from "@/stores/musicLibrary";
 import {
   cloudConnect,
   cloudDisconnect,
@@ -114,6 +115,9 @@ export function CloudView() {
     try {
       await cloudConnect(provider);
       await refreshStatus();
+      // The unified library caches cloud tracks; tell it to reload now that the
+      // set of connected accounts changed (otherwise it'd keep the old list).
+      useMusicLibraryStore.getState().invalidateCloud();
     } catch (e) {
       setError(ipcErrorMessage(e));
     } finally {
@@ -126,6 +130,7 @@ export function CloudView() {
     // Leave any folder we were browsing in that provider.
     setStack((s) => (s[0]?.provider === provider ? [] : s));
     await refreshStatus();
+    useMusicLibraryStore.getState().invalidateCloud();
   };
 
   const connected = status ? PROVIDERS.filter((p) => p.connected(status)) : [];

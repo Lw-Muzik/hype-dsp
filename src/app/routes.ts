@@ -1,12 +1,12 @@
 import {
   AudioLines,
+  Gauge,
   Layers,
-  Music2,
+  LibraryBig,
   Radio,
   Settings,
   SlidersHorizontal,
   SlidersVertical,
-  Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Route } from "@/stores/ui";
@@ -28,15 +28,15 @@ export interface NavRoute {
 export const ROUTES: readonly NavRoute[] = [
   {
     id: "player",
-    label: "Player",
-    icon: Music2,
+    label: "Library",
+    icon: LibraryBig,
     group: "main",
     tagline: "Local library and playlists, played through the enhancement chain.",
   },
   {
     id: "enhancer",
     label: "Enhancer",
-    icon: Sparkles,
+    icon: Gauge,
     group: "main",
     tagline: "Power, master volume, surround and bass at a glance.",
   },

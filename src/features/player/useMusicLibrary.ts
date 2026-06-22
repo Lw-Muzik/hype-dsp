@@ -1,47 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  cloudAllAudio,
-  cloudStatus,
-  cloudTrackMetadata,
-  libraryList,
-  linkLibrary,
-  linkPaired,
-} from "@/lib/ipc";
-import { cloudItem, localItem, phoneItem } from "@/stores/engine";
-import type { QueueItem } from "@/stores/engine";
+import { useEffect, useMemo } from "react";
 import { useLibraryStore } from "@/stores/library";
+import { useMusicLibraryStore } from "@/stores/musicLibrary";
+import type { LoadStatus, MusicTrack, SourceState } from "@/stores/musicLibrary";
 import type { ArtSource } from "@/lib/useTrackArtwork";
-import type { CloudProvider, CloudTrackMeta } from "@/lib/types";
 
-/** A browsable track from any source, ready to enqueue (it's a `QueueItem`). */
-export interface MusicTrack extends QueueItem {
-  source: "local" | "phone" | "cloud";
-  /** Unique across sources, for React keys and highlight matching. */
-  uid: string;
-  /** Genre from tags (local only for now), for the Genres facet. */
-  genre: string | null;
-  /** Folder/grouping label for the Folders facet. */
-  folder: string | null;
-  /** Local file path for lazy embedded artwork (null for phone/cloud). */
-  artPath: string | null;
-  /** Pre-resolved cover (a `data:` URI) — cloud tracks after metadata preload. */
-  cover: string | null;
-}
-
-/** Per-source availability + counts, for the source filter UI. */
-export interface SourceState {
-  /** Whether the source is reachable/connected (library is always true). */
-  connected: boolean;
-  loading: boolean;
-  count: number;
-}
+export type { MusicTrack, SourceState } from "@/stores/musicLibrary";
 
 export interface MusicLibrary {
   tracks: MusicTrack[];
   library: SourceState;
   phone: SourceState;
   cloud: SourceState;
-  /** Re-scan every source (e.g. after pairing a phone or connecting cloud). */
+  /** Force every source to reload (e.g. a manual refresh). */
   reload: () => void;
 }
 
@@ -62,223 +32,49 @@ export function trackArt(t: MusicTrack): ArtSource {
   return { key: t.uid, source: "local", path: t.artPath };
 }
 
-/** The immediate parent folder name of a file path (for the Folders facet). */
-function parentFolder(path: string): string | null {
-  const norm = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  const parts = norm.split("/").filter(Boolean);
-  return parts.length >= 2 ? parts[parts.length - 2]! : null;
-}
-
-/** Collect a connected provider's audio files in one flat, account-wide listing
- *  (all folders) — mirrors the mobile app, so songs nested in subfolders are
- *  included rather than truncated by a bounded folder walk. */
-async function scanCloud(provider: CloudProvider): Promise<MusicTrack[]> {
-  let entries;
-  try {
-    entries = await cloudAllAudio(provider);
-  } catch {
-    return [];
-  }
-  return entries.map((e) => ({
-    ...cloudItem(e),
-    source: "cloud" as const,
-    uid: `cloud:${provider}:${e.id}`,
-    genre: null,
-    folder: e.folder ?? null,
-    artPath: null,
-    cover: null,
-  }));
-}
-
-// How many cloud files to read metadata for at once (the backend caches each
-// after the first read, so this only bites on the first scan).
-const CLOUD_META_CONCURRENCY = 4;
-
-/**
- * Read embedded tags (title/artist/album + cover) for cloud tracks in the
- * background, like the mobile app's `CloudMetadataService`. Runs a few at a time
- * and reports each result through `onResult`; `isStale` lets the caller cancel
- * (e.g. on disconnect / reload). Backend-cached, so re-scans are cheap.
- */
-async function preloadCloudMeta(
-  tracks: MusicTrack[],
-  onResult: (uid: string, meta: CloudTrackMeta) => void,
-  isStale: () => boolean,
-): Promise<void> {
-  let next = 0;
-  const worker = async () => {
-    while (next < tracks.length && !isStale()) {
-      const t = tracks[next++];
-      const file = t?.cloud;
-      if (!t || !file) continue;
-      try {
-        const meta = await cloudTrackMetadata(file.provider, file.id, file.name);
-        if (meta && !isStale()) onResult(t.uid, meta);
-      } catch {
-        // Skip — a single failed read shouldn't stop the rest.
-      }
-    }
-  };
-  await Promise.all(
-    Array.from({ length: CLOUD_META_CONCURRENCY }, () => worker()),
-  );
-}
+/** A finished load (success or error) means connected/count are trustworthy. */
+const isReady = (s: LoadStatus) => s === "ready" || s === "error";
 
 /**
  * Aggregates every reachable source — the local library, paired phones, and
- * connected cloud accounts — into one collection of browsable tracks. Each
- * source loads independently and resiliently (a failure contributes nothing
- * rather than breaking the whole library), so the unified browse + search work
- * across whatever is currently available.
+ * connected cloud accounts — into one collection of browsable tracks.
+ *
+ * State lives in {@link useMusicLibraryStore}, not here, so it survives the
+ * Player view unmounting: each source loads **once** and is reused when you
+ * return to the Library, reloading only when its data actually changes (a
+ * re-scan, a phone pairing, a cloud connect/disconnect). Each source loads
+ * independently and resiliently — a failure contributes nothing rather than
+ * breaking the whole library.
  */
 export function useMusicLibrary(): MusicLibrary {
   const libraryVersion = useLibraryStore((s) => s.version);
 
-  const [local, setLocal] = useState<MusicTrack[]>([]);
-  const [phone, setPhone] = useState<MusicTrack[]>([]);
-  // Cloud tracks as listed (filename titles), plus tags resolved lazily in the
-  // background and merged on top by uid.
-  const [cloudBase, setCloudBase] = useState<MusicTrack[]>([]);
-  const [cloudMeta, setCloudMeta] = useState<Map<string, CloudTrackMeta>>(
-    () => new Map(),
-  );
-  const [libLoading, setLibLoading] = useState(true);
-  const [phoneState, setPhoneState] = useState<SourceState>({
-    connected: false,
-    loading: false,
-    count: 0,
-  });
-  const [cloudState, setCloudState] = useState<SourceState>({
-    connected: false,
-    loading: false,
-    count: 0,
-  });
-  const [nonce, setNonce] = useState(0);
-  const reload = useCallback(() => setNonce((n) => n + 1), []);
+  const local = useMusicLibraryStore((s) => s.local);
+  const phone = useMusicLibraryStore((s) => s.phone);
+  const cloudBase = useMusicLibraryStore((s) => s.cloudBase);
+  const cloudMeta = useMusicLibraryStore((s) => s.cloudMeta);
+  const localLoad = useMusicLibraryStore((s) => s.localLoad);
+  const phoneLoad = useMusicLibraryStore((s) => s.phoneLoad);
+  const phoneConnected = useMusicLibraryStore((s) => s.phoneConnected);
+  const cloudLoad = useMusicLibraryStore((s) => s.cloudLoad);
+  const cloudConnected = useMusicLibraryStore((s) => s.cloudConnected);
+  const ensureLocal = useMusicLibraryStore((s) => s.ensureLocal);
+  const ensurePhone = useMusicLibraryStore((s) => s.ensurePhone);
+  const ensureCloud = useMusicLibraryStore((s) => s.ensureCloud);
+  const reload = useMusicLibraryStore((s) => s.reloadAll);
 
-  // Local library (always present).
+  // Kick each source's load-once fetch. Re-runs when the load status flips (so
+  // an invalidation back to "idle" reloads), and local also when the library
+  // version bumps after a re-scan. The store actions are no-ops otherwise.
   useEffect(() => {
-    let cancelled = false;
-    setLibLoading(true);
-    libraryList()
-      .then((tracks) => {
-        if (cancelled) return;
-        setLocal(
-          tracks.map((t) => ({
-            ...localItem(t),
-            source: "local" as const,
-            uid: `local:${t.path}`,
-            genre: t.genre,
-            folder: parentFolder(t.path),
-            artPath: t.path,
-            cover: null,
-          })),
-        );
-      })
-      .catch(() => !cancelled && setLocal([]))
-      .finally(() => !cancelled && setLibLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [libraryVersion, nonce]);
-
-  // Paired phones (each may be offline — skipped gracefully).
+    ensureLocal(libraryVersion);
+  }, [ensureLocal, libraryVersion, localLoad]);
   useEffect(() => {
-    let cancelled = false;
-    setPhoneState((s) => ({ ...s, loading: true }));
-    linkPaired()
-      .then(async (devices) => {
-        if (cancelled) return;
-        const lists = await Promise.all(
-          devices.map((d) =>
-            linkLibrary(d.id)
-              .then((tracks) =>
-                tracks.map((t) => ({
-                  ...phoneItem(d, t),
-                  source: "phone" as const,
-                  uid: `phone:${d.id}:${t.id}`,
-                  genre: null,
-                  // The real folder the track came from on the phone, so the
-                  // Folders facet groups by it (falls back to the device name).
-                  folder: t.folder ?? d.name,
-                  artPath: null,
-                  cover: null,
-                })),
-              )
-              .catch(() => [] as MusicTrack[]),
-          ),
-        );
-        if (cancelled) return;
-        const merged = lists.flat();
-        setPhone(merged);
-        setPhoneState({
-          connected: devices.length > 0,
-          loading: false,
-          count: merged.length,
-        });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setPhone([]);
-        setPhoneState({ connected: false, loading: false, count: 0 });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [nonce]);
-
-  // Connected cloud accounts (flat account-wide listing).
+    ensurePhone();
+  }, [ensurePhone, phoneLoad]);
   useEffect(() => {
-    let cancelled = false;
-    setCloudState((s) => ({ ...s, loading: true }));
-    setCloudMeta(new Map());
-    cloudStatus()
-      .then(async (status) => {
-        if (cancelled) return;
-        const connected = [
-          status.googleConnected ? ("googleDrive" as const) : null,
-          status.dropboxConnected ? ("dropbox" as const) : null,
-        ].filter((p): p is CloudProvider => p !== null);
-        if (connected.length === 0) {
-          setCloudBase([]);
-          setCloudState({ connected: false, loading: false, count: 0 });
-          return;
-        }
-        const lists = await Promise.all(connected.map(scanCloud));
-        if (cancelled) return;
-        const merged = lists.flat();
-        setCloudBase(merged);
-        setCloudState({ connected: true, loading: false, count: merged.length });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setCloudBase([]);
-        setCloudState({ connected: false, loading: false, count: 0 });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [nonce]);
-
-  // Resolve cloud tags (title/artist/album + cover) in the background, merging
-  // each result in by uid as it arrives.
-  useEffect(() => {
-    if (cloudBase.length === 0) return;
-    let stale = false;
-    void preloadCloudMeta(
-      cloudBase,
-      (uid, meta) =>
-        setCloudMeta((prev) => {
-          const next = new Map(prev);
-          next.set(uid, meta);
-          return next;
-        }),
-      () => stale,
-    );
-    return () => {
-      stale = true;
-    };
-  }, [cloudBase]);
+    ensureCloud();
+  }, [ensureCloud, cloudLoad]);
 
   // Cloud tracks with resolved tags merged over the listed filenames.
   const cloud = useMemo(
@@ -303,9 +99,24 @@ export function useMusicLibrary(): MusicLibrary {
 
   return {
     tracks,
-    library: { connected: true, loading: libLoading, count: local.length },
-    phone: phoneState,
-    cloud: cloudState,
+    library: {
+      connected: true,
+      loading: localLoad === "loading",
+      ready: isReady(localLoad),
+      count: local.length,
+    },
+    phone: {
+      connected: phoneConnected,
+      loading: phoneLoad === "loading",
+      ready: isReady(phoneLoad),
+      count: phone.length,
+    },
+    cloud: {
+      connected: cloudConnected,
+      loading: cloudLoad === "loading",
+      ready: isReady(cloudLoad),
+      count: cloud.length,
+    },
     reload,
   };
 }

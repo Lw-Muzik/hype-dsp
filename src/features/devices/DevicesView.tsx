@@ -15,6 +15,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { useEngineStore } from "@/stores/engine";
+import { useMusicLibraryStore } from "@/stores/musicLibrary";
 import {
   ipcErrorMessage,
   linkArtwork,
@@ -226,6 +227,8 @@ export function DevicesView() {
       setPairedIds((s) => new Set(s).add(device.id));
       setPairing(null);
       setPin("");
+      // A new phone's tracks should appear in the unified library.
+      useMusicLibraryStore.getState().invalidatePhone();
       await browse(device);
     } catch (e) {
       setError(ipcErrorMessage(e));
@@ -257,6 +260,7 @@ export function DevicesView() {
       );
       setManualAddr("");
       setManualPin("");
+      useMusicLibraryStore.getState().invalidatePhone();
       await browse(device);
     } catch (e) {
       setError(ipcErrorMessage(e));
@@ -271,6 +275,7 @@ export function DevicesView() {
       setOpen(null);
       setTracks([]);
     }
+    useMusicLibraryStore.getState().invalidatePhone();
     await scan();
   };
 
@@ -307,6 +312,7 @@ export function DevicesView() {
       setOpen(null);
       setTracks([]);
     }
+    useMusicLibraryStore.getState().invalidatePhone();
     await refreshRemote();
     await scan();
   };
@@ -320,6 +326,7 @@ export function DevicesView() {
     let cancelled = false;
     onRemoteConnected(() => {
       setPairingInfo(null);
+      useMusicLibraryStore.getState().invalidatePhone();
       void refreshRemote();
       void scan();
     })

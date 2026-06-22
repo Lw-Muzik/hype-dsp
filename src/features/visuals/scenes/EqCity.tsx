@@ -21,6 +21,7 @@ export function EqCity() {
       emissiveIntensity: 0.6,
     });
     const mesh = new THREE.InstancedMesh(geo, mat, GRID * GRID);
+    scene.add(mesh);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.5));
     const key = new THREE.DirectionalLight(0xffffff, 0.8);

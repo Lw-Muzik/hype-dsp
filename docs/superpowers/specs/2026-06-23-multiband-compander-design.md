@@ -12,6 +12,7 @@ Add multiband dynamics processing — compress to even out loudness ("night mode
 - Crossover frequencies = geometric means of adjacent band centers from `[31,62,125,250,500,1k,2k,4k,8k,16k]` Hz → 9 crossovers at `sqrt(f[i]*f[i+1])`.
 - **Per-band compressor** (Chromium DynamicsCompressorKernel-derived): per-sample peak detect (max |L|,|R| for stereo coherence), dB-domain envelope follower (1-pole attack/release), gain computer (threshold/ratio/soft-knee + noise-gate/expander below gate), gain smoothing (`gainSmoothedDb += 0.005*(gainDb - gainSmoothedDb)`), pre/post gain. dB↔lin via the same constants.
 - Bands summed after compression (LR4 is power-complementary, so a flat/disabled compressor sums back to ~unity).
+- **Shipped topology note:** the desktop implementation uses **subtractive/telescoping** crossovers (LP-only biquads; band = `LP(rest)`, `rest -= band`) rather than textbook LP+HP pairs. This gives exact flat reconstruction (`Σ bands = input` by arithmetic identity) with no comb filtering or phase mismatch — not power-complementary LR4. Future readers should not expect textbook LR4 band isolation or HP biquads in the code.
 
 ## 3. Deviations from the mobile code (deliberate, required)
 1. **No allocation in `process()`** — the mobile version `new float[]`s per block. The desktop `AudioProcessor::process` contract forbids heap/lock/IO on the audio thread, so **all band scratch buffers are pre-sized in `prepare()`** (resized only if a larger-than-seen block arrives, off the steady path). This is the same discipline as the convolver/room stages.

@@ -6,7 +6,7 @@
 //! checks, limiter ceiling checks — see Phase 1).
 //!
 //! The runtime chain processes audio in a fixed order:
-//! `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D → RoomEffects → Gain → Limiter`.
+//! `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D → RoomEffects → Convolver → Compander → Gain → Limiter`.
 //! Each stage implements [`AudioProcessor`]; [`ProcessChain`] owns the ordered
 //! list and runs them in place. Phase 0 establishes these interfaces and an
 //! empty (identity) chain; the processors themselves arrive in Phase 1.

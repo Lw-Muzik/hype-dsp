@@ -26,6 +26,7 @@
 
 use crate::biquad::Biquad;
 use crate::{AudioProcessor, ProcessorParams};
+use hm_core::CompanderState;
 
 pub const BAND_COUNT: usize = 10;
 const CROSSOVER_COUNT: usize = BAND_COUNT - 1; // 9
@@ -187,6 +188,10 @@ pub struct Compander {
     crossovers_l: Vec<LrChannel>, // len CROSSOVER_COUNT
     crossovers_r: Vec<LrChannel>,
     bands: Vec<BandCompressor>, // len BAND_COUNT
+    /// Change-guard: last applied compander params so `set_params` can skip the
+    /// ≈20 `exp()` coefficient recomputes when nothing changed. Cleared by
+    /// `prepare` (sample rate change invalidates rate-dependent coefficients).
+    cached: Option<CompanderState>,
 }
 
 impl Compander {
@@ -197,6 +202,7 @@ impl Compander {
             crossovers_l: (0..CROSSOVER_COUNT).map(|_| LrChannel::new()).collect(),
             crossovers_r: (0..CROSSOVER_COUNT).map(|_| LrChannel::new()).collect(),
             bands: (0..BAND_COUNT).map(|_| BandCompressor::new(sample_rate)).collect(),
+            cached: None,
         };
         s.reconfigure();
         s
@@ -219,12 +225,16 @@ impl AudioProcessor for Compander {
         for b in &mut self.bands {
             b.sample_rate = sample_rate;
             b.reset();
-            b.recalc(15.0, 45.0);
+            // Do NOT call b.recalc here with hardcoded defaults — that would discard
+            // the user's attack/release. Invalidating the cache below ensures the
+            // next set_params call re-derives coefficients from the real params.
         }
         for c in self.crossovers_l.iter_mut().chain(self.crossovers_r.iter_mut()) {
             c.reset();
         }
         self.reconfigure();
+        // Invalidate: sample-rate change makes cached attack/release coefficients stale.
+        self.cached = None;
     }
 
     fn process(&mut self, buffer: &mut [f32], channels: usize) {
@@ -273,10 +283,19 @@ impl AudioProcessor for Compander {
     }
 
     fn set_params(&mut self, params: &ProcessorParams) {
+        // `enabled` is read every call — it's a single bool and gates `process`.
         self.enabled = params.compander.enabled;
+        // Change-guard: skip the ≈20 exp() coefficient recomputes when state is
+        // identical to what we last pushed. `prepare` clears `cached` so a sample-rate
+        // change always forces a re-apply even if the user params haven't changed.
+        let state = &params.compander;
+        if self.cached.as_ref() == Some(state) {
+            return;
+        }
         for b in &mut self.bands {
             b.set_params(params);
         }
+        self.cached = Some(*state);
     }
 }
 

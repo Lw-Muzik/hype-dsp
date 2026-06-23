@@ -28,7 +28,7 @@ pub mod spatializer;
 pub mod surround3d;
 
 pub use bass_boost::BassBoost;
-pub use compander::Compander;
+pub use compander::{Compander, CompanderMeter};
 pub use convolver::{empty_ir_slot, Convolver, IrSlot, PreparedIr};
 pub use gain::Gain;
 pub use graphic_eq::GraphicEq;

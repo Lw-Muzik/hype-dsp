@@ -202,11 +202,10 @@ unsafe extern "C-unwind" fn io_proc(
             let rn = (right_buf.mDataByteSize as usize / size_of::<f32>()).min(frames);
             std::slice::from_raw_parts(right_buf.mData as *const f32, rn)
         };
-        for i in 0..frames {
+        for (i, &l) in left.iter().enumerate() {
             if ctx.producer.slots() < 2 {
                 break; // ring full: drop remaining frames, stay channel-aligned
             }
-            let l = left[i];
             let r = right.get(i).copied().unwrap_or(l);
             let _ = ctx.producer.push(l);
             let _ = ctx.producer.push(r);

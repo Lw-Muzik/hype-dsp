@@ -33,6 +33,7 @@ import type {
   Playlist,
   RadioCountry,
   RadioStation,
+  ConvolverState,
   RoomState,
   SpatialMode,
   SurroundSpeakers,
@@ -117,6 +118,23 @@ export function engineSetSurround3d(
 /** Configure the room-reverb ("room effects") stage. */
 export function engineSetRoom(room: RoomState): Promise<void> {
   return invoke<void>("engine_set_room", { room });
+}
+
+/** Configure the convolution reverb / IR-correction stage. */
+export function engineSetConvolver(convolver: ConvolverState): Promise<void> {
+  return invoke<void>("engine_set_convolver", { convolver });
+}
+
+export interface ConvolverIrInfo {
+  name: string;
+  seconds: number;
+  truncated: boolean;
+  channels: number;
+}
+
+/** Load an impulse-response file; returns metadata about what was loaded. */
+export function engineConvolverLoadIr(path: string): Promise<ConvolverIrInfo> {
+  return invoke<ConvolverIrInfo>("engine_convolver_load_ir", { path });
 }
 
 /* ------------------------------------------------------------ cloud music */

@@ -2,7 +2,9 @@ import { create } from "zustand";
 import {
   cloudPlay,
   cloudTrackMetadata,
+  engineConvolverLoadIr,
   engineSetBass,
+  engineSetConvolver,
   engineSetEq,
   engineSetMasterVolume,
   engineSetPower,
@@ -26,6 +28,7 @@ import { toast } from "@/stores/toast";
 import { BAND_COUNT } from "@/lib/types";
 import type {
   CloudEntry,
+  ConvolverState,
   EngineFrame,
   EngineState,
   EqPreset,
@@ -243,6 +246,8 @@ interface EngineStore {
   setSpatializer: (enabled: boolean, amount: number, mode: SpatialMode) => void;
   setSurround3d: (next: Surround3DState) => void;
   setRoom: (next: RoomState) => void;
+  setConvolver: (next: ConvolverState) => void;
+  loadConvolverIr: (path: string) => Promise<void>;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
   setPlayback: (gapless: boolean, crossfadeSecs: number) => void;
@@ -571,6 +576,26 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setRoom: (next) => {
       set((s) => ({ state: { ...s.state, room: next } }));
       void engineSetRoom(next).catch(() => {});
+    },
+    setConvolver: (next) => {
+      set((s) => ({ state: { ...s.state, convolver: next } }));
+      void engineSetConvolver(next).catch(() => {});
+    },
+    loadConvolverIr: async (path) => {
+      const info = await engineConvolverLoadIr(path);
+      set((s) => ({
+        state: {
+          ...s.state,
+          convolver: {
+            ...s.state.convolver,
+            enabled: true,
+            irId: path,
+            irName: info.name,
+            irSeconds: info.seconds,
+            irTruncated: info.truncated,
+          },
+        },
+      }));
     },
     applyProfile: (profile) =>
       set((s) => ({

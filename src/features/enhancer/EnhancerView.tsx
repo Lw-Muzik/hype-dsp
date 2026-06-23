@@ -28,6 +28,7 @@ import type { HeadphoneProfile, SpatialMode } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { Surround3DPanel } from "./Surround3DPanel";
 import { RoomCard } from "./RoomCard";
+import { ConvolverCard } from "./ConvolverCard";
 
 export function EnhancerView() {
   const route = routeById("enhancer");
@@ -288,6 +289,9 @@ export function EnhancerView() {
 
         {/* Room reverb */}
         <RoomCard />
+
+        {/* Convolver / IR correction */}
+        <ConvolverCard />
 
         {/* Headphone correction */}
         <Card title="Headphone correction" icon={Headphones}>

@@ -28,7 +28,7 @@ use hm_core::{
     MeterFrame, ParametricBand, RoomState, SpatialMode, SpatializerState, Surround3DState,
     SurroundSpeakers, TrackMeta,
 };
-use hm_dsp::{empty_ir_slot, IrSlot, PreparedIr, ProcessChain};
+use hm_dsp::{empty_ir_slot, CompanderMeter, IrSlot, PreparedIr, ProcessChain};
 
 use crate::ir_loader::load_ir_samples;
 
@@ -242,6 +242,7 @@ impl Renderer {
         sample_rate: f32,
         channels: usize,
         ir_slot: IrSlot,
+        gr_meter: std::sync::Arc<CompanderMeter>,
     ) -> Self {
         // Tell the source the real output format so rate-dependent sources (e.g.
         // the system tap) can configure their resampler. Errors are non-fatal.
@@ -250,7 +251,7 @@ impl Renderer {
             channels: channels as u16,
         });
         Self {
-            chain: ProcessChain::standard_with_ir(sample_rate, channels, ir_slot),
+            chain: ProcessChain::standard_with_ir(sample_rate, channels, ir_slot, gr_meter),
             source,
             analyzer: Analyzer::new(sample_rate),
             dbg_logged: 0,
@@ -384,6 +385,9 @@ pub struct AudioEngine {
     /// Lock-free IR slot shared with the active Convolver; the UI publishes a
     /// freshly-built `PreparedIr` here and the audio thread reads it next block.
     ir_slot: IrSlot,
+    /// Lock-free per-band GR meter shared with the active Compander; written on
+    /// the audio thread once per block and read by the UI-forwarding thread.
+    compander_gr: std::sync::Arc<CompanderMeter>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     /// Active self-contained system-wide EQ pipeline (Linux/Windows re-routing).
     /// Held only to keep it running; dropping it tears the routing down. `Send`-
@@ -441,6 +445,7 @@ impl AudioEngine {
         let crossfade = Arc::new(AtomicU32::new(initial.playback.crossfade_secs.to_bits()));
         let stem_gains = Arc::new(StemGains::default());
         let ir_slot = empty_ir_slot();
+        let compander_gr = std::sync::Arc::new(CompanderMeter::default());
         let (tx, rx) = mpsc::channel();
 
         let thread = {
@@ -456,6 +461,7 @@ impl AudioEngine {
             let crossfade = crossfade.clone();
             let stem_gains = stem_gains.clone();
             let ir_slot = ir_slot.clone();
+            let compander_gr = compander_gr.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
                 .spawn(move || {
@@ -473,6 +479,7 @@ impl AudioEngine {
                         crossfade,
                         stem_gains,
                         ir_slot,
+                        compander_gr,
                     })
                 })
                 .expect("failed to spawn hm-audio engine thread")
@@ -492,6 +499,7 @@ impl AudioEngine {
             crossfade,
             stem_gains,
             ir_slot,
+            compander_gr,
             ctrl: Mutex::new(tx),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             system_eq: Mutex::new(None),
@@ -748,6 +756,11 @@ impl AudioEngine {
         self.spectrum.clone()
     }
 
+    /// Shared per-band gain-reduction meter for the UI-forwarding thread.
+    pub fn compander_gr(&self) -> std::sync::Arc<CompanderMeter> {
+        self.compander_gr.clone()
+    }
+
     /// Shared transport position for the UI-forwarding thread.
     pub fn pos(&self) -> Arc<PlaybackPos> {
         self.pos.clone()
@@ -996,6 +1009,7 @@ struct ControlCtx {
     crossfade: Arc<AtomicU32>,
     stem_gains: Arc<StemGains>,
     ir_slot: IrSlot,
+    compander_gr: std::sync::Arc<CompanderMeter>,
 }
 
 fn control_loop(ctx: ControlCtx) {
@@ -1013,6 +1027,7 @@ fn control_loop(ctx: ControlCtx) {
         crossfade,
         stem_gains,
         ir_slot,
+        compander_gr,
     } = ctx;
     let setup = output_setup().ok();
     // The active stream is held only to keep audio flowing (RAII); replacing or
@@ -1051,6 +1066,7 @@ fn control_loop(ctx: ControlCtx) {
                     channels,
                     sample_rate as f32,
                     ir_slot.clone(),
+                    compander_gr.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1098,6 +1114,7 @@ fn control_loop(ctx: ControlCtx) {
                     channels,
                     sample_rate as f32,
                     ir_slot.clone(),
+                    compander_gr.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1147,6 +1164,7 @@ fn control_loop(ctx: ControlCtx) {
                     channels,
                     sample_rate as f32,
                     ir_slot.clone(),
+                    compander_gr.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1192,6 +1210,7 @@ fn control_loop(ctx: ControlCtx) {
                     channels,
                     sample_rate as f32,
                     ir_slot.clone(),
+                    compander_gr.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1225,6 +1244,7 @@ fn control_loop(ctx: ControlCtx) {
                         channels,
                         sample_rate as f32,
                         ir_slot.clone(),
+                        compander_gr.clone(),
                     ) {
                         Ok(s) if s.play().is_ok() => {
                             playing.store(true, Ordering::Relaxed);
@@ -1264,6 +1284,7 @@ fn control_loop(ctx: ControlCtx) {
                     channels,
                     sample_rate as f32,
                     ir_slot.clone(),
+                    compander_gr.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1312,8 +1333,9 @@ fn build_output_stream(
     channels: usize,
     sample_rate: f32,
     ir_slot: IrSlot,
+    gr_meter: std::sync::Arc<CompanderMeter>,
 ) -> Result<cpal::Stream, AudioError> {
-    let mut renderer = Renderer::new(source, sample_rate, channels, ir_slot);
+    let mut renderer = Renderer::new(source, sample_rate, channels, ir_slot, gr_meter);
 
     device
         .build_output_stream::<f32, _, _>(
@@ -1351,8 +1373,13 @@ mod tests {
 
     #[test]
     fn limiter_keeps_engaged_output_below_ceiling() {
-        let mut renderer =
-            Renderer::new(constant_source(2.0, 4096), 48_000.0, 2, hm_dsp::empty_ir_slot());
+        let mut renderer = Renderer::new(
+            constant_source(2.0, 4096),
+            48_000.0,
+            2,
+            hm_dsp::empty_ir_slot(),
+            Arc::new(hm_dsp::CompanderMeter::default()),
+        );
         let meters = EngineMeters::default();
         let spectrum = SpectrumTap::default();
         let pos = PlaybackPos::default();
@@ -1373,8 +1400,13 @@ mod tests {
 
     #[test]
     fn power_off_bypasses_the_chain() {
-        let mut renderer =
-            Renderer::new(constant_source(2.0, 2048), 48_000.0, 2, hm_dsp::empty_ir_slot());
+        let mut renderer = Renderer::new(
+            constant_source(2.0, 2048),
+            48_000.0,
+            2,
+            hm_dsp::empty_ir_slot(),
+            Arc::new(hm_dsp::CompanderMeter::default()),
+        );
         let meters = EngineMeters::default();
         let spectrum = SpectrumTap::default();
         let pos = PlaybackPos::default();

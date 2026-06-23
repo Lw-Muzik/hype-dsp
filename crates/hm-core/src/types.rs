@@ -485,12 +485,16 @@ impl Default for MeterFrame {
 ///
 /// `spectrum` is present only on the throttled cadence at which the FFT is
 /// computed, so meter updates can run faster than the analyzer.
+/// `compander_gr` carries per-band gain-reduction in dB (≤0) when playing,
+/// or `None` when idle.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EngineFrame {
     pub meters: MeterFrame,
     /// FFT magnitude bins (dB), when available this frame.
     pub spectrum: Option<Vec<f32>>,
+    /// Per-band compander gain-reduction in dB (10 values, ≤0), or `None` when idle.
+    pub compander_gr: Option<Vec<f32>>,
 }
 
 #[cfg(test)]

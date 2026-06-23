@@ -30,6 +30,12 @@ pub mod surround3d;
 pub use bass_boost::BassBoost;
 pub use compander::{Compander, CompanderMeter};
 pub use convolver::{empty_ir_slot, Convolver, IrSlot, PreparedIr};
+
+/// Returns a fresh, throwaway `CompanderMeter` for call sites that do not
+/// need to observe per-band gain reduction (mirrors [`empty_ir_slot`]).
+pub fn empty_compander_meter() -> std::sync::Arc<CompanderMeter> {
+    std::sync::Arc::new(CompanderMeter::default())
+}
 pub use gain::Gain;
 pub use graphic_eq::GraphicEq;
 pub use headphone::HeadphoneCorrection;
@@ -87,12 +93,23 @@ impl ProcessChain {
     /// `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D →
     /// RoomEffects → Convolver → Compander → Gain → Limiter`.
     pub fn standard(sample_rate: f32, channels: usize) -> Self {
-        Self::standard_with_ir(sample_rate, channels, crate::empty_ir_slot())
+        Self::standard_with_ir(
+            sample_rate,
+            channels,
+            crate::empty_ir_slot(),
+            crate::empty_compander_meter(),
+        )
     }
 
-    /// Like [`standard`](Self::standard) but with an externally-owned IR slot so
-    /// the engine can publish impulse responses to the convolver stage.
-    pub fn standard_with_ir(sample_rate: f32, channels: usize, ir_slot: IrSlot) -> Self {
+    /// Like [`standard`](Self::standard) but with externally-owned slots so the
+    /// engine can publish impulse responses to the convolver stage and observe
+    /// per-band gain-reduction from the compander.
+    pub fn standard_with_ir(
+        sample_rate: f32,
+        channels: usize,
+        ir_slot: IrSlot,
+        gr_meter: std::sync::Arc<CompanderMeter>,
+    ) -> Self {
         let mut chain = Self::new();
         chain.prepare(sample_rate, channels);
         chain.push(Box::new(HeadphoneCorrection::new(sample_rate, channels)));
@@ -102,7 +119,7 @@ impl ProcessChain {
         chain.push(Box::new(Surround3D::new(sample_rate, channels)));
         chain.push(Box::new(RoomEffects::new(sample_rate, channels)));
         chain.push(Box::new(Convolver::with_slot(sample_rate, channels, ir_slot)));
-        chain.push(Box::new(Compander::new(sample_rate, channels)));
+        chain.push(Box::new(Compander::with_meter(sample_rate, channels, gr_meter)));
         chain.push(Box::new(Gain::new()));
         chain.push(Box::new(Limiter::new(sample_rate, channels)));
         chain
@@ -187,7 +204,7 @@ mod tests {
         let mut state = EngineState::default();
         state.eq.enabled = false;
         state.power = true;
-        let mut chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot());
+        let mut chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot(), crate::empty_compander_meter());
         chain.set_params(&state);
         // Convolver disabled by default → chain must not blow up; length includes it.
         assert!(chain.len() >= 8, "convolver should be in the standard chain");
@@ -200,7 +217,7 @@ mod tests {
     /// The compander must be in the standard chain after the convolver.
     #[test]
     fn standard_chain_includes_compander() {
-        let chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot());
+        let chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot(), crate::empty_compander_meter());
         assert!(chain.len() >= 10, "compander should be in the standard chain");
     }
 }

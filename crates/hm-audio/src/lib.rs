@@ -56,6 +56,7 @@ pub use decode::{
 pub use device::{list_input_devices, list_output_devices, DeviceInfo};
 pub use fingerprint::fingerprint_file;
 pub use engine::{AudioEngine, ConvolverIrInfo, EngineMeters, MetaSink, PlaybackPos, Renderer};
+pub use hm_dsp::CompanderMeter;
 pub use error::AudioError;
 pub use meta::{extract_metadata, extract_tags, TrackTags};
 pub use queue::QueuePlaybackSource;

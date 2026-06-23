@@ -20,7 +20,7 @@ use std::time::Duration;
 use std::sync::Mutex;
 
 use arc_swap::ArcSwap;
-use hm_audio::{AudioEngine, EngineMeters, PlaybackPos, SpectrumTap, SPECTRUM_BANDS};
+use hm_audio::{AudioEngine, CompanderMeter, EngineMeters, PlaybackPos, SpectrumTap, SPECTRUM_BANDS};
 use hm_core::{EngineFrame, EngineState, LicenseMock, MediaStore, MeterFrame, PresetStore, TrackMeta};
 use serde::Serialize;
 use tauri::menu::{Menu, PredefinedMenuItem, Submenu};
@@ -46,6 +46,7 @@ fn forward_frames(
     app: tauri::AppHandle,
     meters: Arc<EngineMeters>,
     spectrum: Arc<SpectrumTap>,
+    compander_gr: Arc<CompanderMeter>,
     pos: Arc<PlaybackPos>,
     playing: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
@@ -111,6 +112,7 @@ fn forward_frames(
                         EngineFrame {
                             meters: MeterFrame::default(),
                             spectrum: Some(vec![0.0; SPECTRUM_BANDS]),
+                            compander_gr: None,
                         },
                     );
                 }
@@ -127,6 +129,7 @@ fn forward_frames(
                 EngineFrame {
                     meters: meters.load(),
                     spectrum: Some(spectrum.load()),
+                    compander_gr: Some(compander_gr.load().to_vec()),
                 },
             );
             // Transport progress at ~10 fps (every ~6 ticks).
@@ -155,6 +158,7 @@ pub fn run() {
     let engine = AudioEngine::new();
     let meters = engine.meters();
     let spectrum = engine.spectrum();
+    let compander_gr = engine.compander_gr();
     let pos = engine.pos();
     let playing = engine.playing_flag();
     let paused = engine.paused_flag();
@@ -457,6 +461,7 @@ pub fn run() {
                         handle,
                         meters,
                         spectrum,
+                        compander_gr,
                         pos,
                         playing,
                         paused,

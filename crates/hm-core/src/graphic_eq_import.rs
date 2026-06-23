@@ -78,7 +78,7 @@ pub fn interpolate_to_iso_bands(curve: &[(f32, f32)]) -> [f32; BAND_COUNT] {
 
 /// Clip-proof preamp: enough negative gain that the peak band reaches 0 dB.
 pub fn recommended_preamp(bands: &[f32; BAND_COUNT]) -> f32 {
-    let peak = bands.iter().cloned().fold(f32::MIN, f32::max);
+    let peak = bands.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     -peak.max(0.0)
 }
 
@@ -116,7 +116,21 @@ mod tests {
         let curve = vec![(20.0, 3.0), (1000.0, 9.0), (20000.0, -2.0)];
         let bands = interpolate_to_iso_bands(&curve);
         let pre = recommended_preamp(&bands);
-        let peak = bands.iter().cloned().fold(f32::MIN, f32::max);
+        let peak = bands.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         assert!(peak + pre <= 1e-4, "peak {peak} + preamp {pre} must be <= 0");
+    }
+
+    #[test]
+    fn preamp_zero_when_no_positive_gain() {
+        // An all-attenuation curve needs no headroom → preamp is exactly 0.
+        let bands = [-3.0f32; BAND_COUNT];
+        assert_eq!(recommended_preamp(&bands), 0.0);
+    }
+
+    #[test]
+    fn single_point_curve_clamps_all_bands() {
+        // A one-point curve applies that gain to every ISO band.
+        let bands = interpolate_to_iso_bands(&[(1000.0, 4.0)]);
+        assert!(bands.iter().all(|&g| (g - 4.0).abs() < 1e-4), "all bands should be 4.0 dB, got {bands:?}");
     }
 }

@@ -102,6 +102,40 @@ impl Biquad {
         self.assign(b0, b1, b2, a0, a1, a2);
     }
 
+    /// Configure as an RBJ low-pass at `f0` with quality `q`.
+    pub fn set_lowpass(&mut self, sample_rate: f32, f0: f32, q: f32) {
+        let fs = sample_rate as f64;
+        let f0 = (f0 as f64).clamp(1.0, fs * 0.495);
+        let q = (q as f64).max(1e-4);
+        let w0 = 2.0 * std::f64::consts::PI * f0 / fs;
+        let cos = w0.cos();
+        let alpha = w0.sin() / (2.0 * q);
+        let b1 = 1.0 - cos;
+        let b0 = b1 / 2.0;
+        let b2 = b0;
+        let a0 = 1.0 + alpha;
+        let a1 = -2.0 * cos;
+        let a2 = 1.0 - alpha;
+        self.assign(b0, b1, b2, a0, a1, a2);
+    }
+
+    /// Configure as an RBJ high-pass at `f0` with quality `q`.
+    pub fn set_highpass(&mut self, sample_rate: f32, f0: f32, q: f32) {
+        let fs = sample_rate as f64;
+        let f0 = (f0 as f64).clamp(1.0, fs * 0.495);
+        let q = (q as f64).max(1e-4);
+        let w0 = 2.0 * std::f64::consts::PI * f0 / fs;
+        let cos = w0.cos();
+        let alpha = w0.sin() / (2.0 * q);
+        let b1 = -(1.0 + cos);
+        let b0 = (1.0 + cos) / 2.0;
+        let b2 = b0;
+        let a0 = 1.0 + alpha;
+        let a1 = -2.0 * cos;
+        let a2 = 1.0 - alpha;
+        self.assign(b0, b1, b2, a0, a1, a2);
+    }
+
     /// Configure from an AutoEq-style band kind (`peaking`, `lowShelf`,
     /// `highShelf`). Unknown kinds become a no-op identity.
     pub fn set_from_kind(&mut self, kind: &str, sample_rate: f32, f0: f32, gain_db: f32, q: f32) {
@@ -176,5 +210,32 @@ mod tests {
             y = bq.process_sample(1.0);
         }
         assert!(y > 1.5, "expected ~+6 dB (×2) low boost, got {y}");
+    }
+
+    #[test]
+    fn lowpass_passes_dc_attenuates_hf() {
+        let mut lp = Biquad::identity();
+        lp.set_lowpass(48_000.0, 1_000.0, std::f32::consts::FRAC_1_SQRT_2);
+        // Settle on DC ⇒ ~unity gain.
+        let mut y = 0.0;
+        for _ in 0..4000 { y = lp.process_sample(1.0); }
+        assert!((y - 1.0).abs() < 0.05, "LP DC gain ~1, got {y}");
+        // A 12 kHz tone (well above cutoff) is strongly attenuated.
+        lp.reset();
+        let mut peak = 0.0f32;
+        for i in 0..4000 {
+            let x = (2.0 * std::f32::consts::PI * 12_000.0 * i as f32 / 48_000.0).sin();
+            peak = peak.max(lp.process_sample(x).abs());
+        }
+        assert!(peak < 0.3, "12kHz through 1kHz LP should be small, got {peak}");
+    }
+
+    #[test]
+    fn highpass_blocks_dc_passes_hf() {
+        let mut hp = Biquad::identity();
+        hp.set_highpass(48_000.0, 1_000.0, std::f32::consts::FRAC_1_SQRT_2);
+        let mut y = 0.0;
+        for _ in 0..4000 { y = hp.process_sample(1.0); }
+        assert!(y.abs() < 0.05, "HP blocks DC, got {y}");
     }
 }

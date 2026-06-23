@@ -1,7 +1,7 @@
 name: hypemuzik
 base: core22
 # Stamped from src-tauri/tauri.conf.json by the release workflow before build.
-version: '0.0.0'
+version: '0.1.6'
 summary: System-wide audio enhancer & music player
 description: |
   HypeMuzik is a desktop audio enhancer and player: a real-time DSP chain

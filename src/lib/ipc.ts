@@ -849,6 +849,16 @@ export function onNowPlaying(
 
 /* ------------------------------------------------------------------ dialogs */
 
+/** Import a GraphicEQ curve string into the engine and return the resolved bands + preGain. */
+export interface EqImportResult {
+  bands: number[];
+  preGain: number;
+}
+
+export function engineEqImportGraphic(curve: string): Promise<EqImportResult> {
+  return invoke<EqImportResult>("engine_eq_import_graphic", { curve });
+}
+
 /** Open a native file picker for an audio file; returns the chosen path. */
 export async function pickAudioFile(): Promise<string | null> {
   const selected = await open({

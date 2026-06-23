@@ -3,6 +3,7 @@ import {
   cloudPlay,
   cloudTrackMetadata,
   engineConvolverLoadIr,
+  engineEqImportGraphic,
   engineSetBass,
   engineSetConvolver,
   engineSetEq,
@@ -248,6 +249,7 @@ interface EngineStore {
   setRoom: (next: RoomState) => void;
   setConvolver: (next: ConvolverState) => void;
   loadConvolverIr: (path: string) => Promise<void>;
+  importGraphicEq: (curve: string) => Promise<void>;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
   setPlayback: (gapless: boolean, crossfadeSecs: number) => void;
@@ -594,6 +596,16 @@ export const useEngineStore = create<EngineStore>((set, get) => {
             irSeconds: info.seconds,
             irTruncated: info.truncated,
           },
+        },
+      }));
+    },
+    importGraphicEq: async (curve) => {
+      const res = await engineEqImportGraphic(curve);
+      set((s) => ({
+        state: {
+          ...s.state,
+          eq: { ...s.state.eq, enabled: true, bands: res.bands, preGain: res.preGain },
+          activePresetId: null,
         },
       }));
     },

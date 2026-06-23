@@ -10,10 +10,11 @@ import { EqBandSlider } from "@/components/EqBandSlider";
 import { EqVisualizer } from "@/features/equalizer/EqVisualizer";
 import { PresetBar } from "@/features/equalizer/PresetBar";
 import { useEngineStore } from "@/stores/engine";
-import { eqApplyPreset, eqDelete, eqListPresets, eqSaveCustom } from "@/lib/ipc";
+import { eqApplyPreset, eqDelete, eqListPresets, eqSaveCustom, ipcErrorMessage } from "@/lib/ipc";
 import { BAND_COUNT, ISO_CENTERS_HZ } from "@/lib/types";
 import type { EqPreset } from "@/lib/types";
 import { formatDb, formatHz } from "@/lib/format";
+import { toast } from "@/stores/toast";
 
 const DB_MIN = -12;
 const DB_MAX = 12;
@@ -31,8 +32,12 @@ export function EqualizerView() {
   const setPreGain = useEngineStore((s) => s.setPreGain);
   const setEqEnabled = useEngineStore((s) => s.setEqEnabled);
   const applyPreset = useEngineStore((s) => s.applyPreset);
+  const importGraphicEq = useEngineStore((s) => s.importGraphicEq);
 
   const [presets, setPresets] = useState<EqPreset[]>([]);
+  const [showImport, setShowImport] = useState(false);
+  const [curveText, setCurveText] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const refresh = useCallback(() => {
     eqListPresets()
@@ -66,6 +71,20 @@ export function EqualizerView() {
   };
 
   const reset = () => setBands(Array<number>(BAND_COUNT).fill(0));
+
+  const applyCurve = async () => {
+    setImporting(true);
+    try {
+      await importGraphicEq(curveText);
+      setShowImport(false);
+      setCurveText("");
+      toast.success("EQ curve imported");
+    } catch (e) {
+      toast.error(`Couldn't import curve: ${ipcErrorMessage(e)}`);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -137,6 +156,41 @@ export function EqualizerView() {
               <RotateCcw className="size-4" aria-hidden="true" />
               Reset
             </Button>
+          </div>
+
+          {/* Import curve affordance */}
+          <div className="border-t border-border pt-3">
+            <Button
+              variant="ghost"
+              onClick={() => setShowImport((v) => !v)}
+            >
+              Import curve…
+            </Button>
+            {showImport && (
+              <div className="mt-3 space-y-2">
+                <textarea
+                  className="h-24 w-full rounded-md bg-white/5 p-2 text-xs text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-accent"
+                  placeholder="GraphicEQ: 20 -1.2; 25 -1.1; ... (paste an AutoEQ curve)"
+                  value={curveText}
+                  onChange={(e) => setCurveText(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={applyCurve}
+                    disabled={importing || curveText.trim() === ""}
+                  >
+                    {importing ? "Applying…" : "Apply curve"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => { setShowImport(false); setCurveText(""); }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </Card>

@@ -351,6 +351,8 @@ enum EngineCommand {
         start_secs: f64,
     },
     /// Play an already-constructed live source (e.g. the macOS system tap).
+    /// Only constructed on the macOS tap path; dead (but compiled) elsewhere.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     PlaySource(Box<dyn AudioSource>),
     Pause,
     Resume,

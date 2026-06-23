@@ -18,6 +18,8 @@ pub(crate) fn log(msg: &str) {
 }
 
 /// True for the first `n` increments of `counter` — rate-limits hot-path logs.
+/// Only the macOS process-tap path uses this today; dead (but compiled) elsewhere.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn first_n(counter: &AtomicU32, n: u32) -> bool {
     counter.fetch_add(1, Ordering::Relaxed) < n
 }

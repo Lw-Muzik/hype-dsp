@@ -18,6 +18,12 @@ pub fn load_ir_samples(path: &Path) -> Result<(Vec<f32>, usize, f32), AudioError
             .collect::<Result<_, _>>()
             .map_err(|e| AudioError::Decode(format!("read IR floats: {e}")))?,
         hound::SampleFormat::Int => {
+            if spec.bits_per_sample == 0 || spec.bits_per_sample > 32 {
+                return Err(AudioError::Decode(format!(
+                    "unsupported IR bit depth: {}",
+                    spec.bits_per_sample
+                )));
+            }
             let max = (1i64 << (spec.bits_per_sample - 1)) as f32;
             reader
                 .into_samples::<i32>()
@@ -40,7 +46,7 @@ mod tests {
     fn loads_a_written_wav() {
         // Write a tiny mono 48k WAV to a temp path, then read it back.
         let dir = std::env::temp_dir();
-        let path = dir.join("hm_ir_test.wav");
+        let path = dir.join(format!("hm_ir_test_{:?}.wav", std::thread::current().id()));
         let spec = hound::WavSpec {
             channels: 1,
             sample_rate: 48_000,

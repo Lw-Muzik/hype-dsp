@@ -113,7 +113,7 @@ pub fn visualizer_preset_names(app: AppHandle) -> Vec<String> {
             }
         }
     }
-    names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    names.sort_by_key(|s| s.to_lowercase());
     names
 }
 

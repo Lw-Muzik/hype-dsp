@@ -361,9 +361,8 @@ pub fn run() {
             let remote_dir = app
                 .path()
                 .app_data_dir()
-                .map(|d| {
-                    let _ = std::fs::create_dir_all(&d);
-                    d
+                .inspect(|d| {
+                    let _ = std::fs::create_dir_all(d);
                 })
                 .unwrap_or_else(|_| std::env::temp_dir());
             let pair_handle = app.handle().clone();

@@ -14,6 +14,7 @@
 use hm_core::EngineState;
 
 pub mod bass_boost;
+pub mod compander;
 pub mod convolver;
 pub mod biquad;
 mod delay;
@@ -27,6 +28,7 @@ pub mod spatializer;
 pub mod surround3d;
 
 pub use bass_boost::BassBoost;
+pub use compander::Compander;
 pub use convolver::{empty_ir_slot, Convolver, IrSlot, PreparedIr};
 pub use gain::Gain;
 pub use graphic_eq::GraphicEq;

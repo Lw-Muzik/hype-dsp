@@ -86,6 +86,19 @@ export interface ConvolverState {
   irTruncated: boolean;
 }
 
+/** Multiband compander (10-band LR compressor/expander); global params. */
+export interface CompanderState {
+  enabled: boolean;
+  thresholdDb: number;
+  ratio: number;
+  kneeDb: number;
+  attackMs: number;
+  releaseMs: number;
+  makeupDb: number;
+  gateDb: number;
+  expanderRatio: number;
+}
+
 /** A built-in room reverb preset (mirrors the Hype mobile presets). */
 export interface RoomPreset {
   id: string;
@@ -141,6 +154,7 @@ export interface EngineState {
   surround3d: Surround3DState;
   room: RoomState;
   convolver: ConvolverState;
+  compander: CompanderState;
   headphone: HeadphoneCorrectionState;
   output: OutputState;
   playback: PlaybackState;

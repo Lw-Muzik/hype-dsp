@@ -220,6 +220,44 @@ impl Default for ConvolverState {
     }
 }
 
+/// Multiband compander (10-band Linkwitz-Riley compressor/expander). Global
+/// params are applied uniformly to every band. Ported from the mobile Hype MBC.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompanderState {
+    pub enabled: bool,
+    /// Compression starts above this input level, in dB.
+    pub threshold_db: f32,
+    /// Compression ratio (1.0 = no compression).
+    pub ratio: f32,
+    /// Soft-knee width in dB (0 = hard knee).
+    pub knee_db: f32,
+    pub attack_ms: f32,
+    pub release_ms: f32,
+    /// Post (makeup) gain in dB.
+    pub makeup_db: f32,
+    /// Noise-gate threshold in dB; below it the expander engages.
+    pub gate_db: f32,
+    /// Expander ratio applied below the gate threshold (>= 1).
+    pub expander_ratio: f32,
+}
+
+impl Default for CompanderState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            threshold_db: -18.0,
+            ratio: 2.5,
+            knee_db: 8.0,
+            attack_ms: 15.0,
+            release_ms: 45.0,
+            makeup_db: 0.0,
+            gate_db: -70.0,
+            expander_ratio: 2.0,
+        }
+    }
+}
+
 /// Makeup gain followed by the look-ahead brickwall limiter that keeps boosted
 /// volume from clipping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -299,6 +337,7 @@ pub struct EngineState {
     pub surround3d: Surround3DState,
     pub room: RoomState,
     pub convolver: ConvolverState,
+    pub compander: CompanderState,
     pub headphone: HeadphoneCorrectionState,
     pub output: OutputState,
     pub playback: PlaybackState,
@@ -319,6 +358,7 @@ impl Default for EngineState {
             surround3d: Surround3DState::default(),
             room: RoomState::default(),
             convolver: ConvolverState::default(),
+            compander: CompanderState::default(),
             headphone: HeadphoneCorrectionState::default(),
             output: OutputState::default(),
             playback: PlaybackState::default(),
@@ -467,5 +507,20 @@ mod tests {
         assert!(!c.ir_truncated);
         // Present on EngineState and off by default.
         assert!(!EngineState::default().convolver.enabled);
+    }
+
+    #[test]
+    fn compander_default_is_disabled_with_mastering_defaults() {
+        let c = CompanderState::default();
+        assert!(!c.enabled);
+        assert_eq!(c.threshold_db, -18.0);
+        assert_eq!(c.ratio, 2.5);
+        assert_eq!(c.knee_db, 8.0);
+        assert_eq!(c.attack_ms, 15.0);
+        assert_eq!(c.release_ms, 45.0);
+        assert_eq!(c.makeup_db, 0.0);
+        assert_eq!(c.gate_db, -70.0);
+        assert_eq!(c.expander_ratio, 2.0);
+        assert!(!EngineState::default().compander.enabled);
     }
 }

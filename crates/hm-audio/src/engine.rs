@@ -24,9 +24,9 @@ use std::thread::JoinHandle;
 use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hm_core::{
-    BassBoostState, ConvolverState, EngineState, HeadphoneCorrectionState, MeterFrame,
-    ParametricBand, RoomState, SpatialMode, SpatializerState, Surround3DState, SurroundSpeakers,
-    TrackMeta,
+    BassBoostState, CompanderState, ConvolverState, EngineState, HeadphoneCorrectionState,
+    MeterFrame, ParametricBand, RoomState, SpatialMode, SpatializerState, Surround3DState,
+    SurroundSpeakers, TrackMeta,
 };
 use hm_dsp::{empty_ir_slot, IrSlot, PreparedIr, ProcessChain};
 
@@ -644,6 +644,16 @@ impl AudioEngine {
         room.diffusion = room.diffusion.clamp(0.0, 1.0);
         room.wet_dry = room.wet_dry.clamp(0.0, 1.0);
         self.update(|s| s.room = room);
+    }
+
+    /// Configure the multiband compander stage.
+    pub fn set_compander(&self, mut compander: CompanderState) {
+        compander.ratio = compander.ratio.max(1.0);
+        compander.expander_ratio = compander.expander_ratio.max(1.0);
+        compander.knee_db = compander.knee_db.max(0.0);
+        compander.attack_ms = compander.attack_ms.max(0.1);
+        compander.release_ms = compander.release_ms.max(0.1);
+        self.update(|s| s.compander = compander);
     }
 
     /// Update the convolver's cheap scalar params (enabled / wet-dry / gain).

@@ -113,6 +113,12 @@ pub fn engine_set_convolver(engine: State<'_, AudioEngine>, convolver: hm_core::
     engine.set_convolver(convolver);
 }
 
+/// Configure the multiband compander stage.
+#[tauri::command]
+pub fn engine_set_compander(engine: State<'_, AudioEngine>, compander: hm_core::CompanderState) {
+    engine.set_compander(compander);
+}
+
 /// Load an impulse-response file into the convolver (heavy prep off the audio thread).
 #[tauri::command]
 pub fn engine_convolver_load_ir(

@@ -7,7 +7,7 @@ import { Artwork } from "@/features/player/Artwork";
 import type { ArtSource } from "@/lib/useTrackArtwork";
 import { cn } from "@/lib/cn";
 
-const ROW_H = 84;
+const ROW_H = 68;
 
 interface Row {
   item: QueueItem;
@@ -62,17 +62,17 @@ function QueueRow({
         !nowPlaying && "hover:bg-surface-overlay",
       )}
     >
-      <div className="relative size-16 shrink-0">
+      <div className="relative size-12 shrink-0">
         <Artwork
           art={queueArt(item)}
           seed={seed}
           label={item.title}
-          className="size-16 text-lg"
+          className="size-12 text-base"
           rounded="rounded-md"
         />
         {!nowPlaying && (
           <span className="absolute inset-0 grid place-items-center rounded-md bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
-            <Play className="size-6 fill-white text-white" aria-hidden="true" />
+            <Play className="size-5 fill-white text-white" aria-hidden="true" />
           </span>
         )}
       </div>

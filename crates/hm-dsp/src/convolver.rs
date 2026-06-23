@@ -155,6 +155,145 @@ impl MonoConvolver {
     }
 }
 
+/// A fully prepared impulse response, ready for real-time convolution.
+pub struct PreparedIr {
+    pub channels: usize,
+    pub l: PreparedIrChannel,
+    pub r: Option<PreparedIrChannel>,
+    pub num_partitions: usize,
+    pub seconds: f32,
+    pub truncated: bool,
+}
+
+/// Maximum partition count for the engine sample rate — sizes the FDL ring.
+// TODO: remove allow in Task 4 when wired into the Convolver stage.
+#[allow(dead_code)]
+pub fn max_partitions(target_sr: f32) -> usize {
+    ((MAX_IR_SECONDS * target_sr) as usize)
+        .div_ceil(CONV_BLOCK)
+        .max(1)
+}
+
+/// Linear-interpolating resampler for one mono channel. Adequate for IRs;
+/// runs off the audio thread so quality/cost trade-offs are non-critical.
+fn resample_linear(input: &[f32], src_sr: f32, dst_sr: f32) -> Vec<f32> {
+    if (src_sr - dst_sr).abs() < f32::EPSILON || input.is_empty() {
+        return input.to_vec();
+    }
+    let ratio = dst_sr as f64 / src_sr as f64;
+    let out_len = ((input.len() as f64) * ratio).round() as usize;
+    let mut out = Vec::with_capacity(out_len);
+    for i in 0..out_len {
+        let src = i as f64 / ratio;
+        let i0 = src.floor() as usize;
+        let frac = (src - i0 as f64) as f32;
+        let a = input.get(i0).copied().unwrap_or(0.0);
+        let b = input.get(i0 + 1).copied().unwrap_or(a);
+        out.push(a + (b - a) * frac);
+    }
+    out
+}
+
+/// Partition a time-domain IR channel into forward-FFT'd `CONV_BLOCK` blocks.
+fn partition_channel(ir: &[f32], fft: &Arc<dyn RealToComplex<f32>>) -> PreparedIrChannel {
+    let num = ir.len().div_ceil(CONV_BLOCK).max(1);
+    let mut partitions = Vec::with_capacity(num);
+    for p in 0..num {
+        let mut buf = vec![0.0f32; CONV_FFT];
+        let start = p * CONV_BLOCK;
+        let end = (start + CONV_BLOCK).min(ir.len());
+        if start < ir.len() {
+            buf[..end - start].copy_from_slice(&ir[start..end]);
+        }
+        let mut spec = fft.make_output_vec();
+        fft.process(&mut buf, &mut spec).expect("ir partition fft");
+        partitions.push(spec);
+    }
+    PreparedIrChannel { partitions }
+}
+
+impl PreparedIr {
+    /// Build a prepared IR from interleaved `samples`. Heavy — call OFF the
+    /// audio thread. Steps: de-interleave → resample to `target_sr` → cap to
+    /// MAX_IR_SECONDS → L2-energy-normalize (per the combined IR) → partition+FFT.
+    pub fn build(samples: &[f32], src_channels: usize, src_sr: f32, target_sr: f32) -> PreparedIr {
+        let src_channels = src_channels.max(1);
+        let stereo = src_channels >= 2;
+
+        // De-interleave into one or two mono channels.
+        let frames = samples.len() / src_channels;
+        let mut left = Vec::with_capacity(frames);
+        let mut right = Vec::with_capacity(if stereo { frames } else { 0 });
+        for f in 0..frames {
+            left.push(samples[f * src_channels]);
+            if stereo {
+                right.push(samples[f * src_channels + 1]);
+            }
+        }
+
+        // Resample to engine rate.
+        let mut left = resample_linear(&left, src_sr, target_sr);
+        let mut right = if stereo {
+            resample_linear(&right, src_sr, target_sr)
+        } else {
+            Vec::new()
+        };
+
+        // Length cap.
+        let cap = (MAX_IR_SECONDS * target_sr) as usize;
+        let truncated = left.len() > cap;
+        if truncated {
+            left.truncate(cap);
+            if stereo {
+                right.truncate(cap);
+            }
+        }
+        let len = left.len().max(1);
+        let seconds = len as f32 / target_sr;
+
+        // L2-energy normalization across the whole IR (both channels) → unity
+        // energy, so swapping IRs keeps perceived loudness stable.
+        let mut energy = 0.0f64;
+        for &v in &left {
+            energy += (v as f64) * (v as f64);
+        }
+        for &v in &right {
+            energy += (v as f64) * (v as f64);
+        }
+        let norm = if energy > 1e-20 {
+            (1.0 / energy.sqrt()) as f32
+        } else {
+            1.0
+        };
+        for v in left.iter_mut() {
+            *v *= norm;
+        }
+        for v in right.iter_mut() {
+            *v *= norm;
+        }
+
+        // Partition + FFT.
+        let mut planner = RealFftPlanner::<f32>::new();
+        let fft = planner.plan_fft_forward(CONV_FFT);
+        let l = partition_channel(&left, &fft);
+        let num_partitions = l.partitions.len();
+        let r = if stereo {
+            Some(partition_channel(&right, &fft))
+        } else {
+            None
+        };
+
+        PreparedIr {
+            channels: if stereo { 2 } else { 1 },
+            l,
+            r,
+            num_partitions,
+            seconds,
+            truncated,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,6 +370,52 @@ mod tests {
                 reference[i]
             );
         }
+    }
+
+    #[test]
+    fn build_mono_unit_impulse_normalized_passthrough() {
+        // A single-sample IR, energy-normalized to L2=1, is still 1.0 → passthrough.
+        let ir = PreparedIr::build(&[0.5], 1, 48_000.0, 48_000.0);
+        assert_eq!(ir.channels, 1);
+        assert!(ir.r.is_none());
+        assert_eq!(ir.num_partitions, 1);
+        let mut mc = MonoConvolver::new(ir.num_partitions);
+        let x: Vec<f32> = (0..CONV_BLOCK * 3).map(|i| (i as f32 * 0.07).sin()).collect();
+        let mut y = vec![0.0; x.len()];
+        mc.process(&x, &mut y, &ir.l);
+        for i in 0..(x.len() - CONV_BLOCK) {
+            assert!((y[i + CONV_BLOCK] - x[i]).abs() < 1e-4);
+        }
+    }
+
+    #[test]
+    fn build_caps_length() {
+        // 10 s @ 48k truncates to MAX_IR_SECONDS.
+        let n = 48_000 * 10;
+        let samples = vec![0.01f32; n];
+        let ir = PreparedIr::build(&samples, 1, 48_000.0, 48_000.0);
+        assert!(ir.truncated);
+        assert!(ir.seconds <= MAX_IR_SECONDS + 0.001);
+        let max_parts = ((MAX_IR_SECONDS * 48_000.0) as usize).div_ceil(CONV_BLOCK);
+        assert!(ir.num_partitions <= max_parts);
+    }
+
+    #[test]
+    fn build_resamples_to_target() {
+        // 44.1k IR built for a 48k engine → seconds preserved (within a frame).
+        let secs = 0.5;
+        let n = (44_100.0 * secs) as usize;
+        let samples = vec![0.01f32; n];
+        let ir = PreparedIr::build(&samples, 1, 44_100.0, 48_000.0);
+        assert!((ir.seconds - secs).abs() < 0.01, "seconds={}", ir.seconds);
+    }
+
+    #[test]
+    fn build_stereo_has_two_channels() {
+        let samples: Vec<f32> = (0..1000).flat_map(|i| [i as f32 * 0.001, -(i as f32) * 0.001]).collect();
+        let ir = PreparedIr::build(&samples, 2, 48_000.0, 48_000.0);
+        assert_eq!(ir.channels, 2);
+        assert!(ir.r.is_some());
     }
 
     #[test]

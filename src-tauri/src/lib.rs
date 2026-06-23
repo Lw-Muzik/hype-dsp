@@ -482,6 +482,8 @@ pub fn run() {
             commands::engine::engine_set_spatializer,
             commands::engine::engine_set_surround3d,
             commands::engine::engine_set_room,
+            commands::engine::engine_set_convolver,
+            commands::engine::engine_convolver_load_ir,
             commands::cloud::cloud_status,
             commands::cloud::cloud_connect,
             commands::cloud::cloud_disconnect,

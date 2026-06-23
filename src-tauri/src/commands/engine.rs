@@ -84,6 +84,23 @@ pub fn engine_set_room(engine: State<'_, AudioEngine>, room: RoomState) {
     engine.set_room(room);
 }
 
+/// Configure the convolver stage's scalar params.
+#[tauri::command]
+pub fn engine_set_convolver(engine: State<'_, AudioEngine>, convolver: hm_core::ConvolverState) {
+    engine.set_convolver(convolver);
+}
+
+/// Load an impulse-response file into the convolver (heavy prep off the audio thread).
+#[tauri::command]
+pub fn engine_convolver_load_ir(
+    engine: State<'_, AudioEngine>,
+    path: String,
+) -> Result<hm_audio::ConvolverIrInfo, IpcError> {
+    engine
+        .load_convolver_ir(&PathBuf::from(path))
+        .map_err(Into::into)
+}
+
 /// Decode and play a local file through the enhancement chain.
 #[tauri::command]
 pub fn player_play_file(engine: State<'_, AudioEngine>, path: String) -> Result<(), IpcError> {

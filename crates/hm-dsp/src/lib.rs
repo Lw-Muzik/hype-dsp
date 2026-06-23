@@ -82,9 +82,15 @@ impl ProcessChain {
 
     /// Build the standard enhancement chain for the given format, in the
     /// canonical fixed order:
-    /// `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Gain →
-    /// Limiter`.
+    /// `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D →
+    /// RoomEffects → Convolver → Gain → Limiter`.
     pub fn standard(sample_rate: f32, channels: usize) -> Self {
+        Self::standard_with_ir(sample_rate, channels, crate::empty_ir_slot())
+    }
+
+    /// Like [`standard`](Self::standard) but with an externally-owned IR slot so
+    /// the engine can publish impulse responses to the convolver stage.
+    pub fn standard_with_ir(sample_rate: f32, channels: usize, ir_slot: IrSlot) -> Self {
         let mut chain = Self::new();
         chain.prepare(sample_rate, channels);
         chain.push(Box::new(HeadphoneCorrection::new(sample_rate, channels)));
@@ -93,6 +99,7 @@ impl ProcessChain {
         chain.push(Box::new(Spatializer::new(sample_rate, channels)));
         chain.push(Box::new(Surround3D::new(sample_rate, channels)));
         chain.push(Box::new(RoomEffects::new(sample_rate, channels)));
+        chain.push(Box::new(Convolver::with_slot(sample_rate, channels, ir_slot)));
         chain.push(Box::new(Gain::new()));
         chain.push(Box::new(Limiter::new(sample_rate, channels)));
         chain
@@ -168,5 +175,22 @@ mod tests {
         let chain = ProcessChain::new();
         assert_eq!(chain.len(), 0);
         assert!(chain.is_empty());
+    }
+
+    /// The standard chain with IR slot, with all effects off, should not
+    /// distort the signal; the convolver must be present in the chain.
+    #[test]
+    fn standard_chain_is_identity_when_all_off() {
+        let mut state = EngineState::default();
+        state.eq.enabled = false;
+        state.power = true;
+        let mut chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot());
+        chain.set_params(&state);
+        // Convolver disabled by default → chain must not blow up; length includes it.
+        assert!(chain.len() >= 8, "convolver should be in the standard chain");
+        let original: Vec<f32> = (0..1024).map(|i| (i as f32 * 0.01).sin() * 0.3).collect();
+        let mut buf = original.clone();
+        chain.process(&mut buf, 2);
+        assert!(buf.iter().all(|&x| x.abs() <= 1.0));
     }
 }

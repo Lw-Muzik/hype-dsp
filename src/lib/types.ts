@@ -75,6 +75,17 @@ export interface RoomState {
   activePresetId: string | null;
 }
 
+/** Convolution (impulse-response) stage. Heavy IR data lives engine-side. */
+export interface ConvolverState {
+  enabled: boolean;
+  wetDry: number;
+  irGainDb: number;
+  irId: string | null;
+  irName: string | null;
+  irSeconds: number;
+  irTruncated: boolean;
+}
+
 /** A built-in room reverb preset (mirrors the Hype mobile presets). */
 export interface RoomPreset {
   id: string;
@@ -128,6 +139,7 @@ export interface EngineState {
   spatializer: SpatializerState;
   surround3d: Surround3DState;
   room: RoomState;
+  convolver: ConvolverState;
   headphone: HeadphoneCorrectionState;
   output: OutputState;
   playback: PlaybackState;

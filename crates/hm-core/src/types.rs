@@ -184,6 +184,42 @@ impl Default for RoomState {
     }
 }
 
+/// Convolution (impulse-response) stage state. The heavy IR data is NOT stored
+/// here — it is published to the audio stage out-of-band via a lock-free slot.
+/// These are only the cheap scalars the audio thread reads each block, plus
+/// metadata the UI displays.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvolverState {
+    pub enabled: bool,
+    /// Wet/dry mix (0 = dry … 1 = fully wet). Correction IRs run ~1.0.
+    pub wet_dry: f32,
+    /// Post-convolution trim in dB applied to the wet path.
+    pub ir_gain_db: f32,
+    /// Identifier (path or bundled id) of the loaded IR, for the UI.
+    pub ir_id: Option<String>,
+    /// Human-facing IR name, for the UI.
+    pub ir_name: Option<String>,
+    /// IR length in seconds after the length cap.
+    pub ir_seconds: f32,
+    /// Whether the IR was truncated by the length cap.
+    pub ir_truncated: bool,
+}
+
+impl Default for ConvolverState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            wet_dry: 1.0,
+            ir_gain_db: 0.0,
+            ir_id: None,
+            ir_name: None,
+            ir_seconds: 0.0,
+            ir_truncated: false,
+        }
+    }
+}
+
 /// Makeup gain followed by the look-ahead brickwall limiter that keeps boosted
 /// volume from clipping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -262,6 +298,7 @@ pub struct EngineState {
     pub spatializer: SpatializerState,
     pub surround3d: Surround3DState,
     pub room: RoomState,
+    pub convolver: ConvolverState,
     pub headphone: HeadphoneCorrectionState,
     pub output: OutputState,
     pub playback: PlaybackState,
@@ -281,6 +318,7 @@ impl Default for EngineState {
             spatializer: SpatializerState::default(),
             surround3d: Surround3DState::default(),
             room: RoomState::default(),
+            convolver: ConvolverState::default(),
             headphone: HeadphoneCorrectionState::default(),
             output: OutputState::default(),
             playback: PlaybackState::default(),
@@ -413,4 +451,21 @@ pub struct EngineFrame {
     pub meters: MeterFrame,
     /// FFT magnitude bins (dB), when available this frame.
     pub spectrum: Option<Vec<f32>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn convolver_default_is_disabled_and_empty() {
+        let c = ConvolverState::default();
+        assert!(!c.enabled);
+        assert_eq!(c.wet_dry, 1.0);
+        assert_eq!(c.ir_gain_db, 0.0);
+        assert!(c.ir_id.is_none());
+        assert!(!c.ir_truncated);
+        // Present on EngineState and off by default.
+        assert!(!EngineState::default().convolver.enabled);
+    }
 }

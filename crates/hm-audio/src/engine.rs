@@ -24,10 +24,13 @@ use std::thread::JoinHandle;
 use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hm_core::{
-    BassBoostState, EngineState, HeadphoneCorrectionState, MeterFrame, ParametricBand, RoomState,
-    SpatialMode, SpatializerState, Surround3DState, SurroundSpeakers, TrackMeta,
+    BassBoostState, ConvolverState, EngineState, HeadphoneCorrectionState, MeterFrame,
+    ParametricBand, RoomState, SpatialMode, SpatializerState, Surround3DState, SurroundSpeakers,
+    TrackMeta,
 };
-use hm_dsp::ProcessChain;
+use hm_dsp::{empty_ir_slot, IrSlot, PreparedIr, ProcessChain};
+
+use crate::ir_loader::load_ir_samples;
 
 use crate::capture::LoopbackCaptureSource;
 use crate::decode::{decode_file, resample_stereo, DecodedAudio};
@@ -234,7 +237,12 @@ pub struct Renderer {
 
 impl Renderer {
     /// Create a renderer for the given source and output format.
-    pub fn new(mut source: Box<dyn AudioSource>, sample_rate: f32, channels: usize) -> Self {
+    pub fn new(
+        mut source: Box<dyn AudioSource>,
+        sample_rate: f32,
+        channels: usize,
+        ir_slot: IrSlot,
+    ) -> Self {
         // Tell the source the real output format so rate-dependent sources (e.g.
         // the system tap) can configure their resampler. Errors are non-fatal.
         let _ = source.start(StreamFormat {
@@ -242,7 +250,7 @@ impl Renderer {
             channels: channels as u16,
         });
         Self {
-            chain: ProcessChain::standard(sample_rate, channels),
+            chain: ProcessChain::standard_with_ir(sample_rate, channels, ir_slot),
             source,
             analyzer: Analyzer::new(sample_rate),
             dbg_logged: 0,
@@ -373,6 +381,9 @@ pub struct AudioEngine {
     /// Live per-stem gains, shared with the active stem-playback source so the
     /// UI's faders apply to the current track instantly.
     stem_gains: Arc<StemGains>,
+    /// Lock-free IR slot shared with the active Convolver; the UI publishes a
+    /// freshly-built `PreparedIr` here and the audio thread reads it next block.
+    ir_slot: IrSlot,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     /// Active self-contained system-wide EQ pipeline (Linux/Windows re-routing).
     /// Held only to keep it running; dropping it tears the routing down. `Send`-
@@ -380,6 +391,16 @@ pub struct AudioEngine {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     system_eq: Mutex<Option<Box<dyn Send>>>,
     _thread: JoinHandle<()>,
+}
+
+/// Metadata about a freshly-loaded impulse response, returned to the UI.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvolverIrInfo {
+    pub name: String,
+    pub seconds: f32,
+    pub truncated: bool,
+    pub channels: usize,
 }
 
 /// A write handle to the engine's now-playing metadata slot, handed to a stream
@@ -419,6 +440,7 @@ impl AudioEngine {
         let queue_index = Arc::new(AtomicUsize::new(0));
         let crossfade = Arc::new(AtomicU32::new(initial.playback.crossfade_secs.to_bits()));
         let stem_gains = Arc::new(StemGains::default());
+        let ir_slot = empty_ir_slot();
         let (tx, rx) = mpsc::channel();
 
         let thread = {
@@ -433,6 +455,7 @@ impl AudioEngine {
             let queue_index = queue_index.clone();
             let crossfade = crossfade.clone();
             let stem_gains = stem_gains.clone();
+            let ir_slot = ir_slot.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
                 .spawn(move || {
@@ -449,6 +472,7 @@ impl AudioEngine {
                         queue_index,
                         crossfade,
                         stem_gains,
+                        ir_slot,
                     })
                 })
                 .expect("failed to spawn hm-audio engine thread")
@@ -467,6 +491,7 @@ impl AudioEngine {
             queue_index,
             crossfade,
             stem_gains,
+            ir_slot,
             ctrl: Mutex::new(tx),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             system_eq: Mutex::new(None),
@@ -619,6 +644,66 @@ impl AudioEngine {
         room.diffusion = room.diffusion.clamp(0.0, 1.0);
         room.wet_dry = room.wet_dry.clamp(0.0, 1.0);
         self.update(|s| s.room = room);
+    }
+
+    /// Update the convolver's cheap scalar params (enabled / wet-dry / gain).
+    /// Does NOT reload or rebuild the IR — just merges scalars while preserving
+    /// any already-loaded IR metadata published by `load_convolver_ir`.
+    pub fn set_convolver(&self, mut state: ConvolverState) {
+        state.wet_dry = state.wet_dry.clamp(0.0, 1.0);
+        self.update(|s| {
+            // Preserve loaded-IR metadata published by load_convolver_ir.
+            let (id, name, secs, trunc) = (
+                s.convolver.ir_id.clone(),
+                s.convolver.ir_name.clone(),
+                s.convolver.ir_seconds,
+                s.convolver.ir_truncated,
+            );
+            s.convolver = ConvolverState {
+                ir_id: state.ir_id.or(id),
+                ir_name: state.ir_name.or(name),
+                ir_seconds: if state.ir_seconds > 0.0 { state.ir_seconds } else { secs },
+                ir_truncated: state.ir_truncated || trunc,
+                ..state
+            };
+        });
+    }
+
+    /// Decode, prepare, and publish an impulse response to the live stage.
+    ///
+    /// Heavy work (file I/O + FFT/resample) runs here — on the caller's command
+    /// thread, never on the audio thread.  The prepared IR is handed off to the
+    /// audio thread by a single lock-free atomic store; the audio callback only
+    /// ever calls `slot.load()`.
+    pub fn load_convolver_ir(&self, path: &Path) -> Result<ConvolverIrInfo, AudioError> {
+        // TODO: thread real device sample rate if it becomes available.
+        let target_sr = 48_000.0_f32;
+        let (samples, channels, src_sr) = load_ir_samples(path)?;
+        let prepared = PreparedIr::build(&samples, channels, src_sr, target_sr);
+        let info = ConvolverIrInfo {
+            name: path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("IR")
+                .to_string(),
+            seconds: prepared.seconds,
+            truncated: prepared.truncated,
+            channels: prepared.channels,
+        };
+        // Publish to the audio thread (lock-free — single pointer swap).
+        self.ir_slot
+            .store(Arc::new(Some(Arc::new(prepared))));
+        // Reflect metadata in state so the UI + autosave see it.
+        let info_c = info.clone();
+        let id = path.to_string_lossy().to_string();
+        self.update(|s| {
+            s.convolver.ir_id = Some(id);
+            s.convolver.ir_name = Some(info_c.name.clone());
+            s.convolver.ir_seconds = info_c.seconds;
+            s.convolver.ir_truncated = info_c.truncated;
+            s.convolver.enabled = true;
+        });
+        Ok(info)
     }
 
     /// Load a headphone profile's correction into the chain and mark it active.
@@ -898,6 +983,7 @@ struct ControlCtx {
     queue_index: Arc<AtomicUsize>,
     crossfade: Arc<AtomicU32>,
     stem_gains: Arc<StemGains>,
+    ir_slot: IrSlot,
 }
 
 fn control_loop(ctx: ControlCtx) {
@@ -914,6 +1000,7 @@ fn control_loop(ctx: ControlCtx) {
         queue_index,
         crossfade,
         stem_gains,
+        ir_slot,
     } = ctx;
     let setup = output_setup().ok();
     // The active stream is held only to keep audio flowing (RAII); replacing or
@@ -951,6 +1038,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
+                    ir_slot.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -997,6 +1085,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
+                    ir_slot.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1045,6 +1134,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
+                    ir_slot.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1089,6 +1179,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
+                    ir_slot.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1121,6 +1212,7 @@ fn control_loop(ctx: ControlCtx) {
                         playing.clone(),
                         channels,
                         sample_rate as f32,
+                        ir_slot.clone(),
                     ) {
                         Ok(s) if s.play().is_ok() => {
                             playing.store(true, Ordering::Relaxed);
@@ -1159,6 +1251,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
+                    ir_slot.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1206,8 +1299,9 @@ fn build_output_stream(
     playing: Arc<AtomicBool>,
     channels: usize,
     sample_rate: f32,
+    ir_slot: IrSlot,
 ) -> Result<cpal::Stream, AudioError> {
-    let mut renderer = Renderer::new(source, sample_rate, channels);
+    let mut renderer = Renderer::new(source, sample_rate, channels, ir_slot);
 
     device
         .build_output_stream::<f32, _, _>(
@@ -1245,7 +1339,8 @@ mod tests {
 
     #[test]
     fn limiter_keeps_engaged_output_below_ceiling() {
-        let mut renderer = Renderer::new(constant_source(2.0, 4096), 48_000.0, 2);
+        let mut renderer =
+            Renderer::new(constant_source(2.0, 4096), 48_000.0, 2, hm_dsp::empty_ir_slot());
         let meters = EngineMeters::default();
         let spectrum = SpectrumTap::default();
         let pos = PlaybackPos::default();
@@ -1266,7 +1361,8 @@ mod tests {
 
     #[test]
     fn power_off_bypasses_the_chain() {
-        let mut renderer = Renderer::new(constant_source(2.0, 2048), 48_000.0, 2);
+        let mut renderer =
+            Renderer::new(constant_source(2.0, 2048), 48_000.0, 2, hm_dsp::empty_ir_slot());
         let meters = EngineMeters::default();
         let spectrum = SpectrumTap::default();
         let pos = PlaybackPos::default();

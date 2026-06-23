@@ -11,13 +11,6 @@ use std::sync::Arc;
 use realfft::num_complex::Complex;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
 
-// These imports are not yet used in lib code but are part of the module's
-// public contract; they will be wired up in Tasks 3–4.
-#[allow(unused_imports)]
-use arc_swap::ArcSwap;
-#[allow(unused_imports)]
-use crate::{AudioProcessor, ProcessorParams};
-
 /// Partition / hop size in samples. Latency of the stage = this many samples
 /// (~5.3 ms @ 48 kHz) — imperceptible for a player.
 pub const CONV_BLOCK: usize = 256;
@@ -27,7 +20,6 @@ pub const CONV_FFT: usize = 512;
 pub const MAX_IR_SECONDS: f32 = 4.0;
 
 /// Number of complex bins in a real FFT of length [`CONV_FFT`].
-#[allow(dead_code)]
 const BINS: usize = CONV_FFT / 2 + 1;
 
 /// One channel of a prepared impulse response: the forward FFT of each
@@ -40,6 +32,7 @@ pub struct PreparedIrChannel {
 /// Per-channel real-time convolution state. Owns FFT machinery, the
 /// frequency-domain delay line (FDL) of past input spectra, and the streaming
 /// FIFOs that decouple the engine's (variable) block size from `CONV_BLOCK`.
+// TODO: remove this allow once Task 4 wires MonoConvolver into the Convolver stage.
 #[allow(dead_code)]
 struct MonoConvolver {
     fft: Arc<dyn RealToComplex<f32>>,
@@ -67,6 +60,7 @@ struct MonoConvolver {
     out_fifo: std::collections::VecDeque<f32>,
 }
 
+// TODO: remove this allow once Task 4 wires MonoConvolver into the Convolver stage.
 #[allow(dead_code)]
 impl MonoConvolver {
     fn new(max_partitions: usize) -> Self {

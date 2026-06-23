@@ -5,6 +5,7 @@ import {
   engineConvolverLoadIr,
   engineEqImportGraphic,
   engineSetBass,
+  engineSetCompander,
   engineSetConvolver,
   engineSetEq,
   engineSetMasterVolume,
@@ -29,6 +30,7 @@ import { toast } from "@/stores/toast";
 import { BAND_COUNT } from "@/lib/types";
 import type {
   CloudEntry,
+  CompanderState,
   ConvolverState,
   EngineFrame,
   EngineState,
@@ -259,6 +261,7 @@ interface EngineStore {
   setSurround3d: (next: Surround3DState) => void;
   setRoom: (next: RoomState) => void;
   setConvolver: (next: ConvolverState) => void;
+  setCompander: (next: CompanderState) => void;
   loadConvolverIr: (path: string) => Promise<void>;
   /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
@@ -594,6 +597,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setConvolver: (next) => {
       set((s) => ({ state: { ...s.state, convolver: next } }));
       void engineSetConvolver(next).catch(() => {});
+    },
+    setCompander: (next) => {
+      set((s) => ({ state: { ...s.state, compander: next } }));
+      void engineSetCompander(next).catch(() => {});
     },
     loadConvolverIr: async (path) => {
       const info = await engineConvolverLoadIr(path);

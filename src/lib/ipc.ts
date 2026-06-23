@@ -19,6 +19,7 @@ import type {
   CloudProvider,
   CloudStatus,
   CloudTrackMeta,
+  CompanderState,
   DeviceInfo,
   EngineFrame,
   EngineState,
@@ -123,6 +124,11 @@ export function engineSetRoom(room: RoomState): Promise<void> {
 /** Configure the convolution reverb / IR-correction stage. */
 export function engineSetConvolver(convolver: ConvolverState): Promise<void> {
   return invoke<void>("engine_set_convolver", { convolver });
+}
+
+/** Configure the multiband compander stage. */
+export function engineSetCompander(compander: CompanderState): Promise<void> {
+  return invoke<void>("engine_set_compander", { compander });
 }
 
 export interface ConvolverIrInfo {

@@ -11,6 +11,7 @@
 //! it must change on the other — they are a single contract expressed twice.
 
 pub mod error;
+pub mod graphic_eq_import;
 pub mod headphones;
 pub mod license;
 pub mod media_store;
@@ -19,6 +20,7 @@ pub mod store;
 pub mod types;
 
 pub use error::{HmError, IpcError};
+pub use graphic_eq_import::{interpolate_to_iso_bands, parse_graphic_eq, recommended_preamp};
 pub use license::{LicenseError, LicenseMock, LicenseService, LicenseStatus};
 pub use media_store::MediaStore;
 pub use store::PresetStore;

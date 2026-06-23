@@ -2437,6 +2437,7 @@ dependencies = [
 name = "hm-dsp"
 version = "0.1.6"
 dependencies = [
+ "arc-swap",
  "hm-core",
  "hound",
  "realfft",

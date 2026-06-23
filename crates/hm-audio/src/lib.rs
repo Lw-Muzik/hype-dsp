@@ -12,6 +12,7 @@
 pub mod capture;
 pub mod decode;
 pub mod fingerprint;
+pub mod ir_loader;
 pub(crate) mod diag;
 pub mod device;
 pub mod resampler;

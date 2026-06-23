@@ -29,6 +29,9 @@ rtrb = { workspace = true }
 base64 = "0.22"
 rusty-chromaprint = "0.3.0"
 
+# Load impulse-response WAV files.
+hound = { workspace = true }
+
 # macOS system-wide capture via Core Audio process taps (macOS 14.4+).
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

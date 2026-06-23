@@ -53,6 +53,28 @@ objc2-core-foundation = { version = "0.3", features = [
 ] }
 objc2-foundation = { version = "0.3", features = ["NSString", "NSArray"] }
 
+# Windows system-wide EQ: WASAPI loopback capture → DSP → render, plus the
+# undocumented IPolicyConfig (declared via the windows-core `interface` macro)
+# for default-endpoint switching. Built/verified for the windows target via
+# `cargo xwin` on the dev host and on CI's Windows runner, not natively on macOS.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_KernelStreaming",
+    "Win32_Media_Multimedia",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Shell_PropertiesSystem",
+] }
+# The undocumented IPolicyConfig is declared with the `#[interface]` macro, whose
+# expansion references the `windows_core` crate by name (`::windows_core::…`), so
+# it must be a direct dependency alongside the `windows` umbrella crate.
+windows-core = "0.61"
+
 [dev-dependencies]
 # Generates WAV fixtures for decode/playback tests.
 hound = { workspace = true }

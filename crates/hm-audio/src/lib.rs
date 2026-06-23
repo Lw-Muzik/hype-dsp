@@ -24,6 +24,10 @@ pub mod sources;
 pub mod spectrum;
 pub mod stems;
 pub mod streaming;
+/// Platform-agnostic per-block DSP step shared by every system-wide EQ backend
+/// (macOS tap / Linux sink / Windows WASAPI). Always compiled so it is unit-tested
+/// on the dev host even where the surrounding capture plumbing cannot build.
+mod system_eq_shared;
 #[cfg(target_os = "macos")]
 pub mod system_tap;
 #[cfg(target_os = "linux")]

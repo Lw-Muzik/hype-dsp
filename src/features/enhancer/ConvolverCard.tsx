@@ -5,6 +5,8 @@ import { Card } from "@/components/Card";
 import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
 import { useEngineStore } from "@/stores/engine";
+import { toast } from "@/stores/toast";
+import { ipcErrorMessage } from "@/lib/ipc";
 import { cn } from "@/lib/cn";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -26,6 +28,8 @@ export function ConvolverCard() {
     setLoading(true);
     try {
       await loadConvolverIr(path);
+    } catch (e) {
+      toast.error(`Couldn't load impulse response: ${ipcErrorMessage(e)}`);
     } finally {
       setLoading(false);
     }

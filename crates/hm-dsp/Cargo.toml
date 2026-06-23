@@ -8,8 +8,9 @@ authors.workspace = true
 description = "Pure, testable DSP for HypeMuzik: biquads, the process chain, no I/O."
 
 [dependencies]
+arc-swap = { workspace = true }
 hm-core = { workspace = true }
+realfft = { workspace = true }
 
 [dev-dependencies]
 hound = { workspace = true }
-realfft = { workspace = true }

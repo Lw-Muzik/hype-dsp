@@ -14,6 +14,7 @@
 use hm_core::EngineState;
 
 pub mod bass_boost;
+pub mod convolver;
 pub mod biquad;
 mod delay;
 pub mod gain;

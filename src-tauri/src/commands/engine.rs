@@ -44,6 +44,29 @@ pub fn engine_set_eq(
     Ok(())
 }
 
+/// Result of importing a GraphicEQ curve: the resolved bands + clip-proof preamp.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EqImportResult {
+    pub bands: Vec<f32>,
+    pub pre_gain: f32,
+}
+
+/// Parse an EqualizerAPO GraphicEQ string, map it onto the 31 bands with a
+/// clip-proof preamp, apply it, and return the resolved values to the UI.
+#[tauri::command]
+pub fn engine_eq_import_graphic(
+    engine: State<'_, AudioEngine>,
+    curve: String,
+) -> Result<EqImportResult, IpcError> {
+    let points = hm_core::parse_graphic_eq(&curve)
+        .map_err(|e| IpcError::new("invalid", &e))?;
+    let bands = hm_core::interpolate_to_iso_bands(&points);
+    let pre_gain = hm_core::recommended_preamp(&bands);
+    engine.set_eq(bands, pre_gain, true);
+    Ok(EqImportResult { bands: bands.to_vec(), pre_gain })
+}
+
 /// Configure the bass boost stage.
 #[tauri::command]
 pub fn engine_set_bass(

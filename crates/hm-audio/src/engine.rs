@@ -663,6 +663,7 @@ impl AudioEngine {
                 ir_id: state.ir_id.or(id),
                 ir_name: state.ir_name.or(name),
                 ir_seconds: if state.ir_seconds > 0.0 { state.ir_seconds } else { secs },
+                // ir_truncated is sticky: cleared only by a fresh load_convolver_ir, not by knob changes.
                 ir_truncated: state.ir_truncated || trunc,
                 ..state
             };
@@ -690,7 +691,7 @@ impl AudioEngine {
             truncated: prepared.truncated,
             channels: prepared.channels,
         };
-        // Publish to the audio thread (lock-free — single pointer swap).
+        // Publish IR to the audio thread (lock-free) BEFORE updating state, so the audio path never references an IR not yet in the slot.
         self.ir_slot
             .store(Arc::new(Some(Arc::new(prepared))));
         // Reflect metadata in state so the UI + autosave see it.
@@ -701,6 +702,7 @@ impl AudioEngine {
             s.convolver.ir_name = Some(info_c.name.clone());
             s.convolver.ir_seconds = info_c.seconds;
             s.convolver.ir_truncated = info_c.truncated;
+            // Loading an IR implicitly enables the convolver.
             s.convolver.enabled = true;
         });
         Ok(info)

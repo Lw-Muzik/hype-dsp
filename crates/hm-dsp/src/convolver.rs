@@ -390,13 +390,18 @@ impl AudioProcessor for Convolver {
         let stereo = channels >= 2;
         for f in 0..frames {
             self.in_l[f] = buffer[f * channels];
-            self.in_r[f] = if stereo { buffer[f * channels + 1] } else { buffer[f * channels] };
+            if stereo {
+                self.in_r[f] = buffer[f * channels + 1];
+            }
         }
 
-        // Convolve. Mono IR → same partitions for both channels.
-        let ir_r = ir.r.as_ref().unwrap_or(&ir.l);
+        // Convolve left channel always; right only when the output will use it.
+        // Mono input skips the right convolver entirely to save a full FFT/MAC/IFFT.
         self.left.process(&self.in_l[..frames], &mut self.out_l[..frames], &ir.l);
-        self.right.process(&self.in_r[..frames], &mut self.out_r[..frames], ir_r);
+        if stereo {
+            let ir_r = ir.r.as_ref().unwrap_or(&ir.l);
+            self.right.process(&self.in_r[..frames], &mut self.out_r[..frames], ir_r);
+        }
 
         // Wet/dry mix + gain + bounded clamp. NOTE: dry is mixed with the
         // CONV_BLOCK-delayed wet; the small latency is imperceptible and the
@@ -592,6 +597,29 @@ mod tests {
         assert_ne!(
             ir.l.partitions[0][1].re, r.partitions[0][1].re,
             "stereo channels must carry independent content"
+        );
+    }
+
+    #[test]
+    fn mono_input_skips_right_convolver_and_stays_bounded() {
+        // Verify that channels=1 mono path produces finite, bounded, non-trivial
+        // output — i.e. the mono guard doesn't silently zero-out the signal.
+        let slot = empty_ir_slot();
+        let mut c = Convolver::with_slot(48_000.0, 1, slot.clone());
+        let h = vec![0.9f32; 4000];
+        slot.store(Arc::new(Some(Arc::new(PreparedIr::build(&h, 1, 48_000.0, 48_000.0)))));
+        c.set_params(&conv_state(true, 1.0));
+        // Mono buffer: channels=1, so buffer length == frames.
+        let mut buf: Vec<f32> = (0..48_000).map(|i| if i % 2 == 0 { 0.9 } else { -0.9 }).collect();
+        c.process(&mut buf, 1);
+        assert!(
+            buf.iter().all(|&x| x.is_finite() && x.abs() <= 4.0),
+            "mono convolver output must be finite and bounded"
+        );
+        // At least some samples should be non-zero (the convolved wet signal).
+        assert!(
+            buf.iter().any(|&x| x.abs() > 1e-6),
+            "mono convolver output must be non-trivial"
         );
     }
 

@@ -8,8 +8,11 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use realfft::num_complex::Complex;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
+
+use crate::{AudioProcessor, ProcessorParams};
 
 /// Partition / hop size in samples. Latency of the stage = this many samples
 /// (~5.3 ms @ 48 kHz) — imperceptible for a player.
@@ -32,8 +35,6 @@ pub struct PreparedIrChannel {
 /// Per-channel real-time convolution state. Owns FFT machinery, the
 /// frequency-domain delay line (FDL) of past input spectra, and the streaming
 /// FIFOs that decouple the engine's (variable) block size from `CONV_BLOCK`.
-// TODO: remove this allow once Task 4 wires MonoConvolver into the Convolver stage.
-#[allow(dead_code)]
 struct MonoConvolver {
     fft: Arc<dyn RealToComplex<f32>>,
     ifft: Arc<dyn ComplexToReal<f32>>,
@@ -60,8 +61,6 @@ struct MonoConvolver {
     out_fifo: std::collections::VecDeque<f32>,
 }
 
-// TODO: remove this allow once Task 4 wires MonoConvolver into the Convolver stage.
-#[allow(dead_code)]
 impl MonoConvolver {
     fn new(max_partitions: usize) -> Self {
         let mut planner = RealFftPlanner::<f32>::new();
@@ -166,8 +165,6 @@ pub struct PreparedIr {
 }
 
 /// Maximum partition count for the engine sample rate — sizes the FDL ring.
-// TODO: remove allow in Task 4 when wired into the Convolver stage.
-#[allow(dead_code)]
 pub fn max_partitions(target_sr: f32) -> usize {
     ((MAX_IR_SECONDS * target_sr) as usize)
         .div_ceil(CONV_BLOCK)
@@ -298,9 +295,180 @@ impl PreparedIr {
     }
 }
 
+/// Lock-free handle to the active prepared IR. The command thread `store`s a new
+/// IR; the audio thread `load`s it once per block. `None` = no IR (identity).
+pub type IrSlot = Arc<ArcSwap<Option<Arc<PreparedIr>>>>;
+
+/// Create an empty IR slot (no IR loaded).
+pub fn empty_ir_slot() -> IrSlot {
+    Arc::new(ArcSwap::from_pointee(None))
+}
+
+/// Convolution (impulse-response) processing stage.
+pub struct Convolver {
+    sample_rate: f32,
+    enabled: bool,
+    wet: f32,
+    gain: f32, // linear, from ir_gain_db
+    slot: IrSlot,
+    left: MonoConvolver,
+    right: MonoConvolver,
+    /// Scratch for one channel's deinterleaved input/output (sized in prepare).
+    in_l: Vec<f32>,
+    in_r: Vec<f32>,
+    out_l: Vec<f32>,
+    out_r: Vec<f32>,
+}
+
+impl Convolver {
+    pub fn new(sample_rate: f32, channels: usize) -> Self {
+        Self::with_slot(sample_rate, channels, empty_ir_slot())
+    }
+
+    pub fn with_slot(sample_rate: f32, _channels: usize, slot: IrSlot) -> Self {
+        let mp = max_partitions(sample_rate);
+        Self {
+            sample_rate,
+            enabled: false,
+            wet: 1.0,
+            gain: 1.0,
+            slot,
+            left: MonoConvolver::new(mp),
+            right: MonoConvolver::new(mp),
+            in_l: Vec::new(),
+            in_r: Vec::new(),
+            out_l: Vec::new(),
+            out_r: Vec::new(),
+        }
+    }
+
+    /// A clone of the IR slot, so the engine can publish IRs to this stage.
+    pub fn slot(&self) -> IrSlot {
+        self.slot.clone()
+    }
+
+    fn ensure_scratch(&mut self, frames: usize) {
+        if self.in_l.len() < frames {
+            self.in_l.resize(frames, 0.0);
+            self.in_r.resize(frames, 0.0);
+            self.out_l.resize(frames, 0.0);
+            self.out_r.resize(frames, 0.0);
+        }
+    }
+}
+
+impl AudioProcessor for Convolver {
+    fn prepare(&mut self, sample_rate: f32, _channels: usize) {
+        self.sample_rate = sample_rate;
+        let mp = max_partitions(sample_rate);
+        self.left = MonoConvolver::new(mp);
+        self.right = MonoConvolver::new(mp);
+        // Pre-size scratch for a generous block; process() grows it off the RT
+        // path only if a larger block ever arrives (rare; bounded by device).
+        self.in_l.clear();
+        self.in_r.clear();
+        self.out_l.clear();
+        self.out_r.clear();
+        self.ensure_scratch(4096);
+    }
+
+    fn process(&mut self, buffer: &mut [f32], channels: usize) {
+        if !self.enabled || self.wet <= 0.0 || channels == 0 {
+            return;
+        }
+        let ir_guard = self.slot.load();
+        let Some(ir) = ir_guard.as_ref() else {
+            return; // no IR → identity
+        };
+        let frames = buffer.len() / channels;
+        if frames == 0 {
+            return;
+        }
+        self.ensure_scratch(frames);
+
+        // De-interleave (L and, if present, R).
+        let stereo = channels >= 2;
+        for f in 0..frames {
+            self.in_l[f] = buffer[f * channels];
+            self.in_r[f] = if stereo { buffer[f * channels + 1] } else { buffer[f * channels] };
+        }
+
+        // Convolve. Mono IR → same partitions for both channels.
+        let ir_r = ir.r.as_ref().unwrap_or(&ir.l);
+        self.left.process(&self.in_l[..frames], &mut self.out_l[..frames], &ir.l);
+        self.right.process(&self.in_r[..frames], &mut self.out_r[..frames], ir_r);
+
+        // Wet/dry mix + gain + bounded clamp. NOTE: dry is mixed with the
+        // CONV_BLOCK-delayed wet; the small latency is imperceptible and the
+        // wet/dry blend stays phase-stable for correction/reverb IRs.
+        let wet = self.wet * self.gain;
+        let dry = 1.0 - self.wet;
+        for f in 0..frames {
+            let dl = self.in_l[f];
+            let wl = self.out_l[f];
+            let ml = (dl * dry + wl * wet).clamp(-4.0, 4.0);
+            buffer[f * channels] = ml;
+            if stereo {
+                let dr = self.in_r[f];
+                let wr = self.out_r[f];
+                let mr = (dr * dry + wr * wet).clamp(-4.0, 4.0);
+                buffer[f * channels + 1] = mr;
+            }
+        }
+    }
+
+    fn set_params(&mut self, params: &ProcessorParams) {
+        let c = &params.convolver;
+        self.enabled = c.enabled;
+        self.wet = c.wet_dry.clamp(0.0, 1.0);
+        self.gain = 10f32.powf(c.ir_gain_db / 20.0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hm_core::{ConvolverState, EngineState};
+
+    fn conv_state(enabled: bool, wet: f32) -> EngineState {
+        EngineState {
+            convolver: ConvolverState { enabled, wet_dry: wet, ..Default::default() },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn disabled_is_identity() {
+        let mut c = Convolver::new(48_000.0, 2);
+        c.set_params(&EngineState::default()); // disabled
+        let input = vec![0.5, -0.3, 0.2, 0.4, -0.1, 0.9];
+        let mut buf = input.clone();
+        c.process(&mut buf, 2);
+        assert_eq!(buf, input);
+    }
+
+    #[test]
+    fn enabled_without_ir_is_identity() {
+        let mut c = Convolver::new(48_000.0, 2);
+        c.set_params(&conv_state(true, 1.0)); // enabled but no IR published
+        let input = vec![0.5, -0.3, 0.2, 0.4];
+        let mut buf = input.clone();
+        c.process(&mut buf, 2);
+        assert_eq!(buf, input);
+    }
+
+    #[test]
+    fn stays_bounded_with_loud_ir() {
+        let slot = empty_ir_slot();
+        let mut c = Convolver::with_slot(48_000.0, 2, slot.clone());
+        // A long, hot IR — energy normalization + clamp must keep it bounded.
+        let h = vec![0.9f32; 4000];
+        slot.store(Arc::new(Some(Arc::new(PreparedIr::build(&h, 1, 48_000.0, 48_000.0)))));
+        c.set_params(&conv_state(true, 1.0));
+        let mut buf: Vec<f32> = (0..48_000 * 2).map(|i| if i % 2 == 0 { 0.9 } else { -0.9 }).collect();
+        c.process(&mut buf, 2);
+        assert!(buf.iter().all(|&x| x.abs() <= 4.0), "convolver must stay bounded");
+    }
 
     /// Build a single-channel prepared IR from a raw time-domain IR by
     /// partitioning + forward-FFT (mirrors PreparedIr::build, Task 3).

@@ -99,6 +99,7 @@ export interface RoomPreset {
 }
 
 export const ROOM_PRESETS: readonly RoomPreset[] = [
+  { id: "none", name: "None", roomSize: 0.0, decay: 0.0, damping: 0.0, preDelay: 0, diffusion: 0.0, wetDry: 0.0 },
   { id: "small", name: "Small Room", roomSize: 0.2, decay: 0.25, damping: 0.6, preDelay: 3, diffusion: 0.5, wetDry: 0.25 },
   { id: "medium", name: "Medium Room", roomSize: 0.4, decay: 0.4, damping: 0.45, preDelay: 8, diffusion: 0.55, wetDry: 0.3 },
   { id: "large", name: "Large Room", roomSize: 0.6, decay: 0.55, damping: 0.35, preDelay: 15, diffusion: 0.6, wetDry: 0.35 },

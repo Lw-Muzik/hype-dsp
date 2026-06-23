@@ -221,6 +221,11 @@ impl PreparedIr {
         let stereo = src_channels >= 2;
 
         // De-interleave into one or two mono channels.
+        debug_assert_eq!(
+            samples.len() % src_channels,
+            0,
+            "IR sample buffer length must be a multiple of src_channels"
+        );
         let frames = samples.len() / src_channels;
         let mut left = Vec::with_capacity(frames);
         let mut right = Vec::with_capacity(if stereo { frames } else { 0 });
@@ -248,8 +253,7 @@ impl PreparedIr {
                 right.truncate(cap);
             }
         }
-        let len = left.len().max(1);
-        let seconds = len as f32 / target_sr;
+        let seconds = left.len() as f32 / target_sr;
 
         // L2-energy normalization across the whole IR (both channels) → unity
         // energy, so swapping IRs keeps perceived loudness stable.
@@ -416,6 +420,11 @@ mod tests {
         let ir = PreparedIr::build(&samples, 2, 48_000.0, 48_000.0);
         assert_eq!(ir.channels, 2);
         assert!(ir.r.is_some());
+        let r = ir.r.as_ref().unwrap();
+        assert_ne!(
+            ir.l.partitions[0][1].re, r.partitions[0][1].re,
+            "stereo channels must carry independent content"
+        );
     }
 
     #[test]

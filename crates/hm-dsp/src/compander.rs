@@ -1,11 +1,28 @@
-//! 10-band multiband compander — Linkwitz-Riley 4th-order crossovers split the
+//! 10-band multiband compander — subtractive (telescoping) crossovers split the
 //! signal into 10 bands, each compressed/expanded by an independent dB-domain
 //! compressor, then summed. Ported from the mobile Hype MBC (compressor.h +
 //! multiband_compressor.h). Global params apply to every band.
 //!
-//! Real-time safe: all band scratch is pre-sized in `prepare`; `process` never
-//! allocates/locks. LR4 crossovers are power-complementary so a flat (ratio 1,
-//! no gate) compander reconstructs the input.
+//! **Crossover topology — subtractive/telescoping:**
+//! Each of the 9 crossovers is a Linkwitz-Riley 4th-order **lowpass only**
+//! (two cascaded Butterworth biquads). Band extraction is purely subtractive:
+//!
+//! ```text
+//! rest = input
+//! for i in 0..9:
+//!     low_i = LP_i(rest)        // uncompressed low portion
+//!     rest -= low_i             // remainder = high portion (exact subtraction)
+//!     band_i = compress(low_i)
+//!     sum += band_i
+//! sum += compress(rest)         // final (highest) band
+//! ```
+//!
+//! Because `rest -= low_i` is exact arithmetic, and `Σ low_i + rest_9 = input`
+//! by construction (telescoping sum), a flat compander (ratio=1, no gate/makeup)
+//! reconstructs the input **exactly** — no comb filtering, no RMS loss.
+//!
+//! Real-time safe: all band state is pre-allocated in `prepare`; `process` never
+//! allocates/locks.
 
 use crate::biquad::Biquad;
 use crate::{AudioProcessor, ProcessorParams};
@@ -40,40 +57,31 @@ fn lin_to_db(lin: f32) -> f32 {
     }
 }
 
-/// One LR4 crossover for one channel: two cascaded Butterworth LP + two HP.
+/// One subtractive crossover for one channel: two cascaded Butterworth LP biquads.
+/// The high portion is obtained by subtraction (`rest -= low`) — no HP biquads needed.
 #[derive(Clone, Copy)]
 struct LrChannel {
     lp: [Biquad; 2],
-    hp: [Biquad; 2],
 }
 impl LrChannel {
     fn new() -> Self {
-        Self {
-            lp: [Biquad::identity(); 2],
-            hp: [Biquad::identity(); 2],
-        }
+        Self { lp: [Biquad::identity(); 2] }
     }
     fn configure(&mut self, sr: f32, freq: f32) {
         for b in &mut self.lp {
             b.set_lowpass(sr, freq, BUTTERWORTH_Q);
         }
-        for b in &mut self.hp {
-            b.set_highpass(sr, freq, BUTTERWORTH_Q);
-        }
     }
     fn reset(&mut self) {
-        for b in self.lp.iter_mut().chain(self.hp.iter_mut()) {
+        for b in &mut self.lp {
             b.reset();
         }
     }
-    /// Split one sample into (low, high).
+    /// Return the lowpass output; caller subtracts from its running remainder.
     #[inline]
-    fn split(&mut self, x: f32) -> (f32, f32) {
+    fn lowpass(&mut self, x: f32) -> f32 {
         let lp0 = self.lp[0].process_sample(x);
-        let low = self.lp[1].process_sample(lp0);
-        let hp0 = self.hp[0].process_sample(x);
-        let high = self.hp[1].process_sample(hp0);
-        (low, high)
+        self.lp[1].process_sample(lp0)
     }
 }
 
@@ -229,21 +237,27 @@ impl AudioProcessor for Compander {
             let base = f * channels;
             let in_l = buffer[base];
             let in_r = if stereo { buffer[base + 1] } else { in_l };
-            // Sequential split: rest_* carries the high path into the next crossover.
-            let (mut rest_l, mut rest_r) = (in_l, in_r);
+            // Subtractive (telescoping) crossover:
+            //   rest -= low_i  (exact subtraction — no HP biquads)
+            //   Σ low_i + rest_9 = input by construction → flat = transparent.
+            let mut rest_l = in_l;
+            let mut rest_r = in_r;
             let mut sum_l = 0.0_f32;
             let mut sum_r = 0.0_f32;
             for i in 0..CROSSOVER_COUNT {
-                let (low_l, high_l) = self.crossovers_l[i].split(rest_l);
-                let (low_r, high_r) = self.crossovers_r[i].split(rest_r);
+                // Lowpass the CURRENT remainder (uncompressed) to carve out the band.
+                let low_l = self.crossovers_l[i].lowpass(rest_l);
+                let low_r = self.crossovers_r[i].lowpass(rest_r);
+                // Subtract the uncompressed low from remainder (keeps telescope exact).
+                rest_l -= low_l;
+                rest_r -= low_r;
+                // Compress and accumulate the band.
                 let (mut bl, mut br) = (low_l, low_r);
                 self.bands[i].process_frame(&mut bl, &mut br);
                 sum_l += bl;
                 sum_r += br;
-                rest_l = high_l;
-                rest_r = high_r;
             }
-            // Last band = the remaining high path.
+            // Final (highest) band = whatever remains after all LP subtractions.
             let (mut bl, mut br) = (rest_l, rest_r);
             self.bands[BAND_COUNT - 1].process_frame(&mut bl, &mut br);
             sum_l += bl;
@@ -316,67 +330,53 @@ mod tests {
 
     #[test]
     fn flat_compander_reconstructs_input() {
-        // Verify that a 10-band compander with ratio=1.0 (no compression) and
-        // gate=-200 (no expansion) behaves as a pure band-split without adding any
-        // extra compressor gain. The sequential LR4 crossover topology inherently
-        // attenuates ~40% due to phase interactions between the 9 crossovers, but
-        // the compressor stage with ratio=1 must apply exactly unity gain per band.
-        //
-        // We prove this by comparing: (a) flat compander vs. (b) extreme compression.
-        // Flat must produce significantly more energy, proving ratio=1 is truly unity.
+        // Verify that the subtractive (telescoping) crossover reconstructs the input
+        // exactly when ratio=1.0, gate=-200 (no expansion/compression), knee=0,
+        // makeup=0. By construction Σ low_i + rest_9 = input, so enabling the
+        // compander in flat mode must be transparent: RMS(out - in) / RMS(in) < 2%.
         let sr = 48_000.0_f32;
 
-        let signal: Vec<f32> = (0..16384)
+        // Multi-tone stereo signal covering low/mid/high bands.
+        let total_frames = 32_768_usize;
+        let signal: Vec<f32> = (0..total_frames)
             .flat_map(|i| {
                 let t = i as f32 / sr;
-                let s = (2.0 * std::f32::consts::PI * 440.0 * t).sin() * 0.3
-                    + (2.0 * std::f32::consts::PI * 2000.0 * t).sin() * 0.2
-                    + (2.0 * std::f32::consts::PI * 8000.0 * t).sin() * 0.1;
-                [s, s * 0.8]
+                let s = (2.0 * std::f32::consts::PI * 100.0 * t).sin() * 0.3
+                    + (2.0 * std::f32::consts::PI * 1000.0 * t).sin() * 0.3
+                    + (2.0 * std::f32::consts::PI * 8000.0 * t).sin() * 0.3;
+                [s, s * 0.9]
             })
             .collect();
 
-        // Helper: run given params on the signal, return settled (latter-half) RMS.
-        let run = |params: &EngineState| -> f32 {
-            let mut c = Compander::new(sr, 2);
-            c.set_params(params);
-            let mut buf = signal.clone();
-            c.process(&mut buf, 2);
-            rms(&buf[buf.len() / 2..])
+        let mut c = Compander::new(sr, 2);
+        c.set_params(&flat_params());
+
+        // Prime a few blocks so filters and envelopes settle.
+        let prime_frames = 4096_usize;
+        let prime_samples = prime_frames * 2;
+        let mut prime_buf = signal[..prime_samples].to_vec();
+        c.process(&mut prime_buf, 2);
+
+        // Now process the rest and measure reconstruction error.
+        let mut out_buf = signal[prime_samples..].to_vec();
+        let in_slice = signal[prime_samples..].to_vec();
+        c.process(&mut out_buf, 2);
+
+        // Compute RMS error vs original.
+        let err_rms = {
+            let sum_sq: f32 = out_buf.iter().zip(in_slice.iter())
+                .map(|(o, i)| (o - i) * (o - i))
+                .sum();
+            (sum_sq / out_buf.len() as f32).sqrt()
         };
+        let in_rms = rms(&in_slice);
+        let rel_err = err_rms / in_rms;
 
-        let rms_flat = run(&flat_params());
-
-        // With extreme compression (ratio=1000, low threshold), the signal should be
-        // heavily attenuated.
-        let extreme_params = compander_params(CompanderState {
-            enabled: true,
-            ratio: 1000.0,
-            threshold_db: -40.0,
-            knee_db: 0.0,
-            gate_db: -200.0,
-            attack_ms: 1.0,
-            release_ms: 1.0,
-            makeup_db: 0.0,
-            expander_ratio: 1.0,
-        });
-        let rms_compressed = run(&extreme_params);
-
-        // Flat compander must produce far more output than extreme compression.
         assert!(
-            rms_flat > rms_compressed * 2.0,
-            "flat (ratio=1) must produce far more output than extreme compression: \
-             rms_flat={rms_flat:.6}, rms_compressed={rms_compressed:.6}"
-        );
-
-        // Sanity check: the flat compander output (band-split attenuation ~40-60%) is
-        // in a plausible range relative to the original signal.
-        let rms_in = rms(&signal);
-        let ratio = rms_flat / rms_in;
-        assert!(
-            ratio > 0.35 && ratio < 1.1,
-            "flat compander output ratio outside expected range [0.35, 1.1]: \
-             rms_in={rms_in:.6}, rms_flat={rms_flat:.6}, ratio={ratio:.4}"
+            rel_err < 0.02,
+            "subtractive crossover must reconstruct input with <2% RMS error, \
+             got {:.4}% (err_rms={err_rms:.6}, in_rms={in_rms:.6})",
+            rel_err * 100.0
         );
     }
 

@@ -136,10 +136,11 @@ impl LrChannel {
 
 /// Per-band single-band compressor/expander (dB-domain), stereo-linked.
 ///
-/// Gain ballistics: when more reduction is needed (`gain_db < gain_smoothed_db`)
-/// the gain chases with `attack_coeff`; when releasing it uses `release_coeff`.
-/// This replaces the old fixed `GAIN_SMOOTH` constant so `attack_ms` actually
-/// controls clamp speed.
+/// Gain ballistics: the envelope follower (level detection) uses `attack_coeff`
+/// and `release_coeff`, setting the perceived attack/release speed. The gain
+/// smoothing stage uses a fixed ~2 ms de-click coefficient, preventing zipper
+/// noise without adding extra smoothing. Thus `attack_ms` and `release_ms`
+/// directly govern compression/expansion response.
 ///
 /// Lookahead: incoming L/R are pushed into per-channel ring buffers
 /// (`lookahead_samples` deep). Gain is derived from the INCOMING sample but
@@ -151,6 +152,7 @@ struct BandCompressor {
     gain_smoothed_db: f32,
     attack_coeff: f32,
     release_coeff: f32,
+    gain_declick_coeff: f32,
     // lookahead ring buffers (one per channel, allocated in prepare)
     ring_l: Vec<f32>,
     ring_r: Vec<f32>,
@@ -174,6 +176,7 @@ impl BandCompressor {
             gain_smoothed_db: 0.0,
             attack_coeff: 0.1,
             release_coeff: 0.001,
+            gain_declick_coeff: 0.1,
             ring_l: vec![0.0; ls.max(1)],
             ring_r: vec![0.0; ls.max(1)],
             ring_pos: 0,
@@ -205,6 +208,10 @@ impl BandCompressor {
         let r = (release_ms * 0.001).max(0.001);
         self.attack_coeff = 1.0 - (-1.0 / (a * self.sample_rate)).exp();
         self.release_coeff = 1.0 - (-1.0 / (r * self.sample_rate)).exp();
+        // Fixed ~2 ms gain de-click (fast, independent of attack_ms/release_ms).
+        // This prevents zippered gain discontinuities while the envelope (via attack_coeff/
+        // release_coeff) provides the perceptual attack/release time.
+        self.gain_declick_coeff = 1.0 - (-1.0 / (0.002 * self.sample_rate)).exp();
     }
 
     fn set_params(&mut self, p: &ProcessorParams) {
@@ -271,12 +278,10 @@ impl BandCompressor {
 
         let gain_db = self.compute_gain(self.env_db);
 
-        // Gain ballistics: attack when clamping harder, release when easing off.
-        if gain_db < self.gain_smoothed_db {
-            self.gain_smoothed_db += self.attack_coeff * (gain_db - self.gain_smoothed_db);
-        } else {
-            self.gain_smoothed_db += self.release_coeff * (gain_db - self.gain_smoothed_db);
-        }
+        // Gain de-click: smooth using fixed fast ~2 ms coefficient (both directions).
+        // The envelope (via attack/release_coeff above) governs the response speed;
+        // this stage only de-zippers the gain output.
+        self.gain_smoothed_db += self.gain_declick_coeff * (gain_db - self.gain_smoothed_db);
 
         let g = db_to_lin(self.gain_smoothed_db) * self.makeup_lin;
 
@@ -286,7 +291,8 @@ impl BandCompressor {
             *l *= g;
             *r *= g;
         } else {
-            let pos = self.ring_pos % self.ring_l.len();
+            // ring_pos is always in [0, ring_l.len()) by virtue of the modulo in the increment.
+            let pos = self.ring_pos;
             let delayed_l = self.ring_l[pos];
             let delayed_r = self.ring_r[pos];
             self.ring_l[pos] = *l;
@@ -430,7 +436,8 @@ impl AudioProcessor for Compander {
             }
         }
 
-        // Publish GR once per block (last frame's smoothed gain). Cheap atomic store.
+        // Publish GR once per block. Writes the raw gain reduction in dB (≤0),
+        // excluding makeup gain (which is applied linearly after). Cheap atomic store.
         for i in 0..BAND_COUNT {
             self.meter.store_band(i, self.bands[i].gain_smoothed_db);
         }

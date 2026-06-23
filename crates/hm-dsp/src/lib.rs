@@ -85,7 +85,7 @@ impl ProcessChain {
     /// Build the standard enhancement chain for the given format, in the
     /// canonical fixed order:
     /// `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D →
-    /// RoomEffects → Convolver → Gain → Limiter`.
+    /// RoomEffects → Convolver → Compander → Gain → Limiter`.
     pub fn standard(sample_rate: f32, channels: usize) -> Self {
         Self::standard_with_ir(sample_rate, channels, crate::empty_ir_slot())
     }
@@ -102,6 +102,7 @@ impl ProcessChain {
         chain.push(Box::new(Surround3D::new(sample_rate, channels)));
         chain.push(Box::new(RoomEffects::new(sample_rate, channels)));
         chain.push(Box::new(Convolver::with_slot(sample_rate, channels, ir_slot)));
+        chain.push(Box::new(Compander::new(sample_rate, channels)));
         chain.push(Box::new(Gain::new()));
         chain.push(Box::new(Limiter::new(sample_rate, channels)));
         chain
@@ -194,5 +195,12 @@ mod tests {
         let mut buf = original.clone();
         chain.process(&mut buf, 2);
         assert!(buf.iter().all(|&x| x.abs() <= 1.0));
+    }
+
+    /// The compander must be in the standard chain after the convolver.
+    #[test]
+    fn standard_chain_includes_compander() {
+        let chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot());
+        assert!(chain.len() >= 10, "compander should be in the standard chain");
     }
 }

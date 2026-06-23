@@ -249,6 +249,7 @@ interface EngineStore {
   setRoom: (next: RoomState) => void;
   setConvolver: (next: ConvolverState) => void;
   loadConvolverIr: (path: string) => Promise<void>;
+  /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;

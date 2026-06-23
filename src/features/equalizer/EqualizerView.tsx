@@ -163,6 +163,7 @@ export function EqualizerView() {
             <Button
               variant="ghost"
               onClick={() => setShowImport((v) => !v)}
+              aria-expanded={showImport}
             >
               Import curve…
             </Button>
@@ -173,6 +174,7 @@ export function EqualizerView() {
                   placeholder="GraphicEQ: 20 -1.2; 25 -1.1; ... (paste an AutoEQ curve)"
                   value={curveText}
                   onChange={(e) => setCurveText(e.target.value)}
+                  spellCheck={false}
                 />
                 <div className="flex gap-2">
                   <Button

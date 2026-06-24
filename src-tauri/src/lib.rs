@@ -21,7 +21,7 @@ use std::sync::Mutex;
 
 use arc_swap::ArcSwap;
 use hm_audio::{AudioEngine, CompanderMeter, EngineMeters, PlaybackPos, SpectrumTap, SPECTRUM_BANDS};
-use hm_core::{EngineFrame, EngineState, LicenseMock, MediaStore, MeterFrame, PresetStore, TrackMeta};
+use hm_core::{ChainPresetStore, EngineFrame, EngineState, LicenseMock, MediaStore, MeterFrame, PresetStore, TrackMeta};
 use serde::Serialize;
 use tauri::menu::{Menu, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
@@ -223,6 +223,20 @@ pub fn run() {
                 .or_else(|| PresetStore::open_in_memory().ok());
             if let Some(store) = store {
                 app.manage(store);
+            }
+
+            // Whole-chain DSP preset store (JSON file).  Unlike the EQ-only
+            // PresetStore this holds complete EngineState snapshots. Always
+            // succeeds: ChainPresetStore::open never does I/O itself.
+            if let Ok(dir) = app.path().app_data_dir() {
+                let _ = std::fs::create_dir_all(&dir);
+                let chain_store = ChainPresetStore::open(&dir.join("chain-presets.json"));
+                app.manage(Mutex::new(chain_store));
+            } else {
+                // Fallback to a temp-dir-backed store so the app still runs.
+                let chain_store =
+                    ChainPresetStore::open(&std::env::temp_dir().join("hm_chain_presets.json"));
+                app.manage(Mutex::new(chain_store));
             }
 
             // Library + playlists store (separate DB file).
@@ -543,6 +557,12 @@ pub fn run() {
             commands::presets::eq_save_custom,
             commands::presets::eq_update,
             commands::presets::eq_delete,
+            commands::chain_presets::chain_preset_list,
+            commands::chain_presets::chain_preset_save,
+            commands::chain_presets::chain_preset_apply,
+            commands::chain_presets::chain_preset_delete,
+            commands::chain_presets::chain_preset_export,
+            commands::chain_presets::chain_preset_import,
             commands::profiles::profile_list,
             commands::profiles::profile_set_active,
             commands::profiles::profile_clear,

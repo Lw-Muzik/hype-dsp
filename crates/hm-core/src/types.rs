@@ -23,7 +23,7 @@ pub const ISO_CENTERS_HZ: [f32; BAND_COUNT] = [
 
 /// State of the 31-band graphic equalizer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct EqState {
     pub enabled: bool,
     /// Pre-gain applied ahead of the band filters, in dB.
@@ -45,7 +45,7 @@ impl Default for EqState {
 /// Low-shelf bass boost with an optional harmonic-enhancement toggle for small
 /// drivers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct BassBoostState {
     pub enabled: bool,
     /// Boost amount in dB applied by the low shelf.
@@ -80,7 +80,7 @@ pub enum SpatialMode {
 
 /// Virtual-surround / widening stage state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct SpatializerState {
     pub enabled: bool,
     /// 0.0 = none, 1.0 = maximum effect.
@@ -129,7 +129,7 @@ impl Default for SurroundSpeakers {
 /// virtual loudspeakers rendered binaurally. Distinct from [`SpatializerState`],
 /// which is the lightweight crossfeed/HRTF widener.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct Surround3DState {
     pub enabled: bool,
     /// Overall wet/dry of the virtual-surround effect (0.0 = dry … 1.0 = full).
@@ -153,7 +153,7 @@ impl Default for Surround3DState {
 /// Room reverb ("room effects") — a Freeverb-style algorithmic reverb, ported
 /// from the Hype mobile app. All scalar params are 0.0–1.0 except `pre_delay`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct RoomState {
     pub enabled: bool,
     /// Scales the comb delay lengths (0 = tiny room … 1 = huge).
@@ -193,7 +193,7 @@ impl Default for RoomState {
 /// These are only the cheap scalars the audio thread reads each block, plus
 /// metadata the UI displays.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct ConvolverState {
     pub enabled: bool,
     /// Wet/dry mix (0 = dry … 1 = fully wet). Correction IRs run ~1.0.
@@ -227,7 +227,7 @@ impl Default for ConvolverState {
 /// Multiband compander (10-band Linkwitz-Riley compressor/expander). Global
 /// params are applied uniformly to every band. Ported from the mobile Hype MBC.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct CompanderState {
     pub enabled: bool,
     /// Compression starts above this input level, in dB.
@@ -264,7 +264,7 @@ impl Default for CompanderState {
 
 /// Tube-style analog saturation (4× oversampled, 2nd-harmonic warmth).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct SaturationState {
     pub enabled: bool,
     /// 0..1 → internal tanh drive amount.
@@ -286,7 +286,7 @@ impl Default for SaturationState {
 /// Makeup gain followed by the look-ahead brickwall limiter that keeps boosted
 /// volume from clipping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct OutputState {
     /// Makeup gain in dB applied before the limiter.
     pub gain_db: f32,
@@ -307,7 +307,7 @@ impl Default for OutputState {
 
 /// Queue-playback behaviour: gapless transitions and crossfade between tracks.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct PlaybackState {
     /// Play a track list with no silence between tracks.
     pub gapless: bool,
@@ -327,7 +327,7 @@ impl Default for PlaybackState {
 /// Per-headphone correction state: a preamp plus parametric bands loaded from
 /// the active [`HeadphoneProfile`]. Empty/disabled when no profile is active.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct HeadphoneCorrectionState {
     pub enabled: bool,
     pub preamp: f32,
@@ -350,7 +350,7 @@ impl Default for HeadphoneCorrectionState {
 /// command mutates. The audio thread never reads this directly — it reads an
 /// immutable snapshot derived from it (see `hm-audio`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct EngineState {
     /// Master bypass. When `false` the chain passes audio through untouched.
     pub power: bool,
@@ -569,5 +569,26 @@ mod tests {
         assert_eq!(s.drive, 0.3);
         assert_eq!(s.mix, 1.0);
         assert!(!EngineState::default().saturation.enabled);
+    }
+
+    #[test]
+    fn engine_state_deserializes_with_missing_fields() {
+        // A partial blob (as if saved before newer stages existed) must load,
+        // filling the absent fields from Default — not error.
+        let json = r#"{"power":true,"masterVolume":1.0,"eq":{"enabled":true,"preGain":0.0,"bands":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}}"#;
+        let st: EngineState = serde_json::from_str(json).expect("partial EngineState must deserialize");
+        assert!(st.power);
+        assert!(!st.saturation.enabled);   // absent → Default (disabled)
+        assert!(!st.compander.enabled);     // absent → Default
+        assert!(!st.convolver.enabled);     // absent → Default
+    }
+
+    #[test]
+    fn engine_state_full_roundtrip() {
+        // Serialize a full EngineState::default() to JSON, deserialize, assert equal.
+        let original = EngineState::default();
+        let json = serde_json::to_string(&original).expect("serialize must succeed");
+        let restored: EngineState = serde_json::from_str(&json).expect("deserialize must succeed");
+        assert_eq!(original, restored);
     }
 }

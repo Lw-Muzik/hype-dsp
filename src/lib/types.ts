@@ -250,7 +250,7 @@ export interface EngineFrame {
   /** FFT magnitude bins (dB) when present this frame. */
   spectrum: number[] | null;
   /** Per-band compander gain-reduction in dB (10 values, ≤0), or null when idle. */
-  companderGr?: number[] | null;
+  companderGr: number[] | null;
 }
 
 export interface LibraryTrack {

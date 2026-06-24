@@ -53,9 +53,12 @@ const PUNCH: Partial<CompanderState> = {
   enabled: true,
 };
 
+const GR_RANGE_DB = 18;
+
 export function CompanderCard() {
   const c = useEngineStore((s) => s.state.compander);
   const setCompander = useEngineStore((s) => s.setCompander);
+  const companderGr = useEngineStore((s) => s.companderGr);
 
   return (
     <Card
@@ -70,6 +73,25 @@ export function CompanderCard() {
       }
     >
       <div className={cn("flex flex-col gap-3", !c.enabled && "opacity-60")}>
+        {/* Per-band gain-reduction meter */}
+        <div className={cn("flex flex-col gap-1", !c.enabled && "opacity-50")}>
+          <span className="text-xs text-text-muted">Gain reduction</span>
+          <div className="flex h-8 items-end gap-0.5">
+            {Array.from({ length: 10 }, (_, i) => {
+              const gr = companderGr[i] ?? 0;
+              const fillPct = Math.min(1, Math.abs(gr) / GR_RANGE_DB) * 100;
+              return (
+                <div key={i} className="flex-1 flex flex-col justify-end h-full bg-surface-hover rounded-sm overflow-hidden">
+                  <div
+                    className="w-full rounded-sm bg-accent transition-all duration-75"
+                    style={{ height: `${fillPct}%` }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {SLIDERS.map((d) => (
           <div key={d.key} className="flex items-center gap-3">
             <span className="w-20 shrink-0 text-sm text-text-muted">{d.label}</span>

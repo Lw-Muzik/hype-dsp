@@ -222,6 +222,8 @@ interface EngineStore {
   state: EngineState;
   meters: MeterFrame;
   spectrum: number[];
+  /** Per-band compander gain-reduction in dB (10 values, ≤0). Zeros when idle. */
+  companderGr: number[];
   metersLive: boolean;
 
   // transport
@@ -517,6 +519,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     state: defaultEngineState,
     meters: idleMeters,
     spectrum: [],
+    companderGr: new Array<number>(10).fill(0),
     metersLive: false,
     playing: false,
     paused: false,
@@ -656,6 +659,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       set({
         meters: frame.meters,
         ...(frame.spectrum ? { spectrum: frame.spectrum } : {}),
+        ...(frame.companderGr
+          ? { companderGr: frame.companderGr }
+          : { companderGr: new Array<number>(10).fill(0) }),
       }),
 
     applyProgress: (p) =>

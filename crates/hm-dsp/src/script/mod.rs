@@ -9,6 +9,9 @@ pub use parser::{
 pub mod compiler;
 pub use compiler::{compile_ast, Builtin, Op, Program};
 
+pub mod vm;
+pub use vm::{run_init, run_sample};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScriptError {
     pub line: u32,

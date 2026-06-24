@@ -883,6 +883,18 @@ export async function pickAudioFile(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
+/* --------------------------------------------------------------- liveprog */
+
+/** Compile an EEL2 script source off the RT thread; rejects with ScriptError on failure. */
+export function engineScriptCompile(source: string): Promise<void> {
+  return invoke<void>("engine_script_compile", { source });
+}
+
+/** Enable or disable the LiveProg (EEL2) script stage. */
+export function engineSetScript(enabled: boolean): Promise<void> {
+  return invoke<void>("engine_set_script", { enabled });
+}
+
 /* --------------------------------------------------------- chain presets */
 
 /** List all saved whole-chain presets. */

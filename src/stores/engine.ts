@@ -14,6 +14,7 @@ import {
   engineSetPower,
   engineSetRoom,
   engineSetSaturation,
+  engineSetScript,
   engineSetSpatializer,
   engineSetSurround3d,
   identifyTrack,
@@ -271,6 +272,7 @@ interface EngineStore {
   setConvolver: (next: ConvolverState) => void;
   setCompander: (next: CompanderState) => void;
   setSaturation: (next: SaturationState) => void;
+  setScriptEnabled: (enabled: boolean) => void;
   loadConvolverIr: (path: string) => Promise<void>;
   /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
@@ -617,6 +619,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setSaturation: (next) => {
       set((s) => ({ state: { ...s.state, saturation: next } }));
       void engineSetSaturation(next).catch(() => {});
+    },
+    setScriptEnabled: (enabled) => {
+      set((s) => ({ state: { ...s.state, script: { ...s.state.script, enabled } } }));
+      void engineSetScript(enabled).catch(() => {});
     },
     loadConvolverIr: async (path) => {
       const info = await engineConvolverLoadIr(path);

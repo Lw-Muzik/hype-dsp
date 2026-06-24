@@ -109,8 +109,10 @@ export interface SaturationState {
   mix: number;
 }
 
+/** LiveProg (EEL2 subset) user script stage. */
 export interface ScriptState {
   enabled: boolean;
+  /** Raw EEL2 source text; compiled off-thread before taking effect. */
   source: string;
 }
 

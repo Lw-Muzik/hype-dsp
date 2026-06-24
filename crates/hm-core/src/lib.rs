@@ -19,6 +19,7 @@ pub mod media_store;
 pub mod presets;
 pub mod store;
 pub mod types;
+pub mod vdc_import;
 
 pub use chain_presets::{ChainPreset, ChainPresetStore};
 pub use error::{HmError, IpcError};
@@ -27,6 +28,7 @@ pub use license::{LicenseError, LicenseMock, LicenseService, LicenseStatus};
 pub use media_store::MediaStore;
 pub use store::PresetStore;
 pub use types::*;
+pub use vdc_import::{parse_vdc, vdc_to_iso_bands, VdcCurve};
 
 /// Human-facing application metadata, surfaced to the UI on startup so the
 /// front end never hardcodes the product name or version.

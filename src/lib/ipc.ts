@@ -873,6 +873,11 @@ export function engineEqImportGraphic(curve: string): Promise<EqImportResult> {
   return invoke<EqImportResult>("engine_eq_import_graphic", { curve });
 }
 
+/** Import a ViPER/JamesDSP DDC (.vdc) file by path → resolved bands + preGain. */
+export function engineEqImportVdc(path: string): Promise<EqImportResult> {
+  return invoke<EqImportResult>("engine_eq_import_vdc", { path });
+}
+
 /** Open a native file picker for an audio file; returns the chosen path. */
 export async function pickAudioFile(): Promise<string | null> {
   const selected = await open({

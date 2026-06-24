@@ -377,6 +377,8 @@ pub struct EngineState {
     pub headphone: HeadphoneCorrectionState,
     pub output: OutputState,
     pub playback: PlaybackState,
+    /// Which apps the system-wide EQ tap processes (macOS). Default = all apps.
+    pub system_eq_scope: SystemEqScope,
     /// Active preset id, if one is applied.
     pub active_preset_id: Option<String>,
     /// Active headphone profile id, if one is applied.
@@ -400,10 +402,34 @@ impl Default for EngineState {
             headphone: HeadphoneCorrectionState::default(),
             output: OutputState::default(),
             playback: PlaybackState::default(),
+            system_eq_scope: SystemEqScope::default(),
             active_preset_id: None,
             active_profile_id: None,
         }
     }
+}
+
+/// How the macOS system-wide EQ tap selects which apps to process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SystemEqScopeMode {
+    /// Process the whole system (every app except HypeMuzik). The default.
+    #[default]
+    All,
+    /// Process only the listed apps (allowlist).
+    Only,
+    /// Process every app except the listed ones (blocklist).
+    Except,
+}
+
+/// Per-app selection for the system-wide EQ. `apps` holds the stable session
+/// ids reported by the mixer (`AppSession.id`), resolved to Core Audio process
+/// objects when the tap is (re)built. Ignored unless system-wide EQ is active.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemEqScope {
+    pub mode: SystemEqScopeMode,
+    pub apps: Vec<String>,
 }
 
 /// A named equalizer preset.
@@ -592,6 +618,21 @@ mod tests {
         assert!(!st.saturation.enabled);   // absent → Default (disabled)
         assert!(!st.compander.enabled);     // absent → Default
         assert!(!st.convolver.enabled);     // absent → Default
+        // Newest field absent → defaults to whole-system scope, no apps.
+        assert_eq!(st.system_eq_scope.mode, SystemEqScopeMode::All);
+        assert!(st.system_eq_scope.apps.is_empty());
+    }
+
+    #[test]
+    fn system_eq_scope_serde_roundtrip() {
+        let scope = SystemEqScope {
+            mode: SystemEqScopeMode::Only,
+            apps: vec!["com.spotify.client".into(), "com.apple.Safari".into()],
+        };
+        let json = serde_json::to_string(&scope).expect("serialize");
+        assert!(json.contains("\"only\""), "mode must serialize camelCase: {json}");
+        let back: SystemEqScope = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(scope, back);
     }
 
     #[test]

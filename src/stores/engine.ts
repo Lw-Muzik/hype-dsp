@@ -16,6 +16,7 @@ import {
   engineSetSaturation,
   engineSetSpatializer,
   engineSetSurround3d,
+  systemEqSetScope,
   identifyTrack,
   ipcErrorMessage,
   linkPlay,
@@ -48,6 +49,7 @@ import type {
   SaturationState,
   SpatialMode,
   Surround3DState,
+  SystemEqScope,
   TrackMeta,
   TransportProgress,
 } from "@/lib/types";
@@ -136,6 +138,7 @@ const defaultEngineState: EngineState = {
   headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
   playback: { gapless: true, crossfadeSecs: 0 },
+  systemEqScope: { mode: "all", apps: [] },
   activePresetId: null,
   activeProfileId: null,
 };
@@ -271,6 +274,9 @@ interface EngineStore {
   setConvolver: (next: ConvolverState) => void;
   setCompander: (next: CompanderState) => void;
   setSaturation: (next: SaturationState) => void;
+  /** Set which apps the macOS system-wide EQ tap processes. Resolves once the
+   *  backend has committed the scope (await before restarting the tap). */
+  setSystemEqScope: (scope: SystemEqScope) => Promise<void>;
   loadConvolverIr: (path: string) => Promise<void>;
   /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
@@ -617,6 +623,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setSaturation: (next) => {
       set((s) => ({ state: { ...s.state, saturation: next } }));
       void engineSetSaturation(next).catch(() => {});
+    },
+    setSystemEqScope: (scope) => {
+      set((s) => ({ state: { ...s.state, systemEqScope: scope } }));
+      return systemEqSetScope(scope);
     },
     loadConvolverIr: async (path) => {
       const info = await engineConvolverLoadIr(path);

@@ -536,6 +536,7 @@ pub fn run() {
             commands::engine::player_play_capture,
             commands::engine::player_play_system_audio,
             commands::engine::stop_system_audio,
+            commands::engine::system_eq_set_scope,
             commands::visualizer::visualizer_available,
             commands::visualizer::visualizer_preset_names,
             commands::visualizer::visualizer_start,

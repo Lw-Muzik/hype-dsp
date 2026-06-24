@@ -2408,6 +2408,7 @@ dependencies = [
  "cpal",
  "hm-core",
  "hm-dsp",
+ "hm-platform",
  "hound",
  "objc2",
  "objc2-core-audio",

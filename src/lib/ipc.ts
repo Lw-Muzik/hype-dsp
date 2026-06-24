@@ -40,6 +40,7 @@ import type {
   SaturationState,
   SpatialMode,
   SurroundSpeakers,
+  SystemEqScope,
   TrackMeta,
   TransportProgress,
 } from "./types";
@@ -493,6 +494,12 @@ export function stopSystemAudio(): Promise<void> {
  *  or PulseAudio / Windows bundled virtual device). */
 export function systemAudioAvailable(): Promise<boolean> {
   return invoke<boolean>("system_audio_available");
+}
+
+/** Set which apps the system-wide EQ tap processes (macOS). Restart the tap
+ *  (call `playerPlaySystemAudio` again) for it to take effect if it's running. */
+export function systemEqSetScope(scope: SystemEqScope): Promise<void> {
+  return invoke<void>("system_eq_set_scope", { scope });
 }
 
 /** Whether the native MilkDrop visualizer sidecar is bundled in this build. */

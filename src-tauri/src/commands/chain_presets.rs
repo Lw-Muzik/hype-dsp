@@ -37,11 +37,12 @@ pub fn chain_preset_save(
     store.save(&name, current).map_err(Into::into)
 }
 
-/// Apply a saved preset to the engine, preserving the current `power` and
-/// `master_volume` settings.
+/// Apply a saved preset to the engine, preserving the current `power`,
+/// `master_volume`, and `system_eq_scope` settings.
 ///
-/// A preset captures a *sound*, not the user's output level or bypass switch,
-/// so those two fields are taken from the running engine rather than the preset.
+/// A preset captures a *sound*, not the user's output level, bypass switch, or
+/// which apps the system-EQ tap covers, so those fields are taken from the
+/// running engine rather than the preset.
 #[tauri::command]
 pub fn chain_preset_apply(
     engine: State<'_, AudioEngine>,
@@ -64,6 +65,7 @@ pub fn chain_preset_apply(
     let mut applied = preset.state;
     applied.power = current.power;
     applied.master_volume = current.master_volume;
+    applied.system_eq_scope = current.system_eq_scope;
 
     drop(store); // release the lock before touching the engine
     engine.set_state(applied);

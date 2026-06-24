@@ -175,8 +175,19 @@ export interface EngineState {
   headphone: HeadphoneCorrectionState;
   output: OutputState;
   playback: PlaybackState;
+  systemEqScope: SystemEqScope;
   activePresetId: string | null;
   activeProfileId: string | null;
+}
+
+/** How the macOS system-wide EQ tap selects which apps to process. */
+export type SystemEqScopeMode = "all" | "only" | "except";
+
+/** Per-app selection for the system-wide EQ (mirrors `hm_core::SystemEqScope`). */
+export interface SystemEqScope {
+  mode: SystemEqScopeMode;
+  /** Stable mixer session ids (`AppSession.id`). */
+  apps: string[];
 }
 
 export interface EqPreset {

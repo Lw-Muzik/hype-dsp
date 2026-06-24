@@ -226,6 +226,14 @@ pub fn player_play_system_audio(engine: State<'_, AudioEngine>) -> Result<(), Ip
     }
 }
 
+/// Set which apps the system-wide EQ tap processes (macOS). The change is stored
+/// in `EngineState.system_eq_scope`; the caller re-invokes `player_play_system_audio`
+/// to rebuild the tap if system-wide EQ is currently on.
+#[tauri::command]
+pub fn system_eq_set_scope(engine: State<'_, AudioEngine>, scope: hm_core::SystemEqScope) {
+    engine.set_system_eq_scope(scope);
+}
+
 /// Stop system-wide equalization and restore normal audio routing. On macOS this
 /// stops playback; on Linux/Windows it tears down the re-routing pipeline.
 #[tauri::command]

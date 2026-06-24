@@ -189,6 +189,17 @@ export function EnhancerView() {
                   label="Harmonic enhancement"
                 />
               </label>
+              <label className="flex items-center justify-between text-sm">
+                <span className="text-text-muted">
+                  Adaptive
+                  <span className="ml-1 text-text-faint">(anti-overload)</span>
+                </span>
+                <Switch
+                  checked={bass.adaptive}
+                  onChange={(v) => setBass(bass.enabled, bass.amount, bass.harmonics, v)}
+                  label="Adaptive bass (anti-overload)"
+                />
+              </label>
             </div>
           </Card>
 

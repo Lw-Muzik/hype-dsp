@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { RotateCcw } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
@@ -33,11 +34,13 @@ export function EqualizerView() {
   const setEqEnabled = useEngineStore((s) => s.setEqEnabled);
   const applyPreset = useEngineStore((s) => s.applyPreset);
   const importGraphicEq = useEngineStore((s) => s.importGraphicEq);
+  const importVdc = useEngineStore((s) => s.importVdc);
 
   const [presets, setPresets] = useState<EqPreset[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [curveText, setCurveText] = useState("");
   const [importing, setImporting] = useState(false);
+  const [importingVdc, setImportingVdc] = useState(false);
 
   const refresh = useCallback(() => {
     eqListPresets()
@@ -83,6 +86,23 @@ export function EqualizerView() {
       toast.error(`Couldn't import curve: ${ipcErrorMessage(e)}`);
     } finally {
       setImporting(false);
+    }
+  };
+
+  const importVdcFile = async () => {
+    const path = await open({
+      multiple: false,
+      filters: [{ name: "ViPER DDC", extensions: ["vdc"] }],
+    });
+    if (typeof path !== "string") return;
+    setImportingVdc(true);
+    try {
+      await importVdc(path);
+      toast.success("DDC imported to the equalizer");
+    } catch (e) {
+      toast.error(`Couldn't import .vdc: ${ipcErrorMessage(e)}`);
+    } finally {
+      setImportingVdc(false);
     }
   };
 
@@ -158,15 +178,24 @@ export function EqualizerView() {
             </Button>
           </div>
 
-          {/* Import curve affordance */}
+          {/* Import affordances */}
           <div className="border-t border-border pt-3">
-            <Button
-              variant="ghost"
-              onClick={() => setShowImport((v) => !v)}
-              aria-expanded={showImport}
-            >
-              Import curve…
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setShowImport((v) => !v)}
+                aria-expanded={showImport}
+              >
+                Import curve…
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={importVdcFile}
+                disabled={importingVdc}
+              >
+                {importingVdc ? "Importing…" : "Import .vdc (ViPER DDC)"}
+              </Button>
+            </div>
             {showImport && (
               <div className="mt-3 space-y-2">
                 <textarea

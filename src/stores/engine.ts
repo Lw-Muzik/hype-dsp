@@ -5,6 +5,7 @@ import {
   cloudTrackMetadata,
   engineConvolverLoadIr,
   engineEqImportGraphic,
+  engineEqImportVdc,
   engineGetState,
   engineSetBass,
   engineSetCompander,
@@ -274,6 +275,8 @@ interface EngineStore {
   loadConvolverIr: (path: string) => Promise<void>;
   /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
+  /** Import a ViPER/JamesDSP DDC (.vdc) file by path. Throws on failure — caller must catch. */
+  importVdc: (path: string) => Promise<void>;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
   setPlayback: (gapless: boolean, crossfadeSecs: number) => void;
@@ -636,6 +639,16 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
     importGraphicEq: async (curve) => {
       const res = await engineEqImportGraphic(curve);
+      set((s) => ({
+        state: {
+          ...s.state,
+          eq: { ...s.state.eq, enabled: true, bands: res.bands, preGain: res.preGain },
+          activePresetId: null,
+        },
+      }));
+    },
+    importVdc: async (path) => {
+      const res = await engineEqImportVdc(path);
       set((s) => ({
         state: {
           ...s.state,

@@ -67,6 +67,22 @@ pub fn engine_eq_import_graphic(
     Ok(EqImportResult { bands: bands.to_vec(), pre_gain })
 }
 
+/// Import a ViPER4Android / JamesDSP DDC (`.vdc`) file: read it, evaluate its
+/// biquad cascade's magnitude response onto the 31 ISO bands with a clip-proof
+/// preamp, apply it, and return the resolved values to the UI.
+#[tauri::command]
+pub fn engine_eq_import_vdc(
+    engine: State<'_, AudioEngine>,
+    path: String,
+) -> Result<EqImportResult, IpcError> {
+    let body = std::fs::read_to_string(&path)
+        .map_err(|e| IpcError::new("io", format!("couldn't read {path}: {e}")))?;
+    let bands = hm_core::vdc_to_iso_bands(&body).map_err(|e| IpcError::new("invalid", e))?;
+    let pre_gain = hm_core::recommended_preamp(&bands);
+    engine.set_eq(bands, pre_gain, true);
+    Ok(EqImportResult { bands: bands.to_vec(), pre_gain })
+}
+
 /// Configure the bass boost stage.
 #[tauri::command]
 pub fn engine_set_bass(

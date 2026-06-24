@@ -6,6 +6,9 @@ pub use parser::{
     parse, AssignOp, Ast, BinOp, Const as EelConst, Expr, Stmt, UnOp,
 };
 
+pub mod compiler;
+pub use compiler::{compile_ast, Builtin, Op, Program};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScriptError {
     pub line: u32,
@@ -20,3 +23,10 @@ impl std::fmt::Display for ScriptError {
 }
 
 impl std::error::Error for ScriptError {}
+
+/// Convenience: lex → parse → compile a source string into a [`Program`].
+pub fn compile(src: &str) -> Result<Program, ScriptError> {
+    let tokens = lex(src)?;
+    let ast = parse(&tokens)?;
+    compile_ast(&ast)
+}

@@ -11,6 +11,7 @@ import {
   engineSetMasterVolume,
   engineSetPower,
   engineSetRoom,
+  engineSetSaturation,
   engineSetSpatializer,
   engineSetSurround3d,
   identifyTrack,
@@ -42,6 +43,7 @@ import type {
   PhoneTrack,
   RadioStation,
   RoomState,
+  SaturationState,
   SpatialMode,
   Surround3DState,
   TrackMeta,
@@ -265,6 +267,7 @@ interface EngineStore {
   setRoom: (next: RoomState) => void;
   setConvolver: (next: ConvolverState) => void;
   setCompander: (next: CompanderState) => void;
+  setSaturation: (next: SaturationState) => void;
   loadConvolverIr: (path: string) => Promise<void>;
   /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
@@ -605,6 +608,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setCompander: (next) => {
       set((s) => ({ state: { ...s.state, compander: next } }));
       void engineSetCompander(next).catch(() => {});
+    },
+    setSaturation: (next) => {
+      set((s) => ({ state: { ...s.state, saturation: next } }));
+      void engineSetSaturation(next).catch(() => {});
     },
     loadConvolverIr: async (path) => {
       const info = await engineConvolverLoadIr(path);

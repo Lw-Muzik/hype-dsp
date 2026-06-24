@@ -30,6 +30,7 @@ import { Surround3DPanel } from "./Surround3DPanel";
 import { RoomCard } from "./RoomCard";
 import { ConvolverCard } from "./ConvolverCard";
 import { CompanderCard } from "./CompanderCard";
+import { SaturationCard } from "./SaturationCard";
 
 export function EnhancerView() {
   const route = routeById("enhancer");
@@ -296,6 +297,9 @@ export function EnhancerView() {
 
         {/* Multiband compander */}
         <CompanderCard />
+
+        {/* Tube saturation */}
+        <SaturationCard />
 
         {/* Headphone correction */}
         <Card title="Headphone correction" icon={Headphones}>

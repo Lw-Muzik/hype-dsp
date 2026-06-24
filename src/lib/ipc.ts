@@ -36,6 +36,7 @@ import type {
   RadioStation,
   ConvolverState,
   RoomState,
+  SaturationState,
   SpatialMode,
   SurroundSpeakers,
   TrackMeta,
@@ -129,6 +130,11 @@ export function engineSetConvolver(convolver: ConvolverState): Promise<void> {
 /** Configure the multiband compander stage. */
 export function engineSetCompander(compander: CompanderState): Promise<void> {
   return invoke<void>("engine_set_compander", { compander });
+}
+
+/** Configure the tube-saturation stage. */
+export function engineSetSaturation(saturation: SaturationState): Promise<void> {
+  return invoke<void>("engine_set_saturation", { saturation });
 }
 
 export interface ConvolverIrInfo {

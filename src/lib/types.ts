@@ -33,6 +33,9 @@ export interface BassBoostState {
   enabled: boolean;
   amount: number;
   harmonics: boolean;
+  /** When true, scales boost down when low-band energy is already strong
+   *  (anti-overload). `false` = static boost (today's default behavior). */
+  adaptive: boolean;
 }
 
 export type SpatialMode = "crossfeed" | "hrtf";

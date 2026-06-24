@@ -74,8 +74,9 @@ pub fn engine_set_bass(
     enabled: bool,
     amount: f32,
     harmonics: bool,
+    adaptive: bool,
 ) {
-    engine.set_bass(enabled, amount, harmonics);
+    engine.set_bass(enabled, amount, harmonics, adaptive);
 }
 
 /// Configure the spatializer (surround) stage.

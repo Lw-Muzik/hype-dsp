@@ -18,6 +18,7 @@ pub mod compander;
 pub mod convolver;
 pub mod biquad;
 mod delay;
+pub mod oversample;
 pub mod gain;
 pub mod graphic_eq;
 pub mod headphone;

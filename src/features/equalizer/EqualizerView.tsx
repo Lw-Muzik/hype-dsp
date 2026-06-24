@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { routeById } from "@/app/routes";
@@ -117,16 +117,19 @@ export function EqualizerView() {
     }
   };
 
-  // Load the bundled DDC preset names once, when the library panel first opens.
+  // Load the bundled DDC preset names once, the first time the panel opens. A
+  // ref guards against a re-fetch loop — without it, a failed fetch (which leaves
+  // ddcNames empty) would re-trigger on every render and spam error toasts.
+  const ddcLoadStarted = useRef(false);
   useEffect(() => {
-    if (showLibrary && ddcNames.length === 0 && !libraryLoading) {
-      setLibraryLoading(true);
-      ddcList()
-        .then(setDdcNames)
-        .catch((e) => toast.error(`Couldn't load DDC presets: ${ipcErrorMessage(e)}`))
-        .finally(() => setLibraryLoading(false));
-    }
-  }, [showLibrary, ddcNames.length, libraryLoading]);
+    if (!showLibrary || ddcLoadStarted.current) return;
+    ddcLoadStarted.current = true;
+    setLibraryLoading(true);
+    ddcList()
+      .then(setDdcNames)
+      .catch((e) => toast.error(`Couldn't load DDC presets: ${ipcErrorMessage(e)}`))
+      .finally(() => setLibraryLoading(false));
+  }, [showLibrary]);
 
   const applyDdcPreset = async (name: string) => {
     setApplyingName(name);

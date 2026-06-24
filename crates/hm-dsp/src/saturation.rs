@@ -564,7 +564,7 @@ mod tests {
     // ── mix_half_no_passband_comb ─────────────────────────────────────────────
     // Regression for the dry/wet alignment bug.
     //
-    // The oversampler's round-trip group delay is now an exact integer (32
+    // The oversampler's round-trip group delay is now an exact integer (33
     // base-rate samples, see `oversample::latency_samples`), and the dry path is
     // delayed by that same integer, so the dry and wet paths are sample-aligned.
     // When they recombine at mix = 0.5 there must be **no destructive

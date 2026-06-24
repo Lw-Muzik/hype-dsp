@@ -25,8 +25,8 @@ use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hm_core::{
     BassBoostState, CompanderState, ConvolverState, EngineState, HeadphoneCorrectionState,
-    MeterFrame, ParametricBand, RoomState, SpatialMode, SpatializerState, Surround3DState,
-    SurroundSpeakers, TrackMeta,
+    MeterFrame, ParametricBand, RoomState, SaturationState, SpatialMode, SpatializerState,
+    Surround3DState, SurroundSpeakers, TrackMeta,
 };
 use hm_dsp::{empty_ir_slot, CompanderMeter, IrSlot, PreparedIr, ProcessChain};
 
@@ -664,6 +664,13 @@ impl AudioEngine {
         compander.attack_ms = compander.attack_ms.max(0.1);
         compander.release_ms = compander.release_ms.max(0.1);
         self.update(|s| s.compander = compander);
+    }
+
+    /// Configure the tube saturation stage.
+    pub fn set_saturation(&self, mut saturation: SaturationState) {
+        saturation.drive = saturation.drive.clamp(0.0, 1.0);
+        saturation.mix = saturation.mix.clamp(0.0, 1.0);
+        self.update(|s| s.saturation = saturation);
     }
 
     /// Update the convolver's cheap scalar params (enabled / wet-dry / gain).

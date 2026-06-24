@@ -89,7 +89,7 @@ impl Oversampler4x {
     pub fn new(_sample_rate: f32) -> Self {
         // ── 1. Prototype lowpass: windowed-sinc at fc = 0.125 (4× rate) ──────
         let n_taps_f = NUM_TAPS as f64;
-        let m = (n_taps_f - 1.0) / 2.0; // centre (31.5 for 64 taps)
+        let m = (n_taps_f - 1.0) / 2.0; // centre (63.5 for 128 taps)
         let fc: f64 = 0.5 / OVERSAMPLE as f64; // 0.125
 
         let mut h = vec![0.0f64; NUM_TAPS];
@@ -119,12 +119,11 @@ impl Oversampler4x {
         for phase in 0..p {
             for tap in 0..k {
                 let idx = p * tap + phase; // interleaved order
-                if idx < NUM_TAPS {
-                    dn_taps[phase * k + tap] = h[idx] as f32;
-                    // Upsampler taps are scaled by P to restore level after
-                    // zero-stuffing.
-                    up_taps[phase * k + tap] = (h[idx] * p as f64) as f32;
-                }
+                // always in range: max idx = 4*31+3 = 127 = NUM_TAPS-1
+                dn_taps[phase * k + tap] = h[idx] as f32;
+                // Upsampler taps are scaled by P to restore level after
+                // zero-stuffing.
+                up_taps[phase * k + tap] = (h[idx] * p as f64) as f32;
             }
         }
 
@@ -138,7 +137,7 @@ impl Oversampler4x {
         let dn_pos = vec![0usize; p];
 
         // Group delay at the 4× rate: M ≈ (NUM_TAPS − 1) / 2
-        let half_len = m.round() as usize; // 32 for 64 taps
+        let half_len = m.round() as usize; // 64 for 128 taps
 
         Self { up_taps, dn_taps, up_dl, up_pos, dn_dl, dn_pos, half_len }
     }
@@ -256,7 +255,7 @@ mod tests {
     #[test]
     fn latency_reported() {
         let ov = Oversampler4x::new(SR);
-        assert!(ov.latency_samples() > 0, "latency must be positive");
+        assert_eq!(ov.latency_samples(), 32, "round-trip latency for 128-tap 4x; Task 3 dry-delay depends on this");
     }
 
     /// A 1 kHz sine round-trips with peak amplitude within 3% of input after

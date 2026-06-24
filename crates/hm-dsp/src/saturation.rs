@@ -3,7 +3,7 @@
 //! # Signal path (per channel)
 //!
 //! ```text
-//!  in ──┬──────────────────────────────── dry-delay(32) ──┐
+//!  in ──┬──────────────────────────────── dry-delay(33) ──┐
 //!       │                                                  │
 //!       └── upsample(4×) → shape() → downsample(4×) → DC-block ──┤
 //!                                                          │
@@ -45,9 +45,12 @@
 //!
 //! # Dry-delay alignment
 //!
-//! The wet path introduces `Oversampler4x::latency_samples()` = 32 base-rate
-//! samples of group delay.  The dry path is run through a circular delay
-//! line of the same length so the two paths are time-aligned when mixing.
+//! The wet path introduces `Oversampler4x::latency_samples()` = 33 base-rate
+//! samples of group delay.  The dry path is run through a circular delay line
+//! of the same length so the two paths are time-aligned when mixing.  Because
+//! that round-trip group delay is an exact *integer* (the 136-tap FIR is built
+//! so it is — see [`crate::oversample`]), a plain integer delay line aligns the
+//! paths perfectly and `mix < 1` no longer produces a high-frequency comb.
 //!
 //! # RT safety
 //!
@@ -556,5 +559,105 @@ mod tests {
         let bin_15k = (FREQ / SR * seg_len as f32).round() as usize;
         let mag = spec[bin_15k.min(spec.len() - 1)].norm() / seg_len as f32;
         assert!(mag > 0.01, "15 kHz fundamental must survive saturation: mag={mag:.6}");
+    }
+
+    // ── mix_half_no_passband_comb ─────────────────────────────────────────────
+    // Regression for the dry/wet alignment bug.
+    //
+    // The oversampler's round-trip group delay is now an exact integer (32
+    // base-rate samples, see `oversample::latency_samples`), and the dry path is
+    // delayed by that same integer, so the dry and wet paths are sample-aligned.
+    // When they recombine at mix = 0.5 there must be **no destructive
+    // cancellation** — the mixed magnitude must equal the linear average of the
+    // separately-measured dry and wet magnitudes at every frequency.
+    //
+    // We assert two things at a near-linear drive (drive≈0 → drive_mapped≈1):
+    //   1. Deep in the flat passband (1 kHz, 5 kHz) the mix = 0.5 response is
+    //      within ±0.5 dB of unity (catches gross misalignment / a wide comb).
+    //   2. Across the **whole** band (incl. 10/15 kHz, where the wet path's
+    //      anti-alias roll-off legitimately attenuates) the mix = 0.5 magnitude
+    //      equals `0.5·|dry| + 0.5·|wet|` within ±0.5 dB.  A phase misalignment
+    //      shows up here as the mix falling *below* the magnitude average — the
+    //      comb.  With the old fractional alignment this deviated by ~−4 dB at
+    //      15 kHz; aligned, it is essentially zero.
+    #[test]
+    fn mix_half_no_passband_comb() {
+        const N: usize = 4096;
+        const DRIVE: f32 = 0.0; // near-linear shaper
+        const FREQS: [f32; 4] = [1_000.0, 5_000.0, 10_000.0, 15_000.0];
+        const AMP: f32 = 0.25; // 4 tones × 0.25 = total ≤ 1.0
+
+        let build = || -> Vec<f32> {
+            (0..N)
+                .map(|i| {
+                    let t = i as f32 / SR;
+                    FREQS
+                        .iter()
+                        .map(|&f| AMP * (2.0 * std::f32::consts::PI * f * t).sin())
+                        .sum::<f32>()
+                })
+                .collect()
+        };
+
+        // Prime well past the FIR latency + DC-blocker settling.
+        let lat = Oversampler4x::new(SR).latency_samples();
+        let skip = lat * 3 + 100;
+        let seg_len = N - skip;
+
+        // FFT magnitude of `sig[skip..]` at the bin closest to `f`.
+        let mag_at = |sig: &[f32], f: f32| -> f32 {
+            let mut seg = sig[skip..skip + seg_len].to_vec();
+            let mut planner = RealFftPlanner::<f32>::new();
+            let fft = planner.plan_fft_forward(seg_len);
+            let mut spec = fft.make_output_vec();
+            fft.process(&mut seg, &mut spec).unwrap();
+            let bin = (f / SR * seg_len as f32).round() as usize;
+            spec[bin.min(spec.len() - 1)].norm() / seg_len as f32
+        };
+
+        // Run the stage at a given mix and return the per-frequency output mags.
+        let run_mix = |mix: f32| -> [f32; 4] {
+            let mut sat = Saturation::new(SR, 1);
+            sat.set_params(&make_params(true, DRIVE, mix));
+            let mut buf = build();
+            sat.process(&mut buf, 1);
+            let mut out = [0.0f32; 4];
+            for (o, &f) in out.iter_mut().zip(FREQS.iter()) {
+                *o = mag_at(&buf, f);
+            }
+            out
+        };
+
+        let input = build();
+        let in_mags: [f32; 4] = std::array::from_fn(|i| mag_at(&input, FREQS[i]));
+        let dry = run_mix(0.0); // pure dry-delayed
+        let wet = run_mix(1.0); // pure wet
+        let half = run_mix(0.5); // the combination under test
+
+        for (i, &f) in FREQS.iter().enumerate() {
+            // (1) Flat-passband bands must stay within ±0.5 dB of unity.
+            if f <= 5_000.0 {
+                let ratio = half[i] / in_mags[i].max(1e-9);
+                let db = 20.0 * ratio.max(1e-9).log10();
+                assert!(
+                    (0.944..1.059).contains(&ratio),
+                    "passband not flat at {f:.0} Hz, mix=0.5: ratio={ratio:.4} ({db:+.2} dB), \
+                     expected within ±0.5 dB"
+                );
+            }
+
+            // (2) No destructive cancellation anywhere: the mix=0.5 magnitude
+            // must equal the linear average of dry and wet magnitudes.
+            let predicted = 0.5 * dry[i] + 0.5 * wet[i];
+            let dev = half[i] / predicted.max(1e-9);
+            let dev_db = 20.0 * dev.max(1e-9).log10();
+            assert!(
+                (0.944..1.059).contains(&dev),
+                "dry/wet comb at {f:.0} Hz, mix=0.5: measured {:.6} vs magnitude-average {:.6} \
+                 ({dev_db:+.2} dB) — a negative deviation means destructive phase cancellation \
+                 (dry/wet misalignment). dry={:.6}, wet={:.6}",
+                half[i], predicted, dry[i], wet[i]
+            );
+        }
     }
 }

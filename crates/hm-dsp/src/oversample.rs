@@ -22,11 +22,16 @@
 //!
 //! ## Polyphase decomposition
 //!
-//! With `P = OVERSAMPLE = 4` phases and `K = NUM_TAPS / P` taps per phase:
+//! With `P = OVERSAMPLE = 4` phases and `K = ⌈NUM_TAPS / P⌉` taps per phase:
 //!
 //! ```text
 //! h_p[k] = h[P·k + p],   p = 0..P−1,  k = 0..K−1
 //! ```
+//!
+//! `NUM_TAPS = 136` is a multiple of `P`, so every phase holds exactly
+//! `136/4 = 34` real taps.  The decomposition is written generically (a phase
+//! shorter than `K` would zero-pad its trailing slots, which contribute nothing
+//! to the FIR sum), but for 136 taps no padding is needed.
 //!
 //! **Upsample**: output `y[4n+p] = Σ_k h_p_up[k] · x[n−k]`.  Each of the four
 //! phases is a length-K FIR over the *base-rate* input history — no zero
@@ -42,14 +47,56 @@ use std::f64::consts::PI;
 /// Oversampling factor.
 pub const OVERSAMPLE: usize = 4;
 
-/// Number of prototype FIR taps (must be a multiple of `OVERSAMPLE`).
+/// Number of prototype FIR taps — `136`, a multiple of `OVERSAMPLE`.
 ///
-/// 128 taps with a Blackman window give ≈80 dB stopband attenuation and a
-/// transition band narrow enough to suppress a 22 kHz tone at 48 kHz base rate.
-const NUM_TAPS: usize = 128;
+/// A Blackman-windowed sinc of this length gives ≈80 dB stopband attenuation
+/// and a transition band narrow enough to suppress a 22 kHz tone at 48 kHz base
+/// rate by ≈30 dB (measured round-trip — better than the old 128-tap −25 dB).
+///
+/// ## Why 136 (and why a multiple of OVERSAMPLE at all)?
+///
+/// The dry/wet mix in [`crate::saturation`] aligns the dry signal to the wet
+/// (oversampled) path with an **integer** delay line of `latency_samples()`
+/// taps.  For that to be sample-accurate the round-trip group delay of the
+/// up-then-down cascade must itself be an integer at the base rate.
+///
+/// Empirically (impulse-response symmetry centre) this implementation's
+/// round-trip group delay is
+///
+/// ```text
+/// D(NUM_TAPS) = NUM_TAPS / OVERSAMPLE − 1   base-rate samples
+/// ```
+///
+/// which is an integer **iff `NUM_TAPS ≡ 0 (mod OVERSAMPLE)`**:
+///
+/// | taps | D (base) | integer? | 22 kHz round-trip atten. |
+/// |------|----------|----------|--------------------------|
+/// | 128  | 31.0     | yes      | −25 dB                   |
+/// | 129  | 31.25    | no       | (fractional delay)       |
+/// | 132  | 32.0     | yes      | −13.5 dB (ripple null)   |
+/// | 136  | 33.0     | yes      | **−31 dB**               |
+///
+/// 128 taps *was* integer (31.0) but `latency_samples()` reported the textbook
+/// `2M/P = 32`, so the dry path was delayed one sample too far — a fractional
+/// half-cycle near Nyquist that beat the wet path into a comb (measured −6.6 dB
+/// at 15 kHz, mix = 0.5).  Two integer-delay tap counts are available: 132
+/// (delay 32) and 136 (delay 33).  132 happens to land on a transition-band
+/// ripple null at 22 kHz and only rejects it by ≈13 dB — too weak for a
+/// harmonic-generating saturator — so we use **136 taps** (delay 33), which
+/// gives the cleanest anti-aliasing *and* an exact integer delay.  The reported
+/// `latency_samples()` and the saturation dry-delay both track this 33, so the
+/// dry and wet paths line up exactly and the passband comb is gone.  The only
+/// residual HF droop at mix < 1 is the wet path's own anti-alias roll-off
+/// (unavoidable, identical for any tap count), never destructive cancellation.
+const NUM_TAPS: usize = 136;
 
 /// Number of taps in each polyphase branch.
-const TAPS_PER_PHASE: usize = NUM_TAPS / OVERSAMPLE; // 32
+///
+/// `⌈NUM_TAPS / OVERSAMPLE⌉ = ⌈136/4⌉ = 34`.  Because 136 is a multiple of
+/// `OVERSAMPLE`, every phase holds exactly 34 real taps and no zero-padding is
+/// needed; the `div_ceil` form is kept so a non-multiple tap count would still
+/// allocate a large-enough rectangular layout (short phases simply zero-pad).
+const TAPS_PER_PHASE: usize = NUM_TAPS.div_ceil(OVERSAMPLE); // 136 / 4 = 34
 
 /// 4× polyphase windowed-sinc oversampler (single channel).
 ///
@@ -75,10 +122,6 @@ pub struct Oversampler4x {
     dn_dl: Vec<f32>,
     /// Per-phase write positions within `dn_dl`.
     dn_pos: Vec<usize>,
-
-    /// Half-length M (oversampled samples) — one-way FIR group delay.
-    /// M = (NUM_TAPS − 1) / 2 rounded.
-    half_len: usize,
 }
 
 impl Oversampler4x {
@@ -89,7 +132,7 @@ impl Oversampler4x {
     pub fn new(_sample_rate: f32) -> Self {
         // ── 1. Prototype lowpass: windowed-sinc at fc = 0.125 (4× rate) ──────
         let n_taps_f = NUM_TAPS as f64;
-        let m = (n_taps_f - 1.0) / 2.0; // centre (63.5 for 128 taps)
+        let m = (n_taps_f - 1.0) / 2.0; // 4×-rate centre (67.5 for 136 taps)
         let fc: f64 = 0.5 / OVERSAMPLE as f64; // 0.125
 
         let mut h = vec![0.0f64; NUM_TAPS];
@@ -110,6 +153,11 @@ impl Oversampler4x {
         }
 
         // ── 3. Polyphase decomposition: h_p[k] = h[P*k + p] ─────────────────
+        // Allocate the rectangular `P × TAPS_PER_PHASE` layout and fill each
+        // phase's real taps.  136 is a multiple of P so every phase fills all
+        // 34 slots, but the loop is written generically: a non-multiple tap
+        // count would leave a short phase's trailing slots at 0.0 (the vec
+        // init), which contribute nothing to the FIR sum.
         let p = OVERSAMPLE;
         let k = TAPS_PER_PHASE;
 
@@ -117,14 +165,16 @@ impl Oversampler4x {
         let mut up_taps = vec![0.0f32; p * k];
 
         for phase in 0..p {
-            for tap in 0..k {
-                let idx = p * tap + phase; // interleaved order
-                // always in range: max idx = 4*31+3 = 127 = NUM_TAPS-1
+            // Real taps in this phase: indices phase, phase+P, … ≤ NUM_TAPS-1.
+            let phase_len = (NUM_TAPS - phase).div_ceil(p);
+            for tap in 0..phase_len {
+                let idx = p * tap + phase; // interleaved order, ≤ NUM_TAPS-1
                 dn_taps[phase * k + tap] = h[idx] as f32;
                 // Upsampler taps are scaled by P to restore level after
                 // zero-stuffing.
                 up_taps[phase * k + tap] = (h[idx] * p as f64) as f32;
             }
+            // Slots [phase_len .. k] remain 0.0 (only relevant if P ∤ NUM_TAPS).
         }
 
         // ── 4. State buffers ──────────────────────────────────────────────────
@@ -136,22 +186,29 @@ impl Oversampler4x {
         let dn_dl = vec![0.0f32; p * k];
         let dn_pos = vec![0usize; p];
 
-        // Group delay at the 4× rate: M ≈ (NUM_TAPS − 1) / 2
-        let half_len = m.round() as usize; // 64 for 128 taps
-
-        Self { up_taps, dn_taps, up_dl, up_pos, dn_dl, dn_pos, half_len }
+        Self { up_taps, dn_taps, up_dl, up_pos, dn_dl, dn_pos }
     }
 
     /// Round-trip group delay **at the base rate** (integer samples).
     ///
-    /// Each of the upsample and downsample passes introduces ~M/OVERSAMPLE
-    /// base-rate samples of delay (where M is the half-length at the 4× rate).
-    /// The total round-trip is `2 * half_len / OVERSAMPLE`, rounded up.
+    /// The textbook value for a cascade of two linear-phase FIRs is
+    /// `2·M / OVERSAMPLE`, but this polyphase implementation's *measured*
+    /// round-trip group delay (impulse-response symmetry centre) is one base
+    /// sample less:
+    ///
+    /// ```text
+    /// latency = NUM_TAPS / OVERSAMPLE − 1
+    /// ```
+    ///
+    /// For the shipping 136-tap filter this is `136/4 − 1 = 33` base-rate
+    /// samples — an exact integer, so the dry path in [`crate::saturation`] can
+    /// be aligned to the wet path with a plain 33-sample delay line and the two
+    /// recombine without a high-frequency comb at `mix < 1`.
+    ///
+    /// NUM_TAPS is a compile-time multiple of OVERSAMPLE, so this division is
+    /// exact and the result is always an integer.
     pub fn latency_samples(&self) -> usize {
-        // half_len is one-way group delay at the 4× rate.
-        // round-trip at 4× = 2 * half_len
-        // convert to base rate (ceiling division)
-        (2 * self.half_len).div_ceil(OVERSAMPLE)
+        NUM_TAPS / OVERSAMPLE - 1
     }
 
     /// Zero all delay-line state.
@@ -251,11 +308,51 @@ mod tests {
         out
     }
 
-    /// `latency_samples()` must be strictly positive.
+    /// `latency_samples()` must equal the integer dry-delay the saturation
+    /// stage relies on (33 base-rate samples for the 136-tap 4× FIR).
     #[test]
     fn latency_reported() {
         let ov = Oversampler4x::new(SR);
-        assert_eq!(ov.latency_samples(), 32, "round-trip latency for 128-tap 4x; Task 3 dry-delay depends on this");
+        assert_eq!(ov.latency_samples(), 33, "round-trip latency for 136-tap 4x (exact integer); the saturation dry-delay self-aligns to this");
+    }
+
+    /// The **measured** round-trip group delay must equal the *reported*
+    /// `latency_samples()` exactly, with no fractional residual.  This is the
+    /// invariant that lets the saturation stage align dry and wet with a plain
+    /// integer delay line; if it breaks, `mix < 1` grows a high-frequency comb.
+    ///
+    /// We feed an impulse, locate the symmetric centre of the round-trip
+    /// impulse response (linear-phase FIRs are symmetric), and require it to sit
+    /// on an integer index equal to `impulse_pos + latency_samples()`.
+    #[test]
+    fn roundtrip_group_delay_matches_reported_latency() {
+        const IMPULSE_POS: usize = 64;
+        let n = 512;
+        let mut input = vec![0.0f32; n];
+        input[IMPULSE_POS] = 1.0;
+        let out = roundtrip(&input);
+
+        let lat = Oversampler4x::new(SR).latency_samples();
+        let centre = IMPULSE_POS + lat;
+
+        // Linear-phase symmetry: out[centre - d] ≈ out[centre + d].  A
+        // half-sample error (fractional delay) destroys this symmetry, which is
+        // exactly the misalignment that produced the old comb.
+        let mut asym = 0.0f32;
+        let mut energy = 0.0f32;
+        for d in 1..=24usize {
+            let l = out[centre - d];
+            let r = out[centre + d];
+            asym += (l - r) * (l - r);
+            energy += l * l + r * r;
+        }
+        let rel = (asym / energy.max(1e-12)).sqrt();
+        assert!(
+            rel < 0.02,
+            "round-trip IR not symmetric about impulse_pos + latency ({centre}); \
+             relative asymmetry {rel:.4} implies a fractional group-delay residual \
+             (dry/wet misalignment). latency_samples()={lat}"
+        );
     }
 
     /// A 1 kHz sine round-trips with peak amplitude within 3% of input after

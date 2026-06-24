@@ -98,8 +98,8 @@ fn execute(ops: &[Op], regs: &mut [f32], budget: &mut u32) {
         }
         *budget -= 1;
 
-        // SAFETY: pc < len is the loop invariant checked above.
-        let op = unsafe { ops.get_unchecked(pc) };
+        // Safe indexing: pc < len is checked by the while condition.
+        let op = &ops[pc];
         pc += 1;
 
         match op {

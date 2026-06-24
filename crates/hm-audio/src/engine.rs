@@ -869,12 +869,20 @@ impl AudioEngine {
     /// its error synchronously (e.g. permission denied).
     #[cfg(target_os = "macos")]
     pub fn play_system_tap(&self) -> Result<(), AudioError> {
-        let source = SystemTapSource::new(48_000)?;
+        // The tap is scoped by the current per-app selection (`system_eq_scope`).
+        let scope = self.state().system_eq_scope;
+        let source = SystemTapSource::new(48_000, &scope)?;
         self.ctrl
             .lock()
             .expect("engine ctrl poisoned")
             .send(EngineCommand::PlaySource(Box::new(source)))
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
+    }
+
+    /// Set which apps the system-wide EQ tap processes. Cheap state update; the
+    /// caller restarts the tap (via `play_system_tap`) for it to take effect.
+    pub fn set_system_eq_scope(&self, scope: hm_core::SystemEqScope) {
+        self.update(|s| s.system_eq_scope = scope);
     }
 
     /// Start the self-contained system-wide EQ pipeline (Linux/Windows): re-route

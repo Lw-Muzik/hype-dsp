@@ -12,11 +12,13 @@
 #![cfg(target_os = "macos")]
 
 use hm_audio::system_tap::SystemTapSource;
+use hm_core::SystemEqScope;
 
 #[test]
 #[ignore = "creates a Core Audio tap; may trigger the audio-capture permission prompt"]
 fn tap_creation_does_not_crash() {
-    match SystemTapSource::new(48_000) {
+    // Default scope = whole system (the pre-per-app-selection behaviour).
+    match SystemTapSource::new(48_000, &SystemEqScope::default()) {
         Ok(source) => {
             eprintln!("system tap created OK");
             drop(source);

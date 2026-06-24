@@ -39,10 +39,11 @@ import {
   pickFolder,
   playerPlayCapture,
   playerPlaySystemAudio,
+  mixerListSessions,
   stopSystemAudio,
   systemAudioAvailable,
 } from "@/lib/ipc";
-import type { DeviceInfo } from "@/lib/types";
+import type { AppSession, DeviceInfo, SystemEqScopeMode } from "@/lib/types";
 
 function licenseLabel(
   license: ReturnType<typeof useUiStore.getState>["license"],
@@ -413,6 +414,20 @@ export function SettingsView() {
   const [systemEqOn, setSystemEqOn] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
+  // Per-app system-EQ selection is a macOS-only capability (the process tap);
+  // Linux/Windows re-route the whole output, so the scope picker is hidden there.
+  const isMacos = navigator.userAgent.toLowerCase().includes("mac");
+  const systemEqScope = useEngineStore((s) => s.state.systemEqScope);
+  const setSystemEqScope = useEngineStore((s) => s.setSystemEqScope);
+  const [scopeApps, setScopeApps] = useState<AppSession[]>([]);
+
+  const refreshScopeApps = useCallback(() => {
+    if (!isMacos) return;
+    mixerListSessions()
+      .then((snap) => setScopeApps(snap.sessions))
+      .catch(() => {});
+  }, [isMacos]);
+
   useEffect(() => {
     let cancelled = false;
     listOutputDevices()
@@ -440,6 +455,7 @@ export function SettingsView() {
   };
   const startSystemAudio = () => {
     setCaptureError(null);
+    refreshScopeApps();
     playerPlaySystemAudio()
       .then(() => setSystemEqOn(true))
       .catch((e) => setCaptureError(ipcErrorMessage(e)));
@@ -448,6 +464,26 @@ export function SettingsView() {
     stopSystemAudio()
       .catch(() => {})
       .finally(() => setSystemEqOn(false));
+  };
+
+  // Apply a scope change. If the tap is running, rebuild it so the change takes
+  // effect immediately; a failing rebuild (e.g. empty allowlist) surfaces the error.
+  const applyScope = (next: { mode: SystemEqScopeMode; apps: string[] }) => {
+    setSystemEqScope(next);
+    if (systemEqOn) {
+      setCaptureError(null);
+      playerPlaySystemAudio().catch((e) => setCaptureError(ipcErrorMessage(e)));
+    }
+  };
+  const setScopeMode = (mode: SystemEqScopeMode) => {
+    refreshScopeApps();
+    applyScope({ mode, apps: systemEqScope.apps });
+  };
+  const toggleScopeApp = (id: string) => {
+    const apps = systemEqScope.apps.includes(id)
+      ? systemEqScope.apps.filter((a) => a !== id)
+      : [...systemEqScope.apps, id];
+    applyScope({ mode: systemEqScope.mode, apps });
   };
   const deactivate = () => {
     licenseDeactivate()
@@ -567,6 +603,91 @@ export function SettingsView() {
                     </Button>
                   )}
                 </div>
+              </div>
+            )}
+
+            {systemAvailable && isMacos && (
+              <div className="rounded-control border border-border bg-surface px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium">Apply to</p>
+                  <div className="flex gap-1 rounded-control bg-white/5 p-0.5">
+                    {(
+                      [
+                        ["all", "All apps"],
+                        ["only", "Only selected"],
+                        ["except", "All except"],
+                      ] as [SystemEqScopeMode, string][]
+                    ).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setScopeMode(mode)}
+                        className={`rounded-[6px] px-2.5 py-1 text-xs transition-colors ${
+                          systemEqScope.mode === mode
+                            ? "bg-accent-muted text-accent-strong"
+                            : "text-text-muted hover:text-text-primary"
+                        }`}
+                        aria-pressed={systemEqScope.mode === mode}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {systemEqScope.mode !== "all" && (
+                  <div className="mt-2.5 max-h-48 overflow-y-auto rounded-md border border-border">
+                    {scopeApps.length === 0 ? (
+                      <p className="px-3 py-3 text-xs text-text-faint">
+                        No apps are playing audio right now. Start playback in another
+                        app, then reopen this list.
+                      </p>
+                    ) : (
+                      <ul className="divide-y divide-border/60">
+                        {scopeApps.map((app) => {
+                          const checked = systemEqScope.apps.includes(app.id);
+                          return (
+                            <li key={app.id}>
+                              <button
+                                type="button"
+                                onClick={() => toggleScopeApp(app.id)}
+                                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-white/5"
+                                aria-pressed={checked}
+                              >
+                                <span
+                                  className={`flex size-4 shrink-0 items-center justify-center rounded-[4px] border text-[10px] ${
+                                    checked
+                                      ? "border-accent bg-accent-muted text-accent-strong"
+                                      : "border-border"
+                                  }`}
+                                  aria-hidden="true"
+                                >
+                                  {checked ? "✓" : ""}
+                                </span>
+                                {app.icon && (
+                                  <img
+                                    src={app.icon}
+                                    alt=""
+                                    className="size-4 shrink-0 rounded-[3px]"
+                                  />
+                                )}
+                                <span className="min-w-0 flex-1 truncate text-text-primary">
+                                  {app.name}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                <p className="mt-2 text-[11px] text-text-faint">
+                  {systemEqScope.mode === "only"
+                    ? "Only the checked apps are equalized."
+                    : "Every app except the checked ones is equalized."}{" "}
+                  Changes rebuild the tap; apps must be playing to appear.
+                </p>
               </div>
             )}
 

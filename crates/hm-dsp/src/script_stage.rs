@@ -46,9 +46,18 @@ pub fn empty_script_slot() -> ScriptSlot {
 // ScriptProcessor
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Instruction budget per sample frame: bounds runaway user loops so a buggy
-/// `while(1)` can never stall the audio thread.
-const BUDGET: u32 = 100_000;
+/// Total instruction budget for one audio callback (one `process()` call).
+///
+/// This budget is shared across ALL frames in the block — once exhausted,
+/// remaining frames pass through unchanged (identity), keeping per-callback
+/// CPU cost strictly bounded regardless of buffer size.
+///
+/// Chosen rationale:
+///   - Typical 512-frame block at 48 kHz ≈ 10.7 ms of wall time.
+///   - A real EEL2 script runs O(10–50) ops/frame → well under 50k ops/block.
+///   - 2_000_000 allows ~3 900 ops/frame for a 512-frame block — generous for
+///     legitimate scripts while capping a `while(1)` at a few µs per callback.
+const BLOCK_BUDGET: u32 = 2_000_000;
 
 /// LiveProg DSP stage — runs a compiled EEL2-subset script per audio frame.
 pub struct ScriptProcessor {
@@ -137,20 +146,26 @@ impl AudioProcessor for ScriptProcessor {
                 *r = self.sample_rate;
             }
             // Run @init once to let the script initialise its state.
-            run_init(prog, &mut self.regs, BUDGET);
+            // Uses its own fixed budget (off the hot path; allocation already happened).
+            run_init(prog, &mut self.regs, 1_000_000);
             // Remember this program so we can detect the next change.
             self.last_prog = Some(prog.clone());
         }
 
         // Per-frame processing — allocation-free steady path.
+        //
+        // One shared budget for the ENTIRE block: once exhausted, subsequent
+        // run_sample calls return immediately (identity for those frames).
+        // This caps total per-callback CPU cost regardless of buffer size.
         let frames = buffer.len() / channels;
         let stereo = channels >= 2;
+        let mut budget: u32 = BLOCK_BUDGET;
         for f in 0..frames {
             let l = buffer[f * channels];
             let r = if stereo { buffer[f * channels + 1] } else { l };
 
             let mut spl = [l, r];
-            run_sample(prog, &mut self.regs, &mut spl, BUDGET);
+            run_sample(prog, &mut self.regs, &mut spl, &mut budget);
 
             // Flush denormals and clamp to ±4.0.
             let out_l = flush(spl[0]).clamp(-4.0, 4.0);

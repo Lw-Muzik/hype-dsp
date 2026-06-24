@@ -283,6 +283,15 @@ impl Default for SaturationState {
     }
 }
 
+/// User LiveProg script (EEL2-subset). The compiled program lives engine-side;
+/// only the source text is part of the serializable state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ScriptState {
+    pub enabled: bool,
+    pub source: String,
+}
+
 /// Makeup gain followed by the look-ahead brickwall limiter that keeps boosted
 /// volume from clipping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -364,6 +373,7 @@ pub struct EngineState {
     pub convolver: ConvolverState,
     pub compander: CompanderState,
     pub saturation: SaturationState,
+    pub script: ScriptState,
     pub headphone: HeadphoneCorrectionState,
     pub output: OutputState,
     pub playback: PlaybackState,
@@ -386,6 +396,7 @@ impl Default for EngineState {
             convolver: ConvolverState::default(),
             compander: CompanderState::default(),
             saturation: SaturationState::default(),
+            script: ScriptState::default(),
             headphone: HeadphoneCorrectionState::default(),
             output: OutputState::default(),
             playback: PlaybackState::default(),
@@ -590,5 +601,13 @@ mod tests {
         let json = serde_json::to_string(&original).expect("serialize must succeed");
         let restored: EngineState = serde_json::from_str(&json).expect("deserialize must succeed");
         assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn script_default_is_disabled_empty() {
+        let s = ScriptState::default();
+        assert!(!s.enabled);
+        assert!(s.source.is_empty());
+        assert!(!EngineState::default().script.enabled);
     }
 }

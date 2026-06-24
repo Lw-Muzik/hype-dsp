@@ -269,3 +269,25 @@ pub fn player_seek(engine: State<'_, AudioEngine>, secs: f64) {
 pub fn player_is_playing(engine: State<'_, AudioEngine>) -> bool {
     engine.is_playing()
 }
+
+/// Compile and load a LiveProg/EEL2-subset script into the DSP chain.
+///
+/// Compilation runs on the caller's command thread (heavy, never on the audio
+/// thread). On success the program is published lock-free to the ScriptProcessor
+/// and the engine state is updated (`source` + `enabled = true`). On error the
+/// slot is unchanged and a structured `IpcError` is returned.
+#[tauri::command]
+pub fn engine_script_compile(
+    engine: State<'_, AudioEngine>,
+    source: String,
+) -> Result<(), IpcError> {
+    engine
+        .compile_script(source)
+        .map_err(|e| IpcError::new("script", format!("{}:{}: {}", e.line, e.col, e.message)))
+}
+
+/// Enable or disable the LiveProg script stage without recompiling.
+#[tauri::command]
+pub fn engine_set_script(engine: State<'_, AudioEngine>, enabled: bool) {
+    engine.set_script(enabled);
+}

@@ -552,6 +552,8 @@ pub fn run() {
             commands::engine::player_resume,
             commands::engine::player_seek,
             commands::engine::player_is_playing,
+            commands::engine::engine_script_compile,
+            commands::engine::engine_set_script,
             commands::presets::eq_list_presets,
             commands::presets::eq_apply_preset,
             commands::presets::eq_save_custom,

@@ -28,7 +28,7 @@ use hm_core::{
     MeterFrame, ParametricBand, RoomState, SaturationState, SpatialMode, SpatializerState,
     Surround3DState, SurroundSpeakers, TrackMeta,
 };
-use hm_dsp::{empty_ir_slot, CompanderMeter, IrSlot, PreparedIr, ProcessChain};
+use hm_dsp::{empty_ir_slot, empty_script_slot, CompanderMeter, IrSlot, PreparedIr, ProcessChain, ScriptSlot};
 
 use crate::ir_loader::load_ir_samples;
 
@@ -221,6 +221,7 @@ impl Renderer {
         channels: usize,
         ir_slot: IrSlot,
         gr_meter: std::sync::Arc<CompanderMeter>,
+        script_slot: ScriptSlot,
     ) -> Self {
         // Tell the source the real output format so rate-dependent sources (e.g.
         // the system tap) can configure their resampler. Errors are non-fatal.
@@ -229,7 +230,7 @@ impl Renderer {
             channels: channels as u16,
         });
         Self {
-            chain: ProcessChain::standard_with_ir(sample_rate, channels, ir_slot, gr_meter),
+            chain: ProcessChain::standard_with_ir(sample_rate, channels, ir_slot, gr_meter, script_slot),
             source,
             analyzer: Analyzer::new(sample_rate),
         }
@@ -339,6 +340,9 @@ pub struct AudioEngine {
     /// Lock-free per-band GR meter shared with the active Compander; written on
     /// the audio thread once per block and read by the UI-forwarding thread.
     compander_gr: std::sync::Arc<CompanderMeter>,
+    /// Lock-free script slot shared with the active ScriptProcessor; the command
+    /// thread compiles and publishes a `Program` here; the audio thread reads it.
+    script_slot: ScriptSlot,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     /// Active self-contained system-wide EQ pipeline (Linux/Windows re-routing).
     /// Held only to keep it running; dropping it tears the routing down. `Send`-
@@ -397,6 +401,7 @@ impl AudioEngine {
         let stem_gains = Arc::new(StemGains::default());
         let ir_slot = empty_ir_slot();
         let compander_gr = std::sync::Arc::new(CompanderMeter::default());
+        let script_slot = empty_script_slot();
         let (tx, rx) = mpsc::channel();
 
         let thread = {
@@ -413,6 +418,7 @@ impl AudioEngine {
             let stem_gains = stem_gains.clone();
             let ir_slot = ir_slot.clone();
             let compander_gr = compander_gr.clone();
+            let script_slot = script_slot.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
                 .spawn(move || {
@@ -431,6 +437,7 @@ impl AudioEngine {
                         stem_gains,
                         ir_slot,
                         compander_gr,
+                        script_slot,
                     })
                 })
                 .expect("failed to spawn hm-audio engine thread")
@@ -451,6 +458,7 @@ impl AudioEngine {
             stem_gains,
             ir_slot,
             compander_gr,
+            script_slot,
             ctrl: Mutex::new(tx),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             system_eq: Mutex::new(None),
@@ -720,6 +728,30 @@ impl AudioEngine {
         self.compander_gr.clone()
     }
 
+    /// Shared script slot for external observers (e.g. tests).
+    pub fn script_slot(&self) -> ScriptSlot {
+        self.script_slot.clone()
+    }
+
+    /// Compile `source` (on the caller's thread — heavy, not real-time safe) and,
+    /// on success, publish the program to the live ScriptProcessor via the
+    /// lock-free slot.  On error the slot is unchanged and the error is returned.
+    pub fn compile_script(&self, source: String) -> Result<(), hm_dsp::script::ScriptError> {
+        let prog = hm_dsp::script::compile(&source)?;
+        self.script_slot
+            .store(Arc::new(Some(Arc::new(prog))));
+        self.update(|s| {
+            s.script.source = source;
+            s.script.enabled = true;
+        });
+        Ok(())
+    }
+
+    /// Enable or disable the LiveProg script stage.
+    pub fn set_script(&self, enabled: bool) {
+        self.update(|s| s.script.enabled = enabled);
+    }
+
     /// Shared transport position for the UI-forwarding thread.
     pub fn pos(&self) -> Arc<PlaybackPos> {
         self.pos.clone()
@@ -969,6 +1001,7 @@ struct ControlCtx {
     stem_gains: Arc<StemGains>,
     ir_slot: IrSlot,
     compander_gr: std::sync::Arc<CompanderMeter>,
+    script_slot: ScriptSlot,
 }
 
 fn control_loop(ctx: ControlCtx) {
@@ -987,6 +1020,7 @@ fn control_loop(ctx: ControlCtx) {
         stem_gains,
         ir_slot,
         compander_gr,
+        script_slot,
     } = ctx;
     let setup = output_setup().ok();
     // The active stream is held only to keep audio flowing (RAII); replacing or
@@ -1026,6 +1060,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    script_slot.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1074,6 +1109,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    script_slot.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1124,6 +1160,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    script_slot.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1170,6 +1207,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    script_slot.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1204,6 +1242,7 @@ fn control_loop(ctx: ControlCtx) {
                         sample_rate as f32,
                         ir_slot.clone(),
                         compander_gr.clone(),
+                        script_slot.clone(),
                     ) {
                         Ok(s) if s.play().is_ok() => {
                             playing.store(true, Ordering::Relaxed);
@@ -1244,6 +1283,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    script_slot.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1293,8 +1333,9 @@ fn build_output_stream(
     sample_rate: f32,
     ir_slot: IrSlot,
     gr_meter: std::sync::Arc<CompanderMeter>,
+    script_slot: ScriptSlot,
 ) -> Result<cpal::Stream, AudioError> {
-    let mut renderer = Renderer::new(source, sample_rate, channels, ir_slot, gr_meter);
+    let mut renderer = Renderer::new(source, sample_rate, channels, ir_slot, gr_meter, script_slot);
 
     device
         .build_output_stream::<f32, _, _>(
@@ -1338,6 +1379,7 @@ mod tests {
             2,
             hm_dsp::empty_ir_slot(),
             Arc::new(hm_dsp::CompanderMeter::default()),
+            hm_dsp::empty_script_slot(),
         );
         let meters = EngineMeters::default();
         let spectrum = SpectrumTap::default();
@@ -1365,6 +1407,7 @@ mod tests {
             2,
             hm_dsp::empty_ir_slot(),
             Arc::new(hm_dsp::CompanderMeter::default()),
+            hm_dsp::empty_script_slot(),
         );
         let meters = EngineMeters::default();
         let spectrum = SpectrumTap::default();
@@ -1390,5 +1433,15 @@ mod tests {
         let frame = compute_meters(&[0.0; 256], 2);
         assert_eq!(frame.peak, [0.0, 0.0]);
         assert_eq!(frame.rms, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn compile_script_publishes_to_slot() {
+        let engine = AudioEngine::new();
+        engine
+            .compile_script("spl0=spl0*0.5;".to_string())
+            .expect("compile simple script");
+        let slot = engine.script_slot();
+        assert!(slot.load().is_some(), "slot must hold a compiled program after compile_script");
     }
 }

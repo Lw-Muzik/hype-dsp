@@ -6,13 +6,16 @@
 //! checks, limiter ceiling checks — see Phase 1).
 //!
 //! The runtime chain processes audio in a fixed order:
-//! `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D → RoomEffects → Convolver → Compander → Saturation → Gain → Limiter`.
+//! `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D →
+//! RoomEffects → Convolver → Compander → Saturation → Script → Gain → Limiter`.
 //! Each stage implements [`AudioProcessor`]; [`ProcessChain`] owns the ordered
 //! list and runs them in place. Phase 0 establishes these interfaces and an
 //! empty (identity) chain; the processors themselves arrive in Phase 1.
 
 use hm_core::EngineState;
 
+pub mod script;
+pub mod script_stage;
 pub mod bass_boost;
 pub mod compander;
 pub mod convolver;
@@ -32,6 +35,7 @@ pub mod surround3d;
 pub use bass_boost::BassBoost;
 pub use compander::{Compander, CompanderMeter};
 pub use convolver::{empty_ir_slot, Convolver, IrSlot, PreparedIr};
+pub use script_stage::{empty_script_slot, ScriptProcessor, ScriptSlot};
 
 /// Returns a fresh, throwaway `CompanderMeter` for call sites that do not
 /// need to observe per-band gain reduction (mirrors [`empty_ir_slot`]).
@@ -94,24 +98,27 @@ impl ProcessChain {
     /// Build the standard enhancement chain for the given format, in the
     /// canonical fixed order:
     /// `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D →
-    /// RoomEffects → Convolver → Compander → Saturation → Gain → Limiter`.
+    /// RoomEffects → Convolver → Compander → Saturation → Script → Gain → Limiter`.
     pub fn standard(sample_rate: f32, channels: usize) -> Self {
         Self::standard_with_ir(
             sample_rate,
             channels,
             crate::empty_ir_slot(),
             crate::empty_compander_meter(),
+            crate::empty_script_slot(),
         )
     }
 
     /// Like [`standard`](Self::standard) but with externally-owned slots so the
-    /// engine can publish impulse responses to the convolver stage and observe
-    /// per-band gain-reduction from the compander.
+    /// engine can publish impulse responses to the convolver stage, observe
+    /// per-band gain-reduction from the compander, and publish compiled scripts
+    /// to the LiveProg stage.
     pub fn standard_with_ir(
         sample_rate: f32,
         channels: usize,
         ir_slot: IrSlot,
         gr_meter: std::sync::Arc<CompanderMeter>,
+        script_slot: ScriptSlot,
     ) -> Self {
         let mut chain = Self::new();
         chain.prepare(sample_rate, channels);
@@ -124,6 +131,7 @@ impl ProcessChain {
         chain.push(Box::new(Convolver::with_slot(sample_rate, channels, ir_slot)));
         chain.push(Box::new(Compander::with_meter(sample_rate, channels, gr_meter)));
         chain.push(Box::new(Saturation::new(sample_rate, channels)));
+        chain.push(Box::new(ScriptProcessor::with_slot(sample_rate, channels, script_slot)));
         chain.push(Box::new(Gain::new()));
         chain.push(Box::new(Limiter::new(sample_rate, channels)));
         chain
@@ -208,7 +216,12 @@ mod tests {
         let mut state = EngineState::default();
         state.eq.enabled = false;
         state.power = true;
-        let mut chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot(), crate::empty_compander_meter());
+        let mut chain = ProcessChain::standard_with_ir(
+            48_000.0, 2,
+            crate::empty_ir_slot(),
+            crate::empty_compander_meter(),
+            crate::empty_script_slot(),
+        );
         chain.set_params(&state);
         // Convolver disabled by default → chain must not blow up; length includes it.
         assert!(chain.len() >= 8, "convolver should be in the standard chain");
@@ -221,14 +234,36 @@ mod tests {
     /// The compander must be in the standard chain after the convolver.
     #[test]
     fn standard_chain_includes_compander() {
-        let chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot(), crate::empty_compander_meter());
+        let chain = ProcessChain::standard_with_ir(
+            48_000.0, 2,
+            crate::empty_ir_slot(),
+            crate::empty_compander_meter(),
+            crate::empty_script_slot(),
+        );
         assert!(chain.len() >= 10, "compander should be in the standard chain");
     }
 
     /// Saturation must be in the standard chain after compander.
     #[test]
     fn standard_chain_includes_saturation() {
-        let chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot(), crate::empty_compander_meter());
+        let chain = ProcessChain::standard_with_ir(
+            48_000.0, 2,
+            crate::empty_ir_slot(),
+            crate::empty_compander_meter(),
+            crate::empty_script_slot(),
+        );
         assert!(chain.len() >= 11, "saturation should be in the standard chain");
+    }
+
+    /// Script stage must be in the standard chain after Saturation (Task 6).
+    #[test]
+    fn standard_chain_includes_script() {
+        let chain = ProcessChain::standard_with_ir(
+            48_000.0, 2,
+            crate::empty_ir_slot(),
+            crate::empty_compander_meter(),
+            crate::empty_script_slot(),
+        );
+        assert!(chain.len() >= 12, "script stage should be in the standard chain (Task 6)");
     }
 }

@@ -181,6 +181,13 @@ export interface EqPreset {
   preGain: number;
 }
 
+/** A named snapshot of the entire DSP enhancement chain. Mirrors `ChainPreset` in hm-core. */
+export interface ChainPreset {
+  id: string;
+  name: string;
+  state: EngineState;
+}
+
 export interface ParametricBand {
   kind: string;
   freq: number;

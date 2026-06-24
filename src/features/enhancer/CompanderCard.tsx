@@ -74,7 +74,7 @@ export function CompanderCard() {
     >
       <div className={cn("flex flex-col gap-3", !c.enabled && "opacity-60")}>
         {/* Per-band gain-reduction meter */}
-        <div className={cn("flex flex-col gap-1", !c.enabled && "opacity-50")}>
+        <div className="flex flex-col gap-1">
           <span className="text-xs text-text-muted">Gain reduction</span>
           <div className="flex h-8 items-end gap-0.5">
             {Array.from({ length: 10 }, (_, i) => {

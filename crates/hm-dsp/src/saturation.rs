@@ -63,6 +63,9 @@ const BIAS: f32 = 0.2;
 /// DC blocker pole radius (≈7 Hz corner at 48 kHz).
 const DC_R: f32 = 0.999;
 
+/// Maximum block size for pre-sizing scratch buffers (prevents RT-thread allocation).
+const MAX_BLOCK_FRAMES: usize = 4096;
+
 /// Flush near-zero values to avoid denormal CPU penalties on IIR state.
 #[inline(always)]
 fn flush(x: f32) -> f32 {
@@ -288,11 +291,11 @@ impl AudioProcessor for Saturation {
         self.dry_delays[1].resize(lat);
         self.dc_blockers[0].reset();
         self.dc_blockers[1].reset();
-        // Scratch sized generously; actual slice len passed at process time.
-        // We don't know the block size here, so defer to process.
-        // (If called before the first process, scratch remains empty and is
-        // grown inside process — but that single resize is acceptable since
-        // prepare() is called off the RT thread.)
+
+        // Pre-size scratch buffers to avoid RT-thread allocation in process().
+        // up_scratch is 4× upsampled, dn_scratch is base rate.
+        self.up_scratch.resize(MAX_BLOCK_FRAMES * 4, 0.0);
+        self.dn_scratch.resize(MAX_BLOCK_FRAMES, 0.0);
     }
 
     fn process(&mut self, buffer: &mut [f32], channels: usize) {
@@ -436,17 +439,17 @@ mod tests {
         // Disabled (identity) output — should have no 2nd harmonic
         let out_off = run(false, 0.9);
 
-        // FFT magnitude at 2f (2000 Hz)
-        let bin_2f = (2.0 * FREQ / SR * N as f32).round() as usize;
+        let seg_len = N - skip;
 
         let fft_mag = |sig: &[f32]| -> f32 {
-            let seg = &sig[skip..skip + N.min(sig.len() - skip)];
+            let seg = &sig[skip..skip + seg_len];
             let n = seg.len();
             let mut buf = seg.to_vec();
             let mut planner = RealFftPlanner::<f32>::new();
             let fft = planner.plan_fft_forward(n);
             let mut spec = fft.make_output_vec();
             fft.process(&mut buf, &mut spec).unwrap();
+            let bin_2f = (2.0 * FREQ / SR * seg_len as f32).round() as usize;
             spec[bin_2f.min(spec.len() - 1)].norm() / n as f32
         };
 

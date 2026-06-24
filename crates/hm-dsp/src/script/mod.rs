@@ -1,6 +1,11 @@
 pub mod lexer;
 pub use lexer::lex;
 
+pub mod parser;
+pub use parser::{
+    parse, AssignOp, Ast, BinOp, Const as EelConst, Expr, Stmt, UnOp,
+};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScriptError {
     pub line: u32,

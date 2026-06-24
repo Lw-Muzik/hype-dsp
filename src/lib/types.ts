@@ -109,6 +109,11 @@ export interface SaturationState {
   mix: number;
 }
 
+export interface ScriptState {
+  enabled: boolean;
+  source: string;
+}
+
 /** A built-in room reverb preset (mirrors the Hype mobile presets). */
 export interface RoomPreset {
   id: string;
@@ -166,6 +171,7 @@ export interface EngineState {
   convolver: ConvolverState;
   compander: CompanderState;
   saturation: SaturationState;
+  script: ScriptState;
   headphone: HeadphoneCorrectionState;
   output: OutputState;
   playback: PlaybackState;

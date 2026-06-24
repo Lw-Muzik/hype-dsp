@@ -6,7 +6,7 @@
 //! checks, limiter ceiling checks — see Phase 1).
 //!
 //! The runtime chain processes audio in a fixed order:
-//! `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D → RoomEffects → Convolver → Compander → Gain → Limiter`.
+//! `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D → RoomEffects → Convolver → Compander → Saturation → Gain → Limiter`.
 //! Each stage implements [`AudioProcessor`]; [`ProcessChain`] owns the ordered
 //! list and runs them in place. Phase 0 establishes these interfaces and an
 //! empty (identity) chain; the processors themselves arrive in Phase 1.
@@ -94,7 +94,7 @@ impl ProcessChain {
     /// Build the standard enhancement chain for the given format, in the
     /// canonical fixed order:
     /// `HeadphoneCorrection → GraphicEq → BassBoost → Spatializer → Surround3D →
-    /// RoomEffects → Convolver → Compander → Gain → Limiter`.
+    /// RoomEffects → Convolver → Compander → Saturation → Gain → Limiter`.
     pub fn standard(sample_rate: f32, channels: usize) -> Self {
         Self::standard_with_ir(
             sample_rate,
@@ -123,6 +123,7 @@ impl ProcessChain {
         chain.push(Box::new(RoomEffects::new(sample_rate, channels)));
         chain.push(Box::new(Convolver::with_slot(sample_rate, channels, ir_slot)));
         chain.push(Box::new(Compander::with_meter(sample_rate, channels, gr_meter)));
+        chain.push(Box::new(Saturation::new(sample_rate, channels)));
         chain.push(Box::new(Gain::new()));
         chain.push(Box::new(Limiter::new(sample_rate, channels)));
         chain
@@ -222,5 +223,12 @@ mod tests {
     fn standard_chain_includes_compander() {
         let chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot(), crate::empty_compander_meter());
         assert!(chain.len() >= 10, "compander should be in the standard chain");
+    }
+
+    /// Saturation must be in the standard chain after compander.
+    #[test]
+    fn standard_chain_includes_saturation() {
+        let chain = ProcessChain::standard_with_ir(48_000.0, 2, crate::empty_ir_slot(), crate::empty_compander_meter());
+        assert!(chain.len() >= 11, "saturation should be in the standard chain");
     }
 }

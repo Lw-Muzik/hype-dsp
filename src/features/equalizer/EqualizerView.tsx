@@ -11,7 +11,7 @@ import { EqBandSlider } from "@/components/EqBandSlider";
 import { EqVisualizer } from "@/features/equalizer/EqVisualizer";
 import { PresetBar } from "@/features/equalizer/PresetBar";
 import { useEngineStore } from "@/stores/engine";
-import { eqApplyPreset, eqDelete, eqListPresets, eqSaveCustom, ipcErrorMessage } from "@/lib/ipc";
+import { eqApplyPreset, eqDelete, eqListPresets, eqSaveCustom, ipcErrorMessage, ddcList } from "@/lib/ipc";
 import { BAND_COUNT, ISO_CENTERS_HZ } from "@/lib/types";
 import type { EqPreset } from "@/lib/types";
 import { formatDb, formatHz } from "@/lib/format";
@@ -19,6 +19,9 @@ import { toast } from "@/stores/toast";
 
 const DB_MIN = -12;
 const DB_MAX = 12;
+
+/** Cap rendered library rows for perf; the rest are reachable via search. */
+const LIBRARY_VISIBLE = 200;
 
 export function EqualizerView() {
   const route = routeById("equalizer");
@@ -35,12 +38,20 @@ export function EqualizerView() {
   const applyPreset = useEngineStore((s) => s.applyPreset);
   const importGraphicEq = useEngineStore((s) => s.importGraphicEq);
   const importVdc = useEngineStore((s) => s.importVdc);
+  const applyDdc = useEngineStore((s) => s.applyDdc);
 
   const [presets, setPresets] = useState<EqPreset[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [curveText, setCurveText] = useState("");
   const [importing, setImporting] = useState(false);
   const [importingVdc, setImportingVdc] = useState(false);
+
+  // Bundled ViPER DDC preset library (600+ shipped curves) to apply in one click.
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [ddcNames, setDdcNames] = useState<string[]>([]);
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [applyingName, setApplyingName] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     eqListPresets()
@@ -105,6 +116,33 @@ export function EqualizerView() {
       setImportingVdc(false);
     }
   };
+
+  // Load the bundled DDC preset names once, when the library panel first opens.
+  useEffect(() => {
+    if (showLibrary && ddcNames.length === 0 && !libraryLoading) {
+      setLibraryLoading(true);
+      ddcList()
+        .then(setDdcNames)
+        .catch((e) => toast.error(`Couldn't load DDC presets: ${ipcErrorMessage(e)}`))
+        .finally(() => setLibraryLoading(false));
+    }
+  }, [showLibrary, ddcNames.length, libraryLoading]);
+
+  const applyDdcPreset = async (name: string) => {
+    setApplyingName(name);
+    try {
+      await applyDdc(name);
+      toast.success(`Applied ${name}`);
+    } catch (e) {
+      toast.error(`Couldn't apply ${name}: ${ipcErrorMessage(e)}`);
+    } finally {
+      setApplyingName(null);
+    }
+  };
+
+  const libraryMatches = ddcNames.filter((n) =>
+    n.toLowerCase().includes(librarySearch.trim().toLowerCase()),
+  );
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -193,9 +231,68 @@ export function EqualizerView() {
                 onClick={importVdcFile}
                 disabled={importingVdc}
               >
-                {importingVdc ? "Importing…" : "Import .vdc (ViPER DDC)"}
+                {importingVdc ? "Importing…" : "Import .vdc file"}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setShowLibrary((v) => !v)}
+                aria-expanded={showLibrary}
+              >
+                DDC presets…
               </Button>
             </div>
+
+            {showLibrary && (
+              <div className="mt-3 space-y-2">
+                <input
+                  type="search"
+                  autoFocus
+                  className="w-full rounded-md bg-white/5 px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-accent"
+                  placeholder={`Search ${ddcNames.length || ""} bundled ViPER DDC presets…`}
+                  value={librarySearch}
+                  onChange={(e) => setLibrarySearch(e.target.value)}
+                  spellCheck={false}
+                />
+                <div className="max-h-64 overflow-y-auto rounded-md border border-border">
+                  {libraryLoading ? (
+                    <p className="px-3 py-3 text-xs text-text-faint">Loading presets…</p>
+                  ) : libraryMatches.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-text-faint">
+                      {ddcNames.length === 0
+                        ? "No bundled presets found."
+                        : "No presets match your search."}
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-border/60">
+                      {libraryMatches.slice(0, LIBRARY_VISIBLE).map((name) => (
+                        <li key={name}>
+                          <button
+                            type="button"
+                            onClick={() => applyDdcPreset(name)}
+                            disabled={applyingName !== null}
+                            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-white/5 disabled:opacity-50"
+                          >
+                            <span className="min-w-0 flex-1 truncate text-text-primary">
+                              {name}
+                            </span>
+                            {applyingName === name && (
+                              <span className="shrink-0 text-[10px] uppercase tracking-wide text-text-faint">
+                                Applying…
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {libraryMatches.length > LIBRARY_VISIBLE && (
+                  <p className="text-[10px] text-text-faint">
+                    Showing {LIBRARY_VISIBLE} of {libraryMatches.length} — refine your search to see the rest.
+                  </p>
+                )}
+              </div>
+            )}
             {showImport && (
               <div className="mt-3 space-y-2">
                 <textarea

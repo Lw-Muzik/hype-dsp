@@ -11,6 +11,7 @@
 //! it must change on the other — they are a single contract expressed twice.
 
 pub mod chain_presets;
+pub mod ddc_library;
 pub mod error;
 pub mod graphic_eq_import;
 pub mod headphones;

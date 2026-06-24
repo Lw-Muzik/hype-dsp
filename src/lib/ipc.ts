@@ -878,6 +878,16 @@ export function engineEqImportVdc(path: string): Promise<EqImportResult> {
   return invoke<EqImportResult>("engine_eq_import_vdc", { path });
 }
 
+/** Names of all bundled ViPER DDC presets (sorted), for the EQ library browser. */
+export function ddcList(): Promise<string[]> {
+  return invoke<string[]>("ddc_list");
+}
+
+/** Apply a bundled ViPER DDC preset by name → resolved bands + preGain. */
+export function engineEqApplyDdc(name: string): Promise<EqImportResult> {
+  return invoke<EqImportResult>("engine_eq_apply_ddc", { name });
+}
+
 /** Open a native file picker for an audio file; returns the chosen path. */
 export async function pickAudioFile(): Promise<string | null> {
   const selected = await open({

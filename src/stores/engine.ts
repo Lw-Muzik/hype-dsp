@@ -4,6 +4,7 @@ import {
   cloudPlay,
   cloudTrackMetadata,
   engineConvolverLoadIr,
+  engineEqApplyDdc,
   engineEqImportGraphic,
   engineEqImportVdc,
   engineGetState,
@@ -277,6 +278,8 @@ interface EngineStore {
   importGraphicEq: (curve: string) => Promise<void>;
   /** Import a ViPER/JamesDSP DDC (.vdc) file by path. Throws on failure — caller must catch. */
   importVdc: (path: string) => Promise<void>;
+  /** Apply a bundled ViPER DDC preset by name. Throws on failure — caller must catch. */
+  applyDdc: (name: string) => Promise<void>;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
   setPlayback: (gapless: boolean, crossfadeSecs: number) => void;
@@ -649,6 +652,16 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
     importVdc: async (path) => {
       const res = await engineEqImportVdc(path);
+      set((s) => ({
+        state: {
+          ...s.state,
+          eq: { ...s.state.eq, enabled: true, bands: res.bands, preGain: res.preGain },
+          activePresetId: null,
+        },
+      }));
+    },
+    applyDdc: async (name) => {
+      const res = await engineEqApplyDdc(name);
       set((s) => ({
         state: {
           ...s.state,

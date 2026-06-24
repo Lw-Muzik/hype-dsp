@@ -83,6 +83,30 @@ pub fn engine_eq_import_vdc(
     Ok(EqImportResult { bands: bands.to_vec(), pre_gain })
 }
 
+/// Names of all bundled ViPER DDC presets (sorted) for the EQ library browser.
+#[tauri::command]
+pub fn ddc_list() -> Vec<String> {
+    hm_core::ddc_library::names()
+}
+
+/// Apply a bundled ViPER DDC preset by name to the 31-band EQ (same resolution
+/// as importing a `.vdc`, but the content is shipped with the app).
+#[tauri::command]
+pub fn engine_eq_apply_ddc(
+    engine: State<'_, AudioEngine>,
+    name: String,
+) -> Result<EqImportResult, IpcError> {
+    let body = hm_core::ddc_library::get(&name)
+        .ok_or_else(|| IpcError::new("not_found", format!("DDC preset '{name}' not found")))?;
+    let bands = hm_core::vdc_to_iso_bands(body).map_err(|e| IpcError::new("invalid", e))?;
+    let pre_gain = hm_core::recommended_preamp(&bands);
+    engine.set_eq(bands, pre_gain, true);
+    Ok(EqImportResult {
+        bands: bands.to_vec(),
+        pre_gain,
+    })
+}
+
 /// Configure the bass boost stage.
 #[tauri::command]
 pub fn engine_set_bass(

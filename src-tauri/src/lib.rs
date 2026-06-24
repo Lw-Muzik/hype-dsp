@@ -498,6 +498,8 @@ pub fn run() {
             commands::engine::engine_set_eq,
             commands::engine::engine_eq_import_graphic,
             commands::engine::engine_eq_import_vdc,
+            commands::engine::ddc_list,
+            commands::engine::engine_eq_apply_ddc,
             commands::engine::engine_set_bass,
             commands::engine::engine_set_spatializer,
             commands::engine::engine_set_surround3d,

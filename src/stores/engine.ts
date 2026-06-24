@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  autoeqFetchApply,
   chainPresetApply,
   cloudPlay,
   cloudTrackMetadata,
@@ -274,6 +275,7 @@ interface EngineStore {
   loadConvolverIr: (path: string) => Promise<void>;
   /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
+  applyAutoEq: (url: string) => Promise<void>;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
   setPlayback: (gapless: boolean, crossfadeSecs: number) => void;
@@ -636,6 +638,16 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
     importGraphicEq: async (curve) => {
       const res = await engineEqImportGraphic(curve);
+      set((s) => ({
+        state: {
+          ...s.state,
+          eq: { ...s.state.eq, enabled: true, bands: res.bands, preGain: res.preGain },
+          activePresetId: null,
+        },
+      }));
+    },
+    applyAutoEq: async (url) => {
+      const res = await autoeqFetchApply(url);
       set((s) => ({
         state: {
           ...s.state,

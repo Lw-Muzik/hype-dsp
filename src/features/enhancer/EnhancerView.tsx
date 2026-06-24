@@ -156,7 +156,7 @@ export function EnhancerView() {
             actions={
               <Switch
                 checked={bass.enabled}
-                onChange={(v) => setBass(v, bass.amount, bass.harmonics)}
+                onChange={(v) => setBass(v, bass.amount, bass.harmonics, bass.adaptive)}
                 label="Enable bass boost"
               />
             }
@@ -170,7 +170,7 @@ export function EnhancerView() {
                   max={12}
                   step={0.5}
                   value={bass.amount}
-                  onChange={(v) => setBass(bass.enabled, v, bass.harmonics)}
+                  onChange={(v) => setBass(bass.enabled, v, bass.harmonics, bass.adaptive)}
                   formatValue={(v) => `${v.toFixed(1)} decibels`}
                   className="flex-1"
                 />
@@ -185,8 +185,19 @@ export function EnhancerView() {
                 </span>
                 <Switch
                   checked={bass.harmonics}
-                  onChange={(v) => setBass(bass.enabled, bass.amount, v)}
+                  onChange={(v) => setBass(bass.enabled, bass.amount, v, bass.adaptive)}
                   label="Harmonic enhancement"
+                />
+              </label>
+              <label className="flex items-center justify-between text-sm">
+                <span className="text-text-muted">
+                  Adaptive
+                  <span className="ml-1 text-text-faint">(anti-overload)</span>
+                </span>
+                <Switch
+                  checked={bass.adaptive}
+                  onChange={(v) => setBass(bass.enabled, bass.amount, bass.harmonics, v)}
+                  label="Adaptive bass (anti-overload)"
                 />
               </label>
             </div>

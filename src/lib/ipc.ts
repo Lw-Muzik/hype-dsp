@@ -88,8 +88,9 @@ export function engineSetBass(
   enabled: boolean,
   amount: number,
   harmonics: boolean,
+  adaptive: boolean,
 ): Promise<void> {
-  return invoke<void>("engine_set_bass", { enabled, amount, harmonics });
+  return invoke<void>("engine_set_bass", { enabled, amount, harmonics, adaptive });
 }
 
 /** Configure the spatializer (surround) stage. */

@@ -52,6 +52,9 @@ pub struct BassBoostState {
     pub amount: f32,
     /// Adds gentle even-harmonic content to imply low end on small speakers.
     pub harmonics: bool,
+    /// When true, scales boost down when the low-band energy is already strong
+    /// (anti-overload / anti-mud). `false` = today's static-boost behavior.
+    pub adaptive: bool,
 }
 
 impl Default for BassBoostState {
@@ -60,6 +63,7 @@ impl Default for BassBoostState {
             enabled: false,
             amount: 0.0,
             harmonics: false,
+            adaptive: false,
         }
     }
 }
@@ -500,6 +504,13 @@ pub struct EngineFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bass_boost_default_adaptive_is_false() {
+        let b = BassBoostState::default();
+        assert!(!b.adaptive);
+        assert!(!EngineState::default().bass.adaptive);
+    }
 
     #[test]
     fn convolver_default_is_disabled_and_empty() {

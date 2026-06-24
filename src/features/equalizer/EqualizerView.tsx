@@ -94,6 +94,8 @@ export function EqualizerView() {
   };
 
   // Debounced AutoEQ database search (instant + offline; index is bundled).
+  // The `cancelled` flag guards against a slow in-flight response overwriting
+  // results for a newer query.
   useEffect(() => {
     if (!showAutoEq) return;
     const q = autoEqQuery.trim();
@@ -103,13 +105,14 @@ export function EqualizerView() {
       return;
     }
     setAutoEqSearching(true);
+    let cancelled = false;
     const handle = setTimeout(() => {
       autoeqSearch(q, 30)
-        .then(setAutoEqResults)
-        .catch(() => setAutoEqResults([]))
-        .finally(() => setAutoEqSearching(false));
+        .then((r) => { if (!cancelled) setAutoEqResults(r); })
+        .catch(() => { if (!cancelled) setAutoEqResults([]); })
+        .finally(() => { if (!cancelled) setAutoEqSearching(false); });
     }, 250);
-    return () => clearTimeout(handle);
+    return () => { cancelled = true; clearTimeout(handle); };
   }, [autoEqQuery, showAutoEq]);
 
   const applyAutoEqEntry = async (entry: AutoEqEntry) => {

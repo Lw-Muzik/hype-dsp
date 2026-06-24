@@ -57,6 +57,10 @@ fn validate_url(url: &str) -> Result<(), IpcError> {
 fn fetch_curve(url: &str) -> Result<String, IpcError> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(15))
+        // Don't follow redirects: the allowlist validates the *request* URL, so a
+        // redirect could otherwise land on an arbitrary host (raw.githubusercontent.com
+        // never redirects legitimate GraphicEQ.txt URLs, so this costs nothing).
+        .redirect(reqwest::redirect::Policy::none())
         .user_agent("HypeMuzik/AutoEq")
         .build()
         .map_err(|e| IpcError::new("network", e.to_string()))?;

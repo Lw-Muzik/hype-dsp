@@ -14,6 +14,7 @@ import {
   engineSetPower,
   engineSetRoom,
   engineSetSaturation,
+  engineSetScript,
   engineSetSpatializer,
   engineSetSurround3d,
   identifyTrack,
@@ -132,6 +133,7 @@ const defaultEngineState: EngineState = {
     expanderRatio: 2.0,
   },
   saturation: { enabled: false, drive: 0.3, mix: 1.0 },
+  script: { enabled: false, source: "" },
   headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
   playback: { gapless: true, crossfadeSecs: 0 },
@@ -270,6 +272,7 @@ interface EngineStore {
   setConvolver: (next: ConvolverState) => void;
   setCompander: (next: CompanderState) => void;
   setSaturation: (next: SaturationState) => void;
+  setScriptEnabled: (enabled: boolean) => void;
   loadConvolverIr: (path: string) => Promise<void>;
   /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
@@ -616,6 +619,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setSaturation: (next) => {
       set((s) => ({ state: { ...s.state, saturation: next } }));
       void engineSetSaturation(next).catch(() => {});
+    },
+    setScriptEnabled: (enabled) => {
+      set((s) => ({ state: { ...s.state, script: { ...s.state.script, enabled } } }));
+      void engineSetScript(enabled).catch(() => {});
     },
     loadConvolverIr: async (path) => {
       const info = await engineConvolverLoadIr(path);

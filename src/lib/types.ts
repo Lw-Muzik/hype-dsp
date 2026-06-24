@@ -109,6 +109,13 @@ export interface SaturationState {
   mix: number;
 }
 
+/** LiveProg (EEL2 subset) user script stage. */
+export interface ScriptState {
+  enabled: boolean;
+  /** Raw EEL2 source text; compiled off-thread before taking effect. */
+  source: string;
+}
+
 /** A built-in room reverb preset (mirrors the Hype mobile presets). */
 export interface RoomPreset {
   id: string;
@@ -166,6 +173,7 @@ export interface EngineState {
   convolver: ConvolverState;
   compander: CompanderState;
   saturation: SaturationState;
+  script: ScriptState;
   headphone: HeadphoneCorrectionState;
   output: OutputState;
   playback: PlaybackState;

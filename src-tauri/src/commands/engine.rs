@@ -120,6 +120,12 @@ pub fn engine_set_compander(engine: State<'_, AudioEngine>, compander: hm_core::
     engine.set_compander(compander);
 }
 
+/// Configure the tube saturation stage.
+#[tauri::command]
+pub fn engine_set_saturation(engine: State<'_, AudioEngine>, saturation: hm_core::SaturationState) {
+    engine.set_saturation(saturation);
+}
+
 /// Load an impulse-response file into the convolver (heavy prep off the audio thread).
 #[tauri::command]
 pub fn engine_convolver_load_ir(

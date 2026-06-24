@@ -262,6 +262,27 @@ impl Default for CompanderState {
     }
 }
 
+/// Tube-style analog saturation (4× oversampled, 2nd-harmonic warmth).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaturationState {
+    pub enabled: bool,
+    /// 0..1 → internal tanh drive amount.
+    pub drive: f32,
+    /// Dry/wet mix, 0..1.
+    pub mix: f32,
+}
+
+impl Default for SaturationState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            drive: 0.3,
+            mix: 1.0,
+        }
+    }
+}
+
 /// Makeup gain followed by the look-ahead brickwall limiter that keeps boosted
 /// volume from clipping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -342,6 +363,7 @@ pub struct EngineState {
     pub room: RoomState,
     pub convolver: ConvolverState,
     pub compander: CompanderState,
+    pub saturation: SaturationState,
     pub headphone: HeadphoneCorrectionState,
     pub output: OutputState,
     pub playback: PlaybackState,
@@ -363,6 +385,7 @@ impl Default for EngineState {
             room: RoomState::default(),
             convolver: ConvolverState::default(),
             compander: CompanderState::default(),
+            saturation: SaturationState::default(),
             headphone: HeadphoneCorrectionState::default(),
             output: OutputState::default(),
             playback: PlaybackState::default(),
@@ -537,5 +560,14 @@ mod tests {
         assert_eq!(c.gate_db, -70.0);
         assert_eq!(c.expander_ratio, 2.0);
         assert!(!EngineState::default().compander.enabled);
+    }
+
+    #[test]
+    fn saturation_default_is_disabled() {
+        let s = SaturationState::default();
+        assert!(!s.enabled);
+        assert_eq!(s.drive, 0.3);
+        assert_eq!(s.mix, 1.0);
+        assert!(!EngineState::default().saturation.enabled);
     }
 }

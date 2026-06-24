@@ -489,6 +489,7 @@ pub fn run() {
             commands::engine::engine_set_room,
             commands::engine::engine_set_convolver,
             commands::engine::engine_set_compander,
+            commands::engine::engine_set_saturation,
             commands::engine::engine_convolver_load_ir,
             commands::cloud::cloud_status,
             commands::cloud::cloud_connect,

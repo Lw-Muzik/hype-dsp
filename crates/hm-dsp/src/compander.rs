@@ -140,7 +140,8 @@ impl LrChannel {
 /// and `release_coeff`, setting the perceived attack/release speed. The gain
 /// smoothing stage uses a fixed ~2 ms de-click coefficient, preventing zipper
 /// noise without adding extra smoothing. Thus `attack_ms` and `release_ms`
-/// directly govern compression/expansion response.
+/// govern compression/expansion response; note that for very fast attack_ms
+/// (<~2ms) the fixed gain de-click floor limits how quickly gain changes apply.
 ///
 /// Lookahead: incoming L/R are pushed into per-channel ring buffers
 /// (`lookahead_samples` deep). Gain is derived from the INCOMING sample but
@@ -232,6 +233,12 @@ impl BandCompressor {
         for x in &mut self.ring_l { *x = 0.0; }
         for x in &mut self.ring_r { *x = 0.0; }
         self.ring_pos = 0;
+    }
+
+    /// Return the current smoothed gain in dB.
+    #[inline]
+    fn current_gain_db(&self) -> f32 {
+        self.gain_smoothed_db
     }
 
     /// dB gain change for an input level (≤0 compression / expansion).
@@ -398,6 +405,11 @@ impl AudioProcessor for Compander {
         }
         let frames = buffer.len() / channels;
         let stereo = channels >= 2;
+
+        // Track minimum (most-negative) gain_smoothed_db per band across the block.
+        // Initialize to 0.0 (no reduction); will be updated to the min seen.
+        let mut min_gr_per_band = [0.0_f32; BAND_COUNT];
+
         for f in 0..frames {
             let base = f * channels;
             let in_l = buffer[base];
@@ -409,7 +421,7 @@ impl AudioProcessor for Compander {
             let mut rest_r = in_r;
             let mut sum_l = 0.0_f32;
             let mut sum_r = 0.0_f32;
-            for i in 0..CROSSOVER_COUNT {
+            for (i, min_gr) in min_gr_per_band[..CROSSOVER_COUNT].iter_mut().enumerate() {
                 // Lowpass the CURRENT remainder (uncompressed) to carve out the band.
                 let low_l = self.crossovers_l[i].lowpass(rest_l);
                 let low_r = self.crossovers_r[i].lowpass(rest_r);
@@ -421,12 +433,18 @@ impl AudioProcessor for Compander {
                 self.bands[i].process_frame(&mut bl, &mut br);
                 sum_l += bl;
                 sum_r += br;
+                // Track minimum gain for this band.
+                let gr = self.bands[i].current_gain_db();
+                *min_gr = min_gr.min(gr);
             }
             // Final (highest) band = whatever remains after all LP subtractions.
             let (mut bl, mut br) = (rest_l, rest_r);
             self.bands[BAND_COUNT - 1].process_frame(&mut bl, &mut br);
             sum_l += bl;
             sum_r += br;
+            // Track minimum gain for the final band.
+            let gr = self.bands[BAND_COUNT - 1].current_gain_db();
+            min_gr_per_band[BAND_COUNT - 1] = min_gr_per_band[BAND_COUNT - 1].min(gr);
 
             let out_l = flush(sum_l).clamp(-4.0, 4.0);
             let out_r = flush(sum_r).clamp(-4.0, 4.0);
@@ -436,10 +454,11 @@ impl AudioProcessor for Compander {
             }
         }
 
-        // Publish GR once per block. Writes the raw gain reduction in dB (≤0),
-        // excluding makeup gain (which is applied linearly after). Cheap atomic store.
-        for i in 0..BAND_COUNT {
-            self.meter.store_band(i, self.bands[i].gain_smoothed_db);
+        // Publish GR once per block. Write the peak (minimum, most-negative) gain
+        // reduction in dB (≤0) seen across all frames in this block, so transient
+        // pumping is visible. Cheap atomic store per band.
+        for (i, &min_gr) in min_gr_per_band.iter().enumerate() {
+            self.meter.store_band(i, min_gr);
         }
     }
 

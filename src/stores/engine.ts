@@ -274,8 +274,9 @@ interface EngineStore {
   setConvolver: (next: ConvolverState) => void;
   setCompander: (next: CompanderState) => void;
   setSaturation: (next: SaturationState) => void;
-  /** Set which apps the macOS system-wide EQ tap processes. */
-  setSystemEqScope: (scope: SystemEqScope) => void;
+  /** Set which apps the macOS system-wide EQ tap processes. Resolves once the
+   *  backend has committed the scope (await before restarting the tap). */
+  setSystemEqScope: (scope: SystemEqScope) => Promise<void>;
   loadConvolverIr: (path: string) => Promise<void>;
   /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
@@ -625,7 +626,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
     setSystemEqScope: (scope) => {
       set((s) => ({ state: { ...s.state, systemEqScope: scope } }));
-      void systemEqSetScope(scope).catch(() => {});
+      return systemEqSetScope(scope);
     },
     loadConvolverIr: async (path) => {
       const info = await engineConvolverLoadIr(path);

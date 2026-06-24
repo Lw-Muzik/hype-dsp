@@ -466,24 +466,31 @@ export function SettingsView() {
       .finally(() => setSystemEqOn(false));
   };
 
-  // Apply a scope change. If the tap is running, rebuild it so the change takes
-  // effect immediately; a failing rebuild (e.g. empty allowlist) surfaces the error.
-  const applyScope = (next: { mode: SystemEqScopeMode; apps: string[] }) => {
-    setSystemEqScope(next);
-    if (systemEqOn) {
-      setCaptureError(null);
-      playerPlaySystemAudio().catch((e) => setCaptureError(ipcErrorMessage(e)));
+  // Apply a scope change. The scope is committed to the backend FIRST (awaited),
+  // then — if the tap is running — rebuilt so the new scope takes effect. A
+  // failing rebuild (e.g. an empty allowlist because the picked apps went idle)
+  // surfaces the error AND flips the toggle off, since the tap is now stopped.
+  const applyScope = async (next: { mode: SystemEqScopeMode; apps: string[] }) => {
+    try {
+      await setSystemEqScope(next);
+      if (systemEqOn) {
+        setCaptureError(null);
+        await playerPlaySystemAudio();
+      }
+    } catch (e) {
+      setCaptureError(ipcErrorMessage(e));
+      setSystemEqOn(false);
     }
   };
   const setScopeMode = (mode: SystemEqScopeMode) => {
     refreshScopeApps();
-    applyScope({ mode, apps: systemEqScope.apps });
+    void applyScope({ mode, apps: systemEqScope.apps });
   };
   const toggleScopeApp = (id: string) => {
     const apps = systemEqScope.apps.includes(id)
       ? systemEqScope.apps.filter((a) => a !== id)
       : [...systemEqScope.apps, id];
-    applyScope({ mode: systemEqScope.mode, apps });
+    void applyScope({ mode: systemEqScope.mode, apps });
   };
   const deactivate = () => {
     licenseDeactivate()

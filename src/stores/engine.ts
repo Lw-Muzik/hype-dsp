@@ -82,7 +82,7 @@ const defaultEngineState: EngineState = {
   power: true,
   masterVolume: 1,
   eq: { enabled: true, preGain: 0, bands: Array<number>(BAND_COUNT).fill(0) },
-  bass: { enabled: false, amount: 0, harmonics: false },
+  bass: { enabled: false, amount: 0, harmonics: false, adaptive: false },
   spatializer: { enabled: false, amount: 0.5, mode: "crossfeed" },
   surround3d: {
     enabled: false,
@@ -258,7 +258,7 @@ interface EngineStore {
   setPreGain: (preGain: number) => void;
   setEqEnabled: (enabled: boolean) => void;
   applyPreset: (preset: EqPreset) => void;
-  setBass: (enabled: boolean, amount: number, harmonics: boolean) => void;
+  setBass: (enabled: boolean, amount: number, harmonics: boolean, adaptive: boolean) => void;
   setSpatializer: (enabled: boolean, amount: number, mode: SpatialMode) => void;
   setSurround3d: (next: Surround3DState) => void;
   setRoom: (next: RoomState) => void;
@@ -576,9 +576,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           activePresetId: preset.id,
         },
       })),
-    setBass: (enabled, amount, harmonics) => {
-      set((s) => ({ state: { ...s.state, bass: { enabled, amount, harmonics } } }));
-      void engineSetBass(enabled, amount, harmonics).catch(() => {});
+    setBass: (enabled, amount, harmonics, adaptive) => {
+      set((s) => ({ state: { ...s.state, bass: { enabled, amount, harmonics, adaptive } } }));
+      void engineSetBass(enabled, amount, harmonics, adaptive).catch(() => {});
     },
     setSpatializer: (enabled, amount, mode) => {
       set((s) => ({ state: { ...s.state, spatializer: { enabled, amount, mode } } }));

@@ -588,12 +588,13 @@ impl AudioEngine {
     }
 
     /// Configure the bass boost stage.
-    pub fn set_bass(&self, enabled: bool, amount: f32, harmonics: bool) {
+    pub fn set_bass(&self, enabled: bool, amount: f32, harmonics: bool, adaptive: bool) {
         self.update(|s| {
             s.bass = BassBoostState {
                 enabled,
                 amount,
                 harmonics,
+                adaptive,
             };
         });
     }

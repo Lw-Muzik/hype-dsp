@@ -111,6 +111,7 @@ mod tests {
                 enabled: true,
                 amount: 6.0,
                 harmonics: false,
+                adaptive: false,
             },
             ..Default::default()
         };

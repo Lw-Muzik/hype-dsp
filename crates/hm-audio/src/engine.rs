@@ -83,27 +83,6 @@ impl EngineMeters {
     }
 }
 
-/// Peak and RMS per channel over a processed block (first two channels).
-/// DIAGNOSTIC (temporary): peak |sample| and peak |L-R| across a block.
-/// `L-R` near zero means the content is effectively mono (both channels equal).
-fn dbg_peak_and_diff(out: &[f32], channels: usize) -> (f32, f32) {
-    let mut peak = 0.0_f32;
-    let mut diff = 0.0_f32;
-    if channels >= 2 {
-        for frame in out.chunks(channels) {
-            let l = frame[0];
-            let r = frame[1];
-            peak = peak.max(l.abs()).max(r.abs());
-            diff = diff.max((l - r).abs());
-        }
-    } else {
-        for &s in out {
-            peak = peak.max(s.abs());
-        }
-    }
-    (peak, diff)
-}
-
 fn compute_meters(buffer: &[f32], channels: usize) -> MeterFrame {
     if channels == 0 {
         return MeterFrame::default();
@@ -232,7 +211,6 @@ pub struct Renderer {
     chain: ProcessChain,
     source: Box<dyn AudioSource>,
     analyzer: Analyzer,
-    dbg_logged: u32,
 }
 
 impl Renderer {
@@ -254,7 +232,6 @@ impl Renderer {
             chain: ProcessChain::standard_with_ir(sample_rate, channels, ir_slot, gr_meter),
             source,
             analyzer: Analyzer::new(sample_rate),
-            dbg_logged: 0,
         }
     }
 
@@ -285,38 +262,10 @@ impl Renderer {
             }
         }
 
-        // --- DIAGNOSTIC (temporary): pre-chain peak + L/R divergence -----------
-        let (pre_peak, ch_diff) = dbg_peak_and_diff(out, channels);
-
         if state.power {
             // Cheap when unchanged: each processor guards its own re-tuning.
             self.chain.set_params(state);
             self.chain.process(out, channels);
-        }
-
-        // --- DIAGNOSTIC (temporary): log first frames carrying real audio -----
-        if self.dbg_logged < 12 {
-            self.dbg_logged += 1;
-            let (post_peak, post_diff) = dbg_peak_and_diff(out, channels);
-            let eq_peak = state
-                .eq
-                .bands
-                .iter()
-                .fold(0.0_f32, |m, b| m.max(b.abs()));
-            crate::diag::log(&format!(
-                "render#{}: ch={} produced={} power={} eq_en={} eq_peak={:.2} \
-                 pre_peak={:.4} pre_LRdiff={:.4} | post_peak={:.4} post_LRdiff={:.4}",
-                self.dbg_logged,
-                channels,
-                produced,
-                state.power,
-                state.eq.enabled,
-                eq_peak,
-                pre_peak,
-                ch_diff,
-                post_peak,
-                post_diff,
-            ));
         }
 
         meters.store(compute_meters(out, channels));

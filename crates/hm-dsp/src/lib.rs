@@ -25,6 +25,7 @@ pub mod headphone;
 pub mod limiter;
 mod reverb;
 pub mod room;
+pub mod saturation;
 pub mod spatializer;
 pub mod surround3d;
 
@@ -42,6 +43,7 @@ pub use graphic_eq::GraphicEq;
 pub use headphone::HeadphoneCorrection;
 pub use limiter::Limiter;
 pub use room::RoomEffects;
+pub use saturation::Saturation;
 pub use spatializer::Spatializer;
 pub use surround3d::Surround3D;
 

@@ -268,37 +268,46 @@ mod tests {
 
     // ── New tests ────────────────────────────────────────────────────────────
 
-    /// adaptive=false must produce bit-exact output vs. the pre-adaptive path.
-    /// We verify by running two separate BassBoost instances on the same signal
-    /// and comparing sample-by-sample.
+    /// When the low band is quiet, adapt_factor ≈ 1.0, so the adaptive path
+    /// must produce ≈ the same output as the static (adaptive=false) path.
+    /// This genuinely cross-checks the two code branches.
     #[test]
-    fn adaptive_false_matches_static() {
-        let state = bass_state(true, 6.0, false, false);
-        let mut b1 = BassBoost::new(48_000.0, 1);
-        b1.set_params(&state);
-        let mut b2 = BassBoost::new(48_000.0, 1);
-        b2.set_params(&state);
+    fn adaptive_on_quiet_matches_static() {
+        const SR: f32 = 48_000.0;
+        const FREQ: f32 = 60.0;
+        // Amplitude below T_LO=0.05 so the peak envelope stays under the threshold.
+        const AMP: f32 = 0.03;
+        const WARMUP: usize = SR as usize; // 1 second warm-up for envelope settle
+        const MEASURE: usize = SR as usize / 10; // 100 ms measurement window
 
-        // Mixed-frequency signal: bass + mid content.
-        let signal: Vec<f32> = (0..4096)
-            .map(|i| {
-                let t = i as f32 / 48_000.0;
-                (2.0 * std::f32::consts::PI * 60.0 * t).sin() * 0.5
-                    + (2.0 * std::f32::consts::PI * 1_000.0 * t).sin() * 0.2
-            })
-            .collect();
+        let amount = 6.0;
+        let mut static_b = BassBoost::new(SR, 1);
+        static_b.set_params(&bass_state(true, amount, false, false)); // adaptive OFF
+        let mut adapt_b = BassBoost::new(SR, 1);
+        adapt_b.set_params(&bass_state(true, amount, false, true));   // adaptive ON
 
-        let mut buf1 = signal.clone();
-        let mut buf2 = signal.clone();
-        b1.process(&mut buf1, 1);
-        b2.process(&mut buf2, 1);
-
-        for (a, b) in buf1.iter().zip(buf2.iter()) {
-            assert!(
-                (a - b).abs() < 1e-6,
-                "adaptive=false output diverged: {a} vs {b}"
-            );
+        // Warm up both instances on the quiet tone.
+        for i in 0..WARMUP {
+            let t = i as f32 / SR;
+            let x = (2.0 * std::f32::consts::PI * FREQ * t).sin() * AMP;
+            let mut s = [x];
+            static_b.process(&mut s, 1);
+            let mut a = [x];
+            adapt_b.process(&mut a, 1);
         }
+
+        // A QUIET low tone (amplitude ~0.03) → envelope stays below T_LO → factor≈1.
+        let mut max_diff = 0.0f32;
+        for i in WARMUP..WARMUP + MEASURE {
+            let t = i as f32 / SR;
+            let x = (2.0 * std::f32::consts::PI * FREQ * t).sin() * AMP;
+            let mut s_static = [x];
+            let mut s_adapt = [x];
+            static_b.process(&mut s_static, 1);
+            adapt_b.process(&mut s_adapt, 1);
+            max_diff = max_diff.max((s_static[0] - s_adapt[0]).abs());
+        }
+        assert!(max_diff < 0.01, "adaptive@quiet should ≈ static; max diff {max_diff}");
     }
 
     /// When the low band is already loud (sustained 60 Hz at ~0.9 amplitude),
@@ -427,10 +436,10 @@ mod tests {
 
         // Shelf at +12 dB ≈ 4×; harmonics add at most +0.35*0.5 ≈ 0.175 extra.
         // The shelf biquad and tanh are both bounded — assert nothing NaN/inf
-        // and output stays within a generous range.
+        // and output stays well within range.
         for (i, &x) in buf.iter().enumerate() {
             assert!(x.is_finite(), "sample {i} is not finite: {x}");
-            assert!(x.abs() < 20.0, "sample {i} out of expected range: {x}");
+            assert!(x.abs() < 6.0, "sample {i} out of expected range: {x}");
         }
     }
 }

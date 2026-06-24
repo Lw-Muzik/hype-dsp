@@ -14,6 +14,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AccountStatus,
   AppInfo,
+  ChainPreset,
   CloudAudioPage,
   CloudEntry,
   CloudProvider,
@@ -880,6 +881,38 @@ export async function pickAudioFile(): Promise<string | null> {
     filters: [{ name: "Audio", extensions: ["wav"] }],
   });
   return typeof selected === "string" ? selected : null;
+}
+
+/* --------------------------------------------------------- chain presets */
+
+/** List all saved whole-chain presets. */
+export function chainPresetList(): Promise<ChainPreset[]> {
+  return invoke<ChainPreset[]>("chain_preset_list");
+}
+
+/** Save the current engine state as a named whole-chain preset. */
+export function chainPresetSave(name: string): Promise<ChainPreset> {
+  return invoke<ChainPreset>("chain_preset_save", { name });
+}
+
+/** Apply a saved whole-chain preset by id (preserves current power + volume). */
+export function chainPresetApply(id: string): Promise<void> {
+  return invoke<void>("chain_preset_apply", { id });
+}
+
+/** Delete a saved whole-chain preset by id. */
+export function chainPresetDelete(id: string): Promise<void> {
+  return invoke<void>("chain_preset_delete", { id });
+}
+
+/** Export a saved whole-chain preset to a JSON file at `path`. */
+export function chainPresetExport(id: string, path: string): Promise<void> {
+  return invoke<void>("chain_preset_export", { id, path });
+}
+
+/** Import a whole-chain preset from a JSON file at `path`; returns the stored preset. */
+export function chainPresetImport(path: string): Promise<ChainPreset> {
+  return invoke<ChainPreset>("chain_preset_import", { path });
 }
 
 /* ------------------------------------------------------------------- errors */

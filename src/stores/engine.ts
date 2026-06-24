@@ -1,9 +1,11 @@
 import { create } from "zustand";
 import {
+  chainPresetApply,
   cloudPlay,
   cloudTrackMetadata,
   engineConvolverLoadIr,
   engineEqImportGraphic,
+  engineGetState,
   engineSetBass,
   engineSetCompander,
   engineSetConvolver,
@@ -317,6 +319,8 @@ interface EngineStore {
   /** Fingerprint the current local track and fill any missing tags in place,
    *  reflecting recognized title/artist/album in the now-playing card. */
   identifyNowPlaying: () => Promise<void>;
+  /** Apply a whole-chain preset by id, then re-hydrate the UI from the engine. */
+  applyChainPreset: (id: string) => Promise<void>;
 }
 
 export const useEngineStore = create<EngineStore>((set, get) => {
@@ -1021,6 +1025,12 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       });
       const label = [result.title, result.artist].filter(Boolean).join(" — ");
       toast.success(label ? `Identified: ${label}` : "Track tags updated.");
+    },
+
+    applyChainPreset: async (id) => {
+      await chainPresetApply(id);
+      const st = await engineGetState();
+      get().hydrate(st);
     },
   };
 });

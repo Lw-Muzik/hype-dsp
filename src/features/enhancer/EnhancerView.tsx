@@ -31,6 +31,7 @@ import { RoomCard } from "./RoomCard";
 import { ConvolverCard } from "./ConvolverCard";
 import { CompanderCard } from "./CompanderCard";
 import { SaturationCard } from "./SaturationCard";
+import { PresetsCard } from "./PresetsCard";
 
 export function EnhancerView() {
   const route = routeById("enhancer");
@@ -148,6 +149,9 @@ export function EnhancerView() {
             </div>
           )}
         </Card>
+
+        {/* Chain presets */}
+        <PresetsCard />
 
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Bass */}

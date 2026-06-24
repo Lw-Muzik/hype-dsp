@@ -13,6 +13,7 @@
 
 use hm_core::EngineState;
 
+pub mod script;
 pub mod bass_boost;
 pub mod compander;
 pub mod convolver;

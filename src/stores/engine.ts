@@ -132,6 +132,7 @@ const defaultEngineState: EngineState = {
     expanderRatio: 2.0,
   },
   saturation: { enabled: false, drive: 0.3, mix: 1.0 },
+  script: { enabled: false, source: "" },
   headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
   playback: { gapless: true, crossfadeSecs: 0 },

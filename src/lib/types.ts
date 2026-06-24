@@ -99,6 +99,13 @@ export interface CompanderState {
   expanderRatio: number;
 }
 
+/** Tube-style analog saturation (4× oversampled). */
+export interface SaturationState {
+  enabled: boolean;
+  drive: number;
+  mix: number;
+}
+
 /** A built-in room reverb preset (mirrors the Hype mobile presets). */
 export interface RoomPreset {
   id: string;
@@ -155,6 +162,7 @@ export interface EngineState {
   room: RoomState;
   convolver: ConvolverState;
   compander: CompanderState;
+  saturation: SaturationState;
   headphone: HeadphoneCorrectionState;
   output: OutputState;
   playback: PlaybackState;

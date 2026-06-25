@@ -1138,6 +1138,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate,
                     Some(sink),
                     duration_hint,
+                    crate::streaming::StreamTuning::for_network(sample_rate, false),
                 ));
 
                 match build_output_stream(

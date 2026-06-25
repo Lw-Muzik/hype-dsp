@@ -60,18 +60,64 @@ impl StreamShared {
     }
 }
 
+/// Buffering/ring sizing for a stream, derived from the network mode. Larger on
+/// constrained links so a slow download builds a cushion instead of stuttering.
+#[derive(Clone, Copy, Debug)]
+pub struct StreamTuning {
+    /// Frames the ring must hold before (re)starting playback.
+    pub prebuffer_frames: usize,
+    /// Ring capacity in frames (stereo → 2× this many samples).
+    pub ring_frames: usize,
+}
+
+impl StreamTuning {
+    /// Default tuning for a device rate, picking bigger buffers in Data Saver.
+    pub fn for_network(device_rate: u32, data_saver: bool) -> Self {
+        let rate = device_rate.max(8_000) as usize;
+        let prebuffer_secs = if data_saver { 6 } else { 2 };
+        let ring_secs = if data_saver { 45 } else { 30 };
+        Self {
+            prebuffer_frames: rate * prebuffer_secs,
+            ring_frames: rate * ring_secs,
+        }
+    }
+}
+
+/// Whether playback should stay gated (emit buffering silence) this block.
+/// Once playing (`buffering == false`) the gate is open; an empty ring is
+/// handled inside the read loop, which re-arms `buffering` on a full drain.
+fn should_buffer(
+    available_frames: usize,
+    prebuffer_frames: usize,
+    finished: bool,
+    buffering: bool,
+) -> bool {
+    buffering && !(finished || available_frames >= prebuffer_frames)
+}
+
 /// An HTTP audio stream rendered as an [`AudioSource`].
 pub struct RadioStreamSource {
     consumer: rtrb::Consumer<f32>,
     shared: Arc<StreamShared>,
     device_rate: u32,
+    /// Target cushion (frames) before (re)starting playback.
+    prebuffer_frames: usize,
+    /// True while we're holding for the cushion to fill (start or after a drain).
+    buffering: bool,
     _thread: JoinHandle<()>,
 }
 
 impl RadioStreamSource {
     /// Start streaming `url`, producing stereo at `device_rate`.
     pub fn new(url: String, device_rate: u32) -> Self {
-        Self::with_headers(url, Vec::new(), device_rate, None, None)
+        Self::with_headers(
+            url,
+            Vec::new(),
+            device_rate,
+            None,
+            None,
+            StreamTuning::for_network(device_rate, false),
+        )
     }
 
     /// Start streaming `url` with extra HTTP request headers (e.g. an
@@ -86,9 +132,9 @@ impl RadioStreamSource {
         device_rate: u32,
         meta_sink: Option<crate::engine::MetaSink>,
         duration_hint: Option<f64>,
+        tuning: StreamTuning,
     ) -> Self {
-        // ~8 seconds of stereo headroom.
-        let capacity = (device_rate.max(8_000) as usize) * 2 * 8;
+        let capacity = tuning.ring_frames * 2; // stereo
         let (producer, consumer) = RingBuffer::<f32>::new(capacity);
         let shared = Arc::new(StreamShared {
             running: AtomicBool::new(true),
@@ -122,6 +168,8 @@ impl RadioStreamSource {
             consumer,
             shared,
             device_rate,
+            prebuffer_frames: tuning.prebuffer_frames,
+            buffering: true,
             _thread: thread,
         }
     }
@@ -170,6 +218,15 @@ impl AudioSource for RadioStreamSource {
         }
 
         let finished = self.shared.finished.load(Ordering::Relaxed);
+        let available = self.consumer.slots() / 2;
+        if should_buffer(available, self.prebuffer_frames, finished, self.buffering) {
+            for s in out.iter_mut() {
+                *s = 0.0;
+            }
+            return frames; // buffering: silence, counted as produced (not EOF)
+        }
+        self.buffering = false;
+
         let mut produced = 0;
         let mut popped = 0u64;
         for f in 0..frames {
@@ -203,6 +260,9 @@ impl AudioSource for RadioStreamSource {
         self.shared
             .position_frames
             .fetch_add(popped, Ordering::Relaxed);
+        if !finished && self.consumer.slots() < 2 {
+            self.buffering = true; // ring drained mid-track → rebuffer next block
+        }
         produced
     }
 
@@ -761,6 +821,31 @@ fn push_all(producer: &mut Producer<f32>, samples: &[f32], shared: &StreamShared
 }
 
 #[cfg(test)]
+impl RadioStreamSource {
+    /// Build a source over a caller-owned ring (no network), for testing the
+    /// read/prebuffer gate. `prebuffer_frames` is the cushion under test.
+    fn for_test(consumer: rtrb::Consumer<f32>, prebuffer_frames: usize) -> Self {
+        let shared = Arc::new(StreamShared {
+            running: AtomicBool::new(true),
+            position_frames: AtomicU64::new(0),
+            total_frames: AtomicU64::new(0),
+            content_bytes: AtomicU64::new(0),
+            finished: AtomicBool::new(false),
+            seek_target: AtomicI64::new(-1),
+            flushing: AtomicBool::new(false),
+        });
+        Self {
+            consumer,
+            shared,
+            device_rate: 1,
+            prebuffer_frames,
+            buffering: true,
+            _thread: std::thread::spawn(|| {}),
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -875,5 +960,40 @@ mod tests {
             resume_decision(1000, 700, true, MAX_STALLS),
             ResumeDecision::Resume { offset: 700, stalls: 0 }
         ));
+    }
+
+    #[test]
+    fn should_buffer_gates_until_prebuffer_then_releases() {
+        // While buffering: hold until we have the cushion (or finished).
+        assert!(should_buffer(1, 4, false, true), "below target → keep buffering");
+        assert!(!should_buffer(4, 4, false, true), "met target → release");
+        assert!(!should_buffer(0, 4, true, true), "finished → release even if short");
+        // Once playing, the gate is open (underrun handled inside the read loop).
+        assert!(!should_buffer(0, 4, false, false));
+    }
+
+    #[test]
+    fn for_network_uses_larger_buffers_in_data_saver() {
+        let normal = StreamTuning::for_network(48_000, false);
+        let saver = StreamTuning::for_network(48_000, true);
+        assert!(saver.prebuffer_frames > normal.prebuffer_frames);
+        assert!(saver.ring_frames >= normal.ring_frames);
+        assert!(normal.prebuffer_frames > 0 && normal.ring_frames > normal.prebuffer_frames);
+    }
+
+    #[test]
+    fn read_holds_silence_until_prebuffered_then_plays() {
+        // 4-frame prebuffer; push 2 → buffering (silence, produced>0, not EOF).
+        let (mut prod, src_consumer) = RingBuffer::<f32>::new(64);
+        for _ in 0..2 { prod.push(0.5).unwrap(); prod.push(0.5).unwrap(); }
+        let mut src = RadioStreamSource::for_test(src_consumer, 4);
+        let mut out = vec![0.0f32; 6]; // 3 frames
+        assert_eq!(src.read(&mut out, 2), 3, "buffering counts as produced (not EOF)");
+        assert!(out.iter().all(|&s| s == 0.0), "silence while buffering");
+        // Top up past the target → it releases and plays real audio.
+        for _ in 0..4 { prod.push(0.5).unwrap(); prod.push(0.5).unwrap(); }
+        let mut out2 = vec![0.0f32; 4];
+        src.read(&mut out2, 2);
+        assert_eq!(out2[0], 0.5, "plays buffered audio once the cushion is met");
     }
 }

@@ -135,6 +135,19 @@ pub trait AudioSource: Send {
     fn is_live(&self) -> bool {
         false
     }
+
+    /// Whether the source is currently buffering (holding for the network).
+    fn buffering(&self) -> bool {
+        false
+    }
+    /// Latest download throughput estimate, bytes/sec (0 if unknown).
+    fn download_bps(&self) -> u64 {
+        0
+    }
+    /// Mid-track rebuffer events so far (0 if not applicable).
+    fn rebuffer_count(&self) -> u32 {
+        0
+    }
 }
 
 /// A consumer of interleaved `f32` audio frames (typically the output device).

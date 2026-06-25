@@ -327,6 +327,16 @@ impl AudioSource for RadioStreamSource {
         self.shared.total_frames.load(Ordering::Relaxed) == 0
             && self.device_rate > 0
     }
+
+    fn buffering(&self) -> bool {
+        self.is_buffering()
+    }
+    fn download_bps(&self) -> u64 {
+        self.download_bps()
+    }
+    fn rebuffer_count(&self) -> u32 {
+        self.rebuffer_count()
+    }
 }
 
 /// Why a single connection's decode loop stopped.

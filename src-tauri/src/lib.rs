@@ -35,6 +35,12 @@ struct Progress {
     paused: bool,
     /// Whether the active source can be scrubbed (false for live radio).
     seekable: bool,
+    /// Whether the active source is currently buffering (waiting for network).
+    buffering: bool,
+    /// Latest download throughput estimate from the active source, bytes/sec.
+    download_bps: u64,
+    /// Mid-track rebuffer event count from the active source.
+    rebuffer_count: u32,
 }
 
 /// Emits real-time meter + spectrum frames to the UI at ~60 fps over the
@@ -141,6 +147,9 @@ fn forward_frames(
                         duration_secs: dur,
                         paused: now_paused,
                         seekable: pos.is_seekable(),
+                        buffering: pos.is_buffering(),
+                        download_bps: pos.download_bps(),
+                        rebuffer_count: pos.rebuffer_count(),
                     },
                 );
             }

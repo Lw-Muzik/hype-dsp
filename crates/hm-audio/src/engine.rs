@@ -127,6 +127,12 @@ pub struct PlaybackPos {
     seek_to: AtomicI64,
     /// Whether the active source can be scrubbed (false for live radio).
     seekable: AtomicBool,
+    /// Whether the active source is currently buffering (waiting for network).
+    buffering: AtomicBool,
+    /// Latest download throughput estimate from the active source, bytes/sec.
+    download_bps: AtomicU64,
+    /// Mid-track rebuffer event count from the active source.
+    rebuffer_count: AtomicU32,
 }
 
 impl Default for PlaybackPos {
@@ -137,6 +143,9 @@ impl Default for PlaybackPos {
             sample_rate: AtomicU32::new(0),
             seek_to: AtomicI64::new(-1),
             seekable: AtomicBool::new(false),
+            buffering: AtomicBool::new(false),
+            download_bps: AtomicU64::new(0),
+            rebuffer_count: AtomicU32::new(0),
         }
     }
 }
@@ -195,6 +204,28 @@ impl PlaybackPos {
 
     fn set_seekable(&self, seekable: bool) {
         self.seekable.store(seekable, Ordering::Relaxed);
+    }
+
+    /// Write network-stream telemetry (buffering state + throughput + rebuffer
+    /// count) from the audio callback. All stores are `Relaxed` — no ordering
+    /// guarantee needed; the UI-forwarding thread polls these once per frame.
+    fn write_net(&self, buffering: bool, download_bps: u64, rebuffer_count: u32) {
+        self.buffering.store(buffering, Ordering::Relaxed);
+        self.download_bps.store(download_bps, Ordering::Relaxed);
+        self.rebuffer_count.store(rebuffer_count, Ordering::Relaxed);
+    }
+
+    /// Whether the active source is currently buffering.
+    pub fn is_buffering(&self) -> bool {
+        self.buffering.load(Ordering::Relaxed)
+    }
+    /// Latest download throughput estimate, bytes/sec (0 if not streaming).
+    pub fn download_bps(&self) -> u64 {
+        self.download_bps.load(Ordering::Relaxed)
+    }
+    /// Mid-track rebuffer event count (0 if not streaming).
+    pub fn rebuffer_count(&self) -> u32 {
+        self.rebuffer_count.load(Ordering::Relaxed)
     }
 
     /// Request a seek to `secs` (applied on the next audio block).
@@ -256,6 +287,11 @@ impl Renderer {
         let produced = self.source.read(out, channels);
         pos.write(self.source.position(), self.source.total_frames());
         pos.set_seekable(self.source.seekable());
+        pos.write_net(
+            self.source.buffering(),
+            self.source.download_bps(),
+            self.source.rebuffer_count(),
+        );
 
         if (state.master_volume - 1.0).abs() > f32::EPSILON {
             for s in out.iter_mut() {

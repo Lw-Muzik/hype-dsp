@@ -417,11 +417,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       order.every((i) => queue[i]?.phoneTrack != null) &&
       order.every((i) => queue[i]?.device?.id === item.device?.id);
 
-    const streamMode = chooseStreamMode(
-      item.source === "phone" ? "phone" : "cloud",
-      dataSaver,
-      networkMode,
-    );
+    const streamMode =
+      item.source === "cloud" || item.source === "phone"
+        ? chooseStreamMode(item.source, dataSaver, networkMode)
+        : "progressive";
     const useEngineQueue = item.source === "local" && allLocal && wantQueue;
     const useCloudQueue =
       item.source === "cloud" && allCloud && wantQueue && streamMode === "gapless";

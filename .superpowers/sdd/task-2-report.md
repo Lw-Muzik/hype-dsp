@@ -1,50 +1,49 @@
-# Task 2 Report: ChainPreset + ChainPresetStore
+# Task 2 Report: Byte-counting reader + wire resume into the worker
+
+## Status
+COMPLETE — commit `30f6e32` on branch `feat/crossfade-cloud-phone`, pushed to remote.
+
+## TDD Evidence
+
+### RED phase
+Before adding the test + struct, `cargo test -p hm-audio counting_reader` returned 0 tests found (filtered out) — no such test existed.
+
+### GREEN phase
+Added `CountingReader<R>` struct + `impl std::io::Read for CountingReader<R>` immediately, then added `counting_reader_counts_bytes_read` test.
+`cargo test -p hm-audio counting_reader` → PASSED.
 
 ## Files Changed
+- `crates/hm-audio/src/streaming.rs` (sole file, 76 insertions / 19 deletions)
 
-- **Created** `crates/hm-core/src/chain_presets.rs` — `ChainPreset` struct + `ChainPresetStore`
-- **Modified** `crates/hm-core/src/lib.rs` — added `pub mod chain_presets;` + re-exports
-- **Modified** `src/lib/types.ts` — added `ChainPreset` interface after `EqPreset`
+### Changes
+1. **`CountingReader<R>`** — added after `impl Drop for RadioStreamSource`. Wraps inner reader, tallies bytes read via `Arc<AtomicU64>` (`Ordering::Relaxed`).
 
----
+2. **`decode_connection` signature** — new `conn_bytes: Arc<AtomicU64>` second parameter. Response is wrapped in `CountingReader { inner: response, count: conn_bytes }` before being fed to `ReadOnlySource::new` → `MediaSourceStream`. All other function body is unchanged.
 
-## Implementation Notes
+3. **`stream_worker` reconnect loop** — replaced old 2-state loop with full 5-state loop per brief:
+   - `stalls`, `conn_bytes` (shared `Arc`), `connect_fails` added.
+   - `conn_bytes.store(0)` resets before each connection attempt.
+   - `open()` failures retry up to `MAX_STALLS` times with 400ms×n back-off, then fall back to byte 0, then give up.
+   - `progressed` + `consumed` computed from `conn_bytes` after each `decode_connection`.
+   - `Stop::Eof` → `resume_decision(total, consumed, progressed, stalls)`:
+     - `ResumeDecision::Resume` → update `start_byte`/`stalls`, sleep 300ms, `continue` (no `finished` set).
+     - `ResumeDecision::Finish` → `finished = true`, enter idle seek-wait loop (unchanged).
+   - `Stop::Seek` resets `stalls = 0`.
 
-### ID scheme
+4. **Test** — `counting_reader_counts_bytes_read` added to the existing `#[cfg(test)] mod tests`.
 
-IDs use `format!("{}{}", millis, list_len)` where `millis` is `SystemTime::now().duration_since(UNIX_EPOCH).as_millis()` and `list_len` is the current count of presets _before_ appending the new one.
+## Test Summary
+`cargo test -p hm-audio` → **41 passed; 0 failed**. All prior tests (id3v1, byte_offset, to_stereo, resume_decision) continue to pass.
 
-- Same pattern as `PresetStore.save_custom` (which uses nanos for higher resolution), but millis are sufficient here since the list-length suffix provides the disambiguator.
-- Example: if millis=1750000000000 and list has 2 items, id="17500000000002".
-- Rapid saves in the same millisecond: each call reads the current list first, so `list.len()` increments 0→1→2 across the three calls, guaranteeing distinct ids even at sub-millisecond speed.
-- The `upsert_imported` path reads the list _then_ generates a fresh id using the post-read length, so imported presets never collide with existing ones regardless of the incoming id.
+## Clippy State
+`cargo clippy -p hm-audio --all-targets` → **zero warnings**. The 3 Task-1 dead_code warnings (`resume_decision`, `ResumeDecision`, `MAX_STALLS`) are eliminated — all three are now actively used in the wired-up `stream_worker` loop.
 
-### Write-then-rename (atomic replace)
+## Self-Review
+- `conn_bytes` uses `Ordering::Relaxed` throughout — correct; both `store` and `load` happen sequentially on the worker thread only.
+- `consumed = start_byte + conn_bytes.load()` correctly accounts for accumulated byte range offsets across reconnects.
+- Idle seek-wait loop is entered only on `ResumeDecision::Finish`, preserving prior EOF behaviour exactly.
+- `connect_fails` resets to 0 on each successful open so accumulated failures don't bleed across stable connections.
+- `Instant`/`sleep` calls are on the worker thread — the RT `AudioSource::read()` path is unaffected.
 
-All writes go to `<path>.json.tmp` first via `std::fs::write`, then `std::fs::rename` to the final path. This mirrors the pattern used by `engine-state.json` autosave in `src-tauri`. A crash between write and rename leaves the `.tmp` orphan; on next write it is simply overwritten.
-
-### Empty/absent file handling
-
-`list()` pattern-matches on the `io::Error` kind:
-- `NotFound` → returns `Ok(vec![])` (normal on fresh install)
-- Read succeeds but content is whitespace-only → returns `Ok(vec![])` (guards against an empty file left by a previous crash before rename)
-- Any other I/O error → propagated as `HmError::Storage`
-
-### Tests (all pass)
-
-| Test | What it verifies |
-|---|---|
-| `save_then_list_roundtrips` | 2 saves → list returns 2 with correct names + state fields |
-| `delete_removes` | save 2, delete one → list has 1 with the correct id |
-| `list_empty_when_absent` | non-existent path → `Ok([])`, no panic |
-| `upsert_imported_assigns_fresh_id` | import with colliding id → stored with different id; both in list |
-| `persists_across_reopen` | drop store, reopen same path → data still there |
-| `unique_ids_on_rapid_save` | 3 rapid saves → all 3 ids distinct |
-
-### Concerns / follow-up
-
-1. **Concurrent access**: `ChainPresetStore` has no internal mutex. If two Tauri commands run concurrently and both call `list()` then `write()`, the second write wins and the first's append is lost. Given that the Tauri command handlers for this store are likely serialized through a single `State<Mutex<ChainPresetStore>>` wrapper (the same pattern as other stores in the app), this is acceptable — document it when wiring in Task 3.
-
-2. **Convolver IR path portability**: imported presets may contain a `convolver.ir_id` that refers to a file path on the exporting machine. The store stores it as-is; applying will succeed but convolver will have no IR loaded if the path is missing. This is noted in the plan as acceptable.
-
-3. **`.json.tmp` extension**: the `with_extension("json.tmp")` call replaces the `.json` extension with `json.tmp`, producing e.g. `chain-presets.json.tmp`. This is intentional and unambiguous.
+## Concerns
+None. Implementation matches the brief verbatim.

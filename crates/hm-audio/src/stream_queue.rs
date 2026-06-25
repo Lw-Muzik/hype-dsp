@@ -43,34 +43,112 @@ pub type StreamResolver = Arc<dyn Fn(usize) -> Result<StreamTarget, String> + Se
 /// `(absolute index, decoded interleaved stereo, metadata)` from the worker.
 type DecodedTrack = (usize, Vec<f32>, TrackMeta);
 
-/// Fetch + decode one streamed track fully, resampled to `device_rate`. The
-/// `client` is built once per worker (each `reqwest::blocking::Client` spins up
-/// its own runtime, so we must not rebuild it per track).
-fn decode_stream(
-    client: &reqwest::blocking::Client,
-    target: &StreamTarget,
-    device_rate: u32,
-) -> Result<(Vec<f32>, TrackMeta), AudioError> {
+/// How many times the worker tries to fetch + decode one track before giving up
+/// and skipping it. Transient failures — a connection dropped while the stream
+/// sat paused, a flaky cloud link, a phone that closed its keep-alive, a 5xx —
+/// are retried on a fresh connection; a permanent failure (404/403, an
+/// undecodable body) is skipped at once without burning the retry budget. This
+/// is what stops one stale connection from silently nuking a good track (which
+/// looked like the queue "jumping" or "stopping" on its own).
+const MAX_ATTEMPTS: u32 = 4;
+
+/// Build a fresh blocking HTTP client. The short `connect_timeout` matters: a
+/// dead pooled connection (common after the stream has been paused a while)
+/// then fails fast and is retried, rather than stalling playback on a long hang.
+fn new_client() -> reqwest::Result<reqwest::blocking::Client> {
+    reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(12))
+        .timeout(Duration::from_secs(90))
+        .build()
+}
+
+/// The outcome of a single fetch attempt, classified so the retry loop knows
+/// whether trying again could possibly help.
+enum FetchOutcome {
+    /// Got the full body.
+    Body(Vec<u8>),
+    /// Permanent failure (4xx) — retrying the same URL won't help; skip it.
+    Skip,
+    /// Transient failure (connect/read error, timeout, 408/429/5xx, a truncated
+    /// body) — worth retrying on a fresh connection.
+    Retry,
+}
+
+/// Issue one GET for `target` and classify the outcome.
+fn fetch_once(client: &reqwest::blocking::Client, target: &StreamTarget) -> FetchOutcome {
     let mut req = client.get(&target.url);
     for (k, v) in &target.headers {
         req = req.header(k.as_str(), v.as_str());
     }
-    let resp = req.send().map_err(|e| AudioError::Stream(e.to_string()))?;
-    if !resp.status().is_success() {
-        return Err(AudioError::Stream(format!(
-            "stream server returned HTTP {}",
-            resp.status().as_u16()
-        )));
+    match req.send() {
+        Ok(resp) => {
+            let status = resp.status();
+            if status.is_success() {
+                // A reset/truncated body surfaces here as an error — retry it,
+                // because a partial download would otherwise decode to a short
+                // track that ends early (and "jumps" to the next one).
+                let expected = resp.content_length();
+                match resp.bytes() {
+                    // Belt-and-suspenders: if the server declared a length and we
+                    // got fewer bytes, treat it as truncated and retry rather than
+                    // decode a clipped track.
+                    Ok(b) if expected.is_none_or(|n| b.len() as u64 >= n) => {
+                        FetchOutcome::Body(b.to_vec())
+                    }
+                    Ok(_) | Err(_) => FetchOutcome::Retry,
+                }
+            } else if status.is_server_error()
+                || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                || status == reqwest::StatusCode::REQUEST_TIMEOUT
+            {
+                FetchOutcome::Retry
+            } else {
+                FetchOutcome::Skip
+            }
+        }
+        // Connect/timeout/transport error — the pooled connection may be stale.
+        Err(_) => FetchOutcome::Retry,
     }
-    let bytes = resp
-        .bytes()
-        .map_err(|e| AudioError::Stream(e.to_string()))?
-        .to_vec();
-    let decoded = decode_bytes(bytes, target.ext.as_deref())?;
-    Ok((
-        resample_stereo(&decoded.samples, decoded.sample_rate, device_rate),
-        decoded.meta,
-    ))
+}
+
+/// One attempt's classified result, decode included.
+enum LoadAttempt {
+    /// Decoded + resampled interleaved stereo, plus its metadata.
+    Ready(Vec<f32>, TrackMeta),
+    /// Give up on this track (permanent failure) — it becomes a silent skip.
+    Skip,
+    /// Transient failure — try again.
+    Retry,
+}
+
+/// Run `attempt` up to [`MAX_ATTEMPTS`] times, sleeping `backoff` (doubling, to a
+/// 2 s cap) between transient retries, and return the decoded track. A permanent
+/// `Skip`, an exhausted retry budget, or a stop request yields an empty track
+/// (which the source skips). `backoff` is a parameter so tests can pass zero.
+fn load_with_retry(
+    index: usize,
+    running: &AtomicBool,
+    backoff: Duration,
+    mut attempt: impl FnMut(u32) -> LoadAttempt,
+) -> DecodedTrack {
+    let mut wait = backoff;
+    for n in 1..=MAX_ATTEMPTS {
+        if !running.load(Ordering::Relaxed) {
+            break;
+        }
+        match attempt(n) {
+            LoadAttempt::Ready(samples, meta) => return (index, samples, meta),
+            LoadAttempt::Skip => break,
+            LoadAttempt::Retry => {
+                if n == MAX_ATTEMPTS {
+                    break;
+                }
+                std::thread::sleep(wait);
+                wait = (wait * 2).min(Duration::from_secs(2));
+            }
+        }
+    }
+    (index, Vec::new(), TrackMeta::default())
 }
 
 /// A queue of streamed tracks played gaplessly, with optional crossfade.
@@ -119,12 +197,10 @@ impl StreamQueueSource {
             std::thread::Builder::new()
                 .name("hm-stream-queue".into())
                 .spawn(move || {
-                    // One HTTP client for the whole queue (rebuilding per track
-                    // would spin up a fresh runtime + thread pool each time).
-                    let client = match reqwest::blocking::Client::builder()
-                        .timeout(Duration::from_secs(60))
-                        .build()
-                    {
+                    // One HTTP client reused across tracks (each blocking client
+                    // spins up its own runtime, so we avoid rebuilding per track),
+                    // but replaced after a transient failure to drop a stale pool.
+                    let mut client = match new_client() {
                         Ok(c) => c,
                         Err(_) => return,
                     };
@@ -134,14 +210,52 @@ impl StreamQueueSource {
                             if !running.load(Ordering::Relaxed) {
                                 return;
                             }
-                            let decoded = resolver(next).and_then(|t| {
-                                decode_stream(&client, &t, device_rate).map_err(|e| e.to_string())
-                            });
-                            // Failed resolve/decode → empty entry the source skips.
-                            let track = match decoded {
-                                Ok((samples, meta)) => (next, samples, meta),
-                                Err(_) => (next, Vec::new(), TrackMeta::default()),
-                            };
+                            let idx = next;
+                            // Resolve fresh on every attempt (cloud links are
+                            // short-lived) and retry transient failures on a new
+                            // connection, so a dropped link — e.g. the first fetch
+                            // after the stream sat paused, or a phone that closed
+                            // its keep-alive — doesn't turn a good track into a
+                            // permanent silent skip.
+                            let track = load_with_retry(
+                                idx,
+                                &running,
+                                Duration::from_millis(120),
+                                |_| match resolver(idx) {
+                                    Err(_) => {
+                                        if let Ok(c) = new_client() {
+                                            client = c;
+                                        }
+                                        LoadAttempt::Retry
+                                    }
+                                    Ok(target) => match fetch_once(&client, &target) {
+                                        FetchOutcome::Body(bytes) => {
+                                            match decode_bytes(bytes, target.ext.as_deref()) {
+                                                Ok(d) => {
+                                                    let samples = resample_stereo(
+                                                        &d.samples,
+                                                        d.sample_rate,
+                                                        device_rate,
+                                                    );
+                                                    if samples.is_empty() {
+                                                        LoadAttempt::Skip
+                                                    } else {
+                                                        LoadAttempt::Ready(samples, d.meta)
+                                                    }
+                                                }
+                                                Err(_) => LoadAttempt::Skip,
+                                            }
+                                        }
+                                        FetchOutcome::Skip => LoadAttempt::Skip,
+                                        FetchOutcome::Retry => {
+                                            if let Ok(c) = new_client() {
+                                                client = c;
+                                            }
+                                            LoadAttempt::Retry
+                                        }
+                                    },
+                                },
+                            );
                             if tx.send(track).is_err() {
                                 return;
                             }
@@ -411,5 +525,64 @@ mod tests {
         let mut out = vec![0.0f32; 6];
         src.read(&mut out, 2);
         assert_eq!(&out[0..2], &[0.7, 0.7], "first real audio comes from track 1");
+    }
+
+    #[test]
+    fn retry_recovers_a_transient_failure() {
+        // A flaky fetch (e.g. a stale connection after a pause) fails twice then
+        // succeeds — the track must still load, not become a silent skip.
+        let running = AtomicBool::new(true);
+        let mut calls = 0u32;
+        let track = load_with_retry(7, &running, Duration::ZERO, |_| {
+            calls += 1;
+            if calls < 3 {
+                LoadAttempt::Retry
+            } else {
+                LoadAttempt::Ready(vec![0.2, 0.2], TrackMeta::default())
+            }
+        });
+        assert_eq!(track.0, 7);
+        assert_eq!(track.1, vec![0.2, 0.2], "track recovered after retries");
+        assert_eq!(calls, 3, "kept trying until it succeeded");
+    }
+
+    #[test]
+    fn permanent_failure_skips_without_retrying() {
+        // A 404-class failure shouldn't burn the retry budget — skip immediately.
+        let running = AtomicBool::new(true);
+        let mut calls = 0u32;
+        let track = load_with_retry(2, &running, Duration::ZERO, |_| {
+            calls += 1;
+            LoadAttempt::Skip
+        });
+        assert!(track.1.is_empty(), "permanent failure → empty (skipped) track");
+        assert_eq!(calls, 1, "no retries for a permanent failure");
+    }
+
+    #[test]
+    fn gives_up_after_max_attempts() {
+        // Endlessly transient → bounded retries, then a silent skip (so the queue
+        // moves on instead of buffering forever).
+        let running = AtomicBool::new(true);
+        let mut calls = 0u32;
+        let track = load_with_retry(0, &running, Duration::ZERO, |_| {
+            calls += 1;
+            LoadAttempt::Retry
+        });
+        assert!(track.1.is_empty(), "exhausted retries → skip");
+        assert_eq!(calls, MAX_ATTEMPTS, "stopped at the attempt cap");
+    }
+
+    #[test]
+    fn stop_request_aborts_retrying() {
+        // If the source is dropped/stopped mid-retry, bail out promptly.
+        let running = AtomicBool::new(false);
+        let mut calls = 0u32;
+        let track = load_with_retry(0, &running, Duration::ZERO, |_| {
+            calls += 1;
+            LoadAttempt::Retry
+        });
+        assert!(track.1.is_empty());
+        assert_eq!(calls, 0, "no attempts once stopped");
     }
 }

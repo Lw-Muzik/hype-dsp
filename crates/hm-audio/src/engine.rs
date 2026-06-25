@@ -36,6 +36,7 @@ use crate::capture::LoopbackCaptureSource;
 use crate::decode::{decode_file, resample_stereo, DecodedAudio};
 use crate::error::AudioError;
 use crate::queue::QueuePlaybackSource;
+use crate::stream_queue::{StreamQueueSource, StreamResolver};
 use crate::sources::FilePlaybackSource;
 use crate::spectrum::{Analyzer, SpectrumTap};
 use crate::stems::{StemGains, StemPlaybackSource, STEM_COUNT};
@@ -290,6 +291,14 @@ enum EngineCommand {
     /// crossfade value, so slider changes apply to the current queue.
     PlayQueue {
         paths: Vec<String>,
+        start: usize,
+    },
+    /// Play a queue of **streamed** tracks (cloud/phone) gaplessly / crossfading.
+    /// Each track's URL is resolved lazily via `resolver(index)`; only the
+    /// current + next track are buffered. `count` is the total track count.
+    PlayStreamQueue {
+        resolver: StreamResolver,
+        count: usize,
         start: usize,
     },
     PlayCapture,
@@ -855,6 +864,26 @@ impl AudioEngine {
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
+    /// Play a queue of streamed tracks (cloud/phone) gaplessly / crossfading.
+    /// `resolver(i)` resolves track `i`'s URL lazily; only the current + next
+    /// track are streamed/decoded, so a long queue stays memory-bounded.
+    pub fn play_stream_queue(
+        &self,
+        resolver: StreamResolver,
+        count: usize,
+        start: usize,
+    ) -> Result<(), AudioError> {
+        self.ctrl
+            .lock()
+            .expect("engine ctrl poisoned")
+            .send(EngineCommand::PlayStreamQueue {
+                resolver,
+                count,
+                start,
+            })
+            .map_err(|_| AudioError::Stream("engine thread stopped".into()))
+    }
+
     /// Capture the default input device through the chain (driver-free stand-in).
     pub fn play_capture(&self) -> Result<(), AudioError> {
         self.ctrl
@@ -1150,6 +1179,57 @@ fn control_loop(ctx: ControlCtx) {
                 };
                 let source = Box::new(QueuePlaybackSource::spawn(
                     paths,
+                    start,
+                    sample_rate,
+                    crossfade.clone(),
+                    Some(sink),
+                    Some(queue_index.clone()),
+                ));
+
+                match build_output_stream(
+                    device,
+                    *config,
+                    source,
+                    shared.clone(),
+                    meters.clone(),
+                    spectrum.clone(),
+                    pos.clone(),
+                    playing.clone(),
+                    channels,
+                    sample_rate as f32,
+                    ir_slot.clone(),
+                    compander_gr.clone(),
+                ) {
+                    Ok(s) if s.play().is_ok() => {
+                        playing.store(true, Ordering::Relaxed);
+                        active = Some(s);
+                    }
+                    _ => playing.store(false, Ordering::Relaxed),
+                }
+            }
+            EngineCommand::PlayStreamQueue {
+                resolver,
+                count,
+                start,
+            } => {
+                drop(active.take());
+                meters.zero();
+                spectrum.zero();
+                paused.store(false, Ordering::Relaxed);
+                let Some((device, config)) = &setup else {
+                    playing.store(false, Ordering::Relaxed);
+                    continue;
+                };
+                let sample_rate = config.sample_rate;
+                let channels = config.channels as usize;
+                pos.prepare(sample_rate, 0); // per-track totals reported by the source
+                let sink = MetaSink {
+                    meta: track_meta.clone(),
+                    version: meta_version.clone(),
+                };
+                let source = Box::new(StreamQueueSource::spawn(
+                    resolver,
+                    count,
                     start,
                     sample_rate,
                     crossfade.clone(),

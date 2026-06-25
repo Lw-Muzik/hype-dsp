@@ -160,7 +160,7 @@ impl Drop for QueuePlaybackSource {
     }
 }
 
-fn write_frame(out: &mut [f32], base: usize, channels: usize, l: f32, r: f32) {
+pub(crate) fn write_frame(out: &mut [f32], base: usize, channels: usize, l: f32, r: f32) {
     if channels == 1 {
         out[base] = 0.5 * (l + r);
     } else {

@@ -23,6 +23,7 @@ pub mod queue;
 pub mod sources;
 pub mod spectrum;
 pub mod stems;
+pub mod stream_queue;
 pub mod streaming;
 /// Platform-agnostic per-block DSP step shared by every system-wide EQ backend
 /// (macOS tap / Linux sink / Windows WASAPI). Always compiled so it is unit-tested

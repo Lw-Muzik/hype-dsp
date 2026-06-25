@@ -21,6 +21,8 @@ import {
   identifyTrack,
   ipcErrorMessage,
   linkPlay,
+  linkPlayQueue,
+  playerPlayCloudQueue,
   engineSetPlayback,
   playerPause,
   playerPlayFile,
@@ -181,6 +183,13 @@ export function cloudItem(file: CloudEntry): QueueItem {
     durationSecs: null,
     cloud: file,
   };
+}
+
+/** Extension hint from a cloud file name (e.g. "Song.flac" → "flac"), for the
+ *  demuxer. Returns undefined when there's no extension. */
+function extFromName(name: string): string | undefined {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toLowerCase() : undefined;
 }
 
 /** Now-playing card metadata derived from a queue item (before decode adds art). */
@@ -386,13 +395,23 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       toast.error(`Couldn't play ${item.title}: ${ipcErrorMessage(e)}`);
 
     const { gapless, crossfadeSecs } = state.playback;
-    // The engine's gapless queue only works for local files; a queue that mixes
-    // in phone/cloud streams advances track-by-track from the store instead.
+    // The engine's gapless/crossfade queue needs a homogeneous source: an all-
+    // local, all-cloud (same provider), or all-phone (same device) queue. Mixed
+    // queues advance track-by-track from the store instead.
+    const wantQueue = (gapless || crossfadeSecs > 0) && repeat !== "one";
     const allLocal = order.every((i) => queue[i]?.source === "local");
-    const useEngineQueue =
-      item.source === "local" && allLocal && (gapless || crossfadeSecs > 0) && repeat !== "one";
+    const allCloud =
+      order.every((i) => queue[i]?.source === "cloud") &&
+      order.every((i) => queue[i]?.cloud?.provider === item.cloud?.provider);
+    const allPhone =
+      order.every((i) => queue[i]?.source === "phone") &&
+      order.every((i) => queue[i]?.device?.id === item.device?.id);
 
-    gaplessQueueRunning = useEngineQueue;
+    const useEngineQueue = item.source === "local" && allLocal && wantQueue;
+    const useCloudQueue = item.source === "cloud" && allCloud && wantQueue;
+    const usePhoneQueue = item.source === "phone" && allPhone && wantQueue;
+
+    gaplessQueueRunning = useEngineQueue || useCloudQueue || usePhoneQueue;
 
     switch (item.source) {
       case "local":
@@ -407,15 +426,31 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         }
         break;
       case "phone":
-        void linkPlay(
-          item.device!.id,
-          item.phoneTrack!.id,
-          item.phoneTrack!.ext,
-          item.durationSecs,
-        ).catch(onError);
+        if (usePhoneQueue) {
+          const items = order.map((i) => ({
+            id: queue[i]!.phoneTrack!.id,
+            ext: queue[i]!.phoneTrack!.ext,
+          }));
+          void linkPlayQueue(item.device!.id, items, pos).catch(onError);
+        } else {
+          void linkPlay(
+            item.device!.id,
+            item.phoneTrack!.id,
+            item.phoneTrack!.ext,
+            item.durationSecs,
+          ).catch(onError);
+        }
         break;
       case "cloud":
-        void cloudPlay(item.cloud!.provider, item.cloud!.id).catch(onError);
+        if (useCloudQueue) {
+          const items = order.map((i) => ({
+            id: queue[i]!.cloud!.id,
+            ext: extFromName(queue[i]!.cloud!.name),
+          }));
+          void playerPlayCloudQueue(item.cloud!.provider, items, pos).catch(onError);
+        } else {
+          void cloudPlay(item.cloud!.provider, item.cloud!.id).catch(onError);
+        }
         break;
       case "radio":
         void playerPlayRadio(item.radioUrl!).catch(onError);

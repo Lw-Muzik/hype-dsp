@@ -217,6 +217,21 @@ export function cloudPlay(provider: CloudProvider, fileId: string): Promise<void
   return invoke<void>("cloud_play", { provider, fileId });
 }
 
+/** One track in a cloud crossfade/gapless queue (id + extension hint). */
+export interface CloudQueueItem {
+  id: string;
+  ext?: string;
+}
+
+/** Play a cloud queue gaplessly/crossfading; URLs resolve lazily per track. */
+export function playerPlayCloudQueue(
+  provider: CloudProvider,
+  items: CloudQueueItem[],
+  start: number,
+): Promise<void> {
+  return invoke<void>("player_play_cloud_queue", { provider, items, start });
+}
+
 /* ------------------------------------------------------------- Phone Link */
 
 /** Browse the LAN (~2.5 s) for phones sharing their library. */
@@ -358,6 +373,21 @@ export function linkPlay(
     ext,
     durationSecs: durationSecs ?? null,
   });
+}
+
+/** One track in a phone crossfade/gapless queue (id + extension). */
+export interface PhoneQueueItem {
+  id: string;
+  ext: string;
+}
+
+/** Play a phone queue gaplessly/crossfading; URLs resolve lazily per track. */
+export function linkPlayQueue(
+  deviceId: string,
+  items: PhoneQueueItem[],
+  start: number,
+): Promise<void> {
+  return invoke<void>("link_play_queue", { deviceId, items, start });
 }
 
 /** Now-playing pushed by a phone casting to this desktop. */

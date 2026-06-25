@@ -9,9 +9,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use hm_audio::stream_queue::{StreamResolver, StreamTarget};
 use hm_audio::AudioEngine;
 use hm_core::IpcError;
 use hm_link::{LinkState, PhoneDevice, PhoneTrack};
+use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Managed handle to the continuous-discovery thread (if running).
@@ -205,5 +207,46 @@ pub fn link_play(
         .map_err(|e| IpcError::new("link", e))?;
     engine
         .play_stream(url, headers, duration_secs)
+        .map_err(Into::into)
+}
+
+/// One track in a phone crossfade/gapless queue.
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PhoneQueueItem {
+    pub id: String,
+    pub ext: String,
+}
+
+/// Play a queue of phone tracks gaplessly / crossfading. Each track's LAN stream
+/// URL is resolved lazily via the paired device's `stream_target`; only the
+/// current + next track are streamed/decoded (see `StreamQueueSource`).
+#[tauri::command]
+pub fn link_play_queue(
+    app: AppHandle,
+    engine: State<'_, AudioEngine>,
+    device_id: String,
+    items: Vec<PhoneQueueItem>,
+    start: usize,
+) -> Result<(), IpcError> {
+    if items.is_empty() {
+        return Err(IpcError::new("invalid", "empty phone queue"));
+    }
+    let count = items.len();
+    let items = Arc::new(items);
+    let device_id = Arc::new(device_id);
+    let resolver: StreamResolver = Arc::new(move |i: usize| {
+        let item = items.get(i).ok_or_else(|| "queue index out of range".to_string())?;
+        let (url, headers) =
+            app.state::<LinkState>()
+                .stream_target(&device_id, &item.id, &item.ext)?;
+        Ok(StreamTarget {
+            url,
+            headers,
+            ext: Some(item.ext.clone()),
+        })
+    });
+    engine
+        .play_stream_queue(resolver, count, start)
         .map_err(Into::into)
 }

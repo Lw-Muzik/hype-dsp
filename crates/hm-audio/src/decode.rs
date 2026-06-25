@@ -48,9 +48,36 @@ fn is_eof(e: &SymError) -> bool {
     matches!(e, SymError::IoError(io) if io.kind() == std::io::ErrorKind::UnexpectedEof)
 }
 
+/// Probe an in-memory audio file (e.g. a fully-downloaded stream). `ext_hint`
+/// (a file extension like `"mp3"`) helps symphonia pick the demuxer.
+fn open_format_bytes(
+    bytes: Vec<u8>,
+    ext_hint: Option<&str>,
+) -> Result<Box<dyn FormatReader>, AudioError> {
+    let mss = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = ext_hint {
+        hint.with_extension(ext);
+    }
+    symphonia::default::get_probe()
+        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .map_err(|e| AudioError::Decode(e.to_string()))
+}
+
 /// Decode an audio file to interleaved stereo `f32`.
 pub fn decode_file(path: &Path) -> Result<DecodedAudio, AudioError> {
-    let mut format = open_format(path)?;
+    decode_format(open_format(path)?)
+}
+
+/// Decode a fully-downloaded audio file held in memory to interleaved stereo
+/// `f32`. Used by the streamed crossfade queue (cloud/phone tracks).
+pub fn decode_bytes(bytes: Vec<u8>, ext_hint: Option<&str>) -> Result<DecodedAudio, AudioError> {
+    decode_format(open_format_bytes(bytes, ext_hint)?)
+}
+
+/// Decode an already-probed format reader to interleaved stereo `f32`. Shared by
+/// the file and in-memory (stream) decode paths.
+fn decode_format(mut format: Box<dyn FormatReader>) -> Result<DecodedAudio, AudioError> {
     // Tags + cover are available right after probing (front-loaded ID3/Vorbis).
     let meta = extract_metadata(&mut *format);
     let track = format

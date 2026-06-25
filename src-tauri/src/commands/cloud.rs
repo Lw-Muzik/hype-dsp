@@ -1,11 +1,13 @@
 //! Cloud music commands (Google Drive / Dropbox): connect, list, play.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use hm_audio::stream_queue::{StreamResolver, StreamTarget};
 use hm_audio::AudioEngine;
 use hm_core::IpcError;
-use serde::Serialize;
-use tauri::State;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager, State};
 
 use crate::cloud::{CloudEntry, CloudProvider, CloudState, CloudStatus};
 use crate::cloud_list::CloudListCache;
@@ -155,4 +157,45 @@ pub fn cloud_play(
     // Cloud files carry no duration hint; the source learns it from the
     // container (Content-Length + Range) when the server supports it.
     engine.play_stream(url, headers, None).map_err(Into::into)
+}
+
+/// One track in a cloud crossfade/gapless queue.
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudQueueItem {
+    pub id: String,
+    /// File-extension hint (e.g. "flac") for the demuxer; from the file name.
+    pub ext: Option<String>,
+}
+
+/// Play a queue of cloud tracks gaplessly / crossfading. Each track's streamable
+/// URL is resolved **lazily** (just before it's needed) — Dropbox costs an API
+/// call per link and hands out short-lived URLs, so resolving the whole queue up
+/// front would be slow and the links could expire. Only the current + next track
+/// are streamed/decoded (see `StreamQueueSource`).
+#[tauri::command]
+pub fn player_play_cloud_queue(
+    app: AppHandle,
+    engine: State<'_, AudioEngine>,
+    provider: CloudProvider,
+    items: Vec<CloudQueueItem>,
+    start: usize,
+) -> Result<(), IpcError> {
+    if items.is_empty() {
+        return Err(IpcError::new("invalid", "empty cloud queue"));
+    }
+    let count = items.len();
+    let items = Arc::new(items);
+    let resolver: StreamResolver = Arc::new(move |i: usize| {
+        let item = items.get(i).ok_or_else(|| "queue index out of range".to_string())?;
+        let (url, headers) = app.state::<CloudState>().stream_target(provider, &item.id)?;
+        Ok(StreamTarget {
+            url,
+            headers,
+            ext: item.ext.clone(),
+        })
+    });
+    engine
+        .play_stream_queue(resolver, count, start)
+        .map_err(Into::into)
 }

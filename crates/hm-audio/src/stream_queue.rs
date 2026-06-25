@@ -43,12 +43,14 @@ pub type StreamResolver = Arc<dyn Fn(usize) -> Result<StreamTarget, String> + Se
 /// `(absolute index, decoded interleaved stereo, metadata)` from the worker.
 type DecodedTrack = (usize, Vec<f32>, TrackMeta);
 
-/// Fetch + decode one streamed track fully, resampled to `device_rate`.
-fn decode_stream(target: &StreamTarget, device_rate: u32) -> Result<(Vec<f32>, TrackMeta), AudioError> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|e| AudioError::Stream(e.to_string()))?;
+/// Fetch + decode one streamed track fully, resampled to `device_rate`. The
+/// `client` is built once per worker (each `reqwest::blocking::Client` spins up
+/// its own runtime, so we must not rebuild it per track).
+fn decode_stream(
+    client: &reqwest::blocking::Client,
+    target: &StreamTarget,
+    device_rate: u32,
+) -> Result<(Vec<f32>, TrackMeta), AudioError> {
     let mut req = client.get(&target.url);
     for (k, v) in &target.headers {
         req = req.header(k.as_str(), v.as_str());
@@ -117,16 +119,24 @@ impl StreamQueueSource {
             std::thread::Builder::new()
                 .name("hm-stream-queue".into())
                 .spawn(move || {
+                    // One HTTP client for the whole queue (rebuilding per track
+                    // would spin up a fresh runtime + thread pool each time).
+                    let client = match reqwest::blocking::Client::builder()
+                        .timeout(Duration::from_secs(60))
+                        .build()
+                    {
+                        Ok(c) => c,
+                        Err(_) => return,
+                    };
                     let mut next = start;
                     while let Ok(want) = want_rx.recv() {
                         while next <= want && next < count {
                             if !running.load(Ordering::Relaxed) {
                                 return;
                             }
-                            let decoded =
-                                resolver(next).and_then(|t| {
-                                    decode_stream(&t, device_rate).map_err(|e| e.to_string())
-                                });
+                            let decoded = resolver(next).and_then(|t| {
+                                decode_stream(&client, &t, device_rate).map_err(|e| e.to_string())
+                            });
                             // Failed resolve/decode → empty entry the source skips.
                             let track = match decoded {
                                 Ok((samples, meta)) => (next, samples, meta),

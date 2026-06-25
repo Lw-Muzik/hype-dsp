@@ -401,10 +401,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     const wantQueue = (gapless || crossfadeSecs > 0) && repeat !== "one";
     const allLocal = order.every((i) => queue[i]?.source === "local");
     const allCloud =
-      order.every((i) => queue[i]?.source === "cloud") &&
+      order.every((i) => queue[i]?.cloud != null) &&
       order.every((i) => queue[i]?.cloud?.provider === item.cloud?.provider);
     const allPhone =
-      order.every((i) => queue[i]?.source === "phone") &&
+      order.every((i) => queue[i]?.phoneTrack != null) &&
       order.every((i) => queue[i]?.device?.id === item.device?.id);
 
     const useEngineQueue = item.source === "local" && allLocal && wantQueue;

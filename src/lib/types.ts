@@ -151,6 +151,8 @@ export interface PlaybackState {
   gapless: boolean;
   /** Crossfade duration in seconds (0 = off; implies gapless when > 0). */
   crossfadeSecs: number;
+  /** Low-bandwidth mode: progressive streaming, no prefetch, bigger buffers. */
+  dataSaver: boolean;
 }
 
 export interface HeadphoneCorrectionState {

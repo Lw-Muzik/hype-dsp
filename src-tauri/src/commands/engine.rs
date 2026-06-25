@@ -195,6 +195,12 @@ pub fn engine_set_playback(engine: State<'_, AudioEngine>, gapless: bool, crossf
     engine.set_playback(gapless, crossfade_secs);
 }
 
+/// Toggle Data Saver (low-bandwidth) mode.
+#[tauri::command]
+pub fn engine_set_data_saver(engine: State<'_, AudioEngine>, on: bool) {
+    engine.set_data_saver(on);
+}
+
 /// Play a list of local files as a gapless (and optionally crossfading) queue,
 /// starting at `start`. The crossfade duration is read live from the engine's
 /// playback settings each block, so changing it applies to the current queue.

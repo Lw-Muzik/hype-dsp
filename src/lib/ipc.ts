@@ -471,6 +471,11 @@ export function engineSetPlayback(
   return invoke<void>("engine_set_playback", { gapless, crossfadeSecs });
 }
 
+/** Toggle Data Saver / low-bandwidth streaming mode. */
+export function engineSetDataSaver(on: boolean): Promise<void> {
+  return invoke<void>("engine_set_data_saver", { on });
+}
+
 /** Subscribe to the gapless queue's current track index. */
 export function onQueueIndex(
   handler: (index: number) => void,

@@ -563,11 +563,16 @@ impl AudioEngine {
         let crossfade = crossfade_secs.max(0.0);
         // Persist in state (for autosave/restore)...
         self.update(|s| {
-            s.playback = hm_core::PlaybackState { gapless, crossfade_secs: crossfade };
+            s.playback = hm_core::PlaybackState { gapless, crossfade_secs: crossfade, data_saver: s.playback.data_saver };
         });
         // ...and publish to the live value the active queue reads each block, so
         // the change takes effect on the current queue's next transition.
         self.crossfade.store(crossfade.to_bits(), Ordering::Relaxed);
+    }
+
+    /// Toggle Data Saver (low-bandwidth) mode. Takes effect on the next stream.
+    pub fn set_data_saver(&self, on: bool) {
+        self.update(|s| s.playback.data_saver = on);
     }
 
     /// The current crossfade duration (seconds); 0 means gapless-only.

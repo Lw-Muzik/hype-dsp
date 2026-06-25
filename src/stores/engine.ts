@@ -139,7 +139,7 @@ const defaultEngineState: EngineState = {
   script: { enabled: false, source: "" },
   headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
-  playback: { gapless: true, crossfadeSecs: 0 },
+  playback: { gapless: true, crossfadeSecs: 0, dataSaver: false },
   activePresetId: null,
   activeProfileId: null,
 };
@@ -725,7 +725,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
 
     setPlayback: (gapless, crossfadeSecs) => {
-      set((s) => ({ state: { ...s.state, playback: { gapless, crossfadeSecs } } }));
+      set((s) => ({ state: { ...s.state, playback: { ...s.state.playback, gapless, crossfadeSecs } } }));
       void engineSetPlayback(gapless, crossfadeSecs).catch(() => {});
     },
 

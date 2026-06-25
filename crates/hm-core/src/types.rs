@@ -322,6 +322,9 @@ pub struct PlaybackState {
     pub gapless: bool,
     /// Crossfade duration in seconds (0 = off). Implies gapless when > 0.
     pub crossfade_secs: f32,
+    /// Low-bandwidth mode: stream progressively (no full-download / prefetch),
+    /// bigger buffers. Forces progressive single-track playback for cloud/phone.
+    pub data_saver: bool,
 }
 
 impl Default for PlaybackState {
@@ -329,6 +332,7 @@ impl Default for PlaybackState {
         Self {
             gapless: true,
             crossfade_secs: 0.0,
+            data_saver: false,
         }
     }
 }

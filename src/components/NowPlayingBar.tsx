@@ -60,6 +60,7 @@ export function NowPlayingBar() {
   const paused = useEngineStore((s) => s.paused);
   const positionSecs = useEngineStore((s) => s.positionSecs);
   const durationSecs = useEngineStore((s) => s.durationSecs);
+  const buffering = useEngineStore((s) => s.buffering);
   const seekable = useEngineStore((s) => s.seekable);
   const queue = useEngineStore((s) => s.queue);
   const queueIndex = useEngineStore((s) => s.queueIndex);
@@ -197,7 +198,7 @@ export function NowPlayingBar() {
         </div>
         <div className="flex w-full items-center gap-2">
           <span className="w-9 text-right text-[11px] tabular-nums text-text-faint">
-            {formatTime(positionSecs)}
+            {buffering ? "Buffering…" : formatTime(positionSecs)}
           </span>
           <Slider
             label="Seek"

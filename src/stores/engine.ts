@@ -36,6 +36,8 @@ import {
 } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
 import { BAND_COUNT } from "@/lib/types";
+import { classify, chooseStreamMode } from "./networkMode";
+import type { NetworkMode } from "./networkMode";
 import type {
   CloudEntry,
   CompanderState,
@@ -256,6 +258,8 @@ interface EngineStore {
   durationSecs: number | null;
   /** Whether the active source can be scrubbed (false for live radio). */
   seekable: boolean;
+  /** True while the engine is rebuffering/stalled. */
+  buffering: boolean;
 
   // queue
   queue: QueueItem[];
@@ -348,6 +352,8 @@ export const useEngineStore = create<EngineStore>((set, get) => {
   // versus a single track / stream the store advances itself (false). Decides
   // how a natural end-of-stream is interpreted.
   let gaplessQueueRunning = false;
+  let networkMode: NetworkMode = "unknown";
+  let lastRebuffer = 0;
 
   const pushEq = (eq: EngineState["eq"]) => {
     void engineSetEq(eq.bands, eq.preGain, eq.enabled).catch(() => {});
@@ -365,6 +371,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     positionSecs: 0,
     durationSecs: null,
     seekable: false,
+    buffering: false,
   });
 
   /**
@@ -391,6 +398,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       durationSecs: item.durationSecs,
       // Optimistic; the backend's progress events correct this per source.
       seekable: item.source === "local",
+      buffering: false,
     });
 
     const onError = (e: unknown) =>
@@ -400,8 +408,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     // The engine's gapless/crossfade queue needs a homogeneous source: an all-
     // local, all-cloud (same provider), or all-phone (same device) queue. Mixed
     // queues advance track-by-track from the store instead.
-    // Data Saver forces progressive single-track streaming for cloud/phone.
-    const wantQueue = !dataSaver && (gapless || crossfadeSecs > 0) && repeat !== "one";
+    const wantQueue = (gapless || crossfadeSecs > 0) && repeat !== "one";
     const allLocal = order.every((i) => queue[i]?.source === "local");
     const allCloud =
       order.every((i) => queue[i]?.cloud != null) &&
@@ -410,9 +417,16 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       order.every((i) => queue[i]?.phoneTrack != null) &&
       order.every((i) => queue[i]?.device?.id === item.device?.id);
 
+    const streamMode = chooseStreamMode(
+      item.source === "phone" ? "phone" : "cloud",
+      dataSaver,
+      networkMode,
+    );
     const useEngineQueue = item.source === "local" && allLocal && wantQueue;
-    const useCloudQueue = item.source === "cloud" && allCloud && wantQueue;
-    const usePhoneQueue = item.source === "phone" && allPhone && wantQueue;
+    const useCloudQueue =
+      item.source === "cloud" && allCloud && wantQueue && streamMode === "gapless";
+    const usePhoneQueue =
+      item.source === "phone" && allPhone && wantQueue && streamMode === "gapless";
 
     gaplessQueueRunning = useEngineQueue || useCloudQueue || usePhoneQueue;
 
@@ -539,6 +553,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     if (items.length === 0) return;
     const start = Math.max(0, Math.min(index, items.length - 1));
     const { order, orderPos } = buildOrder(items.length, get().shuffle, start);
+    // Reset per-queue network classifier so each queue re-measures from scratch.
+    networkMode = "unknown";
+    lastRebuffer = 0;
     set({ queue: items, order, orderPos, queueIndex: order[orderPos]! });
     startPlayback(orderPos);
     enrichCloudQueue(items);
@@ -582,6 +599,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     positionSecs: 0,
     durationSecs: null,
     seekable: false,
+    buffering: false,
     queue: [],
     queueIndex: -1,
     order: [],
@@ -746,7 +764,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           : { companderGr: new Array<number>(10).fill(0) }),
       }),
 
-    applyProgress: (p) =>
+    applyProgress: (p) => {
+      const delta = Math.max(0, p.rebufferCount - lastRebuffer);
+      lastRebuffer = p.rebufferCount;
+      networkMode = classify(networkMode, { downloadBps: p.downloadBps, rebufferDelta: delta });
       set((s) => ({
         positionSecs: p.positionSecs,
         // Keep a known (item-provided) duration until the backend learns one,
@@ -754,7 +775,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         durationSecs: p.durationSecs ?? s.durationSecs,
         paused: p.paused,
         seekable: p.seekable,
-      })),
+        buffering: p.buffering,
+      }));
+    },
 
     setPlaying: (playing) => {
       if (playing) {
@@ -932,6 +955,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         positionSecs: 0,
         durationSecs: null,
         seekable: false,
+        buffering: false,
       });
     },
 

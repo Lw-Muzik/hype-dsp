@@ -300,6 +300,9 @@ export interface TransportProgress {
   paused: boolean;
   /** Whether the active source can be scrubbed (false for live radio). */
   seekable: boolean;
+  buffering: boolean;
+  downloadBps: number;
+  rebufferCount: number;
 }
 
 /** Now-playing metadata extracted from the decoded track (tags + cover art). */

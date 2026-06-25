@@ -405,6 +405,7 @@ export function SettingsView() {
   const setLicense = useUiStore((s) => s.setLicense);
   const playback = useEngineStore((s) => s.state.playback);
   const setPlayback = useEngineStore((s) => s.setPlayback);
+  const setDataSaver = useEngineStore((s) => s.setDataSaver);
   const [devices, setDevices] = useState<DeviceState>({ status: "loading" });
   const [, setVirtualAvailable] = useState(false);
   const [systemAvailable, setSystemAvailable] = useState(false);
@@ -519,6 +520,19 @@ export function SettingsView() {
                   ? "Off"
                   : `${playback.crossfadeSecs.toFixed(1)}s`}
               </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 text-sm">
+                <p className="font-medium">Data Saver</p>
+                <p className="text-xs text-text-muted">
+                  Stream progressively on slow connections (no full-download / prefetch).
+                </p>
+              </div>
+              <Switch
+                checked={playback.dataSaver}
+                onChange={(v) => setDataSaver(v)}
+                label="Data Saver"
+              />
             </div>
           </div>
         </Card>

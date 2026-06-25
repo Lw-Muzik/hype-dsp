@@ -23,6 +23,7 @@ import {
   linkPlay,
   linkPlayQueue,
   playerPlayCloudQueue,
+  engineSetDataSaver,
   engineSetPlayback,
   playerPause,
   playerPlayFile,
@@ -292,6 +293,7 @@ interface EngineStore {
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
   setPlayback: (gapless: boolean, crossfadeSecs: number) => void;
+  setDataSaver: (on: boolean) => void;
 
   applyFrame: (frame: EngineFrame) => void;
   applyProgress: (p: TransportProgress) => void;
@@ -394,11 +396,12 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     const onError = (e: unknown) =>
       toast.error(`Couldn't play ${item.title}: ${ipcErrorMessage(e)}`);
 
-    const { gapless, crossfadeSecs } = state.playback;
+    const { gapless, crossfadeSecs, dataSaver } = state.playback;
     // The engine's gapless/crossfade queue needs a homogeneous source: an all-
     // local, all-cloud (same provider), or all-phone (same device) queue. Mixed
     // queues advance track-by-track from the store instead.
-    const wantQueue = (gapless || crossfadeSecs > 0) && repeat !== "one";
+    // Data Saver forces progressive single-track streaming for cloud/phone.
+    const wantQueue = !dataSaver && (gapless || crossfadeSecs > 0) && repeat !== "one";
     const allLocal = order.every((i) => queue[i]?.source === "local");
     const allCloud =
       order.every((i) => queue[i]?.cloud != null) &&
@@ -727,6 +730,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setPlayback: (gapless, crossfadeSecs) => {
       set((s) => ({ state: { ...s.state, playback: { ...s.state.playback, gapless, crossfadeSecs } } }));
       void engineSetPlayback(gapless, crossfadeSecs).catch(() => {});
+    },
+
+    setDataSaver: (on) => {
+      set((s) => ({ state: { ...s.state, playback: { ...s.state.playback, dataSaver: on } } }));
+      void engineSetDataSaver(on).catch(() => {});
     },
 
     applyFrame: (frame) =>

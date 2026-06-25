@@ -1,6 +1,6 @@
 export type NetworkMode = "unknown" | "fast" | "constrained";
 
-/** Throughput at/above this (bytes/sec ≈ 4.8 Mbps) comfortably prefetches a
+/** Throughput at/above this (bytes/sec ≈ 3.2 Mbps) comfortably prefetches a
  *  next track during the current one → safe for gapless. */
 const FAST_BPS = 400_000;
 

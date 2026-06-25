@@ -665,6 +665,13 @@ fn open(
         req = req.header("Range", format!("bytes={start_byte}-"));
     }
     match req.send() {
+        Ok(r) if start_byte > 0 => {
+            // A ranged resume MUST come back as 206; a 200 means the server
+            // ignored the Range and would replay the whole body from byte 0
+            // (audible duplication + inflated byte count). Treat that as a
+            // failed open so the bounded reconnect ladder handles it.
+            (r.status() == reqwest::StatusCode::PARTIAL_CONTENT).then_some(r)
+        }
         Ok(r) if r.status().is_success() => Some(r),
         _ => None,
     }

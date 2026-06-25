@@ -198,7 +198,11 @@ export function NowPlayingBar() {
         </div>
         <div className="flex w-full items-center gap-2">
           <span className="w-9 text-right text-[11px] tabular-nums text-text-faint">
-            {buffering ? "Buffering…" : formatTime(positionSecs)}
+            {buffering ? (
+              <span className="animate-pulse" title="Buffering…" aria-label="Buffering">•••</span>
+            ) : (
+              formatTime(positionSecs)
+            )}
           </span>
           <Slider
             label="Seek"

@@ -242,6 +242,37 @@ enum Stop {
     Seek(u64),
 }
 
+/// How many no-progress reconnects in a row we tolerate before giving up on a
+/// track (so a server that keeps closing, or a container we can't re-probe
+/// mid-file, ends the track instead of hot-looping).
+const MAX_STALLS: u32 = 3;
+
+/// What to do after a connection's decode loop stops.
+#[derive(Debug, PartialEq, Eq)]
+enum ResumeDecision {
+    /// The track is genuinely done (reached the end, unknown length, or we gave
+    /// up after too many stalls) — report EOF.
+    Finish,
+    /// The connection dropped early — re-open with `Range: bytes=offset-`.
+    Resume { offset: u64, stalls: u32 },
+}
+
+/// Decide whether a stopped connection is a real end or a recoverable drop.
+/// `consumed` = total bytes read so far; `progressed` = did the just-ended
+/// connection read new bytes; `stalls` = prior consecutive no-progress count.
+fn resume_decision(content_bytes: u64, consumed: u64, progressed: bool, stalls: u32) -> ResumeDecision {
+    // Unknown length (live/radio) or the whole body consumed → genuine end.
+    if content_bytes == 0 || consumed >= content_bytes {
+        return ResumeDecision::Finish;
+    }
+    let stalls = if progressed { 0 } else { stalls + 1 };
+    if stalls > MAX_STALLS {
+        ResumeDecision::Finish
+    } else {
+        ResumeDecision::Resume { offset: consumed, stalls }
+    }
+}
+
 /// Owns the connect → decode → re-open lifecycle, re-opening with a byte-range
 /// request on each seek and idling at EOF until a seek or cancellation.
 fn stream_worker(
@@ -762,5 +793,30 @@ mod tests {
         assert_eq!(to_stereo(&[0.5, 0.7], 1), vec![0.5, 0.5, 0.7, 0.7]);
         let stereo = [0.1, 0.2, 0.3, 0.4];
         assert_eq!(to_stereo(&stereo, 2), stereo.to_vec());
+    }
+
+    #[test]
+    fn resume_decision_distinguishes_drop_from_end() {
+        // Known length, not all consumed, made progress → resume from the offset.
+        assert!(matches!(
+            resume_decision(1000, 400, true, 0),
+            ResumeDecision::Resume { offset: 400, stalls: 0 }
+        ));
+        // Reached the end → finish.
+        assert!(matches!(resume_decision(1000, 1000, true, 0), ResumeDecision::Finish));
+        // Unknown length (radio / no content-length) → finish (unchanged behaviour).
+        assert!(matches!(resume_decision(0, 12345, false, 0), ResumeDecision::Finish));
+        // A stalled reconnect (no progress) increments the counter…
+        assert!(matches!(
+            resume_decision(1000, 400, false, 1),
+            ResumeDecision::Resume { offset: 400, stalls: 2 }
+        ));
+        // …until it exceeds the cap, then give up (finish so the queue advances).
+        assert!(matches!(resume_decision(1000, 400, false, MAX_STALLS), ResumeDecision::Finish));
+        // Progress resets the stall counter even at a high prior count.
+        assert!(matches!(
+            resume_decision(1000, 700, true, MAX_STALLS),
+            ResumeDecision::Resume { offset: 700, stalls: 0 }
+        ));
     }
 }

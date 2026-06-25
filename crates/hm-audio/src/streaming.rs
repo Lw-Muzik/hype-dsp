@@ -133,6 +133,21 @@ impl Drop for RadioStreamSource {
     }
 }
 
+/// Wraps a reader and tallies bytes successfully read, so the worker knows how
+/// far it got before a connection dropped (for `Range`-based resume).
+struct CountingReader<R> {
+    inner: R,
+    count: Arc<AtomicU64>,
+}
+
+impl<R: std::io::Read> std::io::Read for CountingReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.count.fetch_add(n as u64, Ordering::Relaxed);
+        Ok(n)
+    }
+}
+
 impl AudioSource for RadioStreamSource {
     fn start(&mut self, _format: crate::StreamFormat) -> Result<(), AudioError> {
         Ok(())
@@ -303,30 +318,38 @@ fn stream_worker(
 
     let mut start_byte = 0u64;
     let mut meta_published = false;
+    let mut stalls = 0u32;
+    let conn_bytes = Arc::new(AtomicU64::new(0));
+    let mut connect_fails = 0u32;
 
     loop {
         if !shared.running.load(Ordering::Relaxed) {
             return;
         }
+        conn_bytes.store(0, Ordering::Relaxed);
 
         let Some(response) = open(&client, url, headers, start_byte) else {
-            // Couldn't (re)open. If we had already started, fall back to the
-            // beginning once; otherwise give up.
+            // Couldn't (re)open. Retry a few times (2G connect is slow/flaky),
+            // then fall back to the start once, then give up.
+            connect_fails += 1;
+            if connect_fails <= MAX_STALLS {
+                std::thread::sleep(Duration::from_millis(400 * connect_fails as u64));
+                continue;
+            }
             if start_byte > 0 {
                 start_byte = 0;
+                connect_fails = 0;
                 continue;
             }
             return;
         };
+        connect_fails = 0;
         record_content_length(&shared, &response, start_byte);
 
-        let sink = if meta_published {
-            None
-        } else {
-            meta_sink.clone()
-        };
+        let sink = if meta_published { None } else { meta_sink.clone() };
         let stop = decode_connection(
             response,
+            conn_bytes.clone(),
             device_rate,
             &mut producer,
             &shared,
@@ -337,26 +360,44 @@ fn stream_worker(
             &mut meta_published,
         );
 
+        let progressed = conn_bytes.load(Ordering::Relaxed) > 0;
+        let consumed = start_byte + conn_bytes.load(Ordering::Relaxed);
+
         match stop {
             Stop::Cancelled => return,
             Stop::Seek(target) => {
                 start_byte = byte_offset(&shared, device_rate, target);
                 shared.finished.store(false, Ordering::Relaxed);
+                stalls = 0;
             }
             Stop::Eof => {
-                shared.finished.store(true, Ordering::Relaxed);
-                // Idle: a finished-but-seekable stream can still be scrubbed.
-                loop {
-                    if !shared.running.load(Ordering::Relaxed) {
-                        return;
-                    }
-                    let target = shared.seek_target.swap(-1, Ordering::Relaxed);
-                    if target >= 0 {
-                        start_byte = byte_offset(&shared, device_rate, target as u64);
+                let total = shared.content_bytes.load(Ordering::Relaxed);
+                match resume_decision(total, consumed, progressed, stalls) {
+                    ResumeDecision::Resume { offset, stalls: s } => {
+                        // Connection dropped mid-track — resume, don't end it.
+                        start_byte = offset;
+                        stalls = s;
                         shared.finished.store(false, Ordering::Relaxed);
-                        break;
+                        std::thread::sleep(Duration::from_millis(300));
+                        continue;
                     }
-                    std::thread::sleep(Duration::from_millis(25));
+                    ResumeDecision::Finish => {
+                        shared.finished.store(true, Ordering::Relaxed);
+                        // Idle: a finished-but-seekable stream can still be scrubbed.
+                        loop {
+                            if !shared.running.load(Ordering::Relaxed) {
+                                return;
+                            }
+                            let target = shared.seek_target.swap(-1, Ordering::Relaxed);
+                            if target >= 0 {
+                                start_byte = byte_offset(&shared, device_rate, target as u64);
+                                shared.finished.store(false, Ordering::Relaxed);
+                                stalls = 0;
+                                break;
+                            }
+                            std::thread::sleep(Duration::from_millis(25));
+                        }
+                    }
                 }
             }
         }
@@ -568,6 +609,7 @@ fn byte_offset(shared: &StreamShared, device_rate: u32, target: u64) -> u64 {
 #[allow(clippy::too_many_arguments)]
 fn decode_connection(
     response: reqwest::blocking::Response,
+    conn_bytes: Arc<AtomicU64>,
     device_rate: u32,
     producer: &mut Producer<f32>,
     shared: &StreamShared,
@@ -577,7 +619,8 @@ fn decode_connection(
     ext: Option<&str>,
     meta_published: &mut bool,
 ) -> Stop {
-    let mss = MediaSourceStream::new(Box::new(ReadOnlySource::new(response)), Default::default());
+    let counted = CountingReader { inner: response, count: conn_bytes };
+    let mss = MediaSourceStream::new(Box::new(ReadOnlySource::new(counted)), Default::default());
     let mut hint = Hint::new();
     if let Some(ext) = ext {
         hint.with_extension(ext);
@@ -720,6 +763,20 @@ fn push_all(producer: &mut Producer<f32>, samples: &[f32], shared: &StreamShared
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn counting_reader_counts_bytes_read() {
+        use std::io::Read;
+        let count = Arc::new(AtomicU64::new(0));
+        let data = vec![1u8, 2, 3, 4, 5, 6, 7];
+        let mut r = CountingReader { inner: std::io::Cursor::new(data), count: count.clone() };
+        let mut buf = [0u8; 4];
+        assert_eq!(r.read(&mut buf).unwrap(), 4);
+        assert_eq!(count.load(Ordering::Relaxed), 4);
+        let mut rest = Vec::new();
+        r.read_to_end(&mut rest).unwrap();
+        assert_eq!(count.load(Ordering::Relaxed), 7, "counts every byte read");
+    }
 
     /// Build a 128-byte ID3v1 tag with the given fields (padded with NULs).
     fn id3v1(title: &str, artist: &str, album: &str) -> Vec<u8> {

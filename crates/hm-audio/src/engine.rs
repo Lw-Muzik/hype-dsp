@@ -40,7 +40,7 @@ use crate::stream_queue::{StreamQueueSource, StreamResolver};
 use crate::sources::FilePlaybackSource;
 use crate::spectrum::{Analyzer, SpectrumTap};
 use crate::stems::{StemGains, StemPlaybackSource, STEM_COUNT};
-use crate::streaming::RadioStreamSource;
+use crate::streaming::{RadioStreamSource, StreamTuning};
 #[cfg(target_os = "macos")]
 use crate::system_tap::SystemTapSource;
 use crate::{AudioSource, StreamFormat};
@@ -1137,13 +1137,15 @@ fn control_loop(ctx: ControlCtx) {
                     meta: track_meta.clone(),
                     version: meta_version.clone(),
                 };
+                let data_saver = shared.load().playback.data_saver;
+                let tuning = StreamTuning::for_network(sample_rate, data_saver);
                 let source = Box::new(RadioStreamSource::with_headers(
                     url,
                     headers,
                     sample_rate,
                     Some(sink),
                     duration_hint,
-                    crate::streaming::StreamTuning::for_network(sample_rate, false),
+                    tuning,
                 ));
 
                 match build_output_stream(

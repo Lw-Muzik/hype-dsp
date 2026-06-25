@@ -16,7 +16,7 @@
 //! length stays **live** (open-ended radio): it never reports EOF on underflow
 //! and cannot be scrubbed.
 
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -49,6 +49,10 @@ struct StreamShared {
     seek_target: AtomicI64,
     /// While set, `read` drains and discards the ring (post-seek flush).
     flushing: AtomicBool,
+    /// Most recent download throughput estimate, bytes/sec (EWMA, 0 until measured).
+    download_bps: AtomicU64,
+    /// Count of mid-track rebuffering events (transitions into buffering after initial fill).
+    rebuffer_count: AtomicU32,
 }
 
 impl StreamShared {
@@ -144,6 +148,8 @@ impl RadioStreamSource {
             finished: AtomicBool::new(false),
             seek_target: AtomicI64::new(-1),
             flushing: AtomicBool::new(false),
+            download_bps: AtomicU64::new(0),
+            rebuffer_count: AtomicU32::new(0),
         });
 
         let thread = {
@@ -172,6 +178,21 @@ impl RadioStreamSource {
             buffering: true,
             _thread: thread,
         }
+    }
+}
+
+impl RadioStreamSource {
+    /// Most recent download throughput estimate, bytes/sec (0 until measured).
+    pub fn download_bps(&self) -> u64 {
+        self.shared.download_bps.load(Ordering::Relaxed)
+    }
+    /// Count of mid-track rebuffering events so far this stream.
+    pub fn rebuffer_count(&self) -> u32 {
+        self.shared.rebuffer_count.load(Ordering::Relaxed)
+    }
+    /// Whether playback is currently held waiting for the buffer to fill.
+    pub fn is_buffering(&self) -> bool {
+        self.buffering
     }
 }
 
@@ -260,8 +281,9 @@ impl AudioSource for RadioStreamSource {
         self.shared
             .position_frames
             .fetch_add(popped, Ordering::Relaxed);
-        if !finished && self.consumer.slots() < 2 {
-            self.buffering = true; // ring drained mid-track → rebuffer next block
+        if !finished && self.consumer.slots() < 2 && !self.buffering {
+            self.buffering = true;
+            self.shared.rebuffer_count.fetch_add(1, Ordering::Relaxed);
         }
         produced
     }
@@ -381,6 +403,8 @@ fn stream_worker(
     let mut stalls = 0u32;
     let conn_bytes = Arc::new(AtomicU64::new(0));
     let mut connect_fails = 0u32;
+    let mut meter_start = std::time::Instant::now();
+    let mut meter_bytes = 0u64;
 
     loop {
         if !shared.running.load(Ordering::Relaxed) {
@@ -422,6 +446,19 @@ fn stream_worker(
 
         let progressed = conn_bytes.load(Ordering::Relaxed) > 0;
         let consumed = start_byte + conn_bytes.load(Ordering::Relaxed);
+
+        // Update EWMA download throughput ~once per second.
+        meter_bytes += conn_bytes.load(Ordering::Relaxed);
+        let elapsed = meter_start.elapsed().as_secs_f64();
+        if elapsed >= 1.0 {
+            let bps = (meter_bytes as f64 / elapsed) as u64;
+            let prev = shared.download_bps.load(Ordering::Relaxed);
+            // EWMA (3:1) to smooth bursts.
+            let smoothed = if prev == 0 { bps } else { (prev * 3 + bps) / 4 };
+            shared.download_bps.store(smoothed, Ordering::Relaxed);
+            meter_start = std::time::Instant::now();
+            meter_bytes = 0;
+        }
 
         match stop {
             Stop::Cancelled => return,
@@ -833,6 +870,8 @@ impl RadioStreamSource {
             finished: AtomicBool::new(false),
             seek_target: AtomicI64::new(-1),
             flushing: AtomicBool::new(false),
+            download_bps: AtomicU64::new(0),
+            rebuffer_count: AtomicU32::new(0),
         });
         Self {
             consumer,
@@ -906,6 +945,8 @@ mod tests {
             finished: AtomicBool::new(false),
             seek_target: AtomicI64::new(-1),
             flushing: AtomicBool::new(false),
+            download_bps: AtomicU64::new(0),
+            rebuffer_count: AtomicU32::new(0),
         }
     }
 
@@ -995,5 +1036,15 @@ mod tests {
         let mut out2 = vec![0.0f32; 4];
         src.read(&mut out2, 2);
         assert_eq!(out2[0], 0.5, "plays buffered audio once the cushion is met");
+    }
+
+    #[test]
+    fn read_counts_rebuffer_events() {
+        let (mut prod, consumer) = RingBuffer::<f32>::new(64);
+        for _ in 0..6 { prod.push(0.5).unwrap(); prod.push(0.5).unwrap(); }
+        let mut src = RadioStreamSource::for_test(consumer, 4);
+        let mut out = vec![0.0f32; 12]; // drains the 6 frames, then underruns
+        src.read(&mut out, 2);
+        assert_eq!(src.rebuffer_count(), 1, "draining mid-track arms one rebuffer");
     }
 }

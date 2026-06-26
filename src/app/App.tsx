@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { TrialBanner } from "@/components/TrialBanner";
@@ -6,9 +7,16 @@ import { NowPlayingBar } from "@/components/NowPlayingBar";
 import { RightSidebar } from "@/components/RightSidebar";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import { Router } from "@/app/router";
+import { useSystemEqStore } from "@/stores/systemEq";
 
 /** The application shell: sidebar + top bar + the active view + now-playing. */
 export function App() {
+  // If the user left system-wide EQ on last session, re-engage it on launch.
+  const resumeSystemEq = useSystemEqStore((s) => s.resume);
+  useEffect(() => {
+    void resumeSystemEq();
+  }, [resumeSystemEq]);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface text-text">
       <Sidebar />

@@ -45,6 +45,56 @@ use crate::streaming::{RadioStreamSource, StreamTuning};
 use crate::system_tap::SystemTapSource;
 use crate::{AudioSource, StreamFormat};
 
+/// Output-liveness tracker for the macOS system-tap watchdog.
+///
+/// The audio callback bumps a heartbeat counter every block. This samples that
+/// counter on a fixed cadence and reports when the output has frozen for
+/// `threshold` consecutive samples *while a tap session is meant to be running*
+/// — the signature of a dead output stream (e.g. after a default-output-device
+/// change). Because the macOS tap mutes every other app, a dead output would
+/// otherwise leave the whole system silent until the app is restarted, so the
+/// watchdog rebuilds the tap on the current default device when this fires.
+///
+/// Pure and side-effect-free so it is unit-tested without Core Audio. Compiled on
+/// every platform (the tests run on the dev host); only the macOS watchdog uses it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[derive(Debug)]
+struct StallDetector {
+    last_beat: u64,
+    misses: u32,
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+impl StallDetector {
+    fn new() -> Self {
+        Self {
+            last_beat: 0,
+            misses: 0,
+        }
+    }
+
+    /// Feed the latest heartbeat and whether a tap session should be live (i.e.
+    /// the tap is engaged and not paused). Returns `true` exactly when a rebuild
+    /// should fire, and re-arms so a still-dead output retries after another full
+    /// window rather than spinning.
+    fn observe(&mut self, beat: u64, active: bool, threshold: u32) -> bool {
+        if !active || beat != self.last_beat {
+            // Not our concern, or output is progressing — healthy.
+            self.last_beat = beat;
+            self.misses = 0;
+            return false;
+        }
+        // Frozen heartbeat while the tap is supposed to be running.
+        self.misses += 1;
+        if self.misses >= threshold {
+            self.misses = 0; // re-arm: retry after another full window
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// Lock-free meter telemetry written by the audio callback and read by the
 /// UI-forwarding thread. Each `f32` is stored as its bit pattern in an atomic.
 #[derive(Default)]
@@ -349,6 +399,11 @@ enum EngineCommand {
     /// Only constructed on the macOS tap path; dead (but compiled) elsewhere.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     PlaySource(Box<dyn AudioSource>),
+    /// Watchdog-triggered: the system-tap output stalled (its stream died, e.g.
+    /// after a default-output-device change). Rebuild a fresh tap on the current
+    /// default device so the system isn't left muted. macOS-only.
+    #[cfg(target_os = "macos")]
+    RestartSystemTap,
     Pause,
     Resume,
     Stop,
@@ -384,6 +439,11 @@ pub struct AudioEngine {
     /// Lock-free per-band GR meter shared with the active Compander; written on
     /// the audio thread once per block and read by the UI-forwarding thread.
     compander_gr: std::sync::Arc<CompanderMeter>,
+    /// Keeps the macOS tap watchdog thread alive; cleared on drop so it exits.
+    /// (The heartbeat and tap-active flags it watches live only as clones handed
+    /// to the control + watchdog threads — they need no handle on the engine.)
+    #[cfg(target_os = "macos")]
+    watchdog_alive: Arc<AtomicBool>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     /// Active self-contained system-wide EQ pipeline (Linux/Windows re-routing).
     /// Held only to keep it running; dropping it tears the routing down. `Send`-
@@ -442,6 +502,8 @@ impl AudioEngine {
         let stem_gains = Arc::new(StemGains::default());
         let ir_slot = empty_ir_slot();
         let compander_gr = std::sync::Arc::new(CompanderMeter::default());
+        let output_beat = Arc::new(AtomicU64::new(0));
+        let tap_active = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
 
         let thread = {
@@ -458,6 +520,8 @@ impl AudioEngine {
             let stem_gains = stem_gains.clone();
             let ir_slot = ir_slot.clone();
             let compander_gr = compander_gr.clone();
+            let output_beat = output_beat.clone();
+            let tap_active = tap_active.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
                 .spawn(move || {
@@ -476,10 +540,31 @@ impl AudioEngine {
                         stem_gains,
                         ir_slot,
                         compander_gr,
+                        output_beat,
+                        tap_active,
                     })
                 })
                 .expect("failed to spawn hm-audio engine thread")
         };
+
+        // macOS system-tap watchdog: because the tap mutes every other app, a
+        // dead output stream (e.g. a default-output-device change) would leave the
+        // whole system silent. This thread notices the stall and asks the control
+        // thread to rebuild the tap on the current default device.
+        #[cfg(target_os = "macos")]
+        let watchdog_alive = Arc::new(AtomicBool::new(true));
+        #[cfg(target_os = "macos")]
+        {
+            let alive = watchdog_alive.clone();
+            let beat = output_beat.clone();
+            let tap_active = tap_active.clone();
+            let paused = paused.clone();
+            let ctrl = tx.clone();
+            std::thread::Builder::new()
+                .name("hm-audio-tap-watchdog".into())
+                .spawn(move || tap_watchdog(alive, beat, tap_active, paused, ctrl))
+                .expect("failed to spawn hm-audio tap watchdog");
+        }
 
         Self {
             write_state: Mutex::new(initial),
@@ -496,6 +581,8 @@ impl AudioEngine {
             stem_gains,
             ir_slot,
             compander_gr,
+            #[cfg(target_os = "macos")]
+            watchdog_alive,
             ctrl: Mutex::new(tx),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             system_eq: Mutex::new(None),
@@ -985,6 +1072,8 @@ impl AudioEngine {
 
 impl Drop for AudioEngine {
     fn drop(&mut self) {
+        #[cfg(target_os = "macos")]
+        self.watchdog_alive.store(false, Ordering::Relaxed);
         if let Ok(tx) = self.ctrl.lock() {
             let _ = tx.send(EngineCommand::Shutdown);
         }
@@ -1039,6 +1128,8 @@ struct ControlCtx {
     stem_gains: Arc<StemGains>,
     ir_slot: IrSlot,
     compander_gr: std::sync::Arc<CompanderMeter>,
+    output_beat: Arc<AtomicU64>,
+    tap_active: Arc<AtomicBool>,
 }
 
 fn control_loop(ctx: ControlCtx) {
@@ -1057,6 +1148,8 @@ fn control_loop(ctx: ControlCtx) {
         stem_gains,
         ir_slot,
         compander_gr,
+        output_beat,
+        tap_active,
     } = ctx;
     let setup = output_setup().ok();
     // The active stream is held only to keep audio flowing (RAII); replacing or
@@ -1064,6 +1157,20 @@ fn control_loop(ctx: ControlCtx) {
     let mut active: Option<cpal::Stream> = None;
 
     while let Ok(cmd) = rx.recv() {
+        // Disengage the macOS system-tap watchdog for any command that installs a
+        // non-tap source or stops playback, so it never rebuilds a tap over
+        // ordinary playback. The tap commands set/keep it; Pause/Resume/Shutdown
+        // leave it untouched. (`tap_active` is engine-wide; on non-macOS it is
+        // only ever cleared here and never read.)
+        match &cmd {
+            EngineCommand::PlaySource(_)
+            | EngineCommand::Pause
+            | EngineCommand::Resume
+            | EngineCommand::Shutdown => {}
+            #[cfg(target_os = "macos")]
+            EngineCommand::RestartSystemTap => {}
+            _ => tap_active.store(false, Ordering::Relaxed),
+        }
         match cmd {
             EngineCommand::Play(audio) => {
                 drop(active.take()); // stop & release any current stream first
@@ -1096,6 +1203,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    output_beat.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1144,6 +1252,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    output_beat.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1197,6 +1306,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    output_beat.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1243,6 +1353,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    output_beat.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1294,6 +1405,7 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    output_beat.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1328,6 +1440,7 @@ fn control_loop(ctx: ControlCtx) {
                         sample_rate as f32,
                         ir_slot.clone(),
                         compander_gr.clone(),
+                        output_beat.clone(),
                     ) {
                         Ok(s) if s.play().is_ok() => {
                             playing.store(true, Ordering::Relaxed);
@@ -1346,6 +1459,7 @@ fn control_loop(ctx: ControlCtx) {
                 let Some((device, config)) = &setup else {
                     crate::diag::log("PlaySource: NO OUTPUT SETUP — aborting");
                     playing.store(false, Ordering::Relaxed);
+                    tap_active.store(false, Ordering::Relaxed);
                     continue;
                 };
                 let sample_rate = config.sample_rate;
@@ -1368,12 +1482,77 @@ fn control_loop(ctx: ControlCtx) {
                     sample_rate as f32,
                     ir_slot.clone(),
                     compander_gr.clone(),
+                    output_beat.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
+                        // This is the macOS system tap: arm the watchdog so a dead
+                        // output stream is rebuilt instead of muting the system.
+                        tap_active.store(true, Ordering::Relaxed);
                         active = Some(s);
                     }
-                    _ => playing.store(false, Ordering::Relaxed),
+                    _ => {
+                        playing.store(false, Ordering::Relaxed);
+                        tap_active.store(false, Ordering::Relaxed);
+                    }
+                }
+            }
+            // Watchdog-driven recovery: the tap's output stream died (e.g. a
+            // default-output-device change). Rebuild a fresh tap on the *current*
+            // default device. Re-resolving here (rather than the frozen startup
+            // `setup`) is what lets the tap follow the new device. If anything
+            // fails we leave the tap off — audio works, just unequalised — rather
+            // than risk leaving the system muted; the watchdog retries.
+            #[cfg(target_os = "macos")]
+            EngineCommand::RestartSystemTap => {
+                if !tap_active.load(Ordering::Relaxed) {
+                    continue; // user turned the tap off in the meantime
+                }
+                crate::diag::log("RestartSystemTap: rebuilding tap on current default device");
+                drop(active.take()); // tear down old tap (unmutes) + dead stream
+                let Ok((device, config)) = output_setup() else {
+                    crate::diag::log("RestartSystemTap: no output device — will retry");
+                    playing.store(false, Ordering::Relaxed);
+                    continue;
+                };
+                let sample_rate = config.sample_rate;
+                let channels = config.channels as usize;
+                pos.prepare(sample_rate, 0);
+                match SystemTapSource::new(sample_rate) {
+                    Ok(source) => match build_output_stream(
+                        &device,
+                        config,
+                        Box::new(source),
+                        shared.clone(),
+                        meters.clone(),
+                        spectrum.clone(),
+                        pos.clone(),
+                        playing.clone(),
+                        channels,
+                        sample_rate as f32,
+                        ir_slot.clone(),
+                        compander_gr.clone(),
+                        output_beat.clone(),
+                    ) {
+                        Ok(s) if s.play().is_ok() => {
+                            playing.store(true, Ordering::Relaxed);
+                            // Bump the heartbeat so the watchdog sees progress and
+                            // doesn't immediately re-fire before the first callback.
+                            output_beat.fetch_add(1, Ordering::Relaxed);
+                            active = Some(s);
+                            crate::diag::log("RestartSystemTap: tap rebuilt OK");
+                        }
+                        _ => {
+                            playing.store(false, Ordering::Relaxed);
+                            crate::diag::log("RestartSystemTap: stream build failed — will retry");
+                        }
+                    },
+                    Err(e) => {
+                        playing.store(false, Ordering::Relaxed);
+                        crate::diag::log(&format!(
+                            "RestartSystemTap: tap creation failed ({e:?}) — will retry"
+                        ));
+                    }
                 }
             }
             EngineCommand::Pause => {
@@ -1417,6 +1596,7 @@ fn build_output_stream(
     sample_rate: f32,
     ir_slot: IrSlot,
     gr_meter: std::sync::Arc<CompanderMeter>,
+    output_beat: Arc<AtomicU64>,
 ) -> Result<cpal::Stream, AudioError> {
     let mut renderer = Renderer::new(source, sample_rate, channels, ir_slot, gr_meter);
 
@@ -1424,6 +1604,9 @@ fn build_output_stream(
         .build_output_stream::<f32, _, _>(
             config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                // Liveness heartbeat: a frozen counter is how the macOS tap
+                // watchdog detects this stream has died. One relaxed add, RT-safe.
+                output_beat.fetch_add(1, Ordering::Relaxed);
                 let state = shared.load_full();
                 let exhausted =
                     renderer.render(data, channels, state.as_ref(), &meters, &spectrum, &pos);
@@ -1432,18 +1615,131 @@ fn build_output_stream(
                 }
             },
             move |_err| {
-                // Stream errors (e.g. device unplugged) end playback; the next
-                // command rebuilds the stream. Nothing to do on the RT side.
+                // Stream errors (e.g. device unplugged) end playback. For the
+                // system tap the watchdog rebuilds it; otherwise the next play
+                // command rebuilds. Nothing to do on the RT side.
             },
             None,
         )
         .map_err(|e| AudioError::Stream(e.to_string()))
 }
 
+/// macOS tap watchdog loop. Samples the output heartbeat every `TICK` and, while a
+/// tap session is engaged and not paused, asks the control thread to rebuild the
+/// tap once the heartbeat has been frozen for `STALL_TICKS` samples — recovering
+/// from a dead output stream (e.g. a default-output-device change) that would
+/// otherwise leave the whole system muted until the app is restarted.
+#[cfg(target_os = "macos")]
+fn tap_watchdog(
+    alive: Arc<AtomicBool>,
+    beat: Arc<AtomicU64>,
+    tap_active: Arc<AtomicBool>,
+    paused: Arc<AtomicBool>,
+    ctrl: mpsc::Sender<EngineCommand>,
+) {
+    use std::time::Duration;
+    /// Sampling cadence. Short enough to recover quickly, long enough to be free.
+    const TICK: Duration = Duration::from_millis(250);
+    /// Consecutive frozen samples before declaring the output dead (~750 ms).
+    const STALL_TICKS: u32 = 3;
+
+    let mut detector = StallDetector::new();
+    while alive.load(Ordering::Relaxed) {
+        std::thread::sleep(TICK);
+        if !alive.load(Ordering::Relaxed) {
+            break;
+        }
+        let active = tap_active.load(Ordering::Relaxed) && !paused.load(Ordering::Relaxed);
+        let now = beat.load(Ordering::Relaxed);
+        if detector.observe(now, active, STALL_TICKS) {
+            crate::diag::log("tap watchdog: output stalled — requesting tap rebuild");
+            // If the control thread is gone the engine is shutting down: stop.
+            if ctrl.send(EngineCommand::RestartSystemTap).is_err() {
+                break;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sources::FilePlaybackSource;
+
+    const THRESH: u32 = 3;
+
+    #[test]
+    fn stall_detector_never_fires_when_inactive() {
+        let mut d = StallDetector::new();
+        // A frozen heartbeat is irrelevant while no tap session is live (or paused).
+        for _ in 0..(THRESH * 3) {
+            assert!(!d.observe(42, false, THRESH));
+        }
+    }
+
+    #[test]
+    fn stall_detector_never_fires_while_output_progresses() {
+        let mut d = StallDetector::new();
+        for beat in 1..=(THRESH * 3) as u64 {
+            assert!(!d.observe(beat, true, THRESH), "advancing output is healthy");
+        }
+    }
+
+    #[test]
+    fn stall_detector_fires_after_threshold_of_frozen_beats() {
+        let mut d = StallDetector::new();
+        // Prime with a healthy beat, then freeze.
+        assert!(!d.observe(100, true, THRESH));
+        assert!(!d.observe(100, true, THRESH)); // miss 1
+        assert!(!d.observe(100, true, THRESH)); // miss 2
+        assert!(
+            d.observe(100, true, THRESH),
+            "fires on the THRESH-th frozen sample"
+        );
+    }
+
+    #[test]
+    fn stall_detector_rearms_and_refires_if_still_dead() {
+        let mut d = StallDetector::new();
+        assert!(!d.observe(7, true, THRESH));
+        for _ in 0..(THRESH - 1) {
+            assert!(!d.observe(7, true, THRESH));
+        }
+        assert!(d.observe(7, true, THRESH), "first fire");
+        // Still frozen: should re-arm and fire again after another full window,
+        // not spin every tick.
+        for _ in 0..(THRESH - 1) {
+            assert!(!d.observe(7, true, THRESH));
+        }
+        assert!(d.observe(7, true, THRESH), "second fire after re-arm");
+    }
+
+    #[test]
+    fn stall_detector_resets_on_recovery() {
+        let mut d = StallDetector::new();
+        assert!(!d.observe(5, true, THRESH));
+        assert!(!d.observe(5, true, THRESH)); // miss 1
+        // Output recovers before the threshold — counter must reset.
+        assert!(!d.observe(6, true, THRESH));
+        // A fresh freeze needs the full window again.
+        assert!(!d.observe(6, true, THRESH)); // miss 1
+        assert!(!d.observe(6, true, THRESH)); // miss 2
+        assert!(d.observe(6, true, THRESH));
+    }
+
+    #[test]
+    fn stall_detector_pause_resets_miss_count() {
+        let mut d = StallDetector::new();
+        assert!(!d.observe(9, true, THRESH));
+        assert!(!d.observe(9, true, THRESH)); // miss 1
+        assert!(!d.observe(9, true, THRESH)); // miss 2
+        // Pausing (active=false) clears the count even with a frozen beat.
+        assert!(!d.observe(9, false, THRESH));
+        // Resuming: a frozen beat must again take the full window to fire.
+        assert!(!d.observe(9, true, THRESH)); // miss 1
+        assert!(!d.observe(9, true, THRESH)); // miss 2
+        assert!(d.observe(9, true, THRESH));
+    }
 
     fn constant_source(amplitude: f32, frames: usize) -> Box<dyn AudioSource> {
         let mut s = Vec::with_capacity(frames * 2);

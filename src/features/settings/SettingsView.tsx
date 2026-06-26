@@ -25,6 +25,7 @@ import { useUiStore } from "@/stores/ui";
 import { useEngineStore } from "@/stores/engine";
 import { useLibraryStore } from "@/stores/library";
 import { useVisualizerStore, VISUALIZER_LIMITS } from "@/stores/visualizer";
+import { useSystemEqStore } from "@/stores/systemEq";
 import {
   captureVirtualAvailable,
   ipcErrorMessage,
@@ -38,8 +39,6 @@ import {
   listOutputDevices,
   pickFolder,
   playerPlayCapture,
-  playerPlaySystemAudio,
-  stopSystemAudio,
   systemAudioAvailable,
 } from "@/lib/ipc";
 import type { DeviceInfo } from "@/lib/types";
@@ -409,9 +408,12 @@ export function SettingsView() {
   const [devices, setDevices] = useState<DeviceState>({ status: "loading" });
   const [, setVirtualAvailable] = useState(false);
   const [systemAvailable, setSystemAvailable] = useState(false);
-  // System-wide EQ runs out-of-band on Linux/Windows (not through the engine's
-  // play state), so track its on/off here for the toggle.
-  const [systemEqOn, setSystemEqOn] = useState(false);
+  // System-wide EQ is a persisted session mode (re-engaged on launch), so its
+  // on/off + last error live in a shared store rather than local state.
+  const systemEqOn = useSystemEqStore((s) => s.enabled);
+  const systemEqError = useSystemEqStore((s) => s.error);
+  const enableSystemEq = useSystemEqStore((s) => s.enable);
+  const disableSystemEq = useSystemEqStore((s) => s.disable);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -440,15 +442,10 @@ export function SettingsView() {
     playerPlayCapture().catch((e) => setCaptureError(ipcErrorMessage(e)));
   };
   const startSystemAudio = () => {
-    setCaptureError(null);
-    playerPlaySystemAudio()
-      .then(() => setSystemEqOn(true))
-      .catch((e) => setCaptureError(ipcErrorMessage(e)));
+    void enableSystemEq();
   };
   const stopSystemEq = () => {
-    stopSystemAudio()
-      .catch(() => {})
-      .finally(() => setSystemEqOn(false));
+    void disableSystemEq();
   };
   const deactivate = () => {
     licenseDeactivate()
@@ -596,8 +593,10 @@ export function SettingsView() {
               </Button>
             </div>
 
-            {captureError && (
-              <p className="text-sm text-danger">{captureError}</p>
+            {(captureError || systemEqError) && (
+              <p className="text-sm text-danger">
+                {captureError ?? systemEqError}
+              </p>
             )}
 
             <div className="flex items-start gap-2 rounded-control border border-border bg-surface px-3 py-2 text-xs text-text-muted">

@@ -21,6 +21,7 @@
         "minHeight": 200,
         "resizable": true,
         "fullscreen": false,
+        "titleBarStyle": "Overlay",
         "center": true,
         "theme": "Dark",
         "backgroundColor": "#0A0B0E"

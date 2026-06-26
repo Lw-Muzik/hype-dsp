@@ -74,3 +74,6 @@ docs/          architecture · audio-driver · browser-extension
 - **Licensing** is an explicitly-marked local mock; the production contract is in
   [`docs/architecture.md`](docs/architecture.md).
 - Meters and spectrum render only **real** engine data — never synthesized.
+
+
+sudo chown -R $(whoami) /Users/bruno/.cache/node

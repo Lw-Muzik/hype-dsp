@@ -210,6 +210,12 @@ export function MusicLibrary() {
   // A source is still streaming in behind already-visible tracks.
   const stillLoading = library.loading || phone.loading || cloud.loading;
 
+  // While a big local library pages in, show how far along we are.
+  const loadProgress =
+    library.loading && library.total > library.count
+      ? ` ${library.count.toLocaleString()} / ${library.total.toLocaleString()}`
+      : "";
+
   return (
     <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-2">
       {/* Source filter + global search */}
@@ -399,7 +405,7 @@ export function MusicLibrary() {
       {stillLoading && !showLoading && filtered.length > 0 && (
         <p className="flex items-center justify-center gap-2 px-2 text-center text-xs text-text-faint">
           <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-          Loading more music…
+          Loading more music…{loadProgress}
         </p>
       )}
     </div>

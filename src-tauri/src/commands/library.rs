@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use hm_audio::{probe_artwork, probe_track};
-use hm_core::{IpcError, LibraryTrack, MediaStore, Playlist};
+use hm_core::{IpcError, LibraryPage, LibraryTrack, MediaStore, Playlist};
 use serde::Serialize;
 use tauri::{Emitter, State};
 
@@ -126,9 +126,39 @@ pub fn library_refresh_tags(
     Ok(index_paths(&app, &store, &paths))
 }
 
-#[tauri::command]
+/// List all library tracks at once. Kept for back-compat; the Library UI uses
+/// the paged path below so it never parses the whole library in one blocking
+/// task. `async` so even this whole-library read runs off Tauri's main thread.
+#[tauri::command(async)]
 pub fn library_list(store: State<'_, MediaStore>) -> Result<Vec<LibraryTrack>, IpcError> {
     store.list_tracks().map_err(Into::into)
+}
+
+/// Total track count, so the UI can show a load-progress fraction.
+#[tauri::command(async)]
+pub fn library_count(store: State<'_, MediaStore>) -> Result<i64, IpcError> {
+    store.count_tracks().map_err(Into::into)
+}
+
+/// Count of tracks whose file is currently reachable. The UI probes this on
+/// window focus and only reloads when it differs from what's shown — so plugging
+/// in or ejecting a drive updates the library without a needless full reload.
+#[tauri::command(async)]
+pub fn library_available_count(store: State<'_, MediaStore>) -> Result<i64, IpcError> {
+    store.count_available_tracks().map_err(Into::into)
+}
+
+/// One ordered page of the library (reachable tracks only). The UI pages these
+/// in incrementally and yields between pages, so the main thread is never
+/// blocked even for a 1M-track library. `async` so each page read runs off
+/// Tauri's main thread.
+#[tauri::command(async)]
+pub fn library_list_page(
+    store: State<'_, MediaStore>,
+    offset: i64,
+    limit: i64,
+) -> Result<LibraryPage, IpcError> {
+    store.list_tracks_page(offset, limit).map_err(Into::into)
 }
 
 #[tauri::command]

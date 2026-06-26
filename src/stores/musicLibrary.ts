@@ -4,13 +4,22 @@ import {
   cloudCachedMetadata,
   cloudStatus,
   cloudTrackMetadata,
-  libraryList,
+  libraryAvailableCount,
+  libraryCount,
+  libraryListPage,
   linkLibrary,
   linkPaired,
 } from "@/lib/ipc";
 import { cloudItem, localItem, phoneItem } from "@/stores/engine";
 import type { QueueItem } from "@/stores/engine";
-import type { CloudAudioPage, CloudEntry, CloudProvider, CloudTrackMeta } from "@/lib/types";
+import type {
+  CloudAudioPage,
+  CloudEntry,
+  CloudProvider,
+  CloudTrackMeta,
+  LibraryPage,
+  LibraryTrack,
+} from "@/lib/types";
 
 /** A browsable track from any source, ready to enqueue (it's a `QueueItem`). */
 export interface MusicTrack extends QueueItem {
@@ -41,7 +50,10 @@ export interface SourceState {
   loading: boolean;
   /** A load has finished at least once → connected/count can be trusted. */
   ready: boolean;
+  /** Tracks loaded so far (climbs as a large library streams in). */
   count: number;
+  /** Total tracks expected while loading, for a progress fraction (0 if unknown). */
+  total: number;
 }
 
 /** The immediate parent folder name of a file path (for the Folders facet). */
@@ -49,6 +61,125 @@ function parentFolder(path: string): string | null {
   const norm = path.replace(/\\/g, "/").replace(/\/+$/, "");
   const parts = norm.split("/").filter(Boolean);
   return parts.length >= 2 ? parts[parts.length - 2]! : null;
+}
+
+/** Map one stored library row into a browsable `MusicTrack`. */
+function mapLocalTrack(t: LibraryTrack): MusicTrack {
+  return {
+    ...localItem(t),
+    source: "local" as const,
+    uid: `local:${t.path}`,
+    genre: t.genre,
+    folder: parentFolder(t.path),
+    artPath: t.path,
+    cover: null,
+  };
+}
+
+/**
+ * Yield to the event loop so the browser can paint and process input between
+ * work chunks. A `MessageChannel` task has none of `setTimeout`'s ~4ms clamp;
+ * fall back to `setTimeout` where it isn't available.
+ */
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof MessageChannel !== "undefined") {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = () => resolve();
+      ch.port2.postMessage(undefined);
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
+// How many tracks to pull per IPC page, and how often to push the growing list
+// to the UI. A page is a bounded parse (~1000 rows ≈ a few ms); publishing on a
+// time budget (not per page) keeps the O(n) consumer derivations down to a few
+// per second instead of once per page, so the load stays smooth at any size.
+const LOCAL_PAGE_SIZE = 1000;
+const LOCAL_PUBLISH_INTERVAL_MS = 200;
+
+/** Injectable dependencies for {@link loadLocalPaged} (pure + unit-testable). */
+export interface LocalPagedDeps {
+  /** Total track count (best-effort, for a progress fraction). */
+  fetchCount: () => Promise<number>;
+  /** Fetch one ordered page (reachable tracks only); `scanned` < `limit` means
+   *  end-of-list, and is what advances the offset (so hidden rows don't stall). */
+  fetchPage: (offset: number, limit: number) => Promise<LibraryPage>;
+  /** Push the accumulated tracks (a fresh array) + known total to the store. */
+  publish: (tracks: MusicTrack[], total: number) => void;
+  /** Yield to the event loop between pages. */
+  yieldToLoop: () => Promise<void>;
+  /** True once this load was superseded (invalidate/reload) → stop now. */
+  isStale: () => boolean;
+  /** Monotonic clock (ms) for throttling publishes; injectable for tests. */
+  now: () => number;
+  pageSize?: number;
+  publishIntervalMs?: number;
+}
+
+/**
+ * Drive an incremental, non-blocking local-library load: page tracks in, map
+ * them cheaply (O(1) per track), publish to the UI on a time budget, and yield
+ * to the event loop between pages. The main thread never parses or maps the
+ * whole library in one task, so the UI stays interactive even for a 1M-track
+ * library (it populates progressively instead of freezing until done).
+ *
+ * Returns `true` if it ran to completion, `false` if it was cancelled mid-load
+ * (so the caller only flips to "ready" on a genuine finish).
+ */
+export async function loadLocalPaged(deps: LocalPagedDeps): Promise<boolean> {
+  const {
+    fetchCount,
+    fetchPage,
+    publish,
+    yieldToLoop,
+    isStale,
+    now,
+    pageSize = LOCAL_PAGE_SIZE,
+    publishIntervalMs = LOCAL_PUBLISH_INTERVAL_MS,
+  } = deps;
+
+  // Count is best-effort: it only drives a progress fraction, so a failure
+  // here must not abort the load itself.
+  let total = 0;
+  try {
+    total = await fetchCount();
+  } catch {
+    total = 0;
+  }
+  if (isStale()) return false;
+
+  const acc: MusicTrack[] = [];
+  let offset = 0;
+  let publishedLen = -1; // force a publish after the first page
+  let lastPublish = -Infinity;
+
+  for (;;) {
+    const page = await fetchPage(offset, pageSize);
+    if (isStale()) return false;
+    for (const row of page.tracks) acc.push(mapLocalTrack(row));
+    // Advance by rows *scanned*, not rows returned: a page may hide unreachable
+    // tracks (an unplugged drive), so returned length can be < scanned.
+    offset += page.scanned;
+    // The count can lag a concurrent scan; never claim fewer than we hold.
+    total = Math.max(total, acc.length);
+
+    const done = page.scanned < pageSize;
+    // Publish when finished, or on the time budget — but only if there's
+    // something new, so long stretches of hidden rows don't churn re-renders.
+    const grew = acc.length > publishedLen;
+    if ((done || now() - lastPublish >= publishIntervalMs) && (grew || done)) {
+      publish(acc.slice(), total);
+      publishedLen = acc.length;
+      lastPublish = now();
+    }
+    if (done) return true;
+
+    await yieldToLoop();
+    if (isStale()) return false;
+  }
 }
 
 /** Map a provider's flat, account-wide audio entries (all folders — mirrors the
@@ -113,6 +244,9 @@ interface MusicLibraryStore {
   localLoad: LoadStatus;
   /** The library `version` the local set was loaded for (re-fetch when it bumps). */
   localVersion: number;
+  /** Total local tracks expected (for a load-progress fraction); `local.length`
+   *  climbs toward it as pages stream in. */
+  localTotal: number;
   phoneLoad: LoadStatus;
   phoneConnected: boolean;
   cloudLoad: LoadStatus;
@@ -123,6 +257,9 @@ interface MusicLibraryStore {
   ensureLocal: (version: number) => void;
   ensurePhone: () => void;
   ensureCloud: () => void;
+  /** Re-check local availability (e.g. on window focus) and reload only if a
+   *  drive was plugged in or ejected since the last load. */
+  revalidateLocal: () => void;
   /** Mark a source stale so the next `ensure*` reloads it (after pair/connect). */
   invalidatePhone: () => void;
   invalidateCloud: () => void;
@@ -135,6 +272,8 @@ interface MusicLibraryStore {
 let localGen = 0;
 let phoneGen = 0;
 let cloudGen = 0;
+// Guards against overlapping focus probes (one cheap availability check at a time).
+let revalidating = false;
 
 /**
  * The single source of truth for the merged music library (local + phones +
@@ -151,6 +290,7 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
   cloudMeta: new Map(),
   localLoad: "idle",
   localVersion: -1,
+  localTotal: 0,
   phoneLoad: "idle",
   phoneConnected: false,
   cloudLoad: "idle",
@@ -163,22 +303,23 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
     // A version bump (a re-scan in Settings) reloads, recovering from errors.
     if (s.localLoad !== "idle" && s.localVersion === version) return;
     const gen = ++localGen;
-    set({ localLoad: "loading", localVersion: version });
-    libraryList()
-      .then((tracks) => {
+    // Start fresh: the library streams in page by page, never blocking the UI.
+    set({ localLoad: "loading", localVersion: version, local: [], localTotal: 0 });
+    loadLocalPaged({
+      fetchCount: libraryCount,
+      fetchPage: libraryListPage,
+      publish: (tracks, total) => {
         if (gen !== localGen) return;
-        set({
-          local: tracks.map((t) => ({
-            ...localItem(t),
-            source: "local" as const,
-            uid: `local:${t.path}`,
-            genre: t.genre,
-            folder: parentFolder(t.path),
-            artPath: t.path,
-            cover: null,
-          })),
-          localLoad: "ready",
-        });
+        set({ local: tracks, localTotal: total });
+      },
+      yieldToLoop: yieldToMain,
+      isStale: () => gen !== localGen,
+      now: () => performance.now(),
+    })
+      .then((completed) => {
+        // The final publish already set `local`; only flip to ready on a real
+        // finish (a cancelled load leaves status as-is for the next ensure).
+        if (completed && gen === localGen) set({ localLoad: "ready" });
       })
       .catch(() => {
         if (gen !== localGen) return;
@@ -327,6 +468,36 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
       .catch(() => {
         if (gen !== cloudGen) return;
         set({ cloudBase: [], cloudConnected: false, cloudLoad: "error" });
+      });
+  },
+
+  revalidateLocal: () => {
+    const s = get();
+    // Only reconcile a settled library — a load in flight already reflects
+    // current availability. One probe at a time.
+    if (s.localLoad !== "ready" || revalidating) return;
+    revalidating = true;
+    const shownAtProbe = s.local.length;
+    libraryAvailableCount()
+      .then((available) => {
+        // Still settled and unchanged since the probe, but the reachable count
+        // differs from what's shown → a drive was plugged in or ejected →
+        // reload. Flipping to `idle` makes the Library view's load effect
+        // re-fetch (filtered); if it's unmounted, the reload happens lazily on
+        // its next open.
+        const now = get();
+        if (
+          now.localLoad === "ready" &&
+          now.local.length === shownAtProbe &&
+          available !== shownAtProbe
+        ) {
+          localGen++; // cancel any stragglers
+          set({ localLoad: "idle" });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        revalidating = false;
       });
   },
 

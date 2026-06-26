@@ -459,6 +459,17 @@ pub struct LibraryTrack {
     pub duration_secs: Option<f64>,
 }
 
+/// One page of library tracks. `tracks` is the available subset (rows whose
+/// file is currently reachable); `scanned` is the number of DB rows the page
+/// read **before** availability filtering, so the caller can advance its offset
+/// correctly even when some rows are hidden (a disconnected drive).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryPage {
+    pub tracks: Vec<LibraryTrack>,
+    pub scanned: i64,
+}
+
 /// A user playlist (ordered list of track paths, stored separately).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

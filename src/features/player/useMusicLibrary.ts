@@ -50,6 +50,7 @@ export function useMusicLibrary(): MusicLibrary {
   const libraryVersion = useLibraryStore((s) => s.version);
 
   const local = useMusicLibraryStore((s) => s.local);
+  const localTotal = useMusicLibraryStore((s) => s.localTotal);
   const phone = useMusicLibraryStore((s) => s.phone);
   const cloudBase = useMusicLibraryStore((s) => s.cloudBase);
   const cloudMeta = useMusicLibraryStore((s) => s.cloudMeta);
@@ -104,18 +105,21 @@ export function useMusicLibrary(): MusicLibrary {
       loading: localLoad === "loading",
       ready: isReady(localLoad),
       count: local.length,
+      total: Math.max(localTotal, local.length),
     },
     phone: {
       connected: phoneConnected,
       loading: phoneLoad === "loading",
       ready: isReady(phoneLoad),
       count: phone.length,
+      total: phone.length,
     },
     cloud: {
       connected: cloudConnected,
       loading: cloudLoad === "loading",
       ready: isReady(cloudLoad),
       count: cloud.length,
+      total: cloud.length,
     },
     reload,
   };

@@ -8,6 +8,7 @@ import { RightSidebar } from "@/components/RightSidebar";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import { Router } from "@/app/router";
 import { useSystemEqStore } from "@/stores/systemEq";
+import { useMusicLibraryStore } from "@/stores/musicLibrary";
 
 /** The application shell: sidebar + top bar + the active view + now-playing. */
 export function App() {
@@ -16,6 +17,16 @@ export function App() {
   useEffect(() => {
     void resumeSystemEq();
   }, [resumeSystemEq]);
+
+  // Re-check the local library when the app regains focus: a drive may have been
+  // plugged in or ejected while we were away, so tracks should appear/disappear.
+  // The probe is cheap and only reloads when availability actually changed.
+  const revalidateLocal = useMusicLibraryStore((s) => s.revalidateLocal);
+  useEffect(() => {
+    const onFocus = () => revalidateLocal();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [revalidateLocal]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface text-text">

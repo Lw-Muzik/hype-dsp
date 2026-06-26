@@ -289,6 +289,14 @@ export interface LibraryTrack {
   durationSecs: number | null;
 }
 
+/** One page of library tracks. `tracks` is the reachable subset; `scanned` is
+ *  the DB rows read before availability filtering, so the loader advances its
+ *  offset correctly even when an unplugged drive's rows are hidden. */
+export interface LibraryPage {
+  tracks: LibraryTrack[];
+  scanned: number;
+}
+
 export interface Playlist {
   id: string;
   name: string;

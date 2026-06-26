@@ -29,8 +29,8 @@ import { useSystemEqStore } from "@/stores/systemEq";
 import {
   captureVirtualAvailable,
   ipcErrorMessage,
+  libraryCount,
   libraryIdentifyMissing,
-  libraryList,
   libraryRefreshTags,
   libraryScan,
   onLibraryScanProgress,
@@ -191,8 +191,10 @@ function MusicLibraryCard() {
   const [note, setNote] = useState<string | null>(null);
 
   const loadCount = useCallback(() => {
-    libraryList()
-      .then((t) => setCount(t.length))
+    // Just the count — never pull the whole library here (a 20k+ drive would
+    // make this a multi-MB transfer + parse just to show a number).
+    libraryCount()
+      .then((n) => setCount(n))
       .catch(() => setCount(null));
   }, []);
 

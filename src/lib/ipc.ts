@@ -27,6 +27,7 @@ import type {
   EqPreset,
   HeadphoneProfile,
   IpcError,
+  LibraryPage,
   LibraryTrack,
   LicenseStatus,
   MixerSnapshot,
@@ -725,9 +726,26 @@ export function libraryIdentifyMissing(): Promise<number> {
   return invoke<number>("library_identify_missing");
 }
 
-/** List all library tracks. */
+/** List all library tracks at once (back-compat; the Library UI pages instead). */
 export function libraryList(): Promise<LibraryTrack[]> {
   return invoke<LibraryTrack[]>("library_list");
+}
+
+/** Total track count, for showing a load-progress fraction. */
+export function libraryCount(): Promise<number> {
+  return invoke<number>("library_count");
+}
+
+/** Count of tracks whose file is currently reachable — probed on focus to
+ *  detect a drive being plugged in or ejected without a needless reload. */
+export function libraryAvailableCount(): Promise<number> {
+  return invoke<number>("library_available_count");
+}
+
+/** One ordered page of the library (`title` order), reachable tracks only, for
+ *  incremental loading. `scanned` < `limit` means the end has been reached. */
+export function libraryListPage(offset: number, limit: number): Promise<LibraryPage> {
+  return invoke<LibraryPage>("library_list_page", { offset, limit });
 }
 
 /* ----------------------------------------------- open from the file manager */

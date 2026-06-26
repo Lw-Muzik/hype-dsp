@@ -15,6 +15,7 @@ import type {
   AccountStatus,
   AppInfo,
   ChainPreset,
+  CloudAccount,
   CloudAudioPage,
   CloudEntry,
   CloudProvider,
@@ -154,68 +155,69 @@ export function engineConvolverLoadIr(path: string): Promise<ConvolverIrInfo> {
 
 /* ------------------------------------------------------------ cloud music */
 
-/** Which cloud providers are configured and connected. */
+/** The connected cloud accounts + which providers are configured. */
 export function cloudStatus(): Promise<CloudStatus> {
   return invoke<CloudStatus>("cloud_status");
 }
 
-/** Run the OAuth flow for a provider (opens the browser). */
-export function cloudConnect(provider: CloudProvider): Promise<void> {
-  return invoke<void>("cloud_connect", { provider });
+/** Run the OAuth flow for a provider (opens the browser) and add the signed-in
+ *  account. Connecting a second account of the same provider adds another. */
+export function cloudConnect(provider: CloudProvider): Promise<CloudAccount> {
+  return invoke<CloudAccount>("cloud_connect", { provider });
 }
 
-/** Forget a provider's stored tokens. */
-export function cloudDisconnect(provider: CloudProvider): Promise<void> {
-  return invoke<void>("cloud_disconnect", { provider });
+/** Forget one account's stored tokens (by account id). */
+export function cloudDisconnect(accountId: string): Promise<void> {
+  return invoke<void>("cloud_disconnect", { accountId });
 }
 
 /** List one cloud folder's contents (subfolders + audio); "" = account root. */
 export function cloudList(
-  provider: CloudProvider,
+  accountId: string,
   folder: string,
 ): Promise<CloudEntry[]> {
-  return invoke<CloudEntry[]>("cloud_list", { provider, folder });
+  return invoke<CloudEntry[]>("cloud_list", { accountId, folder });
 }
 
-/** Every audio file in the account, flat (all folders), for the Player's
- *  unified library. Mirrors the mobile app's account-wide listing. The listing
- *  is cached on disk per provider: by default a cached copy is returned
- *  instantly (with `fromCache: true`); pass `refresh` to re-list from the
- *  provider and update the cache. */
+/** Every audio file in an account, flat (all folders), for the Player's unified
+ *  library. Mirrors the mobile app's account-wide listing. The listing is
+ *  cached on disk per account: by default a cached copy is returned instantly
+ *  (with `fromCache: true`); pass `refresh` to re-list from the account and
+ *  update the cache. */
 export function cloudAllAudio(
-  provider: CloudProvider,
+  accountId: string,
   refresh = false,
 ): Promise<CloudAudioPage> {
-  return invoke<CloudAudioPage>("cloud_all_audio", { provider, refresh });
+  return invoke<CloudAudioPage>("cloud_all_audio", { accountId, refresh });
 }
 
-/** Every cached tag/cover for a provider, keyed by file id — hydrates the
+/** Every cached tag/cover for an account, keyed by file id — hydrates the
  *  library's covers/titles instantly on launch without a per-track round-trip. */
 export function cloudCachedMetadata(
-  provider: CloudProvider,
+  accountId: string,
 ): Promise<Record<string, CloudTrackMeta>> {
   return invoke<Record<string, CloudTrackMeta>>("cloud_cached_metadata", {
-    provider,
+    accountId,
   });
 }
 
 /** Read a cloud track's embedded tags (title/artist/album + cover) from the
  *  file's leading bytes. Cached on disk per file, so it's a one-time download. */
 export function cloudTrackMetadata(
-  provider: CloudProvider,
+  accountId: string,
   fileId: string,
   name: string,
 ): Promise<CloudTrackMeta | null> {
   return invoke<CloudTrackMeta | null>("cloud_track_metadata", {
-    provider,
+    accountId,
     fileId,
     name,
   });
 }
 
 /** Stream a cloud file through the enhancement chain. */
-export function cloudPlay(provider: CloudProvider, fileId: string): Promise<void> {
-  return invoke<void>("cloud_play", { provider, fileId });
+export function cloudPlay(accountId: string, fileId: string): Promise<void> {
+  return invoke<void>("cloud_play", { accountId, fileId });
 }
 
 /** One track in a cloud crossfade/gapless queue (id + extension hint). */
@@ -224,13 +226,14 @@ export interface CloudQueueItem {
   ext?: string;
 }
 
-/** Play a cloud queue gaplessly/crossfading; URLs resolve lazily per track. */
+/** Play a cloud queue gaplessly/crossfading; URLs resolve lazily per track. All
+ *  items must belong to the same account (`accountId`). */
 export function playerPlayCloudQueue(
-  provider: CloudProvider,
+  accountId: string,
   items: CloudQueueItem[],
   start: number,
 ): Promise<void> {
-  return invoke<void>("player_play_cloud_queue", { provider, items, start });
+  return invoke<void>("player_play_cloud_queue", { accountId, items, start });
 }
 
 /* ------------------------------------------------------------- Phone Link */

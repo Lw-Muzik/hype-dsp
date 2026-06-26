@@ -6,7 +6,9 @@ import {
   Folder,
   HardDrive,
   Music,
+  Plus,
   RefreshCw,
+  UserRound,
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -19,14 +21,18 @@ import {
   cloudStatus,
   ipcErrorMessage,
 } from "@/lib/ipc";
-import type { CloudEntry, CloudProvider, CloudStatus } from "@/lib/types";
+import type {
+  CloudAccount,
+  CloudEntry,
+  CloudProvider,
+  CloudStatus,
+} from "@/lib/types";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 interface ProviderMeta {
   id: CloudProvider;
   name: string;
-  connected: (s: CloudStatus) => boolean;
   configured: (s: CloudStatus) => boolean;
 }
 
@@ -34,27 +40,26 @@ const PROVIDERS: readonly ProviderMeta[] = [
   {
     id: "googleDrive",
     name: "Google Drive",
-    connected: (s) => s.googleConnected,
     configured: (s) => s.googleConfigured,
   },
   {
     id: "dropbox",
     name: "Dropbox",
-    connected: (s) => s.dropboxConnected,
     configured: (s) => s.dropboxConfigured,
   },
 ];
 
-/** A breadcrumb level: which provider folder we're inside. */
+/** A breadcrumb level: which account folder we're inside. */
 interface Crumb {
-  provider: CloudProvider;
-  id: string; // "" = provider root
+  accountId: string;
+  id: string; // "" = account root
   name: string;
 }
 
 /** Cloud accounts (Google Drive / Dropbox) — connect/disconnect and browse +
- *  play folders. Lives as a section inside Settings (the connect flow); the
- *  Player only filters connected-cloud songs into its unified list. */
+ *  play folders. Multiple accounts per provider are supported (e.g. several
+ *  Google accounts); the Player merges every connected account's songs into its
+ *  one unified "Cloud" source. */
 export function CloudView() {
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
   const playCloudList = useEngineStore((s) => s.playCloudList);
@@ -62,7 +67,10 @@ export function CloudView() {
   const [status, setStatus] = useState<CloudStatus | null>(null);
   const [stack, setStack] = useState<Crumb[]>([]);
   const [entries, setEntries] = useState<CloudEntry[]>([]);
-  const [busy, setBusy] = useState<CloudProvider | null>(null);
+  // Which provider is mid-connect (for its button), and which account is being
+  // removed (so its Disconnect shows progress).
+  const [connecting, setConnecting] = useState<CloudProvider | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,7 +104,7 @@ export function CloudView() {
     setLoading(true);
     setError(null);
     try {
-      setEntries(await cloudList(crumb.provider, crumb.id));
+      setEntries(await cloudList(crumb.accountId, crumb.id));
     } catch (e) {
       setError(ipcErrorMessage(e));
       setEntries([]);
@@ -111,7 +119,7 @@ export function CloudView() {
 
   const connect = async (provider: CloudProvider) => {
     setError(null);
-    setBusy(provider);
+    setConnecting(provider);
     try {
       await cloudConnect(provider);
       await refreshStatus();
@@ -121,204 +129,237 @@ export function CloudView() {
     } catch (e) {
       setError(ipcErrorMessage(e));
     } finally {
-      setBusy(null);
+      setConnecting(null);
     }
   };
 
-  const disconnect = async (provider: CloudProvider) => {
-    await cloudDisconnect(provider).catch(() => {});
-    // Leave any folder we were browsing in that provider.
-    setStack((s) => (s[0]?.provider === provider ? [] : s));
+  const disconnect = async (accountId: string) => {
+    setRemoving(accountId);
+    await cloudDisconnect(accountId).catch(() => {});
+    // Leave any folder we were browsing in that account.
+    setStack((s) => (s[0]?.accountId === accountId ? [] : s));
     await refreshStatus();
     useMusicLibraryStore.getState().invalidateCloud();
+    setRemoving(null);
   };
 
-  const connected = status ? PROVIDERS.filter((p) => p.connected(status)) : [];
+  const accounts = status?.accounts ?? [];
+  const accountsFor = (provider: CloudProvider): CloudAccount[] =>
+    accounts.filter((a) => a.provider === provider);
 
-  const content = (
+  return (
     <div className="flex flex-col gap-4">
-        {/* Accounts */}
-        <Card title="Accounts" icon={Cloud}>
-          <div className="flex flex-col gap-3">
-            {PROVIDERS.map((p) => {
-              const isConnected = status ? p.connected(status) : false;
-              const isConfigured = status ? p.configured(status) : true;
-              return (
-                <div key={p.id} className="flex items-center justify-between gap-3">
+      {/* Accounts */}
+      <Card title="Accounts" icon={Cloud}>
+        <div className="flex flex-col gap-5">
+          {PROVIDERS.map((p) => {
+            const isConfigured = status ? p.configured(status) : true;
+            const mine = accountsFor(p.id);
+            return (
+              <div key={p.id} className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm">
                     <HardDrive className="size-4 text-text-muted" aria-hidden="true" />
                     <span className="font-medium">{p.name}</span>
-                    {isConnected && (
+                    {mine.length > 0 && (
                       <span className="rounded-control bg-success/15 px-2 py-0.5 text-xs text-success">
-                        Connected
+                        {mine.length} connected
                       </span>
                     )}
                     {!isConfigured && (
                       <span className="text-xs text-text-faint">not configured</span>
                     )}
                   </div>
-                  {isConnected ? (
-                    <Button variant="secondary" onClick={() => void disconnect(p.id)}>
-                      Disconnect
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="primary"
-                      disabled={!isConfigured || busy !== null}
-                      onClick={() => void connect(p.id)}
-                    >
-                      {busy === p.id ? "Connecting…" : "Connect"}
-                    </Button>
-                  )}
+                  <Button
+                    variant={mine.length > 0 ? "secondary" : "primary"}
+                    disabled={!isConfigured || connecting !== null}
+                    onClick={() => void connect(p.id)}
+                  >
+                    {connecting === p.id ? (
+                      "Connecting…"
+                    ) : (
+                      <>
+                        <Plus className="size-4" aria-hidden="true" />
+                        {mine.length > 0 ? "Add account" : "Connect"}
+                      </>
+                    )}
+                  </Button>
                 </div>
-              );
-            })}
-          </div>
-          {error && (
-            <div className="mt-3 flex items-start gap-2 rounded-control border border-danger/30 bg-danger/10 px-3 py-2 text-sm">
-              <CircleAlert className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden="true" />
-              <span>{error}</span>
-            </div>
-          )}
-          {status && (!status.googleConfigured || !status.dropboxConfigured) && (
-            <p className="mt-3 text-xs text-text-faint">
-              Set up desktop OAuth credentials to enable connecting — see
-              docs/cloud-setup.md.
-            </p>
-          )}
-        </Card>
 
-        {/* Browser */}
-        {connected.length > 0 && (
-          <Card
-            title="Browse"
-            icon={Folder}
-            actions={
-              here && (
-                <button
-                  type="button"
-                  aria-label="Refresh"
-                  onClick={() => void loadFolder(here)}
-                  className="text-text-muted transition-colors hover:text-text"
-                >
-                  <RefreshCw
-                    className={cn("size-4", loading && "animate-spin")}
-                    aria-hidden="true"
-                  />
-                </button>
-              )
-            }
-          >
-            {/* Breadcrumb */}
-            <div className="mb-3 flex flex-wrap items-center gap-1 text-sm">
+                {/* Connected accounts for this provider, each removable. */}
+                {mine.length > 0 && (
+                  <ul className="flex flex-col gap-1.5 border-l border-border pl-3">
+                    {mine.map((a) => (
+                      <li
+                        key={a.id}
+                        className="flex items-center justify-between gap-3"
+                      >
+                        <span className="flex min-w-0 items-center gap-2 text-sm">
+                          <UserRound
+                            className="size-3.5 shrink-0 text-text-faint"
+                            aria-hidden="true"
+                          />
+                          <span className="truncate">{a.label}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void disconnect(a.id)}
+                          disabled={removing === a.id}
+                          className="shrink-0 text-xs text-text-muted transition-colors hover:text-danger disabled:opacity-50"
+                        >
+                          {removing === a.id ? "Removing…" : "Disconnect"}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {error && (
+          <div className="mt-3 flex items-start gap-2 rounded-control border border-danger/30 bg-danger/10 px-3 py-2 text-sm">
+            <CircleAlert className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden="true" />
+            <span>{error}</span>
+          </div>
+        )}
+        {status && (!status.googleConfigured || !status.dropboxConfigured) && (
+          <p className="mt-3 text-xs text-text-faint">
+            Set up desktop OAuth credentials to enable connecting — see
+            docs/cloud-setup.md.
+          </p>
+        )}
+      </Card>
+
+      {/* Browser */}
+      {accounts.length > 0 && (
+        <Card
+          title="Browse"
+          icon={Folder}
+          actions={
+            here && (
               <button
                 type="button"
-                onClick={() => setStack([])}
-                className={cn(
-                  "rounded-control px-1.5 py-0.5 transition-colors hover:text-text",
-                  stack.length === 0 ? "text-text" : "text-text-muted",
-                )}
+                aria-label="Refresh"
+                onClick={() => void loadFolder(here)}
+                className="text-text-muted transition-colors hover:text-text"
               >
-                Cloud
+                <RefreshCw
+                  className={cn("size-4", loading && "animate-spin")}
+                  aria-hidden="true"
+                />
               </button>
-              {stack.map((c, i) => (
-                <span key={`${c.provider}:${c.id}`} className="flex items-center gap-1">
-                  <ChevronRight className="size-3.5 text-text-faint" aria-hidden="true" />
+            )
+          }
+        >
+          {/* Breadcrumb */}
+          <div className="mb-3 flex flex-wrap items-center gap-1 text-sm">
+            <button
+              type="button"
+              onClick={() => setStack([])}
+              className={cn(
+                "rounded-control px-1.5 py-0.5 transition-colors hover:text-text",
+                stack.length === 0 ? "text-text" : "text-text-muted",
+              )}
+            >
+              Cloud
+            </button>
+            {stack.map((c, i) => (
+              <span key={`${c.accountId}:${c.id}`} className="flex items-center gap-1">
+                <ChevronRight className="size-3.5 text-text-faint" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => setStack((s) => s.slice(0, i + 1))}
+                  className={cn(
+                    "max-w-[12rem] truncate rounded-control px-1.5 py-0.5 transition-colors hover:text-text",
+                    i === stack.length - 1 ? "text-text" : "text-text-muted",
+                  )}
+                >
+                  {c.name}
+                </button>
+              </span>
+            ))}
+          </div>
+
+          {/* At the root: list connected accounts as folders. */}
+          {!here ? (
+            <ul className="divide-y divide-border">
+              {accounts.map((a) => (
+                <li key={a.id}>
                   <button
                     type="button"
-                    onClick={() => setStack((s) => s.slice(0, i + 1))}
-                    className={cn(
-                      "max-w-[12rem] truncate rounded-control px-1.5 py-0.5 transition-colors hover:text-text",
-                      i === stack.length - 1 ? "text-text" : "text-text-muted",
-                    )}
+                    onClick={() =>
+                      setStack([{ accountId: a.id, id: "", name: a.label }])
+                    }
+                    className="flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:text-accent-strong"
                   >
-                    {c.name}
+                    <HardDrive className="size-4 shrink-0 text-text-muted" aria-hidden="true" />
+                    <span className="flex-1 truncate text-sm font-medium">{a.label}</span>
+                    <ChevronRight className="size-4 text-text-faint" aria-hidden="true" />
                   </button>
-                </span>
+                </li>
               ))}
-            </div>
-
-            {/* At the root: list connected providers as folders. */}
-            {!here ? (
-              <ul className="divide-y divide-border">
-                {connected.map((p) => (
-                  <li key={p.id}>
+            </ul>
+          ) : loading && entries.length === 0 ? (
+            <p className="text-sm text-text-muted">Loading…</p>
+          ) : entries.length === 0 ? (
+            <p className="text-sm text-text-muted">This folder has no music.</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {entries.map((e) =>
+                e.isFolder ? (
+                  <li key={`${e.accountId}:${e.id}`}>
                     <button
                       type="button"
                       onClick={() =>
-                        setStack([{ provider: p.id, id: "", name: p.name }])
+                        setStack((s) => [
+                          ...s,
+                          { accountId: e.accountId, id: e.id, name: e.name },
+                        ])
                       }
                       className="flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:text-accent-strong"
                     >
                       <Folder className="size-4 shrink-0 text-text-muted" aria-hidden="true" />
-                      <span className="flex-1 truncate text-sm font-medium">{p.name}</span>
+                      <span className="flex-1 truncate text-sm">{e.name}</span>
                       <ChevronRight className="size-4 text-text-faint" aria-hidden="true" />
                     </button>
                   </li>
-                ))}
-              </ul>
-            ) : loading && entries.length === 0 ? (
-              <p className="text-sm text-text-muted">Loading…</p>
-            ) : entries.length === 0 ? (
-              <p className="text-sm text-text-muted">This folder has no music.</p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {entries.map((e) =>
-                  e.isFolder ? (
-                    <li key={`${e.provider}:${e.id}`}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setStack((s) => [
-                            ...s,
-                            { provider: e.provider, id: e.id, name: e.name },
-                          ])
-                        }
-                        className="flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:text-accent-strong"
-                      >
-                        <Folder className="size-4 shrink-0 text-text-muted" aria-hidden="true" />
-                        <span className="flex-1 truncate text-sm">{e.name}</span>
-                        <ChevronRight className="size-4 text-text-faint" aria-hidden="true" />
-                      </button>
-                    </li>
-                  ) : (
-                    <li
-                      key={`${e.provider}:${e.id}`}
-                      className="flex items-center gap-3 py-2"
+                ) : (
+                  <li
+                    key={`${e.accountId}:${e.id}`}
+                    className="flex items-center gap-3 py-2"
+                  >
+                    <button
+                      type="button"
+                      aria-label={`Play ${e.name}`}
+                      onClick={() => playEntry(e)}
+                      className={cn(
+                        "transition-colors hover:text-accent-strong",
+                        nowPlaying === e.name ? "text-accent-strong" : "text-text-muted",
+                      )}
                     >
-                      <button
-                        type="button"
-                        aria-label={`Play ${e.name}`}
-                        onClick={() => playEntry(e)}
-                        className={cn(
-                          "transition-colors hover:text-accent-strong",
-                          nowPlaying === e.name ? "text-accent-strong" : "text-text-muted",
-                        )}
-                      >
-                        <Music className="size-4" aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => playEntry(e)}
-                        className={cn(
-                          "min-w-0 flex-1 truncate text-left text-sm transition-colors hover:text-text",
-                          nowPlaying === e.name && "text-accent-strong",
-                        )}
-                      >
-                        {e.name}
-                      </button>
-                      <span className="shrink-0 text-xs tabular-nums text-text-faint">
-                        {formatBytes(e.size)}
-                      </span>
-                    </li>
-                  ),
-                )}
-              </ul>
-            )}
-          </Card>
-        )}
+                      <Music className="size-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => playEntry(e)}
+                      className={cn(
+                        "min-w-0 flex-1 truncate text-left text-sm transition-colors hover:text-text",
+                        nowPlaying === e.name && "text-accent-strong",
+                      )}
+                    >
+                      {e.name}
+                    </button>
+                    <span className="shrink-0 text-xs tabular-nums text-text-faint">
+                      {formatBytes(e.size)}
+                    </span>
+                  </li>
+                ),
+              )}
+            </ul>
+          )}
+        </Card>
+      )}
     </div>
   );
-
-  return content;
 }

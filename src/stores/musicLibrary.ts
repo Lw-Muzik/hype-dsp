@@ -15,10 +15,11 @@ import type { QueueItem } from "@/stores/engine";
 import type {
   CloudAudioPage,
   CloudEntry,
-  CloudProvider,
   CloudTrackMeta,
   LibraryPage,
   LibraryTrack,
+  PhoneDevice,
+  PhoneTrack,
 } from "@/lib/types";
 
 /** A browsable track from any source, ready to enqueue (it's a `QueueItem`). */
@@ -182,39 +183,139 @@ export async function loadLocalPaged(deps: LocalPagedDeps): Promise<boolean> {
   }
 }
 
-/** Map a provider's flat, account-wide audio entries (all folders — mirrors the
- *  mobile app, so songs nested in subfolders are included) into browsable
- *  `MusicTrack`s. Pure: the listing is fetched (and cached) in `ensureCloud`. */
-function entriesToTracks(
-  provider: CloudProvider,
-  entries: CloudEntry[],
-): MusicTrack[] {
-  return entries.map((e) => ({
+/** Map one cloud audio entry (account-wide, all folders — mirrors the mobile
+ *  app, so songs nested in subfolders are included) into a browsable
+ *  `MusicTrack`. Cheap (O(1)); the listing is fetched + cached in `ensureCloud`,
+ *  then mapped incrementally so a large account never blocks the UI. The uid is
+ *  keyed by the owning account (not just the provider), so files from two
+ *  accounts of the same provider never collide. */
+function cloudEntryToTrack(e: CloudEntry): MusicTrack {
+  return {
     ...cloudItem(e),
     source: "cloud" as const,
-    uid: `cloud:${provider}:${e.id}`,
+    uid: `cloud:${e.accountId}:${e.id}`,
     genre: null,
     folder: e.folder ?? null,
     artPath: null,
     cover: null,
-  }));
+  };
+}
+
+/** Map one paired-phone track into a browsable `MusicTrack` (O(1)). */
+function phoneTrackToTrack(d: PhoneDevice, t: PhoneTrack): MusicTrack {
+  return {
+    ...phoneItem(d, t),
+    source: "phone" as const,
+    uid: `phone:${d.id}:${t.id}`,
+    genre: null,
+    // The real folder the track came from on the phone, so the Folders facet
+    // groups by it (falls back to the device name).
+    folder: t.folder ?? d.name,
+    artPath: null,
+    cover: null,
+  };
+}
+
+// Chunk size for incrementally mapping a source that arrives as one in-memory
+// array (phone/cloud). Mapping a track is a cheap object spread, so ~1000 per
+// chunk stays well under a frame; we yield to the event loop between chunks.
+const MAP_CHUNK_SIZE = 1000;
+
+/** Injectable dependencies for {@link mapIncrementally} (pure + unit-testable). */
+export interface IncrementalMapDeps<S, T> {
+  /** The full source array (already fetched). */
+  source: S[];
+  /** Cheap O(1) per-item transform. */
+  map: (item: S) => T;
+  /** Publish the growing result (a fresh array) to the store. */
+  publish: (mapped: T[]) => void;
+  /** Yield to the event loop between chunks. */
+  yieldToLoop: () => Promise<void>;
+  /** True once this run was superseded (invalidate/reload) → stop now. */
+  isStale: () => boolean;
+  /** Monotonic clock (ms) for throttling publishes; injectable for tests. */
+  now: () => number;
+  chunkSize?: number;
+  publishIntervalMs?: number;
+}
+
+/**
+ * Map a large in-memory array into `MusicTrack`s without blocking the main
+ * thread: process it in chunks, yield to the event loop between chunks, and
+ * publish the growing result on a time budget (not per chunk) so the O(n)
+ * consumer derivations run a few times a second instead of once per chunk.
+ *
+ * This is the single-array analogue of {@link loadLocalPaged} (which pages from
+ * the DB): phone and cloud libraries arrive as one array, so they map this way.
+ * Returns the complete mapped array, or `null` if cancelled mid-run.
+ */
+export async function mapIncrementally<S, T>(
+  deps: IncrementalMapDeps<S, T>,
+): Promise<T[] | null> {
+  const {
+    source,
+    map,
+    publish,
+    yieldToLoop,
+    isStale,
+    now,
+    chunkSize = MAP_CHUNK_SIZE,
+    publishIntervalMs = LOCAL_PUBLISH_INTERVAL_MS,
+  } = deps;
+
+  const acc: T[] = [];
+  let lastPublish = -Infinity;
+  for (let i = 0; i < source.length; i++) {
+    acc.push(map(source[i]!));
+    if ((i + 1) % chunkSize === 0) {
+      // Throttle publishes (cheap to skip), but always yield so input/paint
+      // get a turn between chunks even when we don't publish this one.
+      if (now() - lastPublish >= publishIntervalMs) {
+        publish(acc.slice());
+        lastPublish = now();
+      }
+      await yieldToLoop();
+      if (isStale()) return null;
+    }
+  }
+  // Final publish of the complete set (also covers an empty source).
+  publish(acc.slice());
+  return acc;
 }
 
 // How many cloud files to read metadata for at once (the backend caches each
-// after the first read, so this only bites on the first scan).
+// after the first read, so this only bites on the first scan), and how often to
+// flush resolved tags to the store. Flushing on a time budget — rather than per
+// resolved track — keeps the metadata Map rebuild (O(n)) and the re-derivation
+// it triggers down to a few per second instead of one per track (which made a
+// full scan O(n²)).
 const CLOUD_META_CONCURRENCY = 4;
+const CLOUD_META_FLUSH_MS = 200;
 
 /**
  * Read embedded tags (title/artist/album + cover) for cloud tracks in the
  * background, like the mobile app's `CloudMetadataService`. Runs a few at a time
- * and reports each result through `onResult`; `isStale` lets the caller cancel
- * (e.g. on disconnect / reload). Backend-cached, so re-scans are cheap.
+ * and hands resolved tags to `onBatch` in time-budgeted batches (so the store
+ * rebuilds its metadata Map a few times a second, not once per track). `isStale`
+ * lets the caller cancel (disconnect / reload). Backend-cached → re-scans cheap.
  */
 async function preloadCloudMeta(
   tracks: MusicTrack[],
-  onResult: (uid: string, meta: CloudTrackMeta) => void,
+  onBatch: (updates: Array<[string, CloudTrackMeta]>) => void,
   isStale: () => boolean,
+  now: () => number,
 ): Promise<void> {
+  // Workers share one JS thread cooperatively (await points), so mutating this
+  // buffer between awaits is race-free.
+  const pending: Array<[string, CloudTrackMeta]> = [];
+  let lastFlush = -Infinity;
+  const flush = (force: boolean) => {
+    if (pending.length === 0) return;
+    if (!force && now() - lastFlush < CLOUD_META_FLUSH_MS) return;
+    onBatch(pending.splice(0)); // hand off everything pending and clear
+    lastFlush = now();
+  };
+
   let next = 0;
   const worker = async () => {
     while (next < tracks.length && !isStale()) {
@@ -222,8 +323,11 @@ async function preloadCloudMeta(
       const file = t?.cloud;
       if (!t || !file) continue;
       try {
-        const meta = await cloudTrackMetadata(file.provider, file.id, file.name);
-        if (meta && !isStale()) onResult(t.uid, meta);
+        const meta = await cloudTrackMetadata(file.accountId, file.id, file.name);
+        if (meta && !isStale()) {
+          pending.push([t.uid, meta]);
+          flush(false);
+        }
       } catch {
         // Skip — a single failed read shouldn't stop the rest.
       }
@@ -232,6 +336,7 @@ async function preloadCloudMeta(
   await Promise.all(
     Array.from({ length: CLOUD_META_CONCURRENCY }, () => worker()),
   );
+  flush(true); // trailing flush of the remainder
 }
 
 interface MusicLibraryStore {
@@ -331,144 +436,181 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
     const s = get();
     if (s.phoneLoad !== "idle") return;
     const gen = ++phoneGen;
-    set({ phoneLoad: "loading" });
-    linkPaired()
-      .then(async (devices) => {
-        const lists = await Promise.all(
-          devices.map((d) =>
-            linkLibrary(d.id)
-              .then((tracks) =>
-                tracks.map((t) => ({
-                  ...phoneItem(d, t),
-                  source: "phone" as const,
-                  uid: `phone:${d.id}:${t.id}`,
-                  genre: null,
-                  // The real folder the track came from on the phone, so the
-                  // Folders facet groups by it (falls back to the device name).
-                  folder: t.folder ?? d.name,
-                  artPath: null,
-                  cover: null,
-                })),
-              )
-              .catch(() => [] as MusicTrack[]),
-          ),
-        );
-        if (gen !== phoneGen) return;
-        const merged = lists.flat();
-        set({ phone: merged, phoneConnected: devices.length > 0, phoneLoad: "ready" });
-      })
-      .catch(() => {
-        if (gen !== phoneGen) return;
-        set({ phone: [], phoneConnected: false, phoneLoad: "error" });
+    const isStale = () => gen !== phoneGen;
+    set({ phoneLoad: "loading", phone: [] });
+    (async () => {
+      const devices = await linkPaired();
+      if (isStale()) return;
+      // Reflect connectivity immediately so the source pill updates while the
+      // (possibly large) per-device libraries stream in below.
+      set({ phoneConnected: devices.length > 0 });
+      // Each device's library is fetched off the main thread; a failure on one
+      // contributes nothing rather than breaking the whole phone source.
+      const libs = await Promise.all(
+        devices.map((d) =>
+          linkLibrary(d.id)
+            .then((tracks) => ({ d, tracks }))
+            .catch(() => ({ d, tracks: [] as PhoneTrack[] })),
+        ),
+      );
+      if (isStale()) return;
+      // Flatten to (device, track) pairs, then map incrementally so a phone
+      // with thousands of songs populates progressively instead of freezing.
+      const pairs = libs.flatMap(({ d, tracks }) =>
+        tracks.map((t) => ({ d, t })),
+      );
+      const ok = await mapIncrementally({
+        source: pairs,
+        map: ({ d, t }) => phoneTrackToTrack(d, t),
+        publish: (mapped) => {
+          if (!isStale()) set({ phone: mapped });
+        },
+        yieldToLoop: yieldToMain,
+        isStale,
+        now: () => performance.now(),
       });
+      if (ok && !isStale()) set({ phoneLoad: "ready" });
+    })().catch(() => {
+      if (isStale()) return;
+      set({ phone: [], phoneConnected: false, phoneLoad: "error" });
+    });
   },
 
   ensureCloud: () => {
     const s = get();
     if (s.cloudLoad !== "idle") return;
     const gen = ++cloudGen;
+    const isStale = () => gen !== cloudGen;
+    const now = () => performance.now();
     set({ cloudLoad: "loading", cloudMeta: new Map() });
-    cloudStatus()
-      .then(async (status) => {
-        const connected = [
-          status.googleConnected ? ("googleDrive" as const) : null,
-          status.dropboxConnected ? ("dropbox" as const) : null,
-        ].filter((p): p is CloudProvider => p !== null);
-        if (gen !== cloudGen) return;
-        if (connected.length === 0) {
-          set({ cloudBase: [], cloudConnected: false, cloudLoad: "ready" });
-          return;
-        }
+    (async () => {
+      const status = await cloudStatus();
+      if (isStale()) return;
+      const accounts = status.accounts;
+      if (accounts.length === 0) {
+        set({ cloudBase: [], cloudConnected: false, cloudLoad: "ready" });
+        return;
+      }
 
-        // ---- Phase 1: instant. The cached listing + cached tags are pure disk
-        // reads when warm (a relaunch), so the library appears immediately
-        // rather than re-walking the account over the network as if just
-        // connected. A cold cache (first connect) fetches once, here.
-        const pages = await Promise.all(
-          connected.map((provider) =>
-            cloudAllAudio(provider, false)
-              .then((page) => ({ provider, page }))
-              .catch(() => ({
-                provider,
-                page: { entries: [], fromCache: false } as CloudAudioPage,
-              })),
-          ),
-        );
-        if (gen !== cloudGen) return;
-        const base = pages.flatMap(({ provider, page }) =>
-          entriesToTracks(provider, page.entries),
-        );
+      // ---- Phase 1: instant. The cached listing + cached tags are pure disk
+      // reads when warm (a relaunch), so the library appears immediately rather
+      // than re-walking each account over the network as if just connected. A
+      // cold cache (first connect) fetches once, here. Every connected account
+      // (any number per provider) is listed and merged into one "Cloud" source.
+      const pages = await Promise.all(
+        accounts.map((acc) =>
+          cloudAllAudio(acc.id, false)
+            .then((page) => ({ acc, page }))
+            .catch(() => ({
+              acc,
+              page: { entries: [], fromCache: false } as CloudAudioPage,
+            })),
+        ),
+      );
+      if (isStale()) return;
+      // Reflect connectivity immediately so the source pill updates while the
+      // (possibly large) listings map in below.
+      set({ cloudConnected: true });
 
-        const cached = await Promise.all(
-          connected.map((provider) =>
-            cloudCachedMetadata(provider)
-              .then((meta) => ({ provider, meta }))
-              .catch(() => ({
-                provider,
-                meta: {} as Record<string, CloudTrackMeta>,
-              })),
-          ),
-        );
-        if (gen !== cloudGen) return;
-        const meta = new Map<string, CloudTrackMeta>();
-        for (const { provider, meta: m } of cached) {
-          for (const [fileId, value] of Object.entries(m)) {
-            meta.set(`cloud:${provider}:${fileId}`, value);
-          }
-        }
-        set({ cloudBase: base, cloudMeta: meta, cloudConnected: true, cloudLoad: "ready" });
-
-        // ---- Phase 2: background refresh. Re-list providers served from cache
-        // so newly added/removed files surface, then resolve tags only for
-        // tracks we don't already have cached (first sight). Everything below is
-        // keyed on `gen`, so an invalidate/disconnect mid-flight discards it.
-        const staleProviders = pages
-          .filter(({ page }) => page.fromCache)
-          .map(({ provider }) => provider);
-        if (staleProviders.length > 0) {
-          const fresh = await Promise.all(
-            staleProviders.map((provider) =>
-              cloudAllAudio(provider, true)
-                .then((page) => ({ provider, entries: page.entries }))
-                .catch(() => null),
-            ),
-          );
-          if (gen !== cloudGen) return;
-          const freshByProvider = new Map(
-            fresh
-              .filter(
-                (f): f is { provider: CloudProvider; entries: CloudEntry[] } =>
-                  f !== null,
-              )
-              .map((f) => [f.provider, f.entries]),
-          );
-          // Rebuild from fresh listings where we re-listed, else the phase-1 copy.
-          const rebuilt = pages.flatMap(({ provider, page }) =>
-            entriesToTracks(provider, freshByProvider.get(provider) ?? page.entries),
-          );
-          set({ cloudBase: rebuilt });
-        }
-
-        // Only tracks without cached metadata need a network read; the rest
-        // already showed instantly from the cache in phase 1.
-        const currentMeta = get().cloudMeta;
-        const needMeta = get().cloudBase.filter((t) => !currentMeta.has(t.uid));
-        if (needMeta.length === 0) return;
-        await preloadCloudMeta(
-          needMeta,
-          (uid, resolved) => {
-            if (gen !== cloudGen) return;
-            const nextMeta = new Map(get().cloudMeta);
-            nextMeta.set(uid, resolved);
-            set({ cloudMeta: nextMeta });
-          },
-          () => gen !== cloudGen,
-        );
-      })
-      .catch(() => {
-        if (gen !== cloudGen) return;
-        set({ cloudBase: [], cloudConnected: false, cloudLoad: "error" });
+      // Map every account's flat listing into tracks without blocking — big
+      // accounts populate progressively instead of freezing. Each entry already
+      // carries its `accountId` (stamped by the backend), so the uid is unique.
+      const baseEntries = pages.flatMap(({ page }) => page.entries);
+      await mapIncrementally({
+        source: baseEntries,
+        map: cloudEntryToTrack,
+        publish: (mapped) => {
+          if (!isStale()) set({ cloudBase: mapped });
+        },
+        yieldToLoop: yieldToMain,
+        isStale,
+        now,
       });
+      if (isStale()) return;
+
+      // Merge any cached tags over the listed filenames (a single cheap pass),
+      // keyed per account so two accounts' files never share a meta entry.
+      const cached = await Promise.all(
+        accounts.map((acc) =>
+          cloudCachedMetadata(acc.id)
+            .then((meta) => ({ acc, meta }))
+            .catch(() => ({
+              acc,
+              meta: {} as Record<string, CloudTrackMeta>,
+            })),
+        ),
+      );
+      if (isStale()) return;
+      const meta = new Map<string, CloudTrackMeta>();
+      for (const { acc, meta: m } of cached) {
+        for (const [fileId, value] of Object.entries(m)) {
+          meta.set(`cloud:${acc.id}:${fileId}`, value);
+        }
+      }
+      set({ cloudMeta: meta, cloudLoad: "ready" });
+
+      // ---- Phase 2: background refresh. Re-list accounts served from cache so
+      // newly added/removed files surface, then resolve tags only for tracks we
+      // don't already have cached (first sight). Everything below is keyed on
+      // `gen`, so an invalidate/disconnect mid-flight discards it.
+      const staleAccounts = pages
+        .filter(({ page }) => page.fromCache)
+        .map(({ acc }) => acc);
+      if (staleAccounts.length > 0) {
+        const fresh = await Promise.all(
+          staleAccounts.map((acc) =>
+            cloudAllAudio(acc.id, true)
+              .then((page) => ({ accountId: acc.id, entries: page.entries }))
+              .catch(() => null),
+          ),
+        );
+        if (isStale()) return;
+        const freshByAccount = new Map(
+          fresh
+            .filter(
+              (f): f is { accountId: string; entries: CloudEntry[] } =>
+                f !== null,
+            )
+            .map((f) => [f.accountId, f.entries]),
+        );
+        // Rebuild from fresh listings where we re-listed, else the phase-1 copy
+        // — incrementally, so a large refresh stays non-blocking too.
+        const rebuilt = pages.flatMap(
+          ({ acc, page }) => freshByAccount.get(acc.id) ?? page.entries,
+        );
+        await mapIncrementally({
+          source: rebuilt,
+          map: cloudEntryToTrack,
+          publish: (mapped) => {
+            if (!isStale()) set({ cloudBase: mapped });
+          },
+          yieldToLoop: yieldToMain,
+          isStale,
+          now,
+        });
+        if (isStale()) return;
+      }
+
+      // Only tracks without cached metadata need a network read; the rest
+      // already showed instantly from the cache in phase 1.
+      const currentMeta = get().cloudMeta;
+      const needMeta = get().cloudBase.filter((t) => !currentMeta.has(t.uid));
+      if (needMeta.length === 0) return;
+      await preloadCloudMeta(
+        needMeta,
+        (updates) => {
+          if (isStale()) return;
+          const nextMeta = new Map(get().cloudMeta);
+          for (const [uid, resolved] of updates) nextMeta.set(uid, resolved);
+          set({ cloudMeta: nextMeta });
+        },
+        isStale,
+        now,
+      );
+    })().catch(() => {
+      if (isStale()) return;
+      set({ cloudBase: [], cloudConnected: false, cloudLoad: "error" });
+    });
   },
 
   revalidateLocal: () => {

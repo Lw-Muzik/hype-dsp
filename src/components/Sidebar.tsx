@@ -5,6 +5,7 @@ import { NavItem } from "@/components/NavItem";
 import { Logo } from "@/components/Logo";
 import { SidebarNowPlaying } from "@/components/SidebarNowPlaying";
 import { cn } from "@/lib/cn";
+import { TITLEBAR_INSET } from "@/lib/platform";
 
 /** Persistent left navigation: brand, primary destinations, system, collapse. */
 const COLLAPSED_WIDTH = 68;
@@ -32,9 +33,14 @@ export function Sidebar() {
         !resizing && "transition-[width] duration-200",
       )}
     >
+      {/* Brand header doubles as the window's drag region. On macOS the
+          traffic-light buttons overlay this corner, so we add a safe top inset
+          (see platform.ts) and center the logo in the space below them. */}
       <div
+        data-tauri-drag-region="deep"
+        style={{ height: 56 + TITLEBAR_INSET, paddingTop: TITLEBAR_INSET }}
         className={cn(
-          "flex h-14 items-center gap-2.5 px-4",
+          "flex items-center gap-2.5 px-4",
           collapsed && "justify-center px-0",
         )}
       >

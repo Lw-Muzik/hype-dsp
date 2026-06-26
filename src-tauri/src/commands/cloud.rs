@@ -9,7 +9,7 @@ use hm_core::IpcError;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
-use crate::cloud::{CloudEntry, CloudProvider, CloudState, CloudStatus};
+use crate::cloud::{CloudAccount, CloudEntry, CloudProvider, CloudState, CloudStatus};
 use crate::cloud_list::CloudListCache;
 use crate::cloud_meta::{CloudMetaCache, CloudTrackMeta};
 
@@ -24,43 +24,49 @@ pub struct CloudAudioPage {
     pub from_cache: bool,
 }
 
-/// Which providers are configured (have credentials) and connected.
+/// The connected accounts (any number per provider) and which providers are
+/// configured (have credentials).
 #[tauri::command]
 pub fn cloud_status(cloud: State<'_, CloudState>) -> CloudStatus {
     cloud.status()
 }
 
 /// Run the OAuth flow for `provider` (opens the browser; blocks until the user
-/// finishes or it times out).
+/// finishes or it times out), then store the signed-in account. Returns the
+/// connected account so the UI can show it. Connecting a second account of the
+/// same provider just adds another entry.
 #[tauri::command(async)]
-pub fn cloud_connect(cloud: State<'_, CloudState>, provider: CloudProvider) -> Result<(), IpcError> {
+pub fn cloud_connect(
+    cloud: State<'_, CloudState>,
+    provider: CloudProvider,
+) -> Result<CloudAccount, IpcError> {
     cloud
         .connect(provider)
         .map_err(|e| IpcError::new("cloud", e))
 }
 
-/// Forget the stored tokens for `provider`, and drop its cached listing so a
+/// Forget the stored tokens for one account, and drop its cached listing so a
 /// reconnect (possibly a different account) starts clean.
 #[tauri::command]
 pub fn cloud_disconnect(
     cloud: State<'_, CloudState>,
     list_cache: State<'_, CloudListCache>,
-    provider: CloudProvider,
+    account_id: String,
 ) {
-    cloud.disconnect(provider);
-    list_cache.clear(provider);
+    cloud.disconnect(&account_id);
+    list_cache.clear(&account_id);
 }
 
-/// List the contents of one cloud folder (subfolders + audio files). `folder`
-/// is the provider handle, or "" for the account root.
+/// List the contents of one cloud folder (subfolders + audio files) of one
+/// account. `folder` is the provider handle, or "" for the account root.
 #[tauri::command(async)]
 pub fn cloud_list(
     cloud: State<'_, CloudState>,
-    provider: CloudProvider,
+    account_id: String,
     folder: String,
 ) -> Result<Vec<CloudEntry>, IpcError> {
     cloud
-        .list(provider, &folder)
+        .list(&account_id, &folder)
         .map_err(|e| IpcError::new("cloud", e))
 }
 
@@ -68,18 +74,18 @@ pub fn cloud_list(
 /// unified library. Mirrors the mobile app's account-wide listing so songs
 /// nested in subfolders are included, unlike folder-by-folder `cloud_list`.
 ///
-/// The result is cached on disk per provider: when `refresh` is false a cached
+/// The result is cached on disk per account: when `refresh` is false a cached
 /// listing is returned instantly (no network) so reopening the app is fast;
-/// `refresh` (or a cold cache) re-lists from the provider and updates the cache.
+/// `refresh` (or a cold cache) re-lists from the account and updates the cache.
 #[tauri::command(async)]
 pub fn cloud_all_audio(
     cloud: State<'_, CloudState>,
     list_cache: State<'_, CloudListCache>,
-    provider: CloudProvider,
+    account_id: String,
     refresh: bool,
 ) -> Result<CloudAudioPage, IpcError> {
     if !refresh {
-        if let Some(entries) = list_cache.get(provider) {
+        if let Some(entries) = list_cache.get(&account_id) {
             return Ok(CloudAudioPage {
                 entries,
                 from_cache: true,
@@ -87,24 +93,24 @@ pub fn cloud_all_audio(
         }
     }
     let entries = cloud
-        .all_audio(provider)
+        .all_audio(&account_id)
         .map_err(|e| IpcError::new("cloud", e))?;
-    list_cache.put(provider, entries.clone());
+    list_cache.put(&account_id, entries.clone());
     Ok(CloudAudioPage {
         entries,
         from_cache: false,
     })
 }
 
-/// Every cached tag/cover for `provider`, keyed by file id (from the on-disk
+/// Every cached tag/cover for one account, keyed by file id (from the on-disk
 /// metadata cache). Lets the library hydrate covers/titles in one call on
 /// launch instead of one round-trip per track.
 #[tauri::command]
 pub fn cloud_cached_metadata(
     cache: State<'_, CloudMetaCache>,
-    provider: CloudProvider,
+    account_id: String,
 ) -> HashMap<String, CloudTrackMeta> {
-    cache.snapshot_for(&format!("{provider:?}"))
+    cache.snapshot_for(&account_id)
 }
 
 /// Read a cloud track's embedded tags (title/artist/album + cover) by fetching
@@ -115,15 +121,15 @@ pub fn cloud_cached_metadata(
 pub fn cloud_track_metadata(
     cloud: State<'_, CloudState>,
     cache: State<'_, CloudMetaCache>,
-    provider: CloudProvider,
+    account_id: String,
     file_id: String,
     name: Option<String>,
 ) -> Option<CloudTrackMeta> {
-    let key = format!("{provider:?}:{file_id}");
+    let key = format!("{account_id}:{file_id}");
     if let Some(hit) = cache.get(&key) {
         return Some(hit);
     }
-    let (url, headers) = cloud.stream_target(provider, &file_id).ok()?;
+    let (url, headers) = cloud.stream_target(&account_id, &file_id).ok()?;
     let ext = name
         .as_deref()
         .and_then(|n| n.rsplit('.').next())
@@ -148,11 +154,11 @@ pub fn cloud_track_metadata(
 pub fn cloud_play(
     cloud: State<'_, CloudState>,
     engine: State<'_, AudioEngine>,
-    provider: CloudProvider,
+    account_id: String,
     file_id: String,
 ) -> Result<(), IpcError> {
     let (url, headers) = cloud
-        .stream_target(provider, &file_id)
+        .stream_target(&account_id, &file_id)
         .map_err(|e| IpcError::new("cloud", e))?;
     // Cloud files carry no duration hint; the source learns it from the
     // container (Content-Length + Range) when the server supports it.
@@ -177,7 +183,7 @@ pub struct CloudQueueItem {
 pub fn player_play_cloud_queue(
     app: AppHandle,
     engine: State<'_, AudioEngine>,
-    provider: CloudProvider,
+    account_id: String,
     items: Vec<CloudQueueItem>,
     start: usize,
 ) -> Result<(), IpcError> {
@@ -188,7 +194,9 @@ pub fn player_play_cloud_queue(
     let items = Arc::new(items);
     let resolver: StreamResolver = Arc::new(move |i: usize| {
         let item = items.get(i).ok_or_else(|| "queue index out of range".to_string())?;
-        let (url, headers) = app.state::<CloudState>().stream_target(provider, &item.id)?;
+        let (url, headers) = app
+            .state::<CloudState>()
+            .stream_target(&account_id, &item.id)?;
         Ok(StreamTarget {
             url,
             headers,

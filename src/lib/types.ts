@@ -340,9 +340,20 @@ export interface IpcError {
 
 export type CloudProvider = "googleDrive" | "dropbox";
 
+/** One connected cloud account. The same provider can have several (e.g. two
+ *  Google accounts), so `id` — not `provider` — is the identity used to list,
+ *  stream, and cache. `label` is the account's email / display name. */
+export interface CloudAccount {
+  id: string;
+  provider: CloudProvider;
+  label: string;
+}
+
 /** A folder or audio file inside a cloud account (browsed folder-by-folder). */
 export interface CloudEntry {
   provider: CloudProvider;
+  /** Which connected account this entry belongs to (its `CloudAccount.id`). */
+  accountId: string;
   /** Folder/file handle: Drive object id, or Dropbox path. */
   id: string;
   name: string;
@@ -369,8 +380,8 @@ export interface CloudTrackMeta {
 }
 
 export interface CloudStatus {
-  googleConnected: boolean;
-  dropboxConnected: boolean;
+  /** Every connected account (any number per provider). */
+  accounts: CloudAccount[];
   /** Whether OAuth credentials are configured for the provider. */
   googleConfigured: boolean;
   dropboxConfigured: boolean;

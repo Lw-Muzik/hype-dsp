@@ -6,6 +6,7 @@ import { PowerToggle } from "@/components/PowerToggle";
 import { Slider } from "@/components/Slider";
 import { LevelMeter } from "@/components/LevelMeter";
 import { ScrollingWaveform } from "@/features/player/ScrollingWaveform";
+import { TITLEBAR_INSET } from "@/lib/platform";
 
 /**
  * Top bar: current view, master volume, live output meters, and the global
@@ -25,7 +26,15 @@ export function TopBar() {
   const volumePct = Math.round(masterVolume * 100);
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border bg-surface px-5">
+    // `data-tauri-drag-region="deep"` makes the whole bar a window drag handle;
+    // interactive children (volume slider, power toggle) still receive clicks.
+    // The top inset keeps content clear of the macOS traffic lights and aligns
+    // the bar's height with the sidebar's brand header (see platform.ts).
+    <header
+      data-tauri-drag-region="deep"
+      style={{ height: 56 + TITLEBAR_INSET, paddingTop: TITLEBAR_INSET }}
+      className="flex shrink-0 items-center gap-4 border-b border-border bg-surface px-5"
+    >
       <div className="flex shrink-0 items-center gap-2">
         <Icon className="size-4 text-text-muted" aria-hidden="true" />
         <h1 className="truncate text-sm font-medium">{current.label}</h1>

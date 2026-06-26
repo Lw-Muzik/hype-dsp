@@ -318,13 +318,13 @@ function MilkDropPanel() {
         )}
       </div>
 
-      <div className="mb-3 flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2">
+      <div className="mb-3 flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2 transition-colors focus-within:border-accent">
         <Search className="size-4 shrink-0 text-text-faint" aria-hidden="true" />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search presets"
-          className="w-full bg-transparent text-sm text-text placeholder:text-text-faint focus:outline-none"
+          className="w-full bg-transparent text-sm text-text placeholder:text-text-faint"
         />
         <span className="shrink-0 text-xs tabular-nums text-text-faint">
           {names.length.toLocaleString()}

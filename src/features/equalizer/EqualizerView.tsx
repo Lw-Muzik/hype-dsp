@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { routeById } from "@/app/routes";
@@ -9,7 +9,7 @@ import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
 import { EqBandSlider } from "@/components/EqBandSlider";
 import { EqVisualizer } from "@/features/equalizer/EqVisualizer";
-import { PresetBar } from "@/features/equalizer/PresetBar";
+import { PresetPicker } from "@/features/equalizer/PresetPicker";
 import { useEngineStore } from "@/stores/engine";
 import { eqApplyPreset, eqDelete, eqListPresets, eqSaveCustom, ipcErrorMessage, ddcList } from "@/lib/ipc";
 import { BAND_COUNT, ISO_CENTERS_HZ } from "@/lib/types";
@@ -19,9 +19,6 @@ import { toast } from "@/stores/toast";
 
 const DB_MIN = -12;
 const DB_MAX = 12;
-
-/** Cap rendered library rows for perf; the rest are reachable via search. */
-const LIBRARY_VISIBLE = 200;
 
 export function EqualizerView() {
   const route = routeById("equalizer");
@@ -46,12 +43,11 @@ export function EqualizerView() {
   const [importing, setImporting] = useState(false);
   const [importingVdc, setImportingVdc] = useState(false);
 
-  // Bundled ViPER DDC preset library (600+ shipped curves) to apply in one click.
-  const [showLibrary, setShowLibrary] = useState(false);
+  // Bundled ViPER DDC preset library (600+ shipped curves) to apply in one pick.
   const [ddcNames, setDdcNames] = useState<string[]>([]);
-  const [librarySearch, setLibrarySearch] = useState("");
-  const [libraryLoading, setLibraryLoading] = useState(false);
-  const [applyingName, setApplyingName] = useState<string | null>(null);
+  const [ddcLoading, setDdcLoading] = useState(false);
+  const [appliedDdc, setAppliedDdc] = useState<string | null>(null);
+  const [applyingDdc, setApplyingDdc] = useState(false);
 
   const refresh = useCallback(() => {
     eqListPresets()
@@ -62,6 +58,16 @@ export function EqualizerView() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Load the bundled DDC curve names once so the picker is ready immediately
+  // (one cheap call returning the names of the shipped curves).
+  useEffect(() => {
+    setDdcLoading(true);
+    ddcList()
+      .then(setDdcNames)
+      .catch((e) => toast.error(`Couldn't load DDC presets: ${ipcErrorMessage(e)}`))
+      .finally(() => setDdcLoading(false));
+  }, []);
 
   const handleApply = (id: string) => {
     eqApplyPreset(id)
@@ -117,61 +123,51 @@ export function EqualizerView() {
     }
   };
 
-  // Load the bundled DDC preset names once, the first time the panel opens. A
-  // ref guards against a re-fetch loop — without it, a failed fetch (which leaves
-  // ddcNames empty) would re-trigger on every render and spam error toasts.
-  const ddcLoadStarted = useRef(false);
-  useEffect(() => {
-    if (!showLibrary || ddcLoadStarted.current) return;
-    ddcLoadStarted.current = true;
-    setLibraryLoading(true);
-    ddcList()
-      .then(setDdcNames)
-      .catch((e) => toast.error(`Couldn't load DDC presets: ${ipcErrorMessage(e)}`))
-      .finally(() => setLibraryLoading(false));
-  }, [showLibrary]);
-
   const applyDdcPreset = async (name: string) => {
-    setApplyingName(name);
+    setApplyingDdc(true);
     try {
       await applyDdc(name);
+      setAppliedDdc(name);
       toast.success(`Applied ${name}`);
     } catch (e) {
       toast.error(`Couldn't apply ${name}: ${ipcErrorMessage(e)}`);
     } finally {
-      setApplyingName(null);
+      setApplyingDdc(false);
     }
   };
-
-  const libraryMatches = ddcNames.filter((n) =>
-    n.toLowerCase().includes(librarySearch.trim().toLowerCase()),
-  );
 
   return (
     <div className="mx-auto w-full max-w-5xl">
       <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
 
-      <Card title="Graphic equalizer" icon={route.icon}>
+      <Card
+        title="Graphic equalizer"
+        icon={route.icon}
+        actions={
+          <label className="flex items-center gap-2 text-sm text-text-muted">
+            <span>EQ</span>
+            <Switch
+              checked={enabled}
+              onChange={setEqEnabled}
+              label="Enable equalizer"
+            />
+          </label>
+        }
+      >
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <PresetBar
-                presets={presets}
-                activeId={activePresetId}
-                onApply={handleApply}
-                onSave={handleSave}
-                onDelete={handleDelete}
-              />
-            </div>
-            <div className="flex shrink-0 items-center gap-2 text-sm text-text-muted">
-              <span>EQ</span>
-              <Switch
-                checked={enabled}
-                onChange={setEqEnabled}
-                label="Enable equalizer"
-              />
-            </div>
-          </div>
+          {/* One place to choose a profile: EQ presets + ViPER DDC curves. */}
+          <PresetPicker
+            presets={presets}
+            activeId={activePresetId}
+            onApply={handleApply}
+            onSave={handleSave}
+            onDelete={handleDelete}
+            ddcNames={ddcNames}
+            ddcLoading={ddcLoading}
+            appliedDdc={appliedDdc}
+            applyingDdc={applyingDdc}
+            onApplyDdc={applyDdcPreset}
+          />
 
           <EqVisualizer bands={bands} spectrum={spectrum} />
 
@@ -219,7 +215,8 @@ export function EqualizerView() {
             </Button>
           </div>
 
-          {/* Import affordances */}
+          {/* Advanced: import a custom curve / DDC file (picking a bundled preset
+              lives in the picker above). */}
           <div className="border-t border-border pt-3">
             <div className="flex flex-wrap gap-2">
               <Button
@@ -236,70 +233,12 @@ export function EqualizerView() {
               >
                 {importingVdc ? "Importing…" : "Import .vdc file"}
               </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setShowLibrary((v) => !v)}
-                aria-expanded={showLibrary}
-              >
-                DDC presets…
-              </Button>
             </div>
 
-            {showLibrary && (
-              <div className="mt-3 space-y-2">
-                <input
-                  type="search"
-                  autoFocus
-                  className="w-full rounded-md bg-white/5 px-3 py-2 text-sm text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-accent"
-                  placeholder={`Search ${ddcNames.length || ""} bundled ViPER DDC presets…`}
-                  value={librarySearch}
-                  onChange={(e) => setLibrarySearch(e.target.value)}
-                  spellCheck={false}
-                />
-                <div className="max-h-64 overflow-y-auto rounded-md border border-border">
-                  {libraryLoading ? (
-                    <p className="px-3 py-3 text-xs text-text-faint">Loading presets…</p>
-                  ) : libraryMatches.length === 0 ? (
-                    <p className="px-3 py-3 text-xs text-text-faint">
-                      {ddcNames.length === 0
-                        ? "No bundled presets found."
-                        : "No presets match your search."}
-                    </p>
-                  ) : (
-                    <ul className="divide-y divide-border/60">
-                      {libraryMatches.slice(0, LIBRARY_VISIBLE).map((name) => (
-                        <li key={name}>
-                          <button
-                            type="button"
-                            onClick={() => applyDdcPreset(name)}
-                            disabled={applyingName !== null}
-                            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-white/5 disabled:opacity-50"
-                          >
-                            <span className="min-w-0 flex-1 truncate text-text-primary">
-                              {name}
-                            </span>
-                            {applyingName === name && (
-                              <span className="shrink-0 text-[10px] uppercase tracking-wide text-text-faint">
-                                Applying…
-                              </span>
-                            )}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                {libraryMatches.length > LIBRARY_VISIBLE && (
-                  <p className="text-[10px] text-text-faint">
-                    Showing {LIBRARY_VISIBLE} of {libraryMatches.length} — refine your search to see the rest.
-                  </p>
-                )}
-              </div>
-            )}
             {showImport && (
               <div className="mt-3 space-y-2">
                 <textarea
-                  className="h-24 w-full rounded-md bg-white/5 p-2 text-xs text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="h-24 w-full rounded-md border border-border bg-surface p-2 text-xs text-text placeholder:text-text-faint transition-colors focus:border-accent focus:outline-none"
                   placeholder="GraphicEQ: 20 -1.2; 25 -1.1; ... (paste an AutoEQ curve)"
                   value={curveText}
                   onChange={(e) => setCurveText(e.target.value)}

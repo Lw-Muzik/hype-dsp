@@ -141,14 +141,14 @@ export function RadioView() {
               doSearch(query);
             }}
           >
-            <div className="flex flex-1 items-center gap-2 rounded-control border border-border bg-surface px-3">
+            <div className="flex flex-1 items-center gap-2 rounded-control border border-border bg-surface px-3 transition-colors focus-within:border-accent">
               <Search className="size-4 text-text-faint" aria-hidden="true" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search stations, genres, countries…"
                 aria-label="Search radio stations"
-                className="w-full bg-transparent py-2 text-sm outline-none placeholder:text-text-faint"
+                className="w-full bg-transparent py-2 text-sm placeholder:text-text-faint"
               />
             </div>
             <Button variant="secondary" type="submit" disabled={loading}>
@@ -165,7 +165,7 @@ export function RadioView() {
               onChange={(e) => setCountryQuery(e.target.value)}
               placeholder="Find a country…"
               aria-label="Search African countries"
-              className="w-full bg-transparent py-2 text-sm outline-none placeholder:text-text-faint"
+              className="w-full bg-transparent py-2 text-sm placeholder:text-text-faint"
             />
           </div>
         )}

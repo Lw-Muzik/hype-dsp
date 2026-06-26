@@ -406,13 +406,14 @@ export const useEngineStore = create<EngineStore>((set, get) => {
 
     const { gapless, crossfadeSecs, dataSaver } = state.playback;
     // The engine's gapless/crossfade queue needs a homogeneous source: an all-
-    // local, all-cloud (same provider), or all-phone (same device) queue. Mixed
-    // queues advance track-by-track from the store instead.
+    // local, all-cloud (same account), or all-phone (same device) queue. A
+    // cloud queue resolves URLs with one account's tokens, so accounts can't be
+    // mixed in it; mixed queues advance track-by-track from the store instead.
     const wantQueue = (gapless || crossfadeSecs > 0) && repeat !== "one";
     const allLocal = order.every((i) => queue[i]?.source === "local");
     const allCloud =
       order.every((i) => queue[i]?.cloud != null) &&
-      order.every((i) => queue[i]?.cloud?.provider === item.cloud?.provider);
+      order.every((i) => queue[i]?.cloud?.accountId === item.cloud?.accountId);
     const allPhone =
       order.every((i) => queue[i]?.phoneTrack != null) &&
       order.every((i) => queue[i]?.device?.id === item.device?.id);
@@ -463,9 +464,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
             id: queue[i]!.cloud!.id,
             ext: extFromName(queue[i]!.cloud!.name),
           }));
-          void playerPlayCloudQueue(item.cloud!.provider, items, pos).catch(onError);
+          void playerPlayCloudQueue(item.cloud!.accountId, items, pos).catch(onError);
         } else {
-          void cloudPlay(item.cloud!.provider, item.cloud!.id).catch(onError);
+          void cloudPlay(item.cloud!.accountId, item.cloud!.id).catch(onError);
         }
         break;
       case "radio":
@@ -535,7 +536,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         const it = pending[next++]!;
         const file = it.cloud!;
         try {
-          const meta = await cloudTrackMetadata(file.provider, file.id, file.name);
+          const meta = await cloudTrackMetadata(file.accountId, file.id, file.name);
           if (meta && (meta.title || meta.artist || meta.album)) {
             patchCloudItem(it.id, meta);
           }

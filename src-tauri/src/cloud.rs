@@ -72,6 +72,11 @@ pub enum CloudProvider {
 #[serde(rename_all = "camelCase")]
 pub struct CloudEntry {
     pub provider: CloudProvider,
+    /// Which connected account this entry belongs to (its stable id). Stamped by
+    /// the high-level `list`/`all_audio`; streaming/metadata use it to pick the
+    /// right account's tokens (two Google accounts share `provider`).
+    #[serde(default)]
+    pub account_id: String,
     /// Folder/file handle to navigate or stream. Drive: object id (folders too).
     /// Dropbox: lowercased path.
     pub id: String,
@@ -108,23 +113,74 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// One connected cloud account: a stable id, its provider, a human label (the
+/// account's email / display name), and its OAuth tokens.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoredAccount {
+    id: String,
+    provider: CloudProvider,
+    label: String,
+    tokens: Tokens,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Store {
+    #[serde(default)]
+    accounts: Vec<StoredAccount>,
+    // Legacy single-account fields (pre-multi-account builds). Read once for
+    // migration into `accounts`, then dropped (never written again).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     google: Option<Tokens>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     dropbox: Option<Tokens>,
 }
 
-/// Connection status surfaced to the UI.
+impl Store {
+    /// Fold any legacy single-account tokens into `accounts`. The migrated id is
+    /// the provider's *old* cache key (e.g. `"GoogleDrive"`), so the existing
+    /// on-disk listing + metadata caches stay valid; the label stays generic
+    /// until the account is reconnected (which resolves the real email).
+    fn migrate_legacy(&mut self) {
+        let legacy = [
+            (CloudProvider::GoogleDrive, self.google.take(), "Google Drive"),
+            (CloudProvider::Dropbox, self.dropbox.take(), "Dropbox"),
+        ];
+        for (provider, tokens, label) in legacy {
+            if let Some(tokens) = tokens {
+                let id = format!("{provider:?}");
+                if !self.accounts.iter().any(|a| a.id == id) {
+                    self.accounts.push(StoredAccount {
+                        id,
+                        provider,
+                        label: label.to_string(),
+                        tokens,
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// One connected account as surfaced to the UI (no tokens).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudAccount {
+    pub id: String,
+    pub provider: CloudProvider,
+    pub label: String,
+}
+
+/// Connection status surfaced to the UI: the connected accounts (any number per
+/// provider) plus whether each provider has credentials configured.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudStatus {
-    pub google_connected: bool,
-    pub dropbox_connected: bool,
+    pub accounts: Vec<CloudAccount>,
     pub google_configured: bool,
     pub dropbox_configured: bool,
 }
 
-/// Managed Tauri state: cloud tokens + their on-disk path.
+/// Managed Tauri state: connected cloud accounts + their on-disk path.
 pub struct CloudState {
     inner: Mutex<Store>,
     path: PathBuf,
@@ -132,10 +188,11 @@ pub struct CloudState {
 
 impl CloudState {
     pub fn load(path: PathBuf) -> Self {
-        let store = std::fs::read_to_string(&path)
+        let mut store = std::fs::read_to_string(&path)
             .ok()
             .and_then(|t| serde_json::from_str::<Store>(&t).ok())
             .unwrap_or_default();
+        store.migrate_legacy();
         Self {
             inner: Mutex::new(store),
             path,
@@ -151,11 +208,22 @@ impl CloudState {
         }
     }
 
-    pub fn status(&self) -> CloudStatus {
+    /// Every connected account (no tokens) — for the UI account list.
+    pub fn accounts(&self) -> Vec<CloudAccount> {
         let s = self.inner.lock().expect("cloud poisoned");
+        s.accounts
+            .iter()
+            .map(|a| CloudAccount {
+                id: a.id.clone(),
+                provider: a.provider,
+                label: a.label.clone(),
+            })
+            .collect()
+    }
+
+    pub fn status(&self) -> CloudStatus {
         CloudStatus {
-            google_connected: s.google.is_some(),
-            dropbox_connected: s.dropbox.is_some(),
+            accounts: self.accounts(),
             // Google's desktop flow also needs a client secret (the mobile app
             // doesn't have one), so require it before offering "Connect".
             google_configured: !google_client_id().is_empty()
@@ -164,41 +232,59 @@ impl CloudState {
         }
     }
 
-    pub fn disconnect(&self, provider: CloudProvider) {
+    /// Forget one account's tokens (by id).
+    pub fn disconnect(&self, account_id: &str) {
         let mut s = self.inner.lock().expect("cloud poisoned");
-        match provider {
-            CloudProvider::GoogleDrive => s.google = None,
-            CloudProvider::Dropbox => s.dropbox = None,
-        }
+        s.accounts.retain(|a| a.id != account_id);
         self.save(&s);
     }
 
-    fn set(&self, provider: CloudProvider, tokens: Tokens) {
-        let mut s = self.inner.lock().expect("cloud poisoned");
-        match provider {
-            CloudProvider::GoogleDrive => s.google = Some(tokens),
-            CloudProvider::Dropbox => s.dropbox = Some(tokens),
-        }
-        self.save(&s);
-    }
-
-    fn tokens(&self, provider: CloudProvider) -> Option<Tokens> {
+    fn provider_of(&self, account_id: &str) -> Option<CloudProvider> {
         let s = self.inner.lock().expect("cloud poisoned");
-        match provider {
-            CloudProvider::GoogleDrive => s.google.clone(),
-            CloudProvider::Dropbox => s.dropbox.clone(),
-        }
+        s.accounts
+            .iter()
+            .find(|a| a.id == account_id)
+            .map(|a| a.provider)
     }
 
-    /// A valid access token, refreshing first if it is near expiry.
-    fn access_token(&self, provider: CloudProvider) -> Result<String, String> {
-        let mut tk = self
-            .tokens(provider)
+    fn tokens(&self, account_id: &str) -> Option<(CloudProvider, Tokens)> {
+        let s = self.inner.lock().expect("cloud poisoned");
+        s.accounts
+            .iter()
+            .find(|a| a.id == account_id)
+            .map(|a| (a.provider, a.tokens.clone()))
+    }
+
+    fn set_tokens(&self, account_id: &str, tokens: Tokens) {
+        let mut s = self.inner.lock().expect("cloud poisoned");
+        if let Some(a) = s.accounts.iter_mut().find(|a| a.id == account_id) {
+            a.tokens = tokens;
+        }
+        self.save(&s);
+    }
+
+    /// Insert a new account, or replace an existing one's tokens + label
+    /// (re-authing the same account keeps its id, so caches stay valid).
+    fn upsert(&self, account: StoredAccount) {
+        let mut s = self.inner.lock().expect("cloud poisoned");
+        if let Some(a) = s.accounts.iter_mut().find(|a| a.id == account.id) {
+            a.tokens = account.tokens;
+            a.label = account.label;
+        } else {
+            s.accounts.push(account);
+        }
+        self.save(&s);
+    }
+
+    /// A valid access token for one account, refreshing first if near expiry.
+    fn access_token(&self, account_id: &str) -> Result<String, String> {
+        let (provider, mut tk) = self
+            .tokens(account_id)
             .ok_or_else(|| "not connected".to_string())?;
         if tk.near_expiry() {
             if let Some(refresh) = tk.refresh.clone() {
                 tk = refresh_tokens(provider, &refresh)?;
-                self.set(provider, tk.clone());
+                self.set_tokens(account_id, tk.clone());
             }
         }
         Ok(tk.access)
@@ -206,21 +292,40 @@ impl CloudState {
 
     // ----- the high-level operations used by the commands -----
 
-    /// Run the interactive OAuth flow and store the resulting tokens.
-    pub fn connect(&self, provider: CloudProvider) -> Result<(), String> {
+    /// Run the interactive OAuth flow for `provider`, resolve the signed-in
+    /// account's identity (so two accounts of the same provider stay distinct),
+    /// and store it. Re-authing an already-connected account updates it in place.
+    pub fn connect(&self, provider: CloudProvider) -> Result<CloudAccount, String> {
         let tokens = oauth_connect(provider)?;
-        self.set(provider, tokens);
-        Ok(())
+        let (remote_id, label) = fetch_identity(provider, &tokens.access)?;
+        let id = format!("{}:{}", provider_key(provider), remote_id);
+        self.upsert(StoredAccount {
+            id: id.clone(),
+            provider,
+            label: label.clone(),
+            tokens,
+        });
+        Ok(CloudAccount {
+            id,
+            provider,
+            label,
+        })
     }
 
-    /// List the contents of one folder (subfolders + audio files). `folder` is
-    /// the provider handle, or "" for the account root.
-    pub fn list(&self, provider: CloudProvider, folder: &str) -> Result<Vec<CloudEntry>, String> {
-        let access = self.access_token(provider)?;
+    /// List the contents of one folder (subfolders + audio files) of `account`.
+    /// `folder` is the provider handle, or "" for the account root.
+    pub fn list(&self, account_id: &str, folder: &str) -> Result<Vec<CloudEntry>, String> {
+        let provider = self
+            .provider_of(account_id)
+            .ok_or_else(|| "not connected".to_string())?;
+        let access = self.access_token(account_id)?;
         let mut entries = match provider {
             CloudProvider::GoogleDrive => drive_browse(&access, folder)?,
             CloudProvider::Dropbox => dropbox_browse(&access, folder)?,
         };
+        for e in &mut entries {
+            e.account_id = account_id.to_string();
+        }
         // Folders first, then files; alphabetical within each.
         entries.sort_by(|a, b| {
             b.is_folder
@@ -230,27 +335,36 @@ impl CloudState {
         Ok(entries)
     }
 
-    /// Every audio file in the account, flat — mirrors the mobile app, which
-    /// lists all audio account-wide rather than folder-by-folder, so the Player
-    /// sees songs nested in subfolders too. Each entry carries its parent
-    /// folder's name as a grouping label.
-    pub fn all_audio(&self, provider: CloudProvider) -> Result<Vec<CloudEntry>, String> {
-        let access = self.access_token(provider)?;
+    /// Every audio file in `account`, flat — mirrors the mobile app, which lists
+    /// all audio account-wide rather than folder-by-folder, so the Player sees
+    /// songs nested in subfolders too. Each entry carries its parent folder's
+    /// name as a grouping label, and the owning account's id.
+    pub fn all_audio(&self, account_id: &str) -> Result<Vec<CloudEntry>, String> {
+        let provider = self
+            .provider_of(account_id)
+            .ok_or_else(|| "not connected".to_string())?;
+        let access = self.access_token(account_id)?;
         let mut entries = match provider {
             CloudProvider::GoogleDrive => drive_all_audio(&access)?,
             CloudProvider::Dropbox => dropbox_all_audio(&access)?,
         };
+        for e in &mut entries {
+            e.account_id = account_id.to_string();
+        }
         entries.sort_by_key(|e| e.name.to_lowercase());
         Ok(entries)
     }
 
-    /// Resolve a streamable `(url, headers)` for a file.
+    /// Resolve a streamable `(url, headers)` for a file in `account`.
     pub fn stream_target(
         &self,
-        provider: CloudProvider,
+        account_id: &str,
         file_id: &str,
     ) -> Result<(String, Vec<(String, String)>), String> {
-        let access = self.access_token(provider)?;
+        let provider = self
+            .provider_of(account_id)
+            .ok_or_else(|| "not connected".to_string())?;
+        let access = self.access_token(account_id)?;
         match provider {
             CloudProvider::GoogleDrive => Ok((
                 format!("https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"),
@@ -260,6 +374,72 @@ impl CloudState {
                 let link = dropbox_temporary_link(&access, file_id)?;
                 Ok((link, Vec::new()))
             }
+        }
+    }
+}
+
+/// The provider's stable key for building account ids (matches the front-end
+/// `CloudProvider` serialization).
+fn provider_key(provider: CloudProvider) -> &'static str {
+    match provider {
+        CloudProvider::GoogleDrive => "googleDrive",
+        CloudProvider::Dropbox => "dropbox",
+    }
+}
+
+/// Resolve a freshly-connected account's stable remote id + display label, so
+/// multiple accounts of the same provider stay distinct. Uses the access we just
+/// obtained — Drive's `about` exposes the signed-in user with only the
+/// `drive.readonly` scope, so no extra OAuth scope is needed.
+fn fetch_identity(provider: CloudProvider, access: &str) -> Result<(String, String), String> {
+    let client = http_client()?;
+    match provider {
+        CloudProvider::GoogleDrive => {
+            let resp = client
+                .get("https://www.googleapis.com/drive/v3/about?fields=user")
+                .bearer_auth(access)
+                .send()
+                .map_err(|e| e.to_string())?;
+            if !resp.status().is_success() {
+                return Err(format!("account lookup failed ({})", resp.status()));
+            }
+            let data: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
+            let email = data["user"]["emailAddress"].as_str().unwrap_or("");
+            let name = data["user"]["displayName"].as_str().unwrap_or("");
+            // The email is the stable, human-recognizable identity; fall back to
+            // the display name only if Drive withholds the address.
+            let remote = if !email.is_empty() { email } else { name };
+            if remote.is_empty() {
+                return Err("no account identity returned".into());
+            }
+            let label = if !email.is_empty() { email } else { name };
+            Ok((remote.to_string(), label.to_string()))
+        }
+        CloudProvider::Dropbox => {
+            // RPC endpoint with no args: send no body and no Content-Type.
+            let resp = client
+                .post("https://api.dropboxapi.com/2/users/get_current_account")
+                .bearer_auth(access)
+                .send()
+                .map_err(|e| e.to_string())?;
+            if !resp.status().is_success() {
+                return Err(format!("account lookup failed ({})", resp.status()));
+            }
+            let data: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
+            let account_id = data["account_id"].as_str().unwrap_or("");
+            if account_id.is_empty() {
+                return Err("no account identity returned".into());
+            }
+            let email = data["email"].as_str().unwrap_or("");
+            let name = data["name"]["display_name"].as_str().unwrap_or("");
+            let label = if !email.is_empty() {
+                email
+            } else if !name.is_empty() {
+                name
+            } else {
+                account_id
+            };
+            Ok((account_id.to_string(), label.to_string()))
         }
     }
 }
@@ -581,6 +761,7 @@ fn drive_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String> {
             let size = f["size"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0);
             entries.push(CloudEntry {
                 provider: CloudProvider::GoogleDrive,
+                account_id: String::new(),
                 id,
                 name,
                 is_folder,
@@ -675,6 +856,7 @@ fn drive_all_audio(access: &str) -> Result<Vec<CloudEntry>, String> {
             let folder = parent.and_then(|p| names.get(&p).cloned());
             CloudEntry {
                 provider: CloudProvider::GoogleDrive,
+                account_id: String::new(),
                 id,
                 name,
                 is_folder: false,
@@ -733,6 +915,7 @@ fn dropbox_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String>
             match tag {
                 "folder" => entries.push(CloudEntry {
                     provider: CloudProvider::Dropbox,
+                    account_id: String::new(),
                     id: path,
                     name,
                     is_folder: true,
@@ -741,6 +924,7 @@ fn dropbox_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String>
                 }),
                 "file" if dropbox_is_audio(&name) => entries.push(CloudEntry {
                     provider: CloudProvider::Dropbox,
+                    account_id: String::new(),
                     id: path,
                     name,
                     is_folder: false,
@@ -801,6 +985,7 @@ fn dropbox_all_audio(access: &str) -> Result<Vec<CloudEntry>, String> {
             let folder = dropbox_parent_folder(entry["path_display"].as_str().unwrap_or(&path));
             entries.push(CloudEntry {
                 provider: CloudProvider::Dropbox,
+                account_id: String::new(),
                 id: path,
                 name,
                 is_folder: false,

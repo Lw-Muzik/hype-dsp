@@ -14,8 +14,9 @@ use hm_core::IpcError;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-/// Management API base, overridable for staging/production.
-const DEFAULT_API: &str = "http://localhost:4000/api";
+/// Management API base, overridable at runtime via `HM_MANAGEMENT_API`
+/// (e.g. `http://localhost:4000/api` for local dev).
+const DEFAULT_API: &str = "http://37.60.225.220:9400/api";
 
 #[derive(Default, Serialize, Deserialize)]
 struct Stored {

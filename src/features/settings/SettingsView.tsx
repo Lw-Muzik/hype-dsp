@@ -7,6 +7,7 @@ import {
   KeyRound,
   Library,
   ListMusic,
+  LogOut,
   RefreshCw,
   RotateCcw,
   Speaker,
@@ -26,6 +27,8 @@ import { useEngineStore } from "@/stores/engine";
 import { useLibraryStore } from "@/stores/library";
 import { useVisualizerStore, VISUALIZER_LIMITS } from "@/stores/visualizer";
 import { useSystemEqStore } from "@/stores/systemEq";
+import { useAccountStore } from "@/stores/account";
+import { toast } from "@/stores/toast";
 import {
   captureVirtualAvailable,
   ipcErrorMessage,
@@ -34,8 +37,6 @@ import {
   libraryRefreshTags,
   libraryScan,
   onLibraryScanProgress,
-  licenseDeactivate,
-  licenseStatus,
   listOutputDevices,
   pickFolder,
   playerPlayCapture,
@@ -43,16 +44,27 @@ import {
   systemAudioInstallDriver,
   type SystemAudioStatus,
 } from "@/lib/ipc";
-import type { DeviceInfo } from "@/lib/types";
+import type { DeviceInfo, LicenseInfo } from "@/lib/types";
 
-function licenseLabel(
-  license: ReturnType<typeof useUiStore.getState>["license"],
-): string {
-  if (!license) return "—";
-  if (license.kind === "licensed") return "Licensed";
-  if (license.kind === "expired") return "Trial expired";
-  return `Trial — ${license.daysLeft} days left`;
+/** Human date (e.g. "14 Jul 2026") for a server ISO timestamp, or null. */
+function formatDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
+
+/** Label + badge colour for each license state. */
+const PLAN_META: Record<LicenseInfo["state"], { label: string; cls: string }> = {
+  trial: { label: "Trial", cls: "bg-amber-500/15 text-amber-400" },
+  licensed: { label: "Licensed", cls: "bg-success/15 text-success" },
+  expired: { label: "Expired", cls: "bg-danger/15 text-danger" },
+  blocked: { label: "Blocked", cls: "bg-danger/15 text-danger" },
+};
 
 type DeviceState =
   | { status: "loading" }
@@ -404,8 +416,8 @@ function OutputDevices({ state }: { state: DeviceState }) {
 export function SettingsView() {
   const route = routeById("settings");
   const appInfo = useUiStore((s) => s.appInfo);
-  const license = useUiStore((s) => s.license);
-  const setLicense = useUiStore((s) => s.setLicense);
+  const account = useAccountStore((s) => s.status);
+  const logout = useAccountStore((s) => s.logout);
   const playback = useEngineStore((s) => s.state.playback);
   const setPlayback = useEngineStore((s) => s.setPlayback);
   const setDataSaver = useEngineStore((s) => s.setDataSaver);
@@ -477,12 +489,15 @@ export function SettingsView() {
       setDriverInstalling(false);
     }
   };
-  const deactivate = () => {
-    licenseDeactivate()
-      .then(() => licenseStatus())
-      .then(setLicense)
-      .catch(() => {});
-  };
+  // Renewal date + label, from the server license (licensed → renewal date,
+  // otherwise the trial end date).
+  const lic = account?.license ?? null;
+  const renewDate = lic
+    ? formatDate(lic.state === "licensed" ? lic.licensedUntil : lic.trialEndsAt)
+    : null;
+  const renewInfo = renewDate
+    ? { label: lic!.state === "licensed" ? "Renews on" : "Trial ends", value: renewDate }
+    : null;
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -569,21 +584,48 @@ export function SettingsView() {
         </Card>
 
         <Card title="Account" icon={KeyRound}>
-          <div className="divide-y divide-border">
-            <InfoRow label="License (mock)" value={licenseLabel(license)} />
-          </div>
-          {license?.kind === "licensed" && (
-            <div className="mt-3 flex justify-end">
-              <Button variant="secondary" onClick={deactivate}>
-                Deactivate
-              </Button>
-            </div>
+          {account?.authenticated ? (
+            <>
+              <div className="divide-y divide-border">
+                {account.email && <InfoRow label="Email" value={account.email} />}
+                {account.name && <InfoRow label="Name" value={account.name} />}
+                <div className="flex items-center justify-between py-2 text-sm">
+                  <span className="text-text-muted">Plan</span>
+                  {lic ? (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${PLAN_META[lic.state].cls}`}
+                    >
+                      {PLAN_META[lic.state].label}
+                    </span>
+                  ) : (
+                    <span className="font-medium">—</span>
+                  )}
+                </div>
+                {lic && (
+                  <InfoRow
+                    label="Days remaining"
+                    value={`${lic.daysLeft} day${lic.daysLeft === 1 ? "" : "s"}`}
+                  />
+                )}
+                {renewInfo && <InfoRow label={renewInfo.label} value={renewInfo.value} />}
+              </div>
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => toast.info("Renewals are coming soon.")}
+                >
+                  <RefreshCw className="size-4" aria-hidden="true" />
+                  Renew
+                </Button>
+                <Button variant="ghost" onClick={() => void logout()}>
+                  <LogOut className="size-4" aria-hidden="true" />
+                  Sign out
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="py-2 text-sm text-text-muted">You’re not signed in.</p>
           )}
-          <p className="mt-3 text-xs text-text-faint">
-            Licensing is an explicitly-marked local mock — no real DRM or
-            activation server. See docs/architecture.md for the production
-            contract.
-          </p>
         </Card>
 
         <Card title="System-wide audio" icon={Sparkles}>

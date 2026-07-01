@@ -63,6 +63,12 @@ struct AuthDto {
 
 pub struct AccountState {
     inner: Mutex<Stored>,
+    /// Serializes token refreshes. Refresh tokens are **single-use** (the server
+    /// rotates + revokes the old one), so two concurrent 401s must not both spend
+    /// the same token — the loser would present a revoked token, get a 401, and
+    /// wrongly clear the session. Held across the refresh round-trip; `inner` is
+    /// only locked briefly inside, so there's no lock-ordering hazard.
+    refresh_lock: Mutex<()>,
     path: PathBuf,
     api: String,
     client: reqwest::blocking::Client,
@@ -81,6 +87,7 @@ impl AccountState {
             .unwrap_or_else(|_| reqwest::blocking::Client::new());
         Self {
             inner: Mutex::new(stored),
+            refresh_lock: Mutex::new(()),
             path,
             api,
             client,
@@ -123,7 +130,30 @@ impl AccountState {
             .map_err(|e| format!("couldn't reach the server: {e}"))
     }
 
-    fn refresh(&self) -> bool {
+    /// Refresh the access token after a request failed with 401 on
+    /// `stale_access`. **Single-flight**: only one refresh runs at a time, and a
+    /// caller that finds the token already rotated (by whoever held the lock
+    /// first) skips its own refresh and uses the new token. This is what stops
+    /// two periodic calls (the 5-min status check and the 60-s heartbeat) from
+    /// both spending the single-use refresh token when the access token expires
+    /// and revoking each other's session.
+    ///
+    /// The session is cleared **only** on a definitive rejection (the refresh
+    /// token itself is invalid/expired → 401/403). A transient failure (server
+    /// 5xx, rate-limit, offline) leaves the session intact so a later call can
+    /// retry — a blip must never sign the user out.
+    fn refresh_after_401(&self, stale_access: &str) -> bool {
+        let _flight = self.refresh_lock.lock().unwrap_or_else(|e| e.into_inner());
+        // Someone may have refreshed while we waited for the lock: if the access
+        // token is no longer the stale one we 401'd on, it's already good.
+        {
+            let s = self.inner.lock().expect("account poisoned");
+            match s.access.as_deref() {
+                Some(cur) if cur != stale_access => return true, // already refreshed
+                None => return false,                            // session cleared
+                _ => {}
+            }
+        }
         let refresh = self.inner.lock().expect("account poisoned").refresh.clone();
         let Some(refresh) = refresh else {
             return false;
@@ -139,14 +169,18 @@ impl AccountState {
                     self.store_session(dto);
                     true
                 }
+                // Parsed body was bad — treat as transient, keep the session.
                 Err(_) => false,
             },
-            // A failed refresh means the session is dead — sign out locally.
-            Ok(_) => {
+            // The refresh token itself was rejected → the session is genuinely
+            // dead (expired, revoked, or signed out elsewhere). Only now clear.
+            Ok(r) if matches!(r.status().as_u16(), 401 | 403) => {
                 self.clear();
                 false
             }
-            Err(_) => false,
+            // Any other response (5xx, 429, …) or a transport error is transient:
+            // keep the session and let a later call retry instead of signing out.
+            Ok(_) | Err(_) => false,
         }
     }
 
@@ -154,7 +188,7 @@ impl AccountState {
     fn auth_get(&self, path: &str) -> Option<reqwest::blocking::Response> {
         let access = self.inner.lock().expect("account poisoned").access.clone()?;
         let resp = self.client.get(self.url(path)).bearer_auth(&access).send().ok()?;
-        if resp.status().as_u16() == 401 && self.refresh() {
+        if resp.status().as_u16() == 401 && self.refresh_after_401(&access) {
             let access = self.inner.lock().expect("account poisoned").access.clone()?;
             return self.client.get(self.url(path)).bearer_auth(&access).send().ok();
         }
@@ -249,8 +283,9 @@ impl AccountState {
             return;
         };
         let resp = post(&access);
-        // Refresh + retry once if the access token had expired.
-        if matches!(&resp, Ok(r) if r.status().as_u16() == 401) && self.refresh() {
+        // Refresh + retry once if the access token had expired (single-flight, so
+        // it won't race the status check into revoking the session).
+        if matches!(&resp, Ok(r) if r.status().as_u16() == 401) && self.refresh_after_401(&access) {
             if let Some(access) = self.inner.lock().expect("account poisoned").access.clone() {
                 let _ = post(&access);
             }

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { AudioLines } from "lucide-react";
 import { useAccountStore, toLicenseStatus } from "@/stores/account";
@@ -23,11 +23,34 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const setLicense = useUiStore((s) => s.setLicense);
   const appInfo = useUiStore((s) => s.appInfo);
 
-  // Initial + periodic re-check (a trial can expire / be revoked while running).
+  // Initial + periodic re-check (a trial can expire / be revoked while running,
+  // and the days-remaining count ticks down day by day).
   useEffect(() => {
     void refresh();
     const t = setInterval(() => void refresh(), REFRESH_MS);
     return () => clearInterval(t);
+  }, [refresh]);
+
+  // Also re-check whenever the app regains focus / becomes visible. The interval
+  // above is suspended while the machine sleeps, so without this the days count
+  // (and license state) could sit stale after a wake or an alt-tab back until the
+  // next 5-min tick. Throttled so rapid focus changes don't spam the server; the
+  // single-flight token refresh makes frequent re-checks safe.
+  const lastActiveRefresh = useRef(Date.now());
+  useEffect(() => {
+    const onActive = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastActiveRefresh.current < 30_000) return;
+      lastActiveRefresh.current = now;
+      void refresh();
+    };
+    window.addEventListener("focus", onActive);
+    document.addEventListener("visibilitychange", onActive);
+    return () => {
+      window.removeEventListener("focus", onActive);
+      document.removeEventListener("visibilitychange", onActive);
+    };
   }, [refresh]);
 
   // Feed the trial countdown into the existing top banner.

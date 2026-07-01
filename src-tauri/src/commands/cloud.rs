@@ -102,36 +102,34 @@ pub fn cloud_all_audio(
     })
 }
 
-/// Every cached tag/cover for one account, keyed by file id (from the on-disk
-/// metadata cache). Lets the library hydrate covers/titles in one call on
-/// launch instead of one round-trip per track.
-#[tauri::command]
-pub fn cloud_cached_metadata(
+/// Every cached **text tag** for one account, keyed by file id (from the on-disk
+/// metadata cache) — no cover art. Covers are the memory-heavy part (base64
+/// `data:` URIs, ~100 KB each), so the library hydrates all known titles/artists/
+/// albums in one cheap call on launch and then resolves covers lazily for
+/// on-screen rows via [`cloud_track_cover`]. This is what keeps a big cloud
+/// library from ballooning memory on launch.
+// `(async)`: clones the account's tag map under a lock — run off the main thread.
+#[tauri::command(async)]
+pub fn cloud_cached_tags(
     cache: State<'_, CloudMetaCache>,
     account_id: String,
 ) -> HashMap<String, CloudTrackMeta> {
-    cache.snapshot_for(&account_id)
+    cache.snapshot_tags_for(&account_id)
 }
 
-/// Read a cloud track's embedded tags (title/artist/album + cover) by fetching
-/// only the file's leading bytes — mirrors the mobile app reading metadata
-/// straight off the cloud stream. Cached on disk per file, so it's a one-time
-/// download. `name` hints the container format from the file extension.
-#[tauri::command(async)]
-pub fn cloud_track_metadata(
-    cloud: State<'_, CloudState>,
-    cache: State<'_, CloudMetaCache>,
-    account_id: String,
-    file_id: String,
-    name: Option<String>,
+/// Fetch + cache one cloud track's full metadata (tags + cover), reading only
+/// the file's leading bytes — mirrors the mobile app reading metadata straight
+/// off the cloud stream. Cached on disk per file, so it's a one-time download.
+/// Shared by the three metadata commands below.
+fn fetch_and_cache_meta(
+    cloud: &CloudState,
+    cache: &CloudMetaCache,
+    account_id: &str,
+    file_id: &str,
+    name: Option<&str>,
 ) -> Option<CloudTrackMeta> {
-    let key = format!("{account_id}:{file_id}");
-    if let Some(hit) = cache.get(&key) {
-        return Some(hit);
-    }
-    let (url, headers) = cloud.stream_target(&account_id, &file_id).ok()?;
+    let (url, headers) = cloud.stream_target(account_id, file_id).ok()?;
     let ext = name
-        .as_deref()
         .and_then(|n| n.rsplit('.').next())
         .filter(|e| !e.is_empty() && e.len() <= 5)
         .map(|e| e.to_ascii_lowercase());
@@ -144,9 +142,67 @@ pub fn cloud_track_metadata(
         cover: meta.cover,
     };
     if result.is_useful() {
-        cache.put(key, result.clone());
+        cache.put(format!("{account_id}:{file_id}"), result.clone());
     }
     Some(result)
+}
+
+/// Read a cloud track's embedded tags (title/artist/album + cover) by fetching
+/// only the file's leading bytes. `name` hints the container format from the
+/// file extension. Used on demand (e.g. enriching the now-playing card).
+#[tauri::command(async)]
+pub fn cloud_track_metadata(
+    cloud: State<'_, CloudState>,
+    cache: State<'_, CloudMetaCache>,
+    account_id: String,
+    file_id: String,
+    name: Option<String>,
+) -> Option<CloudTrackMeta> {
+    let key = format!("{account_id}:{file_id}");
+    if let Some(hit) = cache.get(&key) {
+        return Some(hit);
+    }
+    fetch_and_cache_meta(&cloud, &cache, &account_id, &file_id, name.as_deref())
+}
+
+/// Read a cloud track's text tags only (no cover). Backs the background library
+/// preload: it still fetches + caches the full metadata (so a later cover lookup
+/// is a warm hit), but returns the cover-free view so the bulk hydrate never
+/// ships ~100 KB of base64 per track over IPC or holds it in the JS heap.
+#[tauri::command(async)]
+pub fn cloud_track_tags(
+    cloud: State<'_, CloudState>,
+    cache: State<'_, CloudMetaCache>,
+    account_id: String,
+    file_id: String,
+    name: Option<String>,
+) -> Option<CloudTrackMeta> {
+    let key = format!("{account_id}:{file_id}");
+    if let Some(hit) = cache.get(&key) {
+        return Some(hit.tags_only());
+    }
+    fetch_and_cache_meta(&cloud, &cache, &account_id, &file_id, name.as_deref())
+        .map(|m| m.tags_only())
+}
+
+/// Resolve just the cover art (a `data:` URI) for one cloud track — a warm
+/// cache hit when the tags preload already downloaded the file, otherwise a
+/// one-time fetch. Called lazily per visible row, so only the handful of covers
+/// actually on screen are ever brought into memory.
+#[tauri::command(async)]
+pub fn cloud_track_cover(
+    cloud: State<'_, CloudState>,
+    cache: State<'_, CloudMetaCache>,
+    account_id: String,
+    file_id: String,
+    name: Option<String>,
+) -> Option<String> {
+    let key = format!("{account_id}:{file_id}");
+    if let Some(cover) = cache.cover_for(&key) {
+        return Some(cover);
+    }
+    fetch_and_cache_meta(&cloud, &cache, &account_id, &file_id, name.as_deref())
+        .and_then(|m| m.cover)
 }
 
 /// Resolve a streamable URL for the file and play it through the chain.

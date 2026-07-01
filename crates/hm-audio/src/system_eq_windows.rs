@@ -17,12 +17,19 @@
 //! ## Status
 //! The WASAPI capture→DSP→render loop below is **implemented and compile-verified
 //! for `x86_64-pc-windows-msvc`** (the project's primary gate, run on the macOS
-//! dev host via `cargo xwin`). It is **untested on a real Windows device** — the
-//! real-time COM/threading paths have never been exercised against live audio —
-//! and it still requires the **bundled virtual audio driver** (a separate signing
-//! / packaging effort, see `docs/system-eq.md`) to function: without that device
-//! present, [`available`] returns `false` and [`WindowsSystemEq::start`] returns a
-//! clear, actionable error instead of trying to capture a device that isn't there.
+//! dev host via `cargo xwin`). [`WindowsSystemEq::start`] performs a **startup
+//! handshake**: the worker reports whether the pipeline actually initialized, so a
+//! real failure reaches the caller (and the UI) instead of `start` returning `Ok`
+//! the instant the thread spawns — the bug that left the toggle showing a phantom
+//! "running" state.
+//!
+//! It still needs a **virtual routing device**. By default that is the bundled,
+//! signed driver (see [`crate::win_driver`] and `docs/windows-driver.md`); for
+//! validation on real hardware *before* that driver ships, the routing device
+//! can be pointed at any installed virtual cable via the `HM_SYSTEM_EQ_DEVICE` env
+//! var. Without a routing device present, [`available`] returns `false` and
+//! `start` returns a clear, actionable error instead of capturing a missing device.
+//! The real-time COM/threading paths remain **untested against live audio**.
 //!
 //! Two parts make this work; only the loop can be built/tested off-Windows:
 //!   - **The driver + installer** (signed package registering the virtual device):
@@ -77,9 +84,25 @@ use crate::error::AudioError;
 use crate::resampler::StereoResampler;
 use crate::system_eq_shared::process_block;
 
-/// Substring that identifies our bundled virtual output device among the render
-/// endpoints (the installer registers it under this friendly name).
+/// Default substring that identifies our bundled virtual output device among the
+/// render endpoints (the installer registers it under this friendly name).
 pub const VIRTUAL_DEVICE_NAME: &str = "HypeMuzik";
+
+/// Friendly-name substring of the device this pipeline routes through.
+///
+/// Defaults to the bundled virtual device ([`VIRTUAL_DEVICE_NAME`]); overridable
+/// via the `HM_SYSTEM_EQ_DEVICE` env var. The override lets the real-time
+/// pipeline be **validated on actual Windows hardware today** against any already
+/// installed virtual output device (VB-Cable, VoiceMeeter, the open-source Virtual
+/// Audio Driver, …) — before the bundled, signed driver ships — and is the same
+/// detection the bundled driver plugs into. Explicit opt-in (an env var), so we
+/// never silently hijack a virtual cable the user installed for something else.
+fn routing_device_name() -> String {
+    match std::env::var("HM_SYSTEM_EQ_DEVICE") {
+        Ok(name) if !name.trim().is_empty() => name,
+        _ => VIRTUAL_DEVICE_NAME.to_string(),
+    }
+}
 
 /// We always present a stereo float pipeline to the DSP chain; non-stereo device
 /// mixes are down/up-mixed to this on capture and fanned back out on render.
@@ -213,6 +236,7 @@ pub fn available() -> bool {
 /// device marker. Returns `Err` on any COM failure so the caller can map it to a
 /// safe `false`.
 unsafe fn virtual_device_present() -> windows::core::Result<bool> {
+    let target = routing_device_name();
     let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
     let collection = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)?;
     let count = collection.GetCount()?;
@@ -221,7 +245,7 @@ unsafe fn virtual_device_present() -> windows::core::Result<bool> {
             continue;
         };
         if let Some(name) = device_friendly_name(&device) {
-            if name.contains(VIRTUAL_DEVICE_NAME) {
+            if name.contains(&target) {
                 return Ok(true);
             }
         }
@@ -243,6 +267,7 @@ unsafe fn device_friendly_name(device: &IMMDevice) -> Option<String> {
 unsafe fn find_virtual_device(
     enumerator: &IMMDeviceEnumerator,
 ) -> windows::core::Result<Option<(IMMDevice, String)>> {
+    let target = routing_device_name();
     let collection = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)?;
     let count = collection.GetCount()?;
     for i in 0..count {
@@ -250,7 +275,7 @@ unsafe fn find_virtual_device(
             continue;
         };
         if let Some(name) = device_friendly_name(&device) {
-            if name.contains(VIRTUAL_DEVICE_NAME) {
+            if name.contains(&target) {
                 let id = device_id(&device)?;
                 return Ok(Some((device, id)));
             }
@@ -305,6 +330,11 @@ impl WindowsSystemEq {
             unsafe { switch_default_to_virtual() }
         };
 
+        // Startup handshake: the worker reports whether the WASAPI pipeline
+        // actually initialized, so a real failure surfaces to the caller (and the
+        // UI) instead of being swallowed on the worker thread — the reason the
+        // toggle used to show "running" when nothing was being equalized.
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
         let run = running.clone();
         let worker = std::thread::Builder::new()
             .name("hm-system-eq-win".into())
@@ -313,9 +343,7 @@ impl WindowsSystemEq {
                 // lifetime of the WASAPI clients it creates.
                 let _com = ComGuard::new();
                 // SAFETY: the worker confines all COM/WASAPI use to this thread.
-                if let Err(e) = unsafe { run_pipeline(&state, &run) } {
-                    crate::diag::log(&format!("system-eq(win) worker exited: {e}"));
-                }
+                unsafe { run_pipeline(&state, &run, ready_tx) };
             })
             .map_err(|e| {
                 // Roll back the default switch if the worker never started.
@@ -326,6 +354,33 @@ impl WindowsSystemEq {
                 }
                 AudioError::Stream(format!("system EQ worker: {e}"))
             })?;
+
+        // Wait briefly for the pipeline to come up. Real initialization errors
+        // (no usable real output, WASAPI activation/format failures, …) arrive
+        // well within this window; a reported error means the worker has already
+        // torn its half down, so we join it and roll back the default-endpoint
+        // switch before returning the failure to the caller.
+        match ready_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(Ok(())) => {}
+            Ok(Err(msg)) => {
+                running.store(false, Ordering::Relaxed);
+                let _ = worker.join();
+                if let Some(prev) = restore_default {
+                    let _com = ComGuard::new();
+                    // SAFETY: best-effort restore on the caller thread.
+                    unsafe { set_default_endpoint(&prev) };
+                }
+                return Err(AudioError::Stream(msg));
+            }
+            Err(_) => {
+                // No signal in time: assume a slow-but-healthy bring-up rather than
+                // kill a possibly-working pipeline. Genuine init failures report
+                // fast; this only guards a pathologically slow device start.
+                crate::diag::log(
+                    "system-eq(win): startup confirmation timed out; assuming running",
+                );
+            }
+        }
 
         Ok(Self {
             running,
@@ -429,7 +484,15 @@ struct ClientFormat {
 unsafe fn run_pipeline(
     state: &Arc<ArcSwap<EngineState>>,
     run: &Arc<AtomicBool>,
-) -> Result<(), AudioError> {
+    ready: std::sync::mpsc::Sender<Result<(), String>>,
+) {
+    // Setup + steady-state run inside a closure so `?` can short-circuit a setup
+    // failure while we still report it through `ready`. `ready_ok` signals success
+    // once both clients are running (just before the loop); the trailing `Err` arm
+    // reports any setup failure that fired before that. This is what lets
+    // `start()` surface real failures instead of pretending the pipeline is up.
+    let ready_ok = ready.clone();
+    let result: Result<(), AudioError> = (move || -> Result<(), AudioError> {
     let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
         .map_err(|e| AudioError::Host(format!("device enumerator: {e}")))?;
 
@@ -554,6 +617,9 @@ unsafe fn run_pipeline(
     let _capture_stop = StopGuard(&capture_client);
     let _render_stop = StopGuard(&render_client);
 
+    // Both clients are live: report a successful start to `start()`.
+    let _ = ready_ok.send(Ok(()));
+
     // Steady state: wait on the capture event, drain all queued packets into the
     // stereo `captured` buffer, resample if needed, DSP, then push to the render
     // device's available space. Exits cleanly when `run` clears or a pipe breaks.
@@ -636,10 +702,18 @@ unsafe fn run_pipeline(
         );
     }
 
-    // Guards (`StopGuard`, `HandleGuard`, `MmcssGuard`) tear everything down here.
-    drop(event_guard);
-    drop(render_event_guard);
-    Ok(())
+        // Guards (`StopGuard`, `HandleGuard`, `MmcssGuard`) tear everything down here.
+        drop(event_guard);
+        drop(render_event_guard);
+        Ok(())
+    })();
+
+    // A failure during setup never sent `Ok`; report it so `start()` can surface
+    // the real reason and the UI doesn't show a phantom "running" state.
+    if let Err(e) = result {
+        crate::diag::log(&format!("system-eq(win) worker exited: {e}"));
+        let _ = ready.send(Err(e.to_string()));
+    }
 }
 
 /// Append `frames` of device-format capture data, converted to interleaved

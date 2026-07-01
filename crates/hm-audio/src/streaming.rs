@@ -608,8 +608,13 @@ fn probe_buffered(
     ext: Option<&str>,
     max_bytes: u64,
 ) -> Option<hm_core::TrackMeta> {
+    use std::io::Read;
     let resp = meta_request(client, url, headers, max_bytes)?;
-    let bytes = resp.bytes().ok()?.to_vec();
+    // Cap the read at `max_bytes` in case the server ignored the Range header,
+    // so a non-compliant host can't stream a whole large file into RAM here
+    // (the sibling `probe_stream` caps the same way).
+    let mut bytes = Vec::new();
+    resp.take(max_bytes).read_to_end(&mut bytes).ok()?;
     // Parse the ID3v1 tail first (cheap, borrows) before the buffer is moved into
     // the seekable source for the richer symphonia probe.
     let id3v1 = parse_id3v1(&bytes);

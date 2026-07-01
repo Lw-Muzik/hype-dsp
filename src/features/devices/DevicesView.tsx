@@ -20,8 +20,6 @@ import {
   ipcErrorMessage,
   linkArtwork,
   linkDiscover,
-  linkDiscoverStart,
-  linkDiscoverStop,
   linkLibrary,
   linkPair,
   linkPairAddress,
@@ -55,13 +53,21 @@ function Thumb({ seed, label }: { seed: string; label: string }) {
 }
 
 // Resolve+dedupe artwork lookups across renders (null = no art / unreachable).
+// Bounded: each resolved value can be a ~100 KB base64 cover, so browsing many
+// phones' libraries over a session would otherwise grow this without limit.
 const artCache = new Map<string, Promise<string | null>>();
+const ART_CACHE_CAP = 300;
 function fetchArt(deviceId: string, trackId: string): Promise<string | null> {
   const key = `${deviceId}:${trackId}`;
   let pending = artCache.get(key);
   if (!pending) {
     pending = linkArtwork(deviceId, trackId).catch(() => null);
     artCache.set(key, pending);
+    while (artCache.size > ART_CACHE_CAP) {
+      const oldest = artCache.keys().next().value;
+      if (oldest === undefined) break;
+      artCache.delete(oldest);
+    }
   }
   return pending;
 }
@@ -163,11 +169,13 @@ export function DevicesView() {
     void scan();
   }, [scan]);
 
-  // Continuous discovery — phones appear the instant they're seen, no refresh.
+  // Live list updates. Discovery runs app-wide (started in App and kept running
+  // for the whole session so paired phones auto-sync), so here we only listen
+  // for phones as they're seen — we must NOT stop discovery on unmount, or a
+  // phone coming online while off this screen would go unnoticed until relaunch.
   useEffect(() => {
     let un: (() => void) | undefined;
     let cancelled = false;
-    void linkDiscoverStart().catch(() => {});
     onPhoneFound((dev) => {
       setDevices((prev) => {
         const i = prev.findIndex((d) => d.id === dev.id);
@@ -184,7 +192,6 @@ export function DevicesView() {
     return () => {
       cancelled = true;
       un?.();
-      void linkDiscoverStop().catch(() => {});
     };
   }, []);
 
@@ -228,7 +235,7 @@ export function DevicesView() {
       setPairing(null);
       setPin("");
       // A new phone's tracks should appear in the unified library.
-      useMusicLibraryStore.getState().invalidatePhone();
+      useMusicLibraryStore.getState().syncPhone();
       await browse(device);
     } catch (e) {
       setError(ipcErrorMessage(e));
@@ -260,7 +267,7 @@ export function DevicesView() {
       );
       setManualAddr("");
       setManualPin("");
-      useMusicLibraryStore.getState().invalidatePhone();
+      useMusicLibraryStore.getState().syncPhone();
       await browse(device);
     } catch (e) {
       setError(ipcErrorMessage(e));
@@ -275,7 +282,7 @@ export function DevicesView() {
       setOpen(null);
       setTracks([]);
     }
-    useMusicLibraryStore.getState().invalidatePhone();
+    useMusicLibraryStore.getState().syncPhone();
     await scan();
   };
 
@@ -312,7 +319,7 @@ export function DevicesView() {
       setOpen(null);
       setTracks([]);
     }
-    useMusicLibraryStore.getState().invalidatePhone();
+    useMusicLibraryStore.getState().syncPhone();
     await refreshRemote();
     await scan();
   };
@@ -326,7 +333,7 @@ export function DevicesView() {
     let cancelled = false;
     onRemoteConnected(() => {
       setPairingInfo(null);
-      useMusicLibraryStore.getState().invalidatePhone();
+      useMusicLibraryStore.getState().syncPhone();
       void refreshRemote();
       void scan();
     })

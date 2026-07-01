@@ -149,6 +149,10 @@ const defaultEngineState: EngineState = {
 
 const idleMeters: MeterFrame = { peak: [0, 0], rms: [0, 0] };
 
+// A single shared "no gain reduction" compander meter row. Re-used as a stable
+// reference across idle frames so the meter doesn't re-render 30×/s for zeros.
+const IDLE_COMPANDER_GR: number[] = new Array<number>(10).fill(0);
+
 /* --------------------------------------------------------------- queue items */
 
 export function localItem(track: LibraryTrack): QueueItem {
@@ -589,7 +593,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     state: defaultEngineState,
     meters: idleMeters,
     spectrum: [],
-    companderGr: new Array<number>(10).fill(0),
+    companderGr: IDLE_COMPANDER_GR,
     metersLive: false,
     playing: false,
     paused: false,
@@ -756,12 +760,23 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
 
     applyFrame: (frame) =>
-      set({
-        meters: frame.meters,
-        ...(frame.spectrum ? { spectrum: frame.spectrum } : {}),
-        ...(frame.companderGr
-          ? { companderGr: frame.companderGr }
-          : { companderGr: new Array<number>(10).fill(0) }),
+      set((s) => {
+        // Keep a *stable* companderGr reference whenever there's no gain
+        // reduction (stage idle/disabled): re-using the same frozen array means
+        // the CompanderCard meter's `s.companderGr` selector stays reference-
+        // equal and it doesn't re-render every frame for a row of zeros.
+        const gr = frame.companderGr;
+        const active = gr != null && gr.some((v) => v !== 0);
+        const companderGr = active
+          ? gr
+          : s.companderGr === IDLE_COMPANDER_GR
+            ? s.companderGr
+            : IDLE_COMPANDER_GR;
+        return {
+          meters: frame.meters,
+          ...(frame.spectrum ? { spectrum: frame.spectrum } : {}),
+          companderGr,
+        };
       }),
 
     applyProgress: (p) => {

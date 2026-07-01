@@ -88,9 +88,17 @@ function groupTracks(tracks: MusicTrack[], facet: Facet): Group[] {
   return groups.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+// The hero deck only needs a handful of albums, so it samples a bounded prefix
+// rather than grouping the entire library — that keeps it O(1) w.r.t. library
+// size (grouping millions of tracks just to pick 6 would block the main thread).
+const DECK_SAMPLE = 2000;
+
 /** Featured deck items for the hero (top albums, else first tracks). */
 function pickDeck(tracks: MusicTrack[]): DeckItem[] {
-  const albums = groupTracks(tracks, "albums").filter((g) => g.key !== "singles");
+  // A prefix is safe: `sample` is a prefix of `tracks`, so an index into
+  // `sample` is the same index into `tracks` (used to start playback there).
+  const sample = tracks.length > DECK_SAMPLE ? tracks.slice(0, DECK_SAMPLE) : tracks;
+  const albums = groupTracks(sample, "albums").filter((g) => g.key !== "singles");
   if (albums.length >= 2) {
     return albums.slice(0, 6).map((a) => ({
       key: `a:${a.key}`,
@@ -98,10 +106,10 @@ function pickDeck(tracks: MusicTrack[]): DeckItem[] {
       artist: a.subtitle,
       art: a.art,
       seed: a.seed,
-      index: tracks.indexOf(a.tracks[0]!),
+      index: sample.indexOf(a.tracks[0]!),
     }));
   }
-  return tracks.slice(0, 6).map((t, i) => ({
+  return sample.slice(0, 6).map((t, i) => ({
     key: `t:${t.uid}`,
     title: t.title,
     artist: t.artist ?? "Unknown artist",
@@ -133,7 +141,8 @@ const GRID_TEXT_H = 52;
  * source filter. Replaces the old per-source views.
  */
 export function MusicLibrary() {
-  const { tracks, library, phone, cloud } = useMusicLibrary();
+  const { tracks, localTracks, phoneTracks, cloudTracks, library, phone, cloud } =
+    useMusicLibrary();
   const playQueueItems = useEngineStore((s) => s.playQueueItems);
   const current = useEngineStore((s) =>
     s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined,
@@ -152,27 +161,41 @@ export function MusicLibrary() {
   // Reset transient view state when the source filter changes.
   useEffect(() => setDrill(null), [sourceFilter, facet]);
 
-  const filtered = useMemo(
-    () => (sourceFilter === "all" ? tracks : tracks.filter((t) => t.source === sourceFilter)),
-    [tracks, sourceFilter],
-  );
+  // Pick the active source's list directly — no O(n) `.filter`/spread over the
+  // merged library on every render. Each list is already maintained separately
+  // in the store; "all" is the pre-merged array.
+  const filtered =
+    sourceFilter === "all"
+      ? tracks
+      : sourceFilter === "local"
+        ? localTracks
+        : sourceFilter === "phone"
+          ? phoneTracks
+          : cloudTracks;
+
+  // Heavy browse derivations (search / facet grouping / hero deck) run against a
+  // *deferred* copy so they never block input or navigation: while a large
+  // library streams in (~5 publishes/sec) React keeps the last result on screen
+  // and recomputes these at low priority, coalescing bursts instead of
+  // re-deriving synchronously on the render critical path for every publish.
+  const deferredFiltered = useDeferredValue(filtered);
 
   const q = deferredQuery.trim().toLowerCase();
   const searching = q.length > 0;
 
   const searchResults = useMemo(
-    () => (searching ? filtered.filter((t) => matches(t, q)) : []),
-    [filtered, q, searching],
+    () => (searching ? deferredFiltered.filter((t) => matches(t, q)) : []),
+    [deferredFiltered, q, searching],
   );
 
   const groups = useMemo(
-    () => (!searching && facet !== "songs" && !drill ? groupTracks(filtered, facet) : []),
-    [filtered, facet, searching, drill],
+    () => (!searching && facet !== "songs" && !drill ? groupTracks(deferredFiltered, facet) : []),
+    [deferredFiltered, facet, searching, drill],
   );
 
   const deck = useMemo(
-    () => (!searching && facet === "songs" && !drill ? pickDeck(filtered) : []),
-    [filtered, facet, searching, drill],
+    () => (!searching && facet === "songs" && !drill ? pickDeck(deferredFiltered) : []),
+    [deferredFiltered, facet, searching, drill],
   );
 
   // The track list currently shown (and what playback enqueues).

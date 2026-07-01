@@ -35,6 +35,9 @@ pub mod system_tap;
 pub mod system_eq_linux;
 #[cfg(target_os = "windows")]
 pub mod system_eq_windows;
+/// Bundled virtual-audio driver lifecycle (install/status) for Windows system EQ.
+#[cfg(target_os = "windows")]
+pub mod win_driver;
 
 /// Whether self-contained system-wide EQ (the Linux/Windows re-routing pipeline,
 /// distinct from the macOS process tap) is currently available on this machine.

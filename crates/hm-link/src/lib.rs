@@ -178,6 +178,18 @@ impl LinkState {
             .collect()
     }
 
+    /// Whether `device_id` is one of our paired phones. Cheap check used by the
+    /// discovery watcher to decide when a *paired* phone has (re)appeared on the
+    /// LAN, so the UI can auto-sync its library without a relaunch.
+    pub fn is_paired(&self, device_id: &str) -> bool {
+        self.inner
+            .lock()
+            .expect("link poisoned")
+            .devices
+            .iter()
+            .any(|d| d.id == device_id)
+    }
+
     /// Forget a pairing (revokes the token locally).
     pub fn unpair(&self, device_id: &str) {
         let mut s = self.inner.lock().expect("link poisoned");

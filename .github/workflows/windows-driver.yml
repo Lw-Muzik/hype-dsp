@@ -1,0 +1,193 @@
+name: Windows Audio Driver
+
+# Builds, names, and signs the HypeMuzik virtual-audio driver, then packages it for
+# bundling into the app at src-tauri/drivers/HypeMuzikAudio/. This automates the
+# Windows-only finish of "Option 2" (see docs/windows-driver.md): the rest of the
+# feature (capture→DSP→render loop, install/status commands, Settings UX, NSIS
+# hook) already ships in the repo.
+#
+# ┌─ HONESTY NOTE ───────────────────────────────────────────────────────────────┐
+# │ This pipeline runs ONLY on a Windows runner and has never been executed from  │
+# │ the dev host. Treat it as a SCAFFOLD: the first real run will surface the     │
+# │ exact WDK version, the driver solution/output paths, and the Inf2Cat OS list  │
+# │ to pin. Every such spot is marked `VERIFY:`.                                  │
+# │                                                                               │
+# │ Signing reality on Win10 1607+/Win11:                                         │
+# │  • sign_mode=test  → self-signed; loads ONLY with `bcdedit /set testsigning   │
+# │    on` (dev/QA). Not for distribution.                                        │
+# │  • sign_mode=production → signtool with your cert (secrets). EV signing is    │
+# │    NECESSARY BUT NOT SUFFICIENT: the package must ALSO be Microsoft           │
+# │    ATTESTATION-signed via Partner Center (a submission step this workflow     │
+# │    cannot fully automate — it produces the package for you to submit, and you │
+# │    drop the returned Microsoft-signed .cat back in). See docs/windows-driver. │
+# └───────────────────────────────────────────────────────────────────────────────┘
+
+on:
+  workflow_dispatch:
+    inputs:
+      driver_repo:
+        description: "Upstream virtual-audio-driver repo (owner/name)"
+        default: "VirtualDrivers/Virtual-Audio-Driver"
+        required: true
+      driver_ref:
+        description: "Tag/branch/SHA of the driver source to build (pin a release)"
+        default: "main"
+        required: true
+      friendly_name:
+        description: 'Device friendly name (MUST contain "HypeMuzik")'
+        default: "HypeMuzik (Virtual Audio)"
+        required: true
+      sign_mode:
+        description: "test = self-signed (dev only) · production = signtool via secrets · none = unsigned"
+        type: choice
+        options: [test, production, none]
+        default: test
+
+permissions:
+  contents: read
+
+jobs:
+  driver:
+    # Same pin as ci.yml/release.yml: the WDK build targets expect VS 17 2022.
+    runs-on: windows-2022
+    steps:
+      - name: Checkout HypeMuzik
+        uses: actions/checkout@v4
+        with:
+          path: hypemuzik
+
+      - name: Validate friendly name
+        shell: pwsh
+        run: |
+          if ('${{ inputs.friendly_name }}' -notmatch 'HypeMuzik') {
+            Write-Error 'friendly_name MUST contain "HypeMuzik" so the app detects the device (routing_device_name()).'
+            exit 1
+          }
+
+      - name: Checkout driver source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.driver_repo }}
+          ref: ${{ inputs.driver_ref }}
+          path: driver-src
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install the Windows Driver Kit (WDK)
+        shell: pwsh
+        run: |
+          # The WDK provides the driver build targets + stampinf/Inf2Cat/signtool.
+          # VERIFY/PIN: this fwlink points at the current Win11 WDK installer; pin it
+          # to the version matching the runner's Visual Studio (VS 17 2022 here).
+          $url = 'https://go.microsoft.com/fwlink/?linkid=2286137'
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\wdksetup.exe"
+          Start-Process -FilePath "$env:RUNNER_TEMP\wdksetup.exe" `
+            -ArgumentList '/q','/norestart','/features','+' -Wait
+
+      - name: Set device friendly name
+        shell: pwsh
+        working-directory: driver-src
+        run: |
+          # VERIFY: the friendly-name token depends on the source. SYSVAD-derived
+          # drivers carry it in a *.inx/*.inf strings section. Replace the upstream
+          # names with the requested one across inf/inx files.
+          $name = '${{ inputs.friendly_name }}'
+          Get-ChildItem -Recurse -Include *.inx,*.inf | ForEach-Object {
+            (Get-Content -Raw $_.FullName) `
+              -replace 'Virtual Audio Driver', $name `
+              -replace 'VirtualAudioDriver', $name |
+              Set-Content -NoNewline $_.FullName
+          }
+
+      - name: Build driver (Release | x64)
+        shell: pwsh
+        working-directory: driver-src
+        run: |
+          # VERIFY: solution path depends on the source layout.
+          $sln = Get-ChildItem -Recurse -Filter *.sln | Select-Object -First 1
+          if (-not $sln) { Write-Error 'no .sln found in driver source'; exit 1 }
+          msbuild $sln.FullName /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Locate build outputs
+        id: out
+        shell: pwsh
+        working-directory: driver-src
+        run: |
+          $sys = Get-ChildItem -Recurse -Filter *.sys |
+            Where-Object { $_.FullName -match 'x64\\Release' } | Select-Object -First 1
+          if (-not $sys) { Write-Error 'driver .sys not found after build'; exit 1 }
+          $dir = $sys.Directory.FullName
+          $inf = Get-ChildItem $dir -Filter *.inf | Select-Object -First 1
+          if (-not $inf) { Write-Error 'driver .inf not found next to the .sys'; exit 1 }
+          "dir=$dir" >> $env:GITHUB_OUTPUT
+          "sys=$($sys.FullName)" >> $env:GITHUB_OUTPUT
+          "inf=$($inf.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Resolve WDK tools
+        id: tools
+        shell: pwsh
+        run: |
+          $bin = 'C:\Program Files (x86)\Windows Kits\10\bin'
+          $inf2cat = (Get-ChildItem $bin -Recurse -Filter Inf2Cat.exe | Select-Object -First 1).FullName
+          $signtool = (Get-ChildItem $bin -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
+          if (-not $inf2cat -or -not $signtool) { Write-Error 'WDK tools (Inf2Cat/signtool) not found'; exit 1 }
+          "inf2cat=$inf2cat" >> $env:GITHUB_OUTPUT
+          "signtool=$signtool" >> $env:GITHUB_OUTPUT
+
+      - name: Generate catalog (.cat)
+        shell: pwsh
+        run: |
+          # VERIFY the /os list against the Windows versions you support.
+          & '${{ steps.tools.outputs.inf2cat }}' /driver:"${{ steps.out.outputs.dir }}" /os:10_X64,Server2022_X64 /verbose
+
+      - name: Sign — test (self-signed, DEV ONLY)
+        if: inputs.sign_mode == 'test'
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert `
+            -Subject 'CN=HypeMuzik Test Driver' -CertStoreLocation Cert:\CurrentUser\My `
+            -KeyUsage DigitalSignature -KeyExportPolicy Exportable
+          $st = '${{ steps.tools.outputs.signtool }}'
+          Get-ChildItem "${{ steps.out.outputs.dir }}" -Include *.sys,*.cat -Recurse | ForEach-Object {
+            & $st sign /fd sha256 /sha1 $cert.Thumbprint /tr http://timestamp.digicert.com /td sha256 $_.FullName
+          }
+          Write-Warning 'TEST-SIGNED: loads ONLY with `bcdedit /set testsigning on`. Not for distribution.'
+
+      - name: Sign — production (signtool via secrets)
+        if: inputs.sign_mode == 'production'
+        shell: pwsh
+        env:
+          PFX_B64: ${{ secrets.WINDOWS_DRIVER_PFX_BASE64 }}
+          PFX_PW: ${{ secrets.WINDOWS_DRIVER_PFX_PASSWORD }}
+        run: |
+          if (-not $env:PFX_B64) { Write-Error 'secret WINDOWS_DRIVER_PFX_BASE64 is not set'; exit 1 }
+          $pfx = "$env:RUNNER_TEMP\cs.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_B64))
+          $st = '${{ steps.tools.outputs.signtool }}'
+          Get-ChildItem "${{ steps.out.outputs.dir }}" -Include *.sys,*.cat -Recurse | ForEach-Object {
+            & $st sign /fd sha256 /f $pfx /p $env:PFX_PW /tr http://timestamp.digicert.com /td sha256 $_.FullName
+          }
+          Write-Warning 'EV-signed, but NOT YET attestation-signed: Win10 1607+/Win11 will not LOAD this until you submit it to Microsoft Partner Center for attestation and drop the returned .cat back in. See docs/windows-driver.md.'
+
+      - name: Stage package for bundling
+        shell: pwsh
+        run: |
+          # Copy the package AS-IS (no rename — renaming a signed .inf breaks its
+          # .cat). The app discovers the .inf by glob (win_driver::find_driver_inf).
+          $dst = 'hypemuzik\src-tauri\drivers\HypeMuzikAudio'
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          Copy-Item "${{ steps.out.outputs.dir }}\*" -Include *.inf,*.sys,*.cat -Destination $dst -Force
+          Get-ChildItem $dst | Format-Table Name,Length
+
+      - name: Upload driver package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hypemuzik-windows-driver
+          if-no-files-found: error
+          retention-days: 14
+          # Download this and commit it into src-tauri/drivers/HypeMuzikAudio/ (or
+          # have release.yml's Windows job download it before tauri-action) to ship
+          # the driver in the installer.
+          path: hypemuzik/src-tauri/drivers/HypeMuzikAudio/*

@@ -49,18 +49,27 @@ device**, make it the default so apps render into it, then this process
 loopback-captures it → `ProcessChain` → renders to the real device. Same
 re-routing model as Linux/macOS.
 
-Two parts are needed:
+Status — **the app side is fully implemented**; only the signed driver binary
+remains (a Windows-only build+sign step). See **[`windows-driver.md`](windows-driver.md)**
+for the turnkey checklist. In this repo:
 
-1. **The driver + installer** — a signed package that registers the virtual
-   device. This is a separate code-signing / packaging effort (it can't be built
-   or tested off-Windows).
-2. **The WASAPI capture→DSP→render loop** — outlined in
-   `system_eq_windows.rs::WindowsSystemEq::start` (the `TODO(windows-driver)`
-   plan), to be wired against the installed driver on a real Windows box.
+1. **The WASAPI capture→DSP→render loop** — `system_eq_windows.rs`. Now with a
+   **startup handshake** so `WindowsSystemEq::start` reports real pipeline failures
+   to the UI instead of returning `Ok` the moment the worker spawns (the old cause
+   of the toggle showing a phantom "running" state).
+2. **Driver lifecycle** — `win_driver.rs`: `install_driver` (UAC-elevated
+   `pnputil`) + `routing_device_available`. Tauri: `system_audio_status` /
+   `system_audio_install_driver`. UI shows **Install audio driver** then
+   **Enable/Restart/Stop**. Installed at setup time by `installer-hooks.nsh`.
+3. **The driver + installer package** — the signed `.inf`/`.sys`/`.cat`. Built and
+   signed on Windows (EV cert + Microsoft attestation), dropped into
+   `src-tauri/drivers/HypeMuzikAudio/`. Cannot be built off-Windows.
 
-Until both land, `system_eq_windows::available()` reports whether the bundled
-device is present (false today) and `start()` returns a clear "install the
-HypeMuzik virtual audio device" error rather than shipping untested real-time FFI.
+The pipeline can be validated on real hardware **before** the driver ships by
+pointing it at any installed virtual cable: set `HM_SYSTEM_EQ_DEVICE` to a
+substring of that device's friendly name (e.g. `CABLE Input`). Until a routing
+device is present, `system_audio_status` reports `driverInstalled: false` and the
+UI offers the install action rather than a phantom running state.
 
 ## Frontend
 

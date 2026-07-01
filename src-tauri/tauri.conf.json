@@ -38,7 +38,13 @@
       "binaries/hm-visualizer"
     ],
     "resources": {
-      "../crates/hm-visualizer/presets/*.milk": "presets/"
+      "../crates/hm-visualizer/presets/*.milk": "presets/",
+      "drivers/HypeMuzikAudio/*": "drivers/HypeMuzikAudio/"
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "installer-hooks.nsh"
+      }
     },
     "fileAssociations": [
       {

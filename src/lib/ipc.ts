@@ -191,12 +191,14 @@ export function cloudAllAudio(
   return invoke<CloudAudioPage>("cloud_all_audio", { accountId, refresh });
 }
 
-/** Every cached tag/cover for an account, keyed by file id — hydrates the
- *  library's covers/titles instantly on launch without a per-track round-trip. */
-export function cloudCachedMetadata(
+/** Every cached *text tag* for an account (no cover art), keyed by file id.
+ *  Hydrates the library's titles/artists/albums instantly on launch without
+ *  pulling every track's ~100 KB base64 cover into memory — covers resolve
+ *  lazily per visible row via {@link cloudTrackCover}. */
+export function cloudCachedTags(
   accountId: string,
 ): Promise<Record<string, CloudTrackMeta>> {
-  return invoke<Record<string, CloudTrackMeta>>("cloud_cached_metadata", {
+  return invoke<Record<string, CloudTrackMeta>>("cloud_cached_tags", {
     accountId,
   });
 }
@@ -209,6 +211,35 @@ export function cloudTrackMetadata(
   name: string,
 ): Promise<CloudTrackMeta | null> {
   return invoke<CloudTrackMeta | null>("cloud_track_metadata", {
+    accountId,
+    fileId,
+    name,
+  });
+}
+
+/** Read a cloud track's text tags **only** (no cover). Backs the background
+ *  library preload: still caches the full metadata on disk (so a later cover
+ *  lookup is warm), but never ships the base64 cover over IPC or into the heap. */
+export function cloudTrackTags(
+  accountId: string,
+  fileId: string,
+  name: string,
+): Promise<CloudTrackMeta | null> {
+  return invoke<CloudTrackMeta | null>("cloud_track_tags", {
+    accountId,
+    fileId,
+    name,
+  });
+}
+
+/** Resolve just one cloud track's cover art (a `data:` URI), lazily per visible
+ *  row — a warm cache hit once the tags preload has downloaded the file. */
+export function cloudTrackCover(
+  accountId: string,
+  fileId: string,
+  name: string,
+): Promise<string | null> {
+  return invoke<string | null>("cloud_track_cover", {
     accountId,
     fileId,
     name,
@@ -263,6 +294,15 @@ export function onPhoneFound(
   handler: (device: PhoneDevice) => void,
 ): Promise<UnlistenFn> {
   return listen<PhoneDevice>("link:phone_found", (e) => handler(e.payload));
+}
+
+/** Fires when an already-paired phone (re)appears on the LAN — i.e. it's
+ *  reachable now — so its library can be auto-synced into the unified library
+ *  without a relaunch. Payload is the device id. */
+export function onPairedOnline(
+  handler: (deviceId: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>("link:paired_online", (e) => handler(e.payload));
 }
 
 /** Pair with a phone using the 6-digit PIN it's showing. */
@@ -532,6 +572,30 @@ export function stopSystemAudio(): Promise<void> {
  *  or PulseAudio / Windows bundled virtual device). */
 export function systemAudioAvailable(): Promise<boolean> {
   return invoke<boolean>("system_audio_available");
+}
+
+/** Per-OS readiness of system-wide EQ for the Settings card. */
+export interface SystemAudioStatus {
+  /** The OS supports system-wide EQ at all (show the card). */
+  supported: boolean;
+  /** Ready to enable now (Windows: the bundled audio driver is installed). */
+  available: boolean;
+  /** Windows-only: the bundled virtual-audio driver is installed. */
+  driverInstalled: boolean;
+  /** This OS routes through a bundled driver the user may need to install. */
+  needsDriver: boolean;
+}
+
+/** Per-OS system-EQ readiness (supported / available / driver state) in one call. */
+export function systemAudioStatus(): Promise<SystemAudioStatus> {
+  return invoke<SystemAudioStatus>("system_audio_status");
+}
+
+/** Install the bundled Windows virtual-audio driver (prompts for admin via UAC).
+ *  No-op on platforms that need no driver. Re-query {@link systemAudioStatus}
+ *  afterwards to confirm the device enumerated. */
+export function systemAudioInstallDriver(): Promise<void> {
+  return invoke<void>("system_audio_install_driver");
 }
 
 /** Whether the native MilkDrop visualizer sidecar is bundled in this build. */

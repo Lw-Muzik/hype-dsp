@@ -95,6 +95,49 @@ impl StallDetector {
     }
 }
 
+/// Bounds how hard the watchdog retries before giving up. Rapidly recreating the
+/// tap + aggregate device can wedge `coreaudiod` (creates start returning `'nope'`
+/// and even teardown stops taking effect, stranding a *muting* tap that only
+/// process exit clears — the "everything stays muted until I quit the app" bug).
+/// After `max_failures` consecutive failed rebuilds we stop retrying and disable
+/// the tap entirely: audio keeps working (just unequalised) instead of looping.
+///
+/// Pure and side-effect-free so it unit-tests without Core Audio.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[derive(Debug)]
+struct RebuildPolicy {
+    failures: u32,
+    max_failures: u32,
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+impl RebuildPolicy {
+    fn new(max_failures: u32) -> Self {
+        Self {
+            failures: 0,
+            max_failures,
+        }
+    }
+
+    /// A rebuild succeeded — the device is healthy again; clear the budget.
+    fn on_success(&mut self) {
+        self.failures = 0;
+    }
+
+    /// A rebuild failed. Returns `true` once the consecutive-failure budget is
+    /// exhausted and the caller must give up (disable the tap, fail safe to
+    /// unmuted), re-arming the budget so a later session starts fresh.
+    fn on_failure(&mut self) -> bool {
+        self.failures += 1;
+        if self.failures >= self.max_failures {
+            self.failures = 0;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// Lock-free meter telemetry written by the audio callback and read by the
 /// UI-forwarding thread. Each `f32` is stored as its bit pattern in an atomic.
 #[derive(Default)]
@@ -444,6 +487,11 @@ pub struct AudioEngine {
     /// to the control + watchdog threads — they need no handle on the engine.)
     #[cfg(target_os = "macos")]
     watchdog_alive: Arc<AtomicBool>,
+    /// Proactive default-output-device listener: rebuilds the tap on the new
+    /// device the instant macOS switches output, so recovery doesn't wait for the
+    /// watchdog's stall window. Held only for its `Drop` (which unregisters it).
+    #[cfg(target_os = "macos")]
+    _device_listener: Option<crate::system_tap::DefaultOutputListener>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     /// Active self-contained system-wide EQ pipeline (Linux/Windows re-routing).
     /// Held only to keep it running; dropping it tears the routing down. `Send`-
@@ -504,6 +552,7 @@ impl AudioEngine {
         let compander_gr = std::sync::Arc::new(CompanderMeter::default());
         let output_beat = Arc::new(AtomicU64::new(0));
         let tap_active = Arc::new(AtomicBool::new(false));
+        let tap_rebuild_pending = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
 
         let thread = {
@@ -522,6 +571,7 @@ impl AudioEngine {
             let compander_gr = compander_gr.clone();
             let output_beat = output_beat.clone();
             let tap_active = tap_active.clone();
+            let tap_rebuild_pending = tap_rebuild_pending.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
                 .spawn(move || {
@@ -542,6 +592,7 @@ impl AudioEngine {
                         compander_gr,
                         output_beat,
                         tap_active,
+                        tap_rebuild_pending,
                     })
                 })
                 .expect("failed to spawn hm-audio engine thread")
@@ -559,12 +610,34 @@ impl AudioEngine {
             let beat = output_beat.clone();
             let tap_active = tap_active.clone();
             let paused = paused.clone();
+            let pending = tap_rebuild_pending.clone();
             let ctrl = tx.clone();
             std::thread::Builder::new()
                 .name("hm-audio-tap-watchdog".into())
-                .spawn(move || tap_watchdog(alive, beat, tap_active, paused, ctrl))
+                .spawn(move || tap_watchdog(alive, beat, tap_active, paused, pending, ctrl))
                 .expect("failed to spawn hm-audio tap watchdog");
         }
+
+        // Proactive recovery: rebuild the tap the instant macOS switches the
+        // default output device (one rebuild, coalesced with the watchdog via the
+        // in-flight flag). `None` if registration fails — the watchdog backstops.
+        #[cfg(target_os = "macos")]
+        let device_listener = {
+            let ctrl = tx.clone();
+            let tap_active = tap_active.clone();
+            let pending = tap_rebuild_pending.clone();
+            crate::system_tap::DefaultOutputListener::new(Box::new(move || {
+                // Act only while the tap is engaged; `swap` is the single
+                // coalescing point shared with the watchdog, so a device change
+                // requests exactly one rebuild.
+                if tap_active.load(Ordering::Relaxed)
+                    && !pending.swap(true, Ordering::Relaxed)
+                {
+                    let _ = ctrl.send(EngineCommand::RestartSystemTap);
+                }
+            }))
+            .ok()
+        };
 
         Self {
             write_state: Mutex::new(initial),
@@ -583,6 +656,8 @@ impl AudioEngine {
             compander_gr,
             #[cfg(target_os = "macos")]
             watchdog_alive,
+            #[cfg(target_os = "macos")]
+            _device_listener: device_listener,
             ctrl: Mutex::new(tx),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             system_eq: Mutex::new(None),
@@ -1130,6 +1205,10 @@ struct ControlCtx {
     compander_gr: std::sync::Arc<CompanderMeter>,
     output_beat: Arc<AtomicU64>,
     tap_active: Arc<AtomicBool>,
+    /// Set by the watchdog when it requests a tap rebuild and cleared by the
+    /// control thread once that rebuild attempt finishes, so only one rebuild is
+    /// ever in flight (no create/destroy storm while the heartbeat is frozen).
+    tap_rebuild_pending: Arc<AtomicBool>,
 }
 
 fn control_loop(ctx: ControlCtx) {
@@ -1150,8 +1229,13 @@ fn control_loop(ctx: ControlCtx) {
         compander_gr,
         output_beat,
         tap_active,
+        tap_rebuild_pending,
     } = ctx;
     let setup = output_setup().ok();
+    // macOS tap-recovery budget: after this many consecutive failed rebuilds we
+    // disable the tap (fail safe to unmuted) rather than churn coreaudiod.
+    #[cfg(target_os = "macos")]
+    let mut rebuild_policy = RebuildPolicy::new(4);
     // The active stream is held only to keep audio flowing (RAII); replacing or
     // taking it drops the previous one, stopping its callback.
     let mut active: Option<cpal::Stream> = None;
@@ -1456,6 +1540,11 @@ fn control_loop(ctx: ControlCtx) {
                 meters.zero();
                 spectrum.zero();
                 paused.store(false, Ordering::Relaxed);
+                // A fresh manual (re)enable supersedes any in-flight watchdog
+                // rebuild and starts the recovery budget over.
+                tap_rebuild_pending.store(false, Ordering::Relaxed);
+                #[cfg(target_os = "macos")]
+                rebuild_policy.on_success();
                 let Some((device, config)) = &setup else {
                     crate::diag::log("PlaySource: NO OUTPUT SETUP — aborting");
                     playing.store(false, Ordering::Relaxed);
@@ -1500,12 +1589,18 @@ fn control_loop(ctx: ControlCtx) {
             // Watchdog-driven recovery: the tap's output stream died (e.g. a
             // default-output-device change). Rebuild a fresh tap on the *current*
             // default device. Re-resolving here (rather than the frozen startup
-            // `setup`) is what lets the tap follow the new device. If anything
-            // fails we leave the tap off — audio works, just unequalised — rather
-            // than risk leaving the system muted; the watchdog retries.
+            // `setup`) is what lets the tap follow the new device.
+            //
+            // The watchdog sets `tap_rebuild_pending` before sending this and we
+            // clear it on every exit, so at most one rebuild is ever in flight —
+            // no create/destroy storm (which used to wedge coreaudiod and strand a
+            // muting tap). After `rebuild_policy` exhausts its budget we disable
+            // the tap entirely: audio is restored unequalised rather than risk
+            // leaving every app muted until the user quits.
             #[cfg(target_os = "macos")]
             EngineCommand::RestartSystemTap => {
                 if !tap_active.load(Ordering::Relaxed) {
+                    tap_rebuild_pending.store(false, Ordering::Relaxed);
                     continue; // user turned the tap off in the meantime
                 }
                 crate::diag::log("RestartSystemTap: rebuilding tap on current default device");
@@ -1513,12 +1608,19 @@ fn control_loop(ctx: ControlCtx) {
                 let Ok((device, config)) = output_setup() else {
                     crate::diag::log("RestartSystemTap: no output device — will retry");
                     playing.store(false, Ordering::Relaxed);
+                    if rebuild_policy.on_failure() {
+                        tap_active.store(false, Ordering::Relaxed);
+                        crate::diag::log(
+                            "RestartSystemTap: giving up (no output device) — system EQ disabled",
+                        );
+                    }
+                    tap_rebuild_pending.store(false, Ordering::Relaxed);
                     continue;
                 };
                 let sample_rate = config.sample_rate;
                 let channels = config.channels as usize;
                 pos.prepare(sample_rate, 0);
-                match SystemTapSource::new(sample_rate) {
+                let rebuilt = match SystemTapSource::new(sample_rate) {
                     Ok(source) => match build_output_stream(
                         &device,
                         config,
@@ -1541,10 +1643,12 @@ fn control_loop(ctx: ControlCtx) {
                             output_beat.fetch_add(1, Ordering::Relaxed);
                             active = Some(s);
                             crate::diag::log("RestartSystemTap: tap rebuilt OK");
+                            true
                         }
                         _ => {
                             playing.store(false, Ordering::Relaxed);
                             crate::diag::log("RestartSystemTap: stream build failed — will retry");
+                            false
                         }
                     },
                     Err(e) => {
@@ -1552,8 +1656,23 @@ fn control_loop(ctx: ControlCtx) {
                         crate::diag::log(&format!(
                             "RestartSystemTap: tap creation failed ({e:?}) — will retry"
                         ));
+                        false
                     }
+                };
+                if rebuilt {
+                    rebuild_policy.on_success();
+                } else if rebuild_policy.on_failure() {
+                    // Budget exhausted: stop hammering coreaudiod. `active` is
+                    // already None on the failure paths; drop again to be certain
+                    // nothing is left muting, then disable the watchdog.
+                    drop(active.take());
+                    tap_active.store(false, Ordering::Relaxed);
+                    crate::diag::log(
+                        "RestartSystemTap: giving up after repeated failures — disabling \
+                         system EQ (audio restored, unequalised) so apps aren't left muted",
+                    );
                 }
+                tap_rebuild_pending.store(false, Ordering::Relaxed);
             }
             EngineCommand::Pause => {
                 if let Some(s) = &active {
@@ -1629,12 +1748,20 @@ fn build_output_stream(
 /// tap once the heartbeat has been frozen for `STALL_TICKS` samples — recovering
 /// from a dead output stream (e.g. a default-output-device change) that would
 /// otherwise leave the whole system muted until the app is restarted.
+///
+/// `rebuild_pending` gates re-firing: once a rebuild is requested it stays set
+/// until the control thread finishes that attempt, so the watchdog never queues a
+/// second rebuild while one is in progress. Rebuilding a tap takes longer than a
+/// single 250 ms tick, so without this gate a frozen heartbeat fires a rebuild
+/// every tick — a create/destroy storm that wedged coreaudiod (the root cause of
+/// the "everything stays muted" bug).
 #[cfg(target_os = "macos")]
 fn tap_watchdog(
     alive: Arc<AtomicBool>,
     beat: Arc<AtomicU64>,
     tap_active: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
+    rebuild_pending: Arc<AtomicBool>,
     ctrl: mpsc::Sender<EngineCommand>,
 ) {
     use std::time::Duration;
@@ -1650,8 +1777,20 @@ fn tap_watchdog(
             break;
         }
         let active = tap_active.load(Ordering::Relaxed) && !paused.load(Ordering::Relaxed);
+        // A rebuild is already in flight: don't sample toward another one. Keep the
+        // detector primed (treat as healthy) so it needs a fresh full window once
+        // the control thread reports the rebuild done by clearing the flag.
+        if rebuild_pending.load(Ordering::Relaxed) {
+            detector.observe(beat.load(Ordering::Relaxed), false, STALL_TICKS);
+            continue;
+        }
         let now = beat.load(Ordering::Relaxed);
-        if detector.observe(now, active, STALL_TICKS) {
+        // `swap` is the shared coalescing point with the device-change listener:
+        // we send only if we win the in-flight slot (previous value was false), so
+        // a change the listener already reported isn't rebuilt twice.
+        if detector.observe(now, active, STALL_TICKS)
+            && !rebuild_pending.swap(true, Ordering::Relaxed)
+        {
             crate::diag::log("tap watchdog: output stalled — requesting tap rebuild");
             // If the control thread is gone the engine is shutting down: stop.
             if ctrl.send(EngineCommand::RestartSystemTap).is_err() {
@@ -1739,6 +1878,36 @@ mod tests {
         assert!(!d.observe(9, true, THRESH)); // miss 1
         assert!(!d.observe(9, true, THRESH)); // miss 2
         assert!(d.observe(9, true, THRESH));
+    }
+
+    #[test]
+    fn rebuild_policy_gives_up_after_max_consecutive_failures() {
+        let mut p = RebuildPolicy::new(4);
+        assert!(!p.on_failure(), "1st failure within budget");
+        assert!(!p.on_failure(), "2nd failure within budget");
+        assert!(!p.on_failure(), "3rd failure within budget");
+        assert!(p.on_failure(), "4th consecutive failure exhausts the budget");
+    }
+
+    #[test]
+    fn rebuild_policy_success_resets_the_budget() {
+        let mut p = RebuildPolicy::new(3);
+        assert!(!p.on_failure());
+        assert!(!p.on_failure());
+        p.on_success(); // a recovered device must not count toward give-up
+        assert!(!p.on_failure());
+        assert!(!p.on_failure());
+        assert!(p.on_failure(), "give up only on 3 *consecutive* failures");
+    }
+
+    #[test]
+    fn rebuild_policy_rearms_after_giving_up() {
+        let mut p = RebuildPolicy::new(2);
+        assert!(!p.on_failure());
+        assert!(p.on_failure(), "gives up");
+        // A later session (after the tap is re-enabled) starts with a fresh budget.
+        assert!(!p.on_failure());
+        assert!(p.on_failure(), "fires again after re-arming");
     }
 
     fn constant_source(amplitude: f32, frames: usize) -> Box<dyn AudioSource> {

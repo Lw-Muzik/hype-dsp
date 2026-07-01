@@ -7,7 +7,13 @@ import type { ArtSource } from "@/lib/useTrackArtwork";
 export type { MusicTrack, SourceState } from "@/stores/musicLibrary";
 
 export interface MusicLibrary {
+  /** Every source merged (local + phone + cloud). */
   tracks: MusicTrack[];
+  /** Per-source track lists, so the browser can switch the source filter
+   *  without an O(n) `.filter` over the merged list on every render. */
+  localTracks: MusicTrack[];
+  phoneTracks: MusicTrack[];
+  cloudTracks: MusicTrack[];
   library: SourceState;
   phone: SourceState;
   cloud: SourceState;
@@ -27,7 +33,14 @@ export function trackArt(t: MusicTrack): ArtSource {
     };
   }
   if (t.source === "cloud") {
-    return { key: t.uid, source: "cloud", cover: t.cover };
+    return {
+      key: t.uid,
+      source: "cloud",
+      cloudAccountId: t.cloud?.accountId,
+      cloudFileId: t.cloud?.id,
+      cloudName: t.cloud?.name,
+      cover: t.cover,
+    };
   }
   return { key: t.uid, source: "local", path: t.artPath };
 }
@@ -100,6 +113,9 @@ export function useMusicLibrary(): MusicLibrary {
 
   return {
     tracks,
+    localTracks: local,
+    phoneTracks: phone,
+    cloudTracks: cloud,
     library: {
       connected: true,
       loading: localLoad === "loading",

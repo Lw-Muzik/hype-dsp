@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import {
   cloudAllAudio,
-  cloudCachedMetadata,
+  cloudCachedTags,
   cloudStatus,
-  cloudTrackMetadata,
+  cloudTrackTags,
   libraryAvailableCount,
   libraryCount,
   libraryListPage,
@@ -293,11 +293,14 @@ const CLOUD_META_CONCURRENCY = 4;
 const CLOUD_META_FLUSH_MS = 200;
 
 /**
- * Read embedded tags (title/artist/album + cover) for cloud tracks in the
- * background, like the mobile app's `CloudMetadataService`. Runs a few at a time
- * and hands resolved tags to `onBatch` in time-budgeted batches (so the store
- * rebuilds its metadata Map a few times a second, not once per track). `isStale`
- * lets the caller cancel (disconnect / reload). Backend-cached → re-scans cheap.
+ * Read embedded **text tags** (title/artist/album — no cover) for cloud tracks
+ * in the background, like the mobile app's `CloudMetadataService`. Runs a few at
+ * a time and hands resolved tags to `onBatch` in time-budgeted batches (so the
+ * store rebuilds its metadata Map a few times a second, not once per track).
+ * `isStale` lets the caller cancel (disconnect / reload). Backend-cached →
+ * re-scans cheap. Covers are deliberately excluded here and resolved lazily per
+ * on-screen row instead, so a large library never holds thousands of ~100 KB
+ * base64 covers in memory (the old behaviour that spiked memory + jank on load).
  */
 async function preloadCloudMeta(
   tracks: MusicTrack[],
@@ -323,7 +326,7 @@ async function preloadCloudMeta(
       const file = t?.cloud;
       if (!t || !file) continue;
       try {
-        const meta = await cloudTrackMetadata(file.accountId, file.id, file.name);
+        const meta = await cloudTrackTags(file.accountId, file.id, file.name);
         if (meta && !isStale()) {
           pending.push([t.uid, meta]);
           flush(false);
@@ -362,6 +365,11 @@ interface MusicLibraryStore {
   ensureLocal: (version: number) => void;
   ensurePhone: () => void;
   ensureCloud: () => void;
+  /** Re-check paired phones and refresh their libraries **in place** (keeping the
+   *  current tracks visible, no empty flash). Runs regardless of whether the
+   *  Library view is mounted, so a phone coming online auto-syncs without a
+   *  relaunch. */
+  syncPhone: () => void;
   /** Re-check local availability (e.g. on window focus) and reload only if a
    *  drive was plugged in or ejected since the last load. */
   revalidateLocal: () => void;
@@ -476,6 +484,46 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
     });
   },
 
+  syncPhone: () => {
+    // Supersede any in-flight phone load/sync (its writes are discarded).
+    const gen = ++phoneGen;
+    const isStale = () => gen !== phoneGen;
+    // Mark loading but KEEP the current tracks on screen — this is a refresh,
+    // not a cold load, so the new set swaps in only once it's ready.
+    set({ phoneLoad: "loading" });
+    (async () => {
+      const devices = await linkPaired();
+      if (isStale()) return;
+      set({ phoneConnected: devices.length > 0 });
+      const libs = await Promise.all(
+        devices.map((d) =>
+          linkLibrary(d.id)
+            .then((tracks) => ({ d, tracks }))
+            .catch(() => ({ d, tracks: [] as PhoneTrack[] })),
+        ),
+      );
+      if (isStale()) return;
+      const pairs = libs.flatMap(({ d, tracks }) =>
+        tracks.map((t) => ({ d, t })),
+      );
+      // Map in chunks (yielding between them) but publish only the final set,
+      // so a large phone library refreshes without blocking and without a
+      // shrink-then-grow flash of the currently-shown tracks.
+      const mapped = await mapIncrementally({
+        source: pairs,
+        map: ({ d, t }) => phoneTrackToTrack(d, t),
+        publish: () => {},
+        yieldToLoop: yieldToMain,
+        isStale,
+        now: () => performance.now(),
+      });
+      if (mapped && !isStale()) set({ phone: mapped, phoneLoad: "ready" });
+    })().catch(() => {
+      // Leave the existing tracks in place on failure; just settle the status.
+      if (!isStale()) set({ phoneLoad: "ready" });
+    });
+  },
+
   ensureCloud: () => {
     const s = get();
     if (s.cloudLoad !== "idle") return;
@@ -530,9 +578,11 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
 
       // Merge any cached tags over the listed filenames (a single cheap pass),
       // keyed per account so two accounts' files never share a meta entry.
+      // Tags only — covers are resolved lazily per visible row, so hydrating a
+      // huge library on launch stays light instead of loading every cover.
       const cached = await Promise.all(
         accounts.map((acc) =>
-          cloudCachedMetadata(acc.id)
+          cloudCachedTags(acc.id)
             .then((meta) => ({ acc, meta }))
             .catch(() => ({
               acc,

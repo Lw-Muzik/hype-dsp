@@ -81,6 +81,11 @@ export function useThreeScene(
       cancelAnimationFrame(raf);
       ro.disconnect();
       built.dispose?.();
+      // Force-release the WebGL context, not just its resources: `dispose()`
+      // alone leaves the context slot reclaimable only by GC, so rapidly
+      // switching 3D scenes (or StrictMode's mount→unmount→remount) can outrun
+      // GC and hit the browser's hard ~16-context cap.
+      renderer.forceContextLoss();
       renderer.dispose();
     };
     // build is captured once on mount (sample is stable).

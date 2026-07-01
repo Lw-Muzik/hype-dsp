@@ -21,6 +21,12 @@ export function LiquidBlob() {
     let last = performance.now();
     let time = 0;
     const radii: number[] = new Array(POINTS).fill(0);
+    // Reused point buffer: every element is rewritten before it's read each
+    // frame, so hoisting it out of the draw loop avoids POINTS allocations/frame.
+    const pts: { x: number; y: number }[] = Array.from({ length: POINTS }, () => ({
+      x: 0,
+      y: 0,
+    }));
 
     const draw = () => {
       const now = performance.now();
@@ -39,7 +45,6 @@ export function LiquidBlob() {
 
       ctx.clearRect(0, 0, w, h);
 
-      const pts: { x: number; y: number }[] = [];
       const half = POINTS / 2;
       for (let i = 0; i < POINTS; i++) {
         const ang = (i / POINTS) * Math.PI * 2;
@@ -52,7 +57,9 @@ export function LiquidBlob() {
         const target = baseR * (1 + sv * 0.55 + wob + a.bass * 0.3);
         radii[i] = (radii[i] ?? 0) + (target - (radii[i] ?? 0)) * 0.35;
         const r = radii[i] ?? baseR;
-        pts.push({ x: cx + Math.cos(ang) * r, y: cy + Math.sin(ang) * r });
+        const p = pts[i]!;
+        p.x = cx + Math.cos(ang) * r;
+        p.y = cy + Math.sin(ang) * r;
       }
 
       // Smooth closed path through the points (quadratic via midpoints).

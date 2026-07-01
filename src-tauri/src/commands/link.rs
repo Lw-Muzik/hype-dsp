@@ -38,8 +38,15 @@ pub fn link_discover_start(app: AppHandle, disc: State<'_, DiscoveryState>) {
             hm_link::watch(stop, move |dev| {
                 // Silently update a paired phone's stored address if its IP
                 // changed, so streaming keeps working.
-                app.state::<LinkState>()
-                    .update_addresses(std::slice::from_ref(&dev));
+                let link = app.state::<LinkState>();
+                link.update_addresses(std::slice::from_ref(&dev));
+                // A *paired* phone (re)appearing means it's reachable now — tell
+                // the UI so it can auto-sync that phone's library without a
+                // relaunch. Fires app-wide (discovery runs for the whole session),
+                // so it works even when the Phone screen isn't open.
+                if link.is_paired(&dev.id) {
+                    let _ = app.emit("link:paired_online", dev.id.clone());
+                }
                 let _ = app.emit("link:phone_found", dev);
             });
         });

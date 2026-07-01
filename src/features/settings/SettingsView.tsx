@@ -39,7 +39,9 @@ import {
   listOutputDevices,
   pickFolder,
   playerPlayCapture,
-  systemAudioAvailable,
+  systemAudioStatus,
+  systemAudioInstallDriver,
+  type SystemAudioStatus,
 } from "@/lib/ipc";
 import type { DeviceInfo } from "@/lib/types";
 
@@ -409,7 +411,14 @@ export function SettingsView() {
   const setDataSaver = useEngineStore((s) => s.setDataSaver);
   const [devices, setDevices] = useState<DeviceState>({ status: "loading" });
   const [, setVirtualAvailable] = useState(false);
-  const [systemAvailable, setSystemAvailable] = useState(false);
+  const [systemStatus, setSystemStatus] = useState<SystemAudioStatus>({
+    supported: false,
+    available: false,
+    driverInstalled: false,
+    needsDriver: false,
+  });
+  const [driverInstalling, setDriverInstalling] = useState(false);
+  const [driverError, setDriverError] = useState<string | null>(null);
   // System-wide EQ is a persisted session mode (re-engaged on launch), so its
   // on/off + last error live in a shared store rather than local state.
   const systemEqOn = useSystemEqStore((s) => s.enabled);
@@ -431,8 +440,8 @@ export function SettingsView() {
     captureVirtualAvailable()
       .then((v) => !cancelled && setVirtualAvailable(v))
       .catch(() => {});
-    systemAudioAvailable()
-      .then((v) => !cancelled && setSystemAvailable(v))
+    systemAudioStatus()
+      .then((s) => !cancelled && setSystemStatus(s))
       .catch(() => {});
     return () => {
       cancelled = true;
@@ -448,6 +457,25 @@ export function SettingsView() {
   };
   const stopSystemEq = () => {
     void disableSystemEq();
+  };
+  // Install the bundled Windows audio driver (UAC prompt), then poll status until
+  // the virtual device enumerates (Plug-and-Play can lag the installer's exit).
+  const installAudioDriver = async () => {
+    setDriverError(null);
+    setDriverInstalling(true);
+    try {
+      await systemAudioInstallDriver();
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 700));
+        const next = await systemAudioStatus();
+        setSystemStatus(next);
+        if (next.driverInstalled) break;
+      }
+    } catch (e) {
+      setDriverError(ipcErrorMessage(e));
+    } finally {
+      setDriverInstalling(false);
+    }
   };
   const deactivate = () => {
     licenseDeactivate()
@@ -560,7 +588,7 @@ export function SettingsView() {
 
         <Card title="System-wide audio" icon={Sparkles}>
           <div className="flex flex-col gap-3">
-            {systemAvailable && (
+            {systemStatus.supported && (
               <div className="flex items-center justify-between gap-3 rounded-control border border-accent/30 bg-accent-muted/40 px-3 py-2.5">
                 <div className="min-w-0 text-sm">
                   <p className="font-medium text-accent-strong">
@@ -571,17 +599,42 @@ export function SettingsView() {
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  <Button variant="primary" onClick={startSystemAudio}>
-                    {systemEqOn ? "Restart" : "Enable"}
-                  </Button>
-                  {systemEqOn && (
-                    <Button variant="secondary" onClick={stopSystemEq}>
-                      Stop
+                  {systemStatus.available ? (
+                    <>
+                      <Button variant="primary" onClick={startSystemAudio}>
+                        {systemEqOn ? "Restart" : "Enable"}
+                      </Button>
+                      {systemEqOn && (
+                        <Button variant="secondary" onClick={stopSystemEq}>
+                          Stop
+                        </Button>
+                      )}
+                    </>
+                  ) : systemStatus.needsDriver ? (
+                    <Button
+                      variant="primary"
+                      onClick={() => void installAudioDriver()}
+                      disabled={driverInstalling}
+                    >
+                      {driverInstalling ? "Installing…" : "Install audio driver"}
                     </Button>
+                  ) : (
+                    <span className="text-xs text-text-muted">
+                      Unavailable on this system
+                    </span>
                   )}
                 </div>
               </div>
             )}
+
+            {systemStatus.supported &&
+              systemStatus.needsDriver &&
+              !systemStatus.driverInstalled && (
+                <p className="text-xs text-text-muted">
+                  System-wide EQ routes audio through the HypeMuzik virtual audio
+                  device. Installing it needs a one-time administrator approval.
+                </p>
+              )}
 
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 text-sm">
@@ -595,9 +648,9 @@ export function SettingsView() {
               </Button>
             </div>
 
-            {(captureError || systemEqError) && (
+            {(captureError || systemEqError || driverError) && (
               <p className="text-sm text-danger">
-                {captureError ?? systemEqError}
+                {captureError ?? systemEqError ?? driverError}
               </p>
             )}
 
@@ -607,9 +660,11 @@ export function SettingsView() {
                 aria-hidden="true"
               />
               <span>
-                {systemAvailable
-                  ? "Everything you hear is re-rendered through the chain. macOS taps other apps (first use prompts for audio-capture permission; the grant persists on a code-signed build); Linux routes through a PipeWire/PulseAudio virtual sink and restores your default output when stopped."
-                  : "System-wide equalization isn't available here — on Windows it needs the HypeMuzik virtual audio device. See docs/system-eq.md."}
+                {systemStatus.available
+                  ? "Everything you hear is re-rendered through the chain. macOS taps other apps (first use prompts for audio-capture permission; the grant persists on a code-signed build); Linux routes through a PipeWire/PulseAudio virtual sink and restores your default output when stopped; Windows routes through the bundled HypeMuzik virtual audio device."
+                  : systemStatus.needsDriver
+                    ? "System-wide equalization on Windows routes audio through the bundled HypeMuzik virtual audio device. Install the driver (one-time, admin-approved) to enable it."
+                    : "System-wide equalization isn't available here. See docs/system-eq.md."}
               </span>
             </div>
           </div>

@@ -167,7 +167,9 @@ pub fn engine_set_saturation(engine: State<'_, AudioEngine>, saturation: hm_core
 }
 
 /// Load an impulse-response file into the convolver (heavy prep off the audio thread).
-#[tauri::command]
+// `(async)`: loading + FFT-partitioning an impulse response does file I/O and
+// heavy CPU — run it off the Tauri main thread so the UI doesn't stall.
+#[tauri::command(async)]
 pub fn engine_convolver_load_ir(
     engine: State<'_, AudioEngine>,
     path: String,
@@ -178,7 +180,10 @@ pub fn engine_convolver_load_ir(
 }
 
 /// Decode and play a local file through the enhancement chain.
-#[tauri::command]
+// `(async)`: `play_file` decodes the whole local file before handing it to the
+// engine — run it off the Tauri main thread so playing a large FLAC/WAV doesn't
+// freeze the UI.
+#[tauri::command(async)]
 pub fn player_play_file(engine: State<'_, AudioEngine>, path: String) -> Result<(), IpcError> {
     engine.play_file(&PathBuf::from(path)).map_err(Into::into)
 }
@@ -252,7 +257,10 @@ pub fn system_audio_available() -> bool {
 /// Equalize system-wide audio through the chain. macOS taps every other app and
 /// re-renders the processed mix; Linux/Windows re-route all output through a
 /// virtual device into the chain. Returns a clear error if unavailable/denied.
-#[tauri::command]
+// `(async)`: building the Core Audio process tap + aggregate device (macOS) or
+// the re-routing pipeline (Linux/Windows) is a known-slow op — run it off the
+// Tauri main thread so the UI doesn't freeze while it's set up.
+#[tauri::command(async)]
 pub fn player_play_system_audio(engine: State<'_, AudioEngine>) -> Result<(), IpcError> {
     #[cfg(target_os = "macos")]
     {
@@ -283,6 +291,91 @@ pub fn stop_system_audio(engine: State<'_, AudioEngine>) {
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         engine.stop();
+    }
+}
+
+/// Per-OS readiness of system-wide equalization, so the Settings card can show the
+/// right affordance: enable it, or (Windows) install the bundled audio driver first.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemAudioStatus {
+    /// The OS supports system-wide EQ at all (show the card).
+    pub supported: bool,
+    /// Ready to enable right now (macOS: tap available; Linux: PulseAudio/PipeWire
+    /// present; Windows: the bundled virtual-audio driver is installed).
+    pub available: bool,
+    /// Windows-only: the bundled virtual-audio driver is installed (always `true`
+    /// on macOS/Linux, which need no driver).
+    pub driver_installed: bool,
+    /// This OS routes through a bundled driver the user may need to install
+    /// (Windows only) — gates the in-app "Install audio driver" action.
+    pub needs_driver: bool,
+}
+
+/// Report whether system-wide EQ is supported, ready, and (Windows) whether the
+/// bundled audio driver is installed — one round-trip for the Settings card.
+#[tauri::command]
+pub fn system_audio_status() -> SystemAudioStatus {
+    #[cfg(target_os = "macos")]
+    {
+        SystemAudioStatus {
+            supported: true,
+            available: hm_audio::system_tap::available(),
+            driver_installed: true,
+            needs_driver: false,
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let available = hm_audio::system_eq_available();
+        SystemAudioStatus {
+            supported: true,
+            available,
+            driver_installed: true,
+            needs_driver: false,
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let installed = hm_audio::win_driver::routing_device_available();
+        SystemAudioStatus {
+            supported: true,
+            available: installed,
+            driver_installed: installed,
+            needs_driver: true,
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        SystemAudioStatus {
+            supported: false,
+            available: false,
+            driver_installed: false,
+            needs_driver: false,
+        }
+    }
+}
+
+/// Install the bundled Windows virtual-audio driver (prompts for admin via UAC).
+/// No-op success on platforms that need no driver. The frontend should re-query
+/// [`system_audio_status`] afterwards to confirm the device enumerated.
+// `(async)`: runs `pnputil` under a UAC prompt — run it off the Tauri main
+// thread so the whole webview isn't frozen for the elevation + install.
+#[tauri::command(async)]
+pub fn system_audio_install_driver(app: tauri::AppHandle) -> Result<(), IpcError> {
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::Manager;
+        let dir = app.path().resource_dir().map_err(|e| {
+            IpcError::new("driver", format!("could not resolve app resources: {e}"))
+        })?;
+        let package_dir = dir.join("drivers").join("HypeMuzikAudio");
+        hm_audio::win_driver::install_driver(&package_dir).map_err(Into::into)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        Ok(())
     }
 }
 

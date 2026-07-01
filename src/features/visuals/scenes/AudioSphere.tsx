@@ -155,6 +155,9 @@ export function AudioSphere() {
       ro.disconnect();
       geo.dispose();
       mat.dispose();
+      // Force-release the WebGL context (not just GPU resources) so rapid scene
+      // switching can't exhaust the browser's hard context cap before GC runs.
+      renderer.forceContextLoss();
       renderer.dispose();
     };
   }, [sample]);

@@ -26,12 +26,13 @@ use std::sync::Arc;
 use objc2::runtime::ProtocolObject;
 use objc2::AllocAnyThread;
 use objc2_core_audio::{
-    kAudioHardwarePropertyTranslatePIDToProcessObject, kAudioObjectPropertyElementMain,
-    kAudioObjectPropertyScopeGlobal, kAudioObjectSystemObject, kAudioTapPropertyFormat,
-    kAudioTapPropertyUID, AudioDeviceCreateIOProcID, AudioDeviceIOProcID, AudioDeviceStart,
-    AudioDeviceStop, AudioHardwareCreateAggregateDevice, AudioHardwareCreateProcessTap,
-    AudioHardwareDestroyAggregateDevice, AudioHardwareDestroyProcessTap,
-    AudioObjectGetPropertyData, AudioObjectID, AudioObjectPropertyAddress, CATapDescription,
+    kAudioHardwarePropertyDefaultOutputDevice, kAudioHardwarePropertyTranslatePIDToProcessObject,
+    kAudioObjectPropertyElementMain, kAudioObjectPropertyScopeGlobal, kAudioObjectSystemObject,
+    kAudioTapPropertyFormat, kAudioTapPropertyUID, AudioDeviceCreateIOProcID, AudioDeviceIOProcID,
+    AudioDeviceStart, AudioDeviceStop, AudioHardwareCreateAggregateDevice,
+    AudioHardwareCreateProcessTap, AudioHardwareDestroyAggregateDevice,
+    AudioHardwareDestroyProcessTap, AudioObjectAddPropertyListener, AudioObjectGetPropertyData,
+    AudioObjectID, AudioObjectPropertyAddress, AudioObjectRemovePropertyListener, CATapDescription,
     CATapMuteBehavior,
 };
 use objc2_core_audio_types::{AudioBufferList, AudioStreamBasicDescription, AudioTimeStamp};
@@ -42,6 +43,16 @@ use rtrb::RingBuffer;
 use crate::error::AudioError;
 use crate::resampler::StereoResampler;
 use crate::{AudioSource, StreamFormat};
+
+/// Monotonic counter giving every tap+aggregate we create a process-unique UID.
+///
+/// CoreAudio keys aggregate devices by [`kAudioAggregateDeviceUIDKey`]; teardown
+/// (`AudioHardwareDestroyAggregateDevice`) is **asynchronous**, so reusing a fixed
+/// UID lets a fresh create race the still-pending destroy of the previous one and
+/// fail with `kAudioHardwareIllegalOperationError` (`'nope'`, status 1852797029).
+/// A unique UID per creation makes back-to-back rebuilds collision-free — the
+/// same approach the per-app capture path uses (`HypeMuzikAppTap-{tap_id}`).
+static TAP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// IO callback context (heap-owned, freed on drop).
 struct TapContext {
@@ -236,6 +247,9 @@ impl SystemTapSource {
             "=== SystemTapSource::new(device_rate={device_rate}) ==="
         ));
         let own = own_process_object()?;
+        // Process-unique suffix: distinct UID per (re)build so a fresh aggregate
+        // never collides with the async teardown of the previous one.
+        let seq = TAP_SEQ.fetch_add(1, Ordering::Relaxed);
 
         // Global tap that mutes everything except us.
         let exclude = NSMutableArray::<NSNumber>::new();
@@ -246,7 +260,7 @@ impl SystemTapSource {
                 &exclude,
             );
             d.setMuteBehavior(CATapMuteBehavior::Muted);
-            d.setName(&NSString::from_str("HypeMuzik System Tap"));
+            d.setName(&NSString::from_str(&format!("HypeMuzik System Tap {seq}")));
             d
         };
 
@@ -275,7 +289,7 @@ impl SystemTapSource {
             (fmt.mFormatFlags & 0x20) != 0,
         ));
 
-        let aggregate_id = match create_aggregate(&uid) {
+        let aggregate_id = match create_aggregate(&uid, seq) {
             Ok(id) => id,
             Err(e) => {
                 unsafe { AudioHardwareDestroyProcessTap(tap_id) };
@@ -339,7 +353,7 @@ impl SystemTapSource {
     }
 }
 
-fn create_aggregate(tap_uid: &str) -> Result<AudioObjectID, AudioError> {
+fn create_aggregate(tap_uid: &str, seq: u64) -> Result<AudioObjectID, AudioError> {
     use objc2_core_audio::{
         kAudioAggregateDeviceIsPrivateKey, kAudioAggregateDeviceNameKey,
         kAudioAggregateDeviceTapListKey, kAudioAggregateDeviceUIDKey, kAudioSubTapUIDKey,
@@ -357,6 +371,9 @@ fn create_aggregate(tap_uid: &str) -> Result<AudioObjectID, AudioError> {
     let k_name = key(kAudioAggregateDeviceNameKey);
     let k_private = key(kAudioAggregateDeviceIsPrivateKey);
     let k_taps = key(kAudioAggregateDeviceTapListKey);
+    // Process-unique UID so a rebuild never collides with the previous
+    // aggregate's asynchronous teardown (which yields status 'nope').
+    let agg_uid = format!("HypeMuzikSystemTap-{}-{}", std::process::id(), seq);
     let dict = NSMutableDictionary::<NSString, NSObject>::new();
     unsafe {
         tap_entry.setObject_forKey(
@@ -365,7 +382,7 @@ fn create_aggregate(tap_uid: &str) -> Result<AudioObjectID, AudioError> {
         );
         taps.addObject(&tap_entry);
         dict.setObject_forKey(
-            &NSString::from_str("HypeMuzikSystemTap"),
+            &NSString::from_str(&agg_uid),
             ProtocolObject::from_ref(&*k_uid),
         );
         dict.setObject_forKey(
@@ -486,4 +503,88 @@ impl AudioSource for SystemTapSource {
 /// macOS; the runtime permission is requested when capture starts).
 pub fn available() -> bool {
     true
+}
+
+/// Heap context for the default-output-device listener: a callback invoked from
+/// a Core Audio notification thread. Boxed and handed to the registration as
+/// `clientData`; reclaimed in [`DefaultOutputListener::drop`].
+struct ListenerCtx {
+    on_change: Box<dyn Fn() + Send>,
+}
+
+/// Core Audio property-listener proc. The HAL invokes a given (proc, clientData)
+/// registration serially, so reading the shared `ListenerCtx` here is sound; the
+/// callback itself only touches `Send`-safe state (atomics + a channel sender).
+unsafe extern "C-unwind" fn default_device_listener_proc(
+    _object: AudioObjectID,
+    _num_addresses: u32,
+    _addresses: NonNull<AudioObjectPropertyAddress>,
+    client_data: *mut c_void,
+) -> i32 {
+    if client_data.is_null() {
+        return 0;
+    }
+    let ctx = &*(client_data as *const ListenerCtx);
+    (ctx.on_change)();
+    0
+}
+
+/// Fires its callback whenever the system's **default output device** changes, so
+/// the engine can rebuild the tap on the new device *immediately* and
+/// deterministically — rather than waiting for the heartbeat watchdog to notice
+/// the resulting output-stream stall. Keep the watchdog too: it backstops changes
+/// this listener can't see (e.g. a sample-rate change on the *same* device).
+///
+/// The listener is removed and its context freed on drop.
+pub struct DefaultOutputListener {
+    ctx: *mut ListenerCtx,
+}
+
+// The `ctx` pointer is touched only on create and on `&mut self` drop — never
+// through a shared `&self` — so the handle is safe to both move and share across
+// threads (the engine that owns it is `Send + Sync`). The Core Audio callback
+// dereferences `ctx` independently; the HAL serialises those invocations.
+unsafe impl Send for DefaultOutputListener {}
+unsafe impl Sync for DefaultOutputListener {}
+
+impl DefaultOutputListener {
+    /// Register a default-output-device listener on the system object. `on_change`
+    /// must be cheap and non-blocking (it runs on a Core Audio notification
+    /// thread). Returns an error if registration fails; the caller can treat that
+    /// as "no proactive recovery" and rely on the watchdog.
+    pub fn new(on_change: Box<dyn Fn() + Send>) -> Result<Self, AudioError> {
+        let ctx = Box::into_raw(Box::new(ListenerCtx { on_change }));
+        let address = addr(kAudioHardwarePropertyDefaultOutputDevice);
+        let status = unsafe {
+            AudioObjectAddPropertyListener(
+                kAudioObjectSystemObject as AudioObjectID,
+                NonNull::from(&address),
+                Some(default_device_listener_proc),
+                ctx as *mut c_void,
+            )
+        };
+        if status != 0 {
+            unsafe { drop(Box::from_raw(ctx)) };
+            return Err(AudioError::Unavailable(format!(
+                "could not register default-output-device listener (status {status})"
+            )));
+        }
+        Ok(Self { ctx })
+    }
+}
+
+impl Drop for DefaultOutputListener {
+    fn drop(&mut self) {
+        let address = addr(kAudioHardwarePropertyDefaultOutputDevice);
+        unsafe {
+            // Must pass the same (proc, clientData) pair used to register.
+            AudioObjectRemovePropertyListener(
+                kAudioObjectSystemObject as AudioObjectID,
+                NonNull::from(&address),
+                Some(default_device_listener_proc),
+                self.ctx as *mut c_void,
+            );
+            drop(Box::from_raw(self.ctx));
+        }
+    }
 }

@@ -7,11 +7,15 @@ const GOLD = [246, 197, 68] as const;
 const GREEN = [74, 222, 128] as const;
 
 type RGB = readonly [number, number, number];
-const mix = (a: RGB, b: RGB, t: number): RGB => [
-  a[0] + (b[0] - a[0]) * t,
-  a[1] + (b[1] - a[1]) * t,
-  a[2] + (b[2] - a[2]) * t,
-];
+// A single reused scratch so mixing a colour per bar per frame doesn't allocate
+// a fresh array each time (the result is read out immediately at the call site).
+const mixScratch: [number, number, number] = [0, 0, 0];
+const mix = (a: RGB, b: RGB, t: number): RGB => {
+  mixScratch[0] = a[0] + (b[0] - a[0]) * t;
+  mixScratch[1] = a[1] + (b[1] - a[1]) * t;
+  mixScratch[2] = a[2] + (b[2] - a[2]) * t;
+  return mixScratch;
+};
 
 /**
  * Radial Spectrum (2D) — frequency bars fanned in a full circle around the

@@ -130,14 +130,21 @@ fn forward_frames(
         }
 
         if now_playing {
-            let _ = app.emit(
-                "engine:frame",
-                EngineFrame {
-                    meters: meters.load(),
-                    spectrum: Some(spectrum.load()),
-                    compander_gr: Some(compander_gr.load().to_vec()),
-                },
-            );
+            // Meters/spectrum/compander telemetry at ~30 fps (every other 16 ms
+            // tick), not ~60 — plenty smooth for the visualizers and it halves
+            // both the IPC traffic and the React re-renders it drives. Transport
+            // transitions above are still detected every tick, so latency is
+            // unchanged; only the steady visual-telemetry rate drops.
+            if tick % 2 == 0 {
+                let _ = app.emit(
+                    "engine:frame",
+                    EngineFrame {
+                        meters: meters.load(),
+                        spectrum: Some(spectrum.load()),
+                        compander_gr: Some(compander_gr.load().to_vec()),
+                    },
+                );
+            }
             // Transport progress at ~10 fps (every ~6 ticks).
             if tick % 6 == 0 {
                 let _ = app.emit(
@@ -210,6 +217,17 @@ pub fn run() {
                 ],
             )?;
             Menu::with_items(handle, &[&app_menu])
+        })
+        // Closing the window (the red traffic-light button / window "X") hides
+        // the app instead of quitting, so playback and the audio engine keep
+        // running in the background. It comes back via the dock icon (macOS,
+        // see `RunEvent::Reopen` below), relaunching the app, or "Open With".
+        // ⌘Q (the Quit menu item) still exits normally.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
         })
         .manage(engine)
         .manage(commands::open_with::PendingOpen::default())
@@ -522,8 +540,10 @@ pub fn run() {
             commands::cloud::cloud_disconnect,
             commands::cloud::cloud_list,
             commands::cloud::cloud_all_audio,
-            commands::cloud::cloud_cached_metadata,
+            commands::cloud::cloud_cached_tags,
             commands::cloud::cloud_track_metadata,
+            commands::cloud::cloud_track_tags,
+            commands::cloud::cloud_track_cover,
             commands::cloud::cloud_play,
             commands::cloud::player_play_cloud_queue,
             commands::link::link_discover,
@@ -562,6 +582,8 @@ pub fn run() {
             commands::scenes::scene_select,
             commands::engine::capture_virtual_available,
             commands::engine::system_audio_available,
+            commands::engine::system_audio_status,
+            commands::engine::system_audio_install_driver,
             commands::engine::player_stop,
             commands::engine::player_pause,
             commands::engine::player_resume,
@@ -636,9 +658,9 @@ pub fn run() {
             // (`RunEvent::Opened` only exists on macOS/iOS, hence the cfg gate;
             // Windows/Linux take the argv + single-instance paths above.)
             #[cfg(any(target_os = "macos", target_os = "ios"))]
-            if let tauri::RunEvent::Opened { urls } = _event {
+            if let tauri::RunEvent::Opened { urls } = &_event {
                 let paths = commands::open_with::audio_paths(
-                    urls.into_iter()
+                    urls.iter()
                         .filter_map(|u| u.to_file_path().ok())
                         .map(|p| p.to_string_lossy().into_owned()),
                 );
@@ -649,6 +671,17 @@ pub fn run() {
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
+                }
+            }
+
+            // Clicking the dock icon after the close button hid the window
+            // re-shows it — the standard macOS "close hides, ⌘Q quits" pattern.
+            // `RunEvent::Reopen` fires on dock activation and only exists on macOS.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = &_event {
+                if let Some(window) = _app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
             }
         });

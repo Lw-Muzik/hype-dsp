@@ -9,6 +9,8 @@
 //! The token both authenticates the phone and identifies *which* paired phone
 //! is casting (so we know where to pull `/stream` from).
 
+use std::io::Read;
+
 use hm_audio::AudioEngine;
 use hm_link::LinkState;
 use serde_json::{json, Value};
@@ -71,6 +73,12 @@ fn handle(app: &AppHandle, request: Request) {
 }
 
 fn handle_cast(app: &AppHandle, mut request: Request, token: &str) {
+    // Reject an unknown token *before* reading the body, so an unauthenticated
+    // LAN client can't make us allocate for a large request it isn't allowed to
+    // send. (The token is re-checked below when resolving the stream target.)
+    if !{ app.state::<LinkState>().is_known_token(token) } {
+        return unauthorized(request);
+    }
     let body = read_body(&mut request);
     let v: Value = serde_json::from_str(&body).unwrap_or_else(|_| json!({}));
     let track_id = v["trackId"].as_str().unwrap_or("");
@@ -145,9 +153,15 @@ fn bearer(request: &Request) -> String {
     String::new()
 }
 
+/// These request bodies are tiny JSON control messages; cap the read so a
+/// malformed/hostile client on the LAN can't force an unbounded allocation.
+const MAX_BODY_BYTES: u64 = 64 * 1024;
+
 fn read_body(request: &mut Request) -> String {
     let mut body = String::new();
-    let _ = request.as_reader().read_to_string(&mut body);
+    // UFCS so `take` binds to the `&mut dyn Read` (which is `Sized`) rather than
+    // the unsized `dyn Read` behind it.
+    let _ = std::io::Read::take(request.as_reader(), MAX_BODY_BYTES).read_to_string(&mut body);
     body
 }
 

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { TrialBanner } from "@/components/TrialBanner";
@@ -9,6 +10,11 @@ import { ResizeHandle } from "@/components/ResizeHandle";
 import { Router } from "@/app/router";
 import { useSystemEqStore } from "@/stores/systemEq";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
+import {
+  linkDiscoverStart,
+  onPairedOnline,
+  onRemoteConnected,
+} from "@/lib/ipc";
 
 /** The application shell: sidebar + top bar + the active view + now-playing. */
 export function App() {
@@ -27,6 +33,37 @@ export function App() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [revalidateLocal]);
+
+  // Keep the phone library in sync automatically. Run LAN discovery for the
+  // whole session (not just while the Phone screen is open) and refresh a
+  // phone's tracks the moment it becomes reachable — a paired phone coming
+  // online, or opened after launch, now appears without a relaunch. The reload
+  // is debounced so repeated mDNS announcements coalesce into one sync, and it
+  // refreshes in place (no empty flash, works even off the Library tab).
+  useEffect(() => {
+    void linkDiscoverStart().catch(() => {});
+    let cancelled = false;
+    let timer: number | undefined;
+    const unlisteners: UnlistenFn[] = [];
+    const scheduleSync = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        useMusicLibraryStore.getState().syncPhone();
+      }, 1200);
+    };
+    const register = (p: Promise<UnlistenFn>) => {
+      void p
+        .then((fn) => (cancelled ? fn() : unlisteners.push(fn)))
+        .catch(() => {});
+    };
+    register(onPairedOnline(scheduleSync));
+    register(onRemoteConnected(scheduleSync));
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+      unlisteners.forEach((fn) => fn());
+    };
+  }, []);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface text-text">

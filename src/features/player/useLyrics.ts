@@ -5,9 +5,20 @@ import type { ParsedLyrics } from "@/lib/lrc";
 import { useEngineStore } from "@/stores/engine";
 import type { QueueItem } from "@/stores/engine";
 
-/** Resolved lyrics for the current track (cached per track for the session). */
+/** Resolved lyrics for the current track (cached per track for the session).
+ *  Bounded so a long session playing thousands of tracks can't grow it without
+ *  limit (evicts oldest-inserted; a re-play just re-resolves, which is cheap). */
 const cache = new Map<string, ParsedLyrics | null>();
 const inFlight = new Map<string, Promise<ParsedLyrics | null>>();
+const CACHE_CAP = 300;
+function cacheSet(key: string, value: ParsedLyrics | null): void {
+  cache.set(key, value);
+  while (cache.size > CACHE_CAP) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
 
 /** Forget a track's cached lyrics so they re-resolve (e.g. after its tags are
  *  fixed by identification). Pass no key to clear everything. */
@@ -63,7 +74,7 @@ function fetchFor(
     .then((raw) => (raw ? parseLrc(raw) : null))
     .catch(() => null)
     .then((parsed) => {
-      cache.set(key, parsed);
+      cacheSet(key, parsed);
       inFlight.delete(key);
       return parsed;
     });

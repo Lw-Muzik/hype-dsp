@@ -16,6 +16,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use hm_visualizer::projectm::{Playlist, ProjectM};
 use sdl2::event::{Event, WindowEvent};
@@ -127,7 +128,13 @@ fn main() {
 
     // --- render loop -----------------------------------------------------------
     let mut events = sdl.event_pump().expect("event pump");
+    // Frame-time floor as a fallback for when VSync isn't honored (VSync can be
+    // silently ignored on a virtualized/remote GPU or some Linux drivers, and
+    // `gl_swap_window` then returns immediately — spinning a whole core at
+    // uncapped fps). Capping to the target frame time keeps it bounded.
+    let target_frame = Duration::from_secs_f64(1.0 / fps.max(1) as f64);
     'main: loop {
+        let frame_start = Instant::now();
         for event in events.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -160,5 +167,12 @@ fn main() {
         }
         projectm.render_frame();
         window.gl_swap_window();
+
+        // If the swap returned faster than the target frame (VSync not pacing
+        // us), sleep the remainder so the loop can't peg a core.
+        let elapsed = frame_start.elapsed();
+        if elapsed < target_frame {
+            std::thread::sleep(target_frame - elapsed);
+        }
     }
 }

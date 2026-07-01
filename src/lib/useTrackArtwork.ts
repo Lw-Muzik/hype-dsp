@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { libraryArtwork, linkArtwork } from "@/lib/ipc";
+import { cloudTrackCover, libraryArtwork, linkArtwork } from "@/lib/ipc";
 
 /**
  * Where a track's cover art comes from. Local files read embedded art by path;
- * phone tracks fetch it from the paired device; cloud tracks have no per-track
- * art endpoint (they fall back to a gradient).
+ * phone tracks fetch it from the paired device; cloud tracks fetch it lazily
+ * from the metadata cache (only the on-screen rows, so a big library never holds
+ * thousands of covers in memory).
  */
 export interface ArtSource {
   /** Stable cache key (the track's uid). */
@@ -17,8 +18,12 @@ export interface ArtSource {
   trackId?: string;
   /** Whether the phone reports embedded art (skip the fetch if false). */
   hasArt?: boolean;
-  /** Already-resolved cover (a `data:` URI), e.g. from the cloud metadata
-   *  preload — used directly, skipping any fetch. */
+  /** Cloud account + file ids + name, to resolve the cover lazily on demand. */
+  cloudAccountId?: string;
+  cloudFileId?: string;
+  cloudName?: string;
+  /** Already-resolved cover (a `data:` URI), e.g. the now-playing track after
+   *  decode — used directly, skipping any fetch. */
   cover?: string | null;
 }
 
@@ -30,12 +35,36 @@ export interface ArtSource {
 const cache = new Map<string, string | null>();
 const inFlight = new Map<string, Promise<string | null>>();
 
+// Bound the cache so covers don't accumulate unbounded as you scroll a huge
+// library over a session (each is a ~100 KB `data:` URI). A cap well above the
+// on-screen working set means back-and-forth scrolling still hits cache; only
+// long-gone rows are evicted (oldest-inserted first — a visible row was just
+// inserted, so it's never the one dropped). ~400 covers ≈ a few tens of MB max.
+const CACHE_CAP = 400;
+function cacheSet(key: string, value: string | null): void {
+  cache.set(key, value);
+  while (cache.size > CACHE_CAP) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
 function resolve(art: ArtSource): Promise<string | null> {
+  // A cover already in hand (e.g. the now-playing track post-decode) wins.
+  if (art.cover) return Promise.resolve(art.cover);
   if (art.source === "local" && art.path) {
     return libraryArtwork(art.path);
   }
   if (art.source === "phone" && art.hasArt && art.deviceId && art.trackId) {
     return linkArtwork(art.deviceId, art.trackId);
+  }
+  if (art.source === "cloud" && art.cloudAccountId && art.cloudFileId) {
+    return cloudTrackCover(
+      art.cloudAccountId,
+      art.cloudFileId,
+      art.cloudName ?? "",
+    );
   }
   return Promise.resolve(null);
 }
@@ -47,7 +76,7 @@ function fetchArtwork(art: ArtSource): Promise<string | null> {
     .then((v) => v ?? null)
     .catch(() => null)
     .then((v) => {
-      cache.set(art.key, v);
+      cacheSet(art.key, v);
       inFlight.delete(art.key);
       return v;
     });

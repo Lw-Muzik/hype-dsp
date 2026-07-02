@@ -50,9 +50,30 @@ pub async fn build_endpoint(
     alpns: Vec<Vec<u8>>,
     relay: bool,
 ) -> Result<Endpoint> {
+    build_endpoint_with(secret, alpns, relay, None).await
+}
+
+/// Like [`build_endpoint`], but with an optional custom DNS resolver.
+///
+/// When `dns` is `None` iroh constructs its default resolver, which reads the
+/// SYSTEM DNS configuration. On Android that read goes over JNI via
+/// `ndk_context` — which is only initialized by ndk-glue/android-activity or an
+/// explicit `install_android_jni_context` call. In a library loaded through
+/// dart:ffi's `dlopen` (no `JNI_OnLoad`, no glue) that lookup PANICS in release
+/// builds, so the endpoint can never bind. The phone side therefore passes an
+/// explicit public-nameserver resolver (see `phone::phone_dns_resolver`).
+pub async fn build_endpoint_with(
+    secret: SecretKey,
+    alpns: Vec<Vec<u8>>,
+    relay: bool,
+    dns: Option<iroh::dns::DnsResolver>,
+) -> Result<Endpoint> {
     let mut builder = Endpoint::builder(iroh::endpoint::presets::N0)
         .secret_key(secret)
         .alpns(alpns);
+    if let Some(dns) = dns {
+        builder = builder.dns_resolver(dns);
+    }
     if !relay {
         builder = builder.relay_mode(iroh::RelayMode::Disabled);
     }
@@ -259,6 +280,68 @@ mod tests {
         let text = String::from_utf8_lossy(&resp);
         assert!(text.contains("200 OK"), "expected 200, got: {text}");
         assert!(text.contains("hello"), "expected body, got: {text}");
+        Ok(())
+    }
+
+    /// Regression for the Android QR-pairing failure: an endpoint built with an
+    /// EXPLICIT custom DNS resolver (the phone path — avoids the JNI-backed
+    /// system-config read that panics on Android) must bind and carry traffic
+    /// exactly like the default one.
+    #[tokio::test]
+    async fn endpoint_with_custom_dns_resolver_binds_and_connects() -> Result<()> {
+        use iroh::dns::{DnsProtocol, DnsResolver};
+        use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+        let resolver = DnsResolver::builder()
+            .with_nameserver(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), 53),
+                DnsProtocol::Udp,
+            )
+            .build();
+        let a = build_endpoint_with(
+            SecretKey::from_bytes(&[11u8; 32]),
+            vec![ALPN_LINK.to_vec()],
+            false,
+            Some(resolver),
+        )
+        .await?;
+        let a_addr = endpoint_addr(&a).await?;
+        // Accept one connection on `a`.
+        let accept = tokio::spawn(async move {
+            let incoming = a.accept().await.expect("closed before accept");
+            let conn = incoming.await.expect("handshake");
+            let (mut send, mut recv) = conn.accept_bi().await.expect("bi");
+            let mut buf = [0u8; 4];
+            recv.read_exact(&mut buf).await.expect("read");
+            send.write_all(&buf).await.expect("echo");
+            let _ = send.finish();
+            // Hold the connection open until the dialer has read the echo.
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        });
+
+        // Dial from a second custom-resolver endpoint (direct addrs, no DNS).
+        let b = build_endpoint_with(
+            SecretKey::from_bytes(&[13u8; 32]),
+            vec![ALPN_LINK.to_vec()],
+            false,
+            Some(
+                DnsResolver::builder()
+                    .with_nameserver(
+                        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
+                        DnsProtocol::Udp,
+                    )
+                    .build(),
+            ),
+        )
+        .await?;
+        let conn = b.connect(a_addr, ALPN_LINK).await?;
+        let (mut send, mut recv) = conn.open_bi().await?;
+        send.write_all(b"ping").await?;
+        let _ = send.finish();
+        let mut echoed = [0u8; 4];
+        recv.read_exact(&mut echoed).await?;
+        assert_eq!(&echoed, b"ping");
+        accept.await.expect("accept task");
         Ok(())
     }
 }

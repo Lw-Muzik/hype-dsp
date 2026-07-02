@@ -15,7 +15,41 @@ use iroh::{Endpoint, EndpointAddr, EndpointId};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::{build_endpoint, dial_pair, secret, serve_tunnel, ALPN_LINK};
+use crate::{build_endpoint_with, dial_pair, secret, serve_tunnel, ALPN_LINK};
+
+/// DNS resolver for the phone endpoint.
+///
+/// **Android:** iroh's default resolver reads the system DNS config over JNI
+/// via `ndk_context`, which is only initialized by ndk-glue/android-activity —
+/// neither exists here: this library is loaded by dart:ffi's `dlopen`, which
+/// never fires `JNI_OnLoad`. That JNI lookup **panics in release builds**
+/// (see `iroh-dns/src/android.rs`); the panic was caught at our FFI boundary
+/// and the endpoint never bound — which made QR pairing fail on every scan.
+/// Explicit public resolvers (Cloudflare + Google, v4 + v6, plain UDP 53)
+/// avoid JNI entirely; the phone only needs them to resolve n0's discovery
+/// and relay hostnames.
+///
+/// **Other platforms** (iOS/macOS/tests): the system default works — keep it.
+pub(crate) fn phone_dns_resolver() -> Option<iroh::dns::DnsResolver> {
+    #[cfg(target_os = "android")]
+    {
+        use iroh::dns::{DnsProtocol, DnsResolver};
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+        const NAMESERVERS: [IpAddr; 4] = [
+            IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), // Cloudflare
+            IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), // Google
+            IpAddr::V6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111)),
+            IpAddr::V6(Ipv6Addr::new(0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888)),
+        ];
+        let mut builder = DnsResolver::builder();
+        for ip in NAMESERVERS {
+            builder = builder.with_nameserver(SocketAddr::new(ip, 53), DnsProtocol::Udp);
+        }
+        Some(builder.build())
+    }
+    #[cfg(not(target_os = "android"))]
+    None
+}
 
 /// A running phone node: iroh endpoint + its runtime + the tunnel server task.
 pub struct PhoneNode {
@@ -38,8 +72,16 @@ impl PhoneNode {
             .enable_all()
             .build()?;
         let secret = secret::load_or_create_secret(&secret_path)?;
-        let endpoint =
-            runtime.block_on(build_endpoint(secret, vec![ALPN_LINK.to_vec()], true))?;
+        let endpoint = runtime.block_on(build_endpoint_with(
+            secret,
+            vec![ALPN_LINK.to_vec()],
+            true,
+            phone_dns_resolver(),
+        ))?;
+        crate::ffi::diag(&format!(
+            "hm-remote: phone endpoint bound, id={}",
+            endpoint.id()
+        ));
         runtime.spawn(serve_tunnel(endpoint.clone(), shelf_port));
         Ok(Self { runtime, endpoint })
     }

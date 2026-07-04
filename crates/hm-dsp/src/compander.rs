@@ -41,11 +41,25 @@ const CROSSOVER_COUNT: usize = BAND_COUNT - 1; // 9
 const CENTERS_HZ: [f32; BAND_COUNT] =
     [31.0, 62.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0];
 const BUTTERWORTH_Q: f32 = std::f32::consts::FRAC_1_SQRT_2;
+/// `20/ln(10)`. Only the exact [`lin_to_db`] reference oracle (test-only) needs
+/// this; the real-time path uses [`lin_to_db_fast`], which never calls `ln`.
+#[cfg(test)]
 const LOG10_20: f32 = 8.685_889; // 20/ln(10)
 const INV_LOG10_20: f32 = 0.115_129_255; // ln(10)/20
 /// Fixed lookahead in milliseconds. Allocated in `prepare`; never re-allocated
 /// during `process`. Adds ~3 ms of latency on top of any convolver delay.
 const LOOKAHEAD_MS: f32 = 3.0;
+/// Control-rate decimation of the dB→lin conversion (the per-band `exp`).
+/// Everything upstream (envelope, static gain curve, ~2 ms de-click smoother)
+/// stays per-frame with the original ballistics — none of it needs libm once
+/// the envelope's `ln` is replaced by [`lin_to_db_fast`]. Per frame the linear
+/// gain follows the smoothed dB gain by a second-order multiplicative update
+/// (exact to ~1e-6 relative per frame, since the de-click smoother limits the
+/// per-frame dB step to a few hundredths of a dB); the exact `exp` runs once
+/// every this many frames purely to cancel the accumulated truncation drift.
+const CTRL_INTERVAL: usize = 8;
+/// dB per octave: `20·log10(2)`, converts `log2` to decibels.
+const DB_PER_OCTAVE: f32 = 20.0 * std::f32::consts::LOG10_2;
 
 #[inline]
 fn flush(x: f32) -> f32 {
@@ -55,9 +69,38 @@ fn flush(x: f32) -> f32 {
 fn db_to_lin(db: f32) -> f32 {
     (db * INV_LOG10_20).exp()
 }
+/// Exact linear→dB via libm `ln`. Retained only as the reference oracle that
+/// [`lin_to_db_fast`] is validated against in tests; the real-time path never
+/// calls it.
+#[cfg(test)]
 #[inline]
 fn lin_to_db(lin: f32) -> f32 {
     if lin < 1e-10 { -200.0 } else { lin.ln() * LOG10_20 }
+}
+
+/// Fast `lin_to_db`: exponent/mantissa split plus an atanh-series `log2` of
+/// the mantissa, replacing the per-frame libm `ln` in the envelope follower.
+///
+/// With `m ∈ [1, 2)` and `t = (m−1)/(m+1) ∈ [0, ⅓]`,
+/// `log2(m) = 2·atanh(t)/ln 2` and the odd series `t + t³/3 + t⁵/5 + t⁷/7`
+/// truncates with error < 6e-6, so the result is within ~1e-4 dB of the exact
+/// conversion (verified by `fast_db_conversion_is_accurate`) — four orders of
+/// magnitude below audibility. Same `-200 dB` floor as `lin_to_db`.
+#[inline]
+fn lin_to_db_fast(lin: f32) -> f32 {
+    if lin < 1e-10 {
+        return -200.0;
+    }
+    // lin = m · 2^e with m ∈ [1, 2); 1e-10 > f32::MIN_POSITIVE so lin is
+    // always a normal float here and the bit split is exact.
+    let bits = lin.to_bits();
+    let e = ((bits >> 23) as i32) - 127;
+    let m = f32::from_bits((bits & 0x007F_FFFF) | 0x3F80_0000);
+    let t = (m - 1.0) / (m + 1.0);
+    let t2 = t * t;
+    let atanh = t * (1.0 + t2 * (1.0 / 3.0 + t2 * (0.2 + t2 * (1.0 / 7.0))));
+    let log2_m = atanh * (2.0 / std::f32::consts::LN_2);
+    (e as f32 + log2_m) * DB_PER_OCTAVE
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +190,12 @@ impl LrChannel {
 /// (`lookahead_samples` deep). Gain is derived from the INCOMING sample but
 /// applied to the DELAYED sample popped from the ring, giving the compressor
 /// look-ahead of `lookahead_samples` into the future.
+///
+/// Control-rate decimation: the envelope follower (via [`lin_to_db_fast`], no
+/// libm call), static gain curve and de-click smoother all run per frame with
+/// the original ballistics; the dB→linear conversion is tracked per frame by a
+/// cheap second-order multiplicative update and re-synced by an exact `exp`
+/// once every [`CTRL_INTERVAL`] frames.
 struct BandCompressor {
     sample_rate: f32,
     env_db: f32,
@@ -154,6 +203,12 @@ struct BandCompressor {
     attack_coeff: f32,
     release_coeff: f32,
     gain_declick_coeff: f32,
+    // Control-rate decimation state for the dB→lin conversion.
+    /// Frames until the next exact `db_to_lin` re-sync (1 ⇒ next frame syncs).
+    ctrl_countdown: usize,
+    /// Current per-frame linear gain (excluding makeup): tracks
+    /// `db_to_lin(gain_smoothed_db)` multiplicatively between re-syncs.
+    gain_lin: f32,
     // lookahead ring buffers (one per channel, allocated in prepare)
     ring_l: Vec<f32>,
     ring_r: Vec<f32>,
@@ -178,6 +233,8 @@ impl BandCompressor {
             attack_coeff: 0.1,
             release_coeff: 0.001,
             gain_declick_coeff: 0.1,
+            ctrl_countdown: 1,
+            gain_lin: 1.0,
             ring_l: vec![0.0; ls.max(1)],
             ring_r: vec![0.0; ls.max(1)],
             ring_pos: 0,
@@ -229,6 +286,8 @@ impl BandCompressor {
     fn reset(&mut self) {
         self.env_db = -96.0;
         self.gain_smoothed_db = 0.0;
+        self.ctrl_countdown = 1; // first frame after reset re-syncs the gain
+        self.gain_lin = 1.0;
         // Zero the rings to avoid stale audio bleeding across resets.
         for x in &mut self.ring_l { *x = 0.0; }
         for x in &mut self.ring_r { *x = 0.0; }
@@ -265,17 +324,17 @@ impl BandCompressor {
         gain_db
     }
 
-    /// Process one stereo frame in place (peak-linked, with lookahead).
+    /// Advance the gain path by one frame given the incoming (undelayed,
+    /// future-looking) frame peak; returns the linear gain (including makeup)
+    /// to apply to the delayed sample.
     ///
-    /// Gain is computed from the INCOMING `(l, r)` sample (future-looking), but
-    /// applied to the DELAYED sample popped from the ring buffer. When
-    /// `lookahead_samples == 0` the ring degrades to a 1-sample dummy and the
-    /// output is the incoming sample with current gain — no meaningful delay.
+    /// The envelope, static gain curve and de-click smoother all run per frame
+    /// with the original ballistics — the envelope's ripple on the rectified
+    /// signal sets the steady-state gain, so it must not be decimated. Only the
+    /// dB→lin conversion (the `exp`) is decimated.
     #[inline]
-    fn process_frame(&mut self, l: &mut f32, r: &mut f32) {
-        // 1. Envelope + gain from incoming (undelayed) level.
-        let peak = l.abs().max(r.abs());
-        let peak_db = lin_to_db(peak);
+    fn advance_gain(&mut self, peak: f32) -> f32 {
+        let peak_db = lin_to_db_fast(peak);
         if peak_db > self.env_db {
             self.env_db += self.attack_coeff * (peak_db - self.env_db);
         } else {
@@ -288,9 +347,36 @@ impl BandCompressor {
         // Gain de-click: smooth using fixed fast ~2 ms coefficient (both directions).
         // The envelope (via attack/release_coeff above) governs the response speed;
         // this stage only de-zippers the gain output.
-        self.gain_smoothed_db += self.gain_declick_coeff * (gain_db - self.gain_smoothed_db);
+        let delta_db = self.gain_declick_coeff * (gain_db - self.gain_smoothed_db);
+        self.gain_smoothed_db += delta_db;
 
-        let g = db_to_lin(self.gain_smoothed_db) * self.makeup_lin;
+        self.ctrl_countdown -= 1;
+        if self.ctrl_countdown == 0 {
+            // Exact re-sync: cancels the accumulated truncation drift of the
+            // multiplicative tracking below (≲1e-5 relative per interval).
+            self.ctrl_countdown = CTRL_INTERVAL;
+            self.gain_lin = db_to_lin(self.gain_smoothed_db);
+        } else {
+            // Track the smoothed gain multiplicatively: gain·exp(a·Δ) with
+            // exp(x) ≈ 1 + x + x²/2. The de-click smoother caps Δ at a few
+            // hundredths of a dB per frame, so the truncation error is < 1e-6
+            // relative — no libm call per frame.
+            let x = INV_LOG10_20 * delta_db;
+            self.gain_lin *= 1.0 + x * (1.0 + 0.5 * x);
+        }
+        self.gain_lin * self.makeup_lin
+    }
+
+    /// Process one stereo frame in place (peak-linked, with lookahead).
+    ///
+    /// Gain is computed from the INCOMING `(l, r)` sample (future-looking), but
+    /// applied to the DELAYED sample popped from the ring buffer. When
+    /// `lookahead_samples == 0` the ring degrades to a 1-sample dummy and the
+    /// output is the incoming sample with current gain — no meaningful delay.
+    #[inline]
+    fn process_frame(&mut self, l: &mut f32, r: &mut f32) {
+        // 1. Envelope (per-frame) + decimated gain from incoming (undelayed) level.
+        let g = self.advance_gain(l.abs().max(r.abs()));
 
         // 2. Lookahead ring: push incoming, pop delayed.
         if self.lookahead_samples == 0 {
@@ -298,15 +384,38 @@ impl BandCompressor {
             *l *= g;
             *r *= g;
         } else {
-            // ring_pos is always in [0, ring_l.len()) by virtue of the modulo in the increment.
+            // ring_pos is always in [0, ring_l.len()) — the increment wraps.
             let pos = self.ring_pos;
             let delayed_l = self.ring_l[pos];
             let delayed_r = self.ring_r[pos];
             self.ring_l[pos] = *l;
             self.ring_r[pos] = *r;
-            self.ring_pos = (self.ring_pos + 1) % self.ring_l.len();
+            self.ring_pos += 1;
+            if self.ring_pos == self.ring_l.len() {
+                self.ring_pos = 0;
+            }
             *l = delayed_l * g;
             *r = delayed_r * g;
+        }
+    }
+
+    /// Mono variant of [`process_frame`](Self::process_frame): with `l == r`
+    /// the stereo-linked gain is identical, so the right ring/crossover work is
+    /// pure duplication and is skipped entirely.
+    #[inline]
+    fn process_frame_mono(&mut self, l: &mut f32) {
+        let g = self.advance_gain(l.abs());
+        if self.lookahead_samples == 0 {
+            *l *= g;
+        } else {
+            let pos = self.ring_pos;
+            let delayed_l = self.ring_l[pos];
+            self.ring_l[pos] = *l;
+            self.ring_pos += 1;
+            if self.ring_pos == self.ring_l.len() {
+                self.ring_pos = 0;
+            }
+            *l = delayed_l * g;
         }
     }
 }
@@ -410,47 +519,68 @@ impl AudioProcessor for Compander {
         // Initialize to 0.0 (no reduction); will be updated to the min seen.
         let mut min_gr_per_band = [0.0_f32; BAND_COUNT];
 
-        for f in 0..frames {
-            let base = f * channels;
-            let in_l = buffer[base];
-            let in_r = if stereo { buffer[base + 1] } else { in_l };
-            // Subtractive (telescoping) crossover:
-            //   rest -= low_i  (exact subtraction — no HP biquads)
-            //   Σ low_i + rest_9 = input by construction → flat = transparent.
-            let mut rest_l = in_l;
-            let mut rest_r = in_r;
-            let mut sum_l = 0.0_f32;
-            let mut sum_r = 0.0_f32;
-            for (i, min_gr) in min_gr_per_band[..CROSSOVER_COUNT].iter_mut().enumerate() {
-                // Lowpass the CURRENT remainder (uncompressed) to carve out the band.
-                let low_l = self.crossovers_l[i].lowpass(rest_l);
-                let low_r = self.crossovers_r[i].lowpass(rest_r);
-                // Subtract the uncompressed low from remainder (keeps telescope exact).
-                rest_l -= low_l;
-                rest_r -= low_r;
-                // Compress and accumulate the band.
-                let (mut bl, mut br) = (low_l, low_r);
-                self.bands[i].process_frame(&mut bl, &mut br);
+        if stereo {
+            for f in 0..frames {
+                let base = f * channels;
+                let in_l = buffer[base];
+                let in_r = buffer[base + 1];
+                // Subtractive (telescoping) crossover:
+                //   rest -= low_i  (exact subtraction — no HP biquads)
+                //   Σ low_i + rest_9 = input by construction → flat = transparent.
+                let mut rest_l = in_l;
+                let mut rest_r = in_r;
+                let mut sum_l = 0.0_f32;
+                let mut sum_r = 0.0_f32;
+                for (i, min_gr) in min_gr_per_band[..CROSSOVER_COUNT].iter_mut().enumerate() {
+                    // Lowpass the CURRENT remainder (uncompressed) to carve out the band.
+                    let low_l = self.crossovers_l[i].lowpass(rest_l);
+                    let low_r = self.crossovers_r[i].lowpass(rest_r);
+                    // Subtract the uncompressed low from remainder (keeps telescope exact).
+                    rest_l -= low_l;
+                    rest_r -= low_r;
+                    // Compress and accumulate the band.
+                    let (mut bl, mut br) = (low_l, low_r);
+                    self.bands[i].process_frame(&mut bl, &mut br);
+                    sum_l += bl;
+                    sum_r += br;
+                    // Track minimum gain for this band.
+                    let gr = self.bands[i].current_gain_db();
+                    *min_gr = min_gr.min(gr);
+                }
+                // Final (highest) band = whatever remains after all LP subtractions.
+                let (mut bl, mut br) = (rest_l, rest_r);
+                self.bands[BAND_COUNT - 1].process_frame(&mut bl, &mut br);
                 sum_l += bl;
                 sum_r += br;
-                // Track minimum gain for this band.
-                let gr = self.bands[i].current_gain_db();
-                *min_gr = min_gr.min(gr);
-            }
-            // Final (highest) band = whatever remains after all LP subtractions.
-            let (mut bl, mut br) = (rest_l, rest_r);
-            self.bands[BAND_COUNT - 1].process_frame(&mut bl, &mut br);
-            sum_l += bl;
-            sum_r += br;
-            // Track minimum gain for the final band.
-            let gr = self.bands[BAND_COUNT - 1].current_gain_db();
-            min_gr_per_band[BAND_COUNT - 1] = min_gr_per_band[BAND_COUNT - 1].min(gr);
+                // Track minimum gain for the final band.
+                let gr = self.bands[BAND_COUNT - 1].current_gain_db();
+                min_gr_per_band[BAND_COUNT - 1] = min_gr_per_band[BAND_COUNT - 1].min(gr);
 
-            let out_l = flush(sum_l).clamp(-4.0, 4.0);
-            let out_r = flush(sum_r).clamp(-4.0, 4.0);
-            buffer[base] = out_l;
-            if stereo {
-                buffer[base + 1] = out_r;
+                buffer[base] = flush(sum_l).clamp(-4.0, 4.0);
+                buffer[base + 1] = flush(sum_r).clamp(-4.0, 4.0);
+            }
+        } else {
+            // Mono: with `in_r == in_l` the right crossover tree and ring
+            // duplicate the left bit-for-bit and the stereo-linked gain is the
+            // same, so the whole R half is skipped (halves the work).
+            for sample in buffer.iter_mut() {
+                let mut rest_l = *sample;
+                let mut sum_l = 0.0_f32;
+                for (i, min_gr) in min_gr_per_band[..CROSSOVER_COUNT].iter_mut().enumerate() {
+                    let low_l = self.crossovers_l[i].lowpass(rest_l);
+                    rest_l -= low_l;
+                    let mut bl = low_l;
+                    self.bands[i].process_frame_mono(&mut bl);
+                    sum_l += bl;
+                    *min_gr = min_gr.min(self.bands[i].current_gain_db());
+                }
+                let mut bl = rest_l;
+                self.bands[BAND_COUNT - 1].process_frame_mono(&mut bl);
+                sum_l += bl;
+                min_gr_per_band[BAND_COUNT - 1] =
+                    min_gr_per_band[BAND_COUNT - 1].min(self.bands[BAND_COUNT - 1].current_gain_db());
+
+                *sample = flush(sum_l).clamp(-4.0, 4.0);
             }
         }
 
@@ -793,6 +923,174 @@ mod tests {
             out_peak < in_peak * 0.7,
             "compression should reduce level significantly: in_peak={in_peak:.3}, out_peak={out_peak:.3}"
         );
+    }
+
+    /// Reference: the original PER-FRAME gain path (per-frame coefficients,
+    /// envelope from the instantaneous peak, dB de-click, dB→lin every frame),
+    /// kept verbatim so the CTRL_INTERVAL-decimated path can be compared to it.
+    struct RefBand {
+        env_db: f32,
+        gain_smoothed_db: f32,
+        attack_coeff: f32,
+        release_coeff: f32,
+        gain_declick_coeff: f32,
+        ring: Vec<f32>,
+        ring_pos: usize,
+    }
+
+    impl RefBand {
+        fn new(sr: f32, attack_ms: f32, release_ms: f32) -> Self {
+            let a = (attack_ms * 0.001).max(0.001);
+            let r = (release_ms * 0.001).max(0.001);
+            Self {
+                env_db: -96.0,
+                gain_smoothed_db: 0.0,
+                attack_coeff: 1.0 - (-1.0 / (a * sr)).exp(),
+                release_coeff: 1.0 - (-1.0 / (r * sr)).exp(),
+                gain_declick_coeff: 1.0 - (-1.0 / (0.002 * sr)).exp(),
+                ring: vec![0.0; lookahead_samples(sr).max(1)],
+                ring_pos: 0,
+            }
+        }
+
+        /// One mono frame, original per-frame math. `curve` supplies the
+        /// (stateless) static gain curve so it is shared with the real band.
+        fn process(&mut self, x: f32, curve: &BandCompressor) -> f32 {
+            let peak_db = lin_to_db(x.abs());
+            if peak_db > self.env_db {
+                self.env_db += self.attack_coeff * (peak_db - self.env_db);
+            } else {
+                self.env_db += self.release_coeff * (peak_db - self.env_db);
+            }
+            self.env_db = flush(self.env_db + 96.0) - 96.0;
+            let gain_db = curve.compute_gain(self.env_db);
+            self.gain_smoothed_db +=
+                self.gain_declick_coeff * (gain_db - self.gain_smoothed_db);
+            let g = db_to_lin(self.gain_smoothed_db) * curve.makeup_lin;
+            let pos = self.ring_pos;
+            let delayed = self.ring[pos];
+            self.ring[pos] = x;
+            self.ring_pos = (self.ring_pos + 1) % self.ring.len();
+            delayed * g
+        }
+    }
+
+    /// The control-rate-decimated band must stay within a tight tolerance of
+    /// the per-frame reference on a burst (attack, sustain, and release).
+    #[test]
+    fn decimated_band_matches_per_frame_reference() {
+        let sr = 48_000.0_f32;
+        let params = compander_params(CompanderState {
+            enabled: true,
+            ratio: 4.0,
+            threshold_db: -30.0,
+            knee_db: 0.0,
+            gate_db: -90.0,
+            attack_ms: 5.0,
+            release_ms: 50.0,
+            makeup_db: 0.0,
+            expander_ratio: 1.0,
+        });
+
+        // Loud 1 kHz burst, then near-silence: exercises attack, steady-state
+        // gain reduction, and release.
+        let burst = 7_200_usize; // 150 ms
+        let total = 14_400_usize; // + 150 ms tail
+        let signal: Vec<f32> = (0..total)
+            .map(|i| {
+                let amp = if i < burst { 0.9 } else { 0.02 };
+                (2.0 * std::f32::consts::PI * 1_000.0 * i as f32 / sr).sin() * amp
+            })
+            .collect();
+
+        let mut band = BandCompressor::new(sr);
+        band.set_params(&params);
+        let mut reference = RefBand::new(sr, 5.0, 50.0);
+
+        let mut err_sq = 0.0_f64;
+        let mut ref_sq = 0.0_f64;
+        let mut max_diff = 0.0_f32;
+        for &x in &signal {
+            let mut got = x;
+            band.process_frame_mono(&mut got);
+            let want = reference.process(x, &band);
+            let d = (got - want).abs();
+            max_diff = max_diff.max(d);
+            err_sq += (d as f64) * (d as f64);
+            ref_sq += (want as f64) * (want as f64);
+        }
+        let rel_rms = (err_sq / ref_sq.max(1e-30)).sqrt();
+        assert!(
+            rel_rms < 0.001,
+            "decimated gain path must track the per-frame reference: \
+             rel RMS error {:.4}% (max sample diff {max_diff:.6})",
+            rel_rms * 100.0
+        );
+        assert!(
+            max_diff < 0.005,
+            "decimated gain path max sample deviation too large: {max_diff:.6}"
+        );
+    }
+
+    /// The polynomial dB conversion must agree with the exact libm one to well
+    /// under a thousandth of a dB across the whole audio range.
+    #[test]
+    fn fast_db_conversion_is_accurate() {
+        // Dense sweep across 10 decades (just above the -200 dB floor to +12 dB).
+        let mut lin = 2e-10_f32;
+        let mut max_err = 0.0_f32;
+        while lin < 4.0 {
+            let exact = lin_to_db(lin);
+            let fast = lin_to_db_fast(lin);
+            max_err = max_err.max((exact - fast).abs());
+            lin *= 1.001;
+        }
+        assert!(
+            max_err < 1e-3,
+            "lin_to_db_fast must be within 0.001 dB of libm, got {max_err}"
+        );
+        // Floor behaviour must match exactly.
+        assert_eq!(lin_to_db_fast(0.0), -200.0);
+        assert_eq!(lin_to_db_fast(9e-11), -200.0);
+    }
+
+    /// Mono processing (which skips the duplicated right-channel work) must
+    /// match the left channel of the equivalent dual-mono stereo run exactly.
+    #[test]
+    fn mono_matches_dual_mono_stereo() {
+        let sr = 48_000.0_f32;
+        let params = compander_params(CompanderState {
+            enabled: true,
+            ratio: 4.0,
+            threshold_db: -24.0,
+            knee_db: 6.0,
+            gate_db: -70.0,
+            attack_ms: 10.0,
+            release_ms: 80.0,
+            makeup_db: 3.0,
+            expander_ratio: 2.0,
+        });
+        let mono: Vec<f32> = (0..8_192)
+            .map(|i| (2.0 * std::f32::consts::PI * 500.0 * i as f32 / sr).sin() * 0.8)
+            .collect();
+
+        let mut c_mono = Compander::new(sr, 1);
+        c_mono.set_params(&params);
+        let mut mono_buf = mono.clone();
+        c_mono.process(&mut mono_buf, 1);
+
+        let mut c_stereo = Compander::new(sr, 2);
+        c_stereo.set_params(&params);
+        let mut stereo_buf: Vec<f32> = mono.iter().flat_map(|&x| [x, x]).collect();
+        c_stereo.process(&mut stereo_buf, 2);
+
+        for (f, &m) in mono_buf.iter().enumerate() {
+            let l = stereo_buf[f * 2];
+            assert!(
+                m.to_bits() == l.to_bits(),
+                "frame {f}: mono path {m} != dual-mono stereo left {l}"
+            );
+        }
     }
 
     #[test]

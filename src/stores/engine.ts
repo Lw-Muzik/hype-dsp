@@ -2,7 +2,8 @@ import { create } from "zustand";
 import {
   chainPresetApply,
   cloudPlay,
-  cloudTrackMetadata,
+  cloudTrackCover,
+  cloudTrackTags,
   engineConvolverLoadIr,
   engineEqApplyDdc,
   engineEqImportGraphic,
@@ -40,6 +41,7 @@ import { classify, chooseStreamMode } from "./networkMode";
 import type { NetworkMode } from "./networkMode";
 import type {
   CloudEntry,
+  CloudTrackMeta,
   CompanderState,
   ConvolverState,
   EngineFrame,
@@ -479,6 +481,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       case "cast":
         break; // already playing on the casting phone
     }
+
+    // Cloud covers aren't stored on queue items; fetch the current one lazily.
+    fillNowPlayingCover(item);
   };
 
   /** A cloud item still labelled with its file name (or no artist) needs its
@@ -490,66 +495,116 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     return it.title === it.cloud.name || it.title === stem;
   };
 
-  /** Patch one queued cloud item (by id) with resolved tags, keeping the
-   *  now-playing card in sync when it's the current track. No-op if it changed. */
-  const patchCloudItem = (id: string, meta: TrackMeta): void =>
-    set((s) => {
-      const idx = s.queue.findIndex((q) => q.source === "cloud" && q.id === id);
-      if (idx < 0) return {};
-      const cur = s.queue[idx]!;
-      const next: QueueItem = {
-        ...cur,
-        title: meta.title ?? cur.title,
-        artist: meta.artist ?? cur.artist,
-        album: meta.album ?? cur.album,
-        cover: meta.cover ?? cur.cover ?? null,
-      };
-      if (
-        next.title === cur.title &&
-        next.artist === cur.artist &&
-        next.album === cur.album &&
-        next.cover === cur.cover
-      ) {
-        return {};
-      }
-      const queue = s.queue.slice();
-      queue[idx] = next;
-      const patchNow =
-        s.queueIndex === idx
-          ? {
-              nowPlaying: next.title,
-              nowPlayingMeta: {
-                title: next.title,
-                artist: next.artist,
-                album: next.album,
-                cover: s.nowPlayingMeta?.cover ?? meta.cover ?? null,
-              },
-            }
-          : {};
-      return { queue, ...patchNow };
-    });
+  /** Lazily resolve the *current* cloud track's cover into the now-playing
+   *  card (one fetch per track change). Covers are never bulk-loaded onto
+   *  queue items — the engine's decoded `now_playing` cover still wins if it
+   *  lands first, and the backend caches per file so repeats are cheap. */
+  const fillNowPlayingCover = (item: QueueItem): void => {
+    if (item.source !== "cloud" || !item.cloud || item.cover) return;
+    const file = item.cloud;
+    void cloudTrackCover(file.accountId, file.id, file.name)
+      .then((cover) => {
+        if (!cover) return;
+        set((s) => {
+          // Only if this is still the current track and no decoded cover
+          // arrived from the engine in the meantime.
+          const cur = s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined;
+          if (!cur || cur.source !== "cloud" || cur.id !== item.id) return {};
+          if (!s.nowPlayingMeta || s.nowPlayingMeta.cover) return {};
+          return { nowPlayingMeta: { ...s.nowPlayingMeta, cover } };
+        });
+      })
+      .catch(() => {});
+  };
+
+  /** How often resolved cloud tags are flushed into the queue (one store
+   *  update per flush, instead of one per track). */
+  const ENRICH_FLUSH_MS = 200;
 
   /** Background-fill missing cloud tags for a queue (cache-backed, bounded), so
-   *  the queue list shows real title/artist instead of the file name. */
+   *  the queue list shows real title/artist instead of the file name. Tags
+   *  only — never the ~100 KB base64 cover, so a 10k-track queue doesn't hold
+   *  ~1 GB of covers in memory; covers resolve lazily per visible queue row
+   *  (and via {@link fillNowPlayingCover} for the current track). Resolved
+   *  tags are batched and applied as one new queue array per flush. */
   const enrichCloudQueue = (items: QueueItem[]): void => {
     const pending = items.filter(cloudNeedsMeta);
     if (pending.length === 0) return;
     let next = 0;
+    // Tags resolved but not yet applied to the store, keyed by queue item id.
+    let resolved = new Map<string, CloudTrackMeta>();
+    let flushTimer: number | null = null;
+
+    const flush = () => {
+      flushTimer = null;
+      if (resolved.size === 0) return;
+      const batch = resolved;
+      resolved = new Map();
+      set((s) => {
+        // The queue may have been reordered/replaced since these resolved:
+        // map ids → current indexes once per flush (not a findIndex each).
+        const indexById = new Map<string, number>();
+        for (let i = 0; i < s.queue.length; i++) {
+          const q = s.queue[i]!;
+          if (q.source === "cloud") indexById.set(q.id, i);
+        }
+        let queue: QueueItem[] | null = null;
+        let nowPatch: Partial<
+          Pick<EngineStore, "nowPlaying" | "nowPlayingMeta">
+        > = {};
+        for (const [id, meta] of batch) {
+          const idx = indexById.get(id);
+          if (idx == null) continue;
+          const cur = (queue ?? s.queue)[idx]!;
+          const title = meta.title ?? cur.title;
+          const artist = meta.artist ?? cur.artist;
+          const album = meta.album ?? cur.album;
+          if (title === cur.title && artist === cur.artist && album === cur.album) {
+            continue;
+          }
+          queue ??= s.queue.slice();
+          queue[idx] = { ...cur, title, artist, album };
+          // Keep the now-playing card in sync when the current track's tags land.
+          if (s.queueIndex === idx) {
+            nowPatch = {
+              nowPlaying: title,
+              nowPlayingMeta: {
+                title,
+                artist,
+                album,
+                cover: s.nowPlayingMeta?.cover ?? null,
+              },
+            };
+          }
+        }
+        return queue ? { queue, ...nowPatch } : {};
+      });
+    };
+
+    const scheduleFlush = () => {
+      if (flushTimer == null) flushTimer = window.setTimeout(flush, ENRICH_FLUSH_MS);
+    };
+
     const worker = async () => {
       while (next < pending.length) {
         const it = pending[next++]!;
         const file = it.cloud!;
         try {
-          const meta = await cloudTrackMetadata(file.accountId, file.id, file.name);
+          const meta = await cloudTrackTags(file.accountId, file.id, file.name);
           if (meta && (meta.title || meta.artist || meta.album)) {
-            patchCloudItem(it.id, meta);
+            resolved.set(it.id, meta);
+            scheduleFlush();
           }
         } catch {
           // Skip — one failed lookup shouldn't block the rest.
         }
       }
     };
-    void Promise.all([worker(), worker(), worker(), worker()]);
+    void Promise.all([worker(), worker(), worker(), worker()]).then(() => {
+      // Trailing flush for whatever resolved after the last timer fired.
+      if (flushTimer != null) window.clearTimeout(flushTimer);
+      flush();
+    });
   };
 
   /** Replace the queue and start playing `index`. */
@@ -855,19 +910,20 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       // Only the engine's gapless queue emits this; map its absolute index back
       // to our order position. Ignored for single-track / streamed playback.
       if (!gaplessQueueRunning) return;
-      set((s) => {
-        const qi = s.order[absPos];
-        const item = qi != null ? s.queue[qi] : undefined;
-        if (!item) return {};
-        return {
-          orderPos: absPos,
-          queueIndex: qi!,
-          nowPlaying: item.title,
-          nowPlayingMeta: itemMeta(item),
-          positionSecs: 0,
-          durationSecs: item.durationSecs,
-        };
+      const { order, queue } = get();
+      const qi = order[absPos];
+      const item = qi != null ? queue[qi] : undefined;
+      if (!item) return;
+      set({
+        orderPos: absPos,
+        queueIndex: qi!,
+        nowPlaying: item.title,
+        nowPlayingMeta: itemMeta(item),
+        positionSecs: 0,
+        durationSecs: item.durationSecs,
       });
+      // Cloud covers aren't stored on queue items; fetch the current one lazily.
+      fillNowPlayingCover(item);
     },
 
     play: async (path, name) => {

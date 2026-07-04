@@ -32,6 +32,11 @@ rusty-chromaprint = "0.3.0"
 # Load impulse-response WAV files.
 hound = { workspace = true }
 
+# Per-thread priority tuning (thread_util): nice()/sched_setscheduler on unix.
+# (The Windows side uses the `windows` crate's Win32_System_Threading below.)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # macOS system-wide capture via Core Audio process taps (macOS 14.4+).
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

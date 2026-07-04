@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useEngineStore } from "@/stores/engine";
-import { useAudioData, useDprCanvas } from "./sceneKit";
+import { createFpsGate, useAudioData, useDprCanvas } from "./sceneKit";
 
 const BARS = 96;
 const GOLD = [246, 197, 68] as const;
@@ -16,6 +16,62 @@ const mix = (a: RGB, b: RGB, t: number): RGB => {
   mixScratch[2] = a[2] + (b[2] - a[2]) * t;
   return mixScratch;
 };
+
+interface CoreSprites {
+  w: number;
+  h: number;
+  /** Baked circle radius (device px) the sprites were rendered at. */
+  R: number;
+  /** The brand radial-gradient core, no glow. */
+  core: HTMLCanvasElement;
+  /** Shadow-only gold halo of the gradient core (alpha baked at 1). */
+  halo: HTMLCanvasElement;
+}
+
+/**
+ * Bake the gradient core + its gold halo once per canvas size. The old path
+ * re-rendered a `shadowBlur ≈ 0.06 * minDim` (~190px on large windows) every
+ * frame — a software-raster cliff on WebKitGTK. The halo is baked from the
+ * same gradient fill the old shadow derived from; the per-frame beat pulse is
+ * reproduced by scaling (radius) and globalAlpha (the old shadow alpha ramp).
+ */
+function bakeCore(w: number, h: number): CoreSprites {
+  const minDim = Math.min(w, h);
+  const R = Math.max(2, Math.ceil(minDim * 0.2));
+  const blur = minDim * 0.06;
+
+  const core = document.createElement("canvas");
+  core.width = core.height = R * 2;
+  const cctx = core.getContext("2d")!;
+  const grd = cctx.createRadialGradient(R, R, R * 0.2, R, R, R);
+  grd.addColorStop(0, "rgba(246,197,68,0.9)");
+  grd.addColorStop(1, "rgba(74,222,128,0.15)");
+  cctx.fillStyle = grd;
+  cctx.beginPath();
+  cctx.arc(R, R, R, 0, Math.PI * 2);
+  cctx.fill();
+
+  const pad = Math.ceil(blur * 2);
+  const halo = document.createElement("canvas");
+  halo.width = halo.height = (R + pad) * 2;
+  const hctx = halo.getContext("2d")!;
+  const c = R + pad;
+  // Shadow-only bake: fill the gradient circle off-canvas and offset its
+  // shadow back in, leaving just the blurred gold halo silhouette.
+  const off = halo.width + 64;
+  const hgrd = hctx.createRadialGradient(c - off, c, R * 0.2, c - off, c, R);
+  hgrd.addColorStop(0, "rgba(246,197,68,0.9)");
+  hgrd.addColorStop(1, "rgba(74,222,128,0.15)");
+  hctx.shadowColor = "rgba(246,197,68,1)";
+  hctx.shadowBlur = blur;
+  hctx.shadowOffsetX = off;
+  hctx.fillStyle = hgrd;
+  hctx.beginPath();
+  hctx.arc(c - off, c, R, 0, Math.PI * 2);
+  hctx.fill();
+
+  return { w, h, R, core, halo };
+}
 
 /**
  * Radial Spectrum (2D) — frequency bars fanned in a full circle around the
@@ -37,12 +93,21 @@ export function RadialSpectrum() {
 
     let raf = 0;
     let last = performance.now();
+    const gate = createFpsGate();
     const smooth: number[] = new Array(BARS).fill(0);
     const rings: { r: number; a: number }[] = [];
     let prevBeat = 0;
+    let baked: CoreSprites | null = null;
+    // Cover art pre-scaled to the core's max size once per track/resize, so
+    // the per-frame draw isn't a full-res image resample.
+    let coverScaled: HTMLCanvasElement | null = null;
+    let coverScaledFrom: HTMLImageElement | null = null;
+    let coverScaledSize = 0;
 
     const draw = () => {
+      raf = requestAnimationFrame(draw);
       const now = performance.now();
+      if (!gate(now)) return;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const audio = sample(dt);
@@ -67,6 +132,25 @@ export function RadialSpectrum() {
       const minDim = Math.min(w, h);
       const inner = minDim * 0.2;
       const maxLen = minDim * 0.26;
+
+      if (!baked || baked.w !== w || baked.h !== h) baked = bakeCore(w, h);
+
+      // Keep the pre-scaled cover in sync with the image + core size.
+      const img = coverRef.current;
+      if (!img) {
+        coverScaled = null;
+        coverScaledFrom = null;
+      } else {
+        const size = Math.max(2, Math.ceil(inner * 1.04) * 2);
+        if (coverScaledFrom !== img || coverScaledSize !== size) {
+          const c = document.createElement("canvas");
+          c.width = c.height = size;
+          c.getContext("2d")!.drawImage(img, 0, 0, size, size);
+          coverScaled = c;
+          coverScaledFrom = img;
+          coverScaledSize = size;
+        }
+      }
 
       ctx.clearRect(0, 0, w, h);
 
@@ -109,24 +193,22 @@ export function RadialSpectrum() {
 
       // Centre core — cover art or brand gradient — pulsing on the beat.
       const coreR = inner * (0.92 + audio.beat * 0.12);
-      ctx.save();
-      ctx.shadowColor = `rgba(246,197,68,${0.4 + 0.4 * audio.beat})`;
-      ctx.shadowBlur = minDim * 0.06 * (0.6 + audio.beat);
-      ctx.beginPath();
-      ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
-      if (coverRef.current) {
+      if (coverScaled) {
+        // The old shadow was clipped away here (invisible), so no halo drawn.
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
         ctx.clip();
-        ctx.drawImage(coverRef.current, cx - coreR, cy - coreR, coreR * 2, coreR * 2);
+        ctx.drawImage(coverScaled, cx - coreR, cy - coreR, coreR * 2, coreR * 2);
+        ctx.restore();
       } else {
-        const grd = ctx.createRadialGradient(cx, cy, coreR * 0.2, cx, cy, coreR);
-        grd.addColorStop(0, "rgba(246,197,68,0.9)");
-        grd.addColorStop(1, "rgba(74,222,128,0.15)");
-        ctx.fillStyle = grd;
-        ctx.fill();
+        const s = coreR / baked.R;
+        const dw = baked.halo.width * s;
+        ctx.globalAlpha = 0.4 + 0.4 * audio.beat;
+        ctx.drawImage(baked.halo, cx - dw / 2, cy - dw / 2, dw, dw);
+        ctx.globalAlpha = 1;
+        ctx.drawImage(baked.core, cx - coreR, cy - coreR, coreR * 2, coreR * 2);
       }
-      ctx.restore();
-
-      raf = requestAnimationFrame(draw);
     };
 
     raf = requestAnimationFrame(draw);

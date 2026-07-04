@@ -109,6 +109,10 @@ export function LyricsView() {
     // Local position interpolation between ~10fps progress events.
     let basePos = -1;
     let baseClock = last;
+    // Word spans of the active line, cached per line element so the loop
+    // doesn't allocate a querySelectorAll NodeList every animation frame.
+    let spanCache: { el: HTMLElement; idx: number; spans: HTMLElement[] } | null =
+      null;
 
     const tick = (now: number) => {
       const dt = Math.min((now - last) / 1000, 0.064);
@@ -158,8 +162,14 @@ export function LyricsView() {
       // Word-by-word fill of the active line (DOM matches the rendered index).
       const lineEl = activeRef.current;
       if (lineEl && lineEl.dataset.idx === String(idx)) {
-        const spans = lineEl.querySelectorAll<HTMLElement>("[data-w]");
-        for (const span of spans) {
+        if (!spanCache || spanCache.el !== lineEl || spanCache.idx !== idx) {
+          spanCache = {
+            el: lineEl,
+            idx,
+            spans: Array.from(lineEl.querySelectorAll<HTMLElement>("[data-w]")),
+          };
+        }
+        for (const span of spanCache.spans) {
           const ws = Number(span.dataset.start);
           const we = Number(span.dataset.end);
           if (posMs >= we) {
@@ -289,17 +299,25 @@ export function LyricsView() {
                 </p>
               );
             }
+            // Blur only near the focal point: every filtered line is its own
+            // offscreen surface re-composited on each spring frame, so far
+            // lines (masked/dim anyway) get no filter at all. With no active
+            // line the list is static, so the full blur is a one-time raster.
+            const blurred = !reduceMotion && (active < 0 || d <= 6);
             return (
               <p
                 key={i}
                 onClick={canSeek ? () => onSeek(line) : undefined}
                 style={{
-                  filter: reduceMotion ? undefined : `blur(${Math.min(d, 4) * 0.7}px)`,
+                  filter: blurred ? `blur(${Math.min(d, 4) * 0.7}px)` : undefined,
                   opacity: d === 1 ? 0.6 : d === 2 ? 0.42 : i < active ? 0.22 : 0.3,
                 }}
                 className={cn(
                   "origin-left py-2 text-[22px] font-semibold leading-[1.18] tracking-tight text-text",
-                  "transition-[opacity,filter,transform] duration-500 ease-out",
+                  blurred
+                    ? "transition-[opacity,filter,transform]"
+                    : "transition-[opacity,transform]",
+                  "duration-500 ease-out",
                   canSeek && "cursor-pointer hover:opacity-90",
                 )}
               >

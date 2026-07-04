@@ -91,6 +91,10 @@ impl QueuePlaybackSource {
             std::thread::Builder::new()
                 .name("hm-queue-decode".into())
                 .spawn(move || {
+                    // Whole-track decode+resample runs in bursts; keep it from
+                    // competing with the audio callback (which is what glitches
+                    // on 2-core machines exactly at track transitions).
+                    crate::thread_util::lower_current_thread_priority();
                     // Demand-gated: only decode up to the index the source has
                     // asked for (current + one lookahead). This is what bounds
                     // memory — without it the worker would race ahead and decode

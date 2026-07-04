@@ -149,6 +149,12 @@ fn process_loop(
     mut rx: impl Read,
     mut tx: impl Write,
 ) {
+    // This worker carries *every* app's audio (Windows' equivalent gets MMCSS
+    // "Pro Audio"): best-effort real-time scheduling so it doesn't stutter
+    // under load, and flush denormals so decaying filter tails don't hit the
+    // x86 denormal penalty. Both are per-thread, dedicated-thread one-shots.
+    crate::thread_util::promote_current_thread_to_realtime();
+    crate::thread_util::enable_denormal_flush_once();
     let mut chain = ProcessChain::standard(RATE as f32, CHANNELS);
     let mut bytes = vec![0u8; BLOCK_FRAMES * CHANNELS * 4];
     let mut samples = vec![0f32; BLOCK_FRAMES * CHANNELS];

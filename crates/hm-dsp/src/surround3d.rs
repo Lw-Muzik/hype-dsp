@@ -41,6 +41,21 @@ const ROTATION_HZ: f32 = 0.1;
 const ROTATION_DEPTH: f32 = 0.45;
 /// Level of the reverberant rear (surround) send into the wet mix.
 const SURROUND_LEVEL: f32 = 0.85;
+/// Frames between renormalisations of the rotation oscillator (see
+/// [`Surround3D::process`]): often enough that FP drift never accumulates,
+/// rarely enough that the `sqrt` cost is negligible.
+const ROT_RENORM_INTERVAL: u32 = 4096;
+
+/// Flush near-denormal values to zero so slowly decaying one-pole states don't
+/// linger in the denormal range (which can cause large CPU slowdowns).
+#[inline]
+fn flush(x: f32) -> f32 {
+    if x.abs() < 1e-18 {
+        0.0
+    } else {
+        x
+    }
+}
 
 /// One virtual loudspeaker: a near-ear direct path plus a far-ear path that is
 /// delayed (ITD), attenuated (ILD), and head-shadow low-passed.
@@ -91,7 +106,7 @@ impl VirtualSpeaker {
         let near = s * self.feed_gain;
         let delayed = self.delay.process(near, self.delay_samples);
         self.shadow_state =
-            self.shadow_state * self.shadow_coeff + delayed * (1.0 - self.shadow_coeff);
+            flush(self.shadow_state * self.shadow_coeff + delayed * (1.0 - self.shadow_coeff));
         let far = self.shadow_state * self.contra_gain;
         if self.ipsi_left {
             (near, far)
@@ -137,9 +152,17 @@ pub struct Surround3D {
     xover_coeff: f32,
     /// Diffuse room reverb feeding the surround (rear) speakers.
     reverb: RoomReverb,
-    /// "8D" rotation oscillator phase and per-sample increment.
-    rot_phase: f32,
-    rot_inc: f32,
+    /// "8D" rotation oscillator as a quadrature recurrence: `(rot_sin,
+    /// rot_cos)` = (sin φ, cos φ) advanced each frame by the fixed rotation
+    /// `(rot_step_sin, rot_step_cos)` = (sin Δ, cos Δ) — four multiplies
+    /// instead of a `sin()` call. Re-seeded in `reconfigure`; renormalised
+    /// every [`ROT_RENORM_INTERVAL`] frames so FP drift can't change the
+    /// amplitude.
+    rot_sin: f32,
+    rot_cos: f32,
+    rot_step_sin: f32,
+    rot_step_cos: f32,
+    rot_renorm: u32,
     /// `true` when at least one rear speaker is on (the reverb send is live).
     surround_on: bool,
     /// 1 / (sum of enabled front+side per-ear gains): keeps the direct field
@@ -170,8 +193,11 @@ impl Surround3D {
             xover_lp: [0.0; 2],
             xover_coeff: 0.0,
             reverb: RoomReverb::new(sample_rate),
-            rot_phase: 0.0,
-            rot_inc: 0.0,
+            rot_sin: 0.0,
+            rot_cos: 1.0,
+            rot_step_sin: 0.0,
+            rot_step_cos: 1.0,
+            rot_renorm: ROT_RENORM_INTERVAL,
             surround_on: true,
             wet_norm: 1.0,
         };
@@ -194,8 +220,14 @@ impl Surround3D {
         self.xover_lp = [0.0; 2];
         self.xover_coeff = (-2.0 * std::f32::consts::PI * TWEETER_HZ / self.sample_rate).exp();
         self.reverb = RoomReverb::new(self.sample_rate);
-        self.rot_phase = 0.0;
-        self.rot_inc = 2.0 * std::f32::consts::PI * ROTATION_HZ / self.sample_rate;
+        // Seed the rotation oscillator at phase 0 and precompute the per-frame
+        // rotation step for the current sample rate.
+        let rot_inc = 2.0 * std::f32::consts::PI * ROTATION_HZ / self.sample_rate;
+        self.rot_sin = 0.0;
+        self.rot_cos = 1.0;
+        self.rot_step_sin = rot_inc.sin();
+        self.rot_step_cos = rot_inc.cos();
+        self.rot_renorm = ROT_RENORM_INTERVAL;
         self.apply_speaker_states();
     }
 
@@ -261,8 +293,8 @@ impl AudioProcessor for Surround3D {
             // 2-way crossover per channel: lows/mids → front, highs → tweeter
             // (one-pole complementary split: lp + hp == input). When a tweeter
             // is off, its highs fall back to the front so treble isn't lost.
-            self.xover_lp[0] = self.xover_lp[0] * cx + l * (1.0 - cx);
-            self.xover_lp[1] = self.xover_lp[1] * cx + r * (1.0 - cx);
+            self.xover_lp[0] = flush(self.xover_lp[0] * cx + l * (1.0 - cx));
+            self.xover_lp[1] = flush(self.xover_lp[1] * cx + r * (1.0 - cx));
             let lo_l = self.xover_lp[0];
             let lo_r = self.xover_lp[1];
             let hi_l = l - lo_l;
@@ -294,10 +326,25 @@ impl AudioProcessor for Surround3D {
             if surround_on {
                 let mono = self.rear_predelay.process((l + r) * 0.5, rear_d);
                 let (rv_l, rv_r) = self.reverb.process(mono);
-                let lfo = self.rot_phase.sin();
-                self.rot_phase += self.rot_inc;
-                if self.rot_phase >= std::f32::consts::TAU {
-                    self.rot_phase -= std::f32::consts::TAU;
+                // Quadrature-recurrence LFO: lfo = sin(φ), then rotate (sin,
+                // cos) by the per-frame step — no per-frame sin() call.
+                let lfo = self.rot_sin;
+                let (s, c) = (self.rot_sin, self.rot_cos);
+                self.rot_sin = s * self.rot_step_cos + c * self.rot_step_sin;
+                self.rot_cos = c * self.rot_step_cos - s * self.rot_step_sin;
+                self.rot_renorm -= 1;
+                if self.rot_renorm == 0 {
+                    // Drift correction: pull the oscillator back onto the unit
+                    // circle so rounding can never grow or shrink the swing.
+                    self.rot_renorm = ROT_RENORM_INTERVAL;
+                    let mag = (self.rot_sin * self.rot_sin
+                        + self.rot_cos * self.rot_cos)
+                        .sqrt();
+                    if mag > 0.0 {
+                        let inv = 1.0 / mag;
+                        self.rot_sin *= inv;
+                        self.rot_cos *= inv;
+                    }
                 }
                 let rot_l = 1.0 + ROTATION_DEPTH * lfo;
                 let rot_r = 1.0 - ROTATION_DEPTH * lfo;
@@ -314,7 +361,7 @@ impl AudioProcessor for Surround3D {
             // LFE: low-passed mono added equally to both ears.
             if sub > 0.0 {
                 let mid = (l + r) * 0.5;
-                self.lfe_state = self.lfe_state * lfe_a + mid * (1.0 - lfe_a);
+                self.lfe_state = flush(self.lfe_state * lfe_a + mid * (1.0 - lfe_a));
                 let lfe = self.lfe_state * sub;
                 wl += lfe;
                 wr += lfe;

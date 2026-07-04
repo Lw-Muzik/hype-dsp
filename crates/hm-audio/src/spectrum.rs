@@ -96,6 +96,13 @@ pub struct Analyzer {
     fft_out: Vec<Complex<f32>>,
     scratch: Vec<Complex<f32>>,
     band_bins: [(usize, usize); SPECTRUM_BANDS],
+    /// Frames of *new* audio required between analyses (~33 ms). Consumers poll
+    /// the tap at ≤30 fps, so running the FFT on every device callback
+    /// (94–375/s depending on buffer size) published results nobody ever read.
+    hop_frames: usize,
+    /// New frames accumulated since the last analysis. Starts at `hop_frames`
+    /// so the first block after (re)construction publishes immediately.
+    pending_frames: usize,
 }
 
 impl Analyzer {
@@ -129,6 +136,10 @@ impl Analyzer {
             (lo, hi)
         });
 
+        // Analyze at most ~30×/s (the UI's consumption rate). Computed once
+        // here so the hot path is a single compare — no division per push.
+        let hop_frames = (sample_rate / 30.0).max(1.0) as usize;
+
         Self {
             fft,
             window,
@@ -137,11 +148,16 @@ impl Analyzer {
             fft_out,
             scratch,
             band_bins,
+            hop_frames,
+            pending_frames: hop_frames,
         }
     }
 
-    /// Feed a processed interleaved block; updates the rolling window, runs the
-    /// FFT, and publishes the new bands to `tap`. Real-time safe.
+    /// Feed a processed interleaved block; updates the rolling window and, once
+    /// at least a hop (~33 ms) of new audio has accumulated, runs the FFT and
+    /// publishes the new bands to `tap` (between hops the previously published
+    /// spectrum simply stays current — consumers read at ≤30 fps anyway).
+    /// Real-time safe.
     pub fn push(&mut self, block: &[f32], channels: usize, tap: &SpectrumTap) {
         if channels == 0 {
             return;
@@ -165,6 +181,15 @@ impl Analyzer {
                 self.ring[tail + i] = mono(block, i * channels, channels);
             }
         }
+
+        // Hop gate: the ring above stays current every push, but the FFT (+
+        // sqrt/log10 band aggregation) only runs once enough new frames have
+        // accumulated since the last analysis.
+        self.pending_frames = self.pending_frames.saturating_add(frames);
+        if self.pending_frames < self.hop_frames {
+            return;
+        }
+        self.pending_frames = 0;
 
         let bands = self.analyze();
         tap.store(&bands);
@@ -265,6 +290,39 @@ mod tests {
         let tap = SpectrumTap::default();
         analyzer.push(&vec![0.0; 4096], 2, &tap);
         assert!(tap.load().iter().all(|&v| v < 1e-3));
+    }
+
+    #[test]
+    fn hop_gating_skips_analysis_between_hops() {
+        let sample_rate = 48_000.0;
+        let mut analyzer = Analyzer::new(sample_rate);
+        let tap = SpectrumTap::default();
+
+        // First push analyzes immediately (the gate starts with a full hop credit).
+        let mut block = Vec::with_capacity(FFT_SIZE * 2);
+        for n in 0..FFT_SIZE {
+            let s = (n as f32 / sample_rate * 2.0 * std::f32::consts::PI * 1_000.0).sin() * 0.8;
+            block.push(s);
+            block.push(s);
+        }
+        analyzer.push(&block, 2, &tap);
+        let published = tap.load();
+        assert!(
+            published.iter().any(|&v| v > 0.1),
+            "first push must publish a spectrum"
+        );
+
+        // Less than a hop (~33 ms = 1600 frames at 48 kHz) of new audio: the
+        // published spectrum must be left exactly as-is (no re-analysis).
+        analyzer.push(&vec![0.0; 512 * 2], 2, &tap);
+        assert_eq!(tap.load(), published, "below the hop: no new analysis");
+
+        // Crossing the hop re-analyzes; the ring is now entirely silence.
+        analyzer.push(&vec![0.0; FFT_SIZE * 2], 2, &tap);
+        assert!(
+            tap.load().iter().all(|&v| v < 1e-3),
+            "hop crossed: analysis ran again over the silent window"
+        );
     }
 
     #[test]

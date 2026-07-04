@@ -25,6 +25,8 @@ pub mod spectrum;
 pub mod stems;
 pub mod stream_queue;
 pub mod streaming;
+/// Per-thread FPU denormal-flush + scheduling tweaks for audio/decode threads.
+pub(crate) mod thread_util;
 /// Platform-agnostic per-block DSP step shared by every system-wide EQ backend
 /// (macOS tap / Linux sink / Windows WASAPI). Always compiled so it is unit-tested
 /// on the dev host even where the surrounding capture plumbing cannot build.

@@ -1166,22 +1166,42 @@ fn output_setup() -> Result<(cpal::Device, cpal::StreamConfig), AudioError> {
 }
 
 fn pick_f32_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig, AudioError> {
-    if let Ok(default) = device.default_output_config() {
+    let default = device.default_output_config().ok();
+    if let Some(default) = default {
         if default.sample_format() == cpal::SampleFormat::F32 {
             return Ok(default);
         }
     }
+    // Fall back to an f32 range — but never blindly at its *maximum* rate: DACs
+    // advertising 192/384 kHz would make every DSP stage 4–8× as expensive.
+    // Prefer the device's default rate (else 48 kHz), clamped into the range.
+    let preferred = default.map(|d| d.sample_rate());
     let configs = device
         .supported_output_configs()
         .map_err(|e| AudioError::Host(e.to_string()))?;
     for range in configs {
         if range.sample_format() == cpal::SampleFormat::F32 {
-            return Ok(range.with_max_sample_rate());
+            let rate = closest_supported_rate(
+                range.min_sample_rate(),
+                range.max_sample_rate(),
+                preferred,
+            );
+            if let Some(config) = range.try_with_sample_rate(rate) {
+                return Ok(config);
+            }
         }
     }
     Err(AudioError::UnsupportedFormat(
         "no f32 output configuration available".into(),
     ))
+}
+
+/// The sample rate within `[min, max]` closest to `preferred` (the device's
+/// default-config rate, when known), else closest to 48 kHz. Shared by the
+/// output and input (capture) non-f32-default fallbacks so neither ever picks
+/// a range's maximum outright. `min <= max` (as cpal guarantees for a range).
+pub(crate) fn closest_supported_rate(min: u32, max: u32, preferred: Option<u32>) -> u32 {
+    preferred.unwrap_or(48_000).clamp(min, max)
 }
 
 /// The engine control thread: owns the (`!Send`) cpal stream for its lifetime.
@@ -1239,8 +1259,37 @@ fn control_loop(ctx: ControlCtx) {
     // The active stream is held only to keep audio flowing (RAII); replacing or
     // taking it drops the previous one, stopping its callback.
     let mut active: Option<cpal::Stream> = None;
+    // Set by the output callback once its source is fully exhausted (end of a
+    // track/queue — live sources never signal it, and a paused stream's callback
+    // doesn't run). Polled below so the device stream — whose callback would
+    // otherwise keep running the full DSP chain + spectrum on silence — is torn
+    // down shortly after EOF instead of only on the next command.
+    let exhausted = Arc::new(AtomicBool::new(false));
+    // Poll cadence for that post-EOF teardown while no command is arriving.
+    const EOF_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
-    while let Ok(cmd) = rx.recv() {
+    loop {
+        let cmd = match rx.recv_timeout(EOF_POLL) {
+            Ok(cmd) => cmd,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Drop the stream the same way an explicit Stop does, but keep
+                // position / now-playing metadata / paused untouched so the UI
+                // (and OS media controls) still shows the finished track exactly
+                // as it does today. Meters/spectrum are zeroed to match their
+                // steady state after rendering silence. The `paused` guard keeps
+                // a paused-at-EOF stream alive (pause ≠ exhausted); any later
+                // Play command builds a fresh stream as usual.
+                if exhausted.load(Ordering::Relaxed) && !paused.load(Ordering::Relaxed) {
+                    exhausted.store(false, Ordering::Relaxed);
+                    if active.take().is_some() {
+                        meters.zero();
+                        spectrum.zero();
+                    }
+                }
+                continue;
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        };
         // Disengage the macOS system-tap watchdog for any command that installs a
         // non-tap source or stops playback, so it never rebuilds a tap over
         // ordinary playback. The tap commands set/keep it; Pause/Resume/Shutdown
@@ -1288,6 +1337,7 @@ fn control_loop(ctx: ControlCtx) {
                     ir_slot.clone(),
                     compander_gr.clone(),
                     output_beat.clone(),
+                    exhausted.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1337,6 +1387,7 @@ fn control_loop(ctx: ControlCtx) {
                     ir_slot.clone(),
                     compander_gr.clone(),
                     output_beat.clone(),
+                    exhausted.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1391,6 +1442,7 @@ fn control_loop(ctx: ControlCtx) {
                     ir_slot.clone(),
                     compander_gr.clone(),
                     output_beat.clone(),
+                    exhausted.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1438,6 +1490,7 @@ fn control_loop(ctx: ControlCtx) {
                     ir_slot.clone(),
                     compander_gr.clone(),
                     output_beat.clone(),
+                    exhausted.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1490,6 +1543,7 @@ fn control_loop(ctx: ControlCtx) {
                     ir_slot.clone(),
                     compander_gr.clone(),
                     output_beat.clone(),
+                    exhausted.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1525,6 +1579,7 @@ fn control_loop(ctx: ControlCtx) {
                         ir_slot.clone(),
                         compander_gr.clone(),
                         output_beat.clone(),
+                        exhausted.clone(),
                     ) {
                         Ok(s) if s.play().is_ok() => {
                             playing.store(true, Ordering::Relaxed);
@@ -1572,6 +1627,7 @@ fn control_loop(ctx: ControlCtx) {
                     ir_slot.clone(),
                     compander_gr.clone(),
                     output_beat.clone(),
+                    exhausted.clone(),
                 ) {
                     Ok(s) if s.play().is_ok() => {
                         playing.store(true, Ordering::Relaxed);
@@ -1635,6 +1691,7 @@ fn control_loop(ctx: ControlCtx) {
                         ir_slot.clone(),
                         compander_gr.clone(),
                         output_beat.clone(),
+                        exhausted.clone(),
                     ) {
                         Ok(s) if s.play().is_ok() => {
                             playing.store(true, Ordering::Relaxed);
@@ -1716,21 +1773,32 @@ fn build_output_stream(
     ir_slot: IrSlot,
     gr_meter: std::sync::Arc<CompanderMeter>,
     output_beat: Arc<AtomicU64>,
+    exhausted: Arc<AtomicBool>,
 ) -> Result<cpal::Stream, AudioError> {
     let mut renderer = Renderer::new(source, sample_rate, channels, ir_slot, gr_meter);
+    // A fresh stream starts un-exhausted: the flag may be stale from a previous
+    // source, and the control loop must never tear *this* stream down for it.
+    exhausted.store(false, Ordering::Relaxed);
 
     device
         .build_output_stream::<f32, _, _>(
             config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                // Flush denormals on whichever thread runs this callback (it can
+                // migrate on some backends): decaying IIR tails otherwise reach
+                // denormal range, at 50–100+ cycles per multiply on x86.
+                crate::thread_util::enable_denormal_flush_once();
                 // Liveness heartbeat: a frozen counter is how the macOS tap
                 // watchdog detects this stream has died. One relaxed add, RT-safe.
                 output_beat.fetch_add(1, Ordering::Relaxed);
                 let state = shared.load_full();
-                let exhausted =
+                let at_end =
                     renderer.render(data, channels, state.as_ref(), &meters, &spectrum, &pos);
-                if exhausted {
+                if at_end {
                     playing.store(false, Ordering::Relaxed);
+                    // Ask the control thread to tear this stream down (post-EOF
+                    // it would only be rendering the DSP chain over silence).
+                    exhausted.store(true, Ordering::Relaxed);
                 }
             },
             move |_err| {
@@ -1908,6 +1976,24 @@ mod tests {
         // A later session (after the tap is re-enabled) starts with a fresh budget.
         assert!(!p.on_failure());
         assert!(p.on_failure(), "fires again after re-arming");
+    }
+
+    #[test]
+    fn closest_supported_rate_prefers_the_device_default() {
+        // Device default inside the range: use it verbatim.
+        assert_eq!(closest_supported_rate(8_000, 192_000, Some(44_100)), 44_100);
+        // Device default outside the range: clamp to the nearest edge.
+        assert_eq!(closest_supported_rate(48_000, 192_000, Some(44_100)), 48_000);
+        assert_eq!(closest_supported_rate(8_000, 48_000, Some(96_000)), 48_000);
+    }
+
+    #[test]
+    fn closest_supported_rate_falls_back_to_48k_never_the_max() {
+        // No default known: aim for 48 kHz, clamped into the range — a
+        // 192/384 kHz-capable DAC must not quadruple the whole DSP chain.
+        assert_eq!(closest_supported_rate(8_000, 384_000, None), 48_000);
+        assert_eq!(closest_supported_rate(8_000, 44_100, None), 44_100);
+        assert_eq!(closest_supported_rate(96_000, 192_000, None), 96_000);
     }
 
     fn constant_source(amplitude: f32, frames: usize) -> Box<dyn AudioSource> {

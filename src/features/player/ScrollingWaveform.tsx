@@ -4,6 +4,14 @@ import { useEngineStore } from "@/stores/engine";
 /** Device-independent width of one sample column (CSS px). */
 const COL_W = 2;
 
+/** Cap the backing-store scale (mirrors the visualizer scenes' MAX_DPR = 2):
+ *  beyond 2× the extra pixels are invisible behind the blur, but the full-ring
+ *  redraw cost keeps climbing with the raw devicePixelRatio. */
+const MAX_DPR = 2;
+
+/** The capped device pixel ratio used for canvas sizing and drawing. */
+const cappedDpr = (): number => Math.min(window.devicePixelRatio || 1, MAX_DPR);
+
 /** A fixed-length ring buffer of recent stereo levels (one slot per frame). */
 interface Ring {
   l: Float32Array;
@@ -24,7 +32,7 @@ function drawWaveform(
 ): void {
   ctx.clearRect(0, 0, width, height);
   if (!buf) return;
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = cappedDpr();
   const colW = COL_W * dpr;
   const mid = height / 2;
 
@@ -56,6 +64,9 @@ function WaveformCanvas() {
   const paused = useEngineStore((s) => s.paused);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bufRef = useRef<Ring | null>(null);
+  // Set when the ring head advances (a new column landed) — the draw loop only
+  // repaints then, so display refreshes between ~30fps engine frames are free.
+  const dirtyRef = useRef(false);
 
   // Size the canvas (DPR-aware) and (re)allocate the ring buffer to its width.
   useEffect(() => {
@@ -65,7 +76,7 @@ function WaveformCanvas() {
     const ctx = canvas.getContext("2d");
 
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = cappedDpr();
       const w = Math.max(1, Math.floor(parent.clientWidth));
       const h = Math.max(1, Math.floor(parent.clientHeight));
       canvas.width = Math.floor(w * dpr);
@@ -101,6 +112,7 @@ function WaveformCanvas() {
       buf.l[buf.head] = clamp01(Math.max((rms[0] ?? 0) * 1.25, peak[0] ?? 0));
       buf.r[buf.head] = clamp01(Math.max((rms[1] ?? 0) * 1.25, peak[1] ?? 0));
       buf.head = (buf.head + 1) % buf.len;
+      dirtyRef.current = true;
     });
   }, []);
 
@@ -113,7 +125,12 @@ function WaveformCanvas() {
     if (!canvas || !ctx) return;
     let raf = 0;
     const draw = () => {
-      drawWaveform(ctx, canvas.width, canvas.height, bufRef.current);
+      // Columns land at the engine's ~30fps frame rate: skip the full-ring
+      // repaint on display refreshes where nothing advanced.
+      if (dirtyRef.current) {
+        dirtyRef.current = false;
+        drawWaveform(ctx, canvas.width, canvas.height, bufRef.current);
+      }
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);

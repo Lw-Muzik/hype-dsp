@@ -161,7 +161,11 @@ pub fn library_list_page(
     store.list_tracks_page(offset, limit).map_err(Into::into)
 }
 
-#[tauri::command]
+// `(async)` (here and on every playlist command below): all of these take the
+// `MediaStore` connection mutex, which a running library scan holds for whole
+// write batches — a sync command would park the webview main thread on that
+// lock. The worker pool can wait; the UI can't.
+#[tauri::command(async)]
 pub fn library_remove(store: State<'_, MediaStore>, path: String) -> Result<(), IpcError> {
     store.remove_track(&path).map_err(Into::into)
 }
@@ -174,17 +178,17 @@ pub fn library_artwork(path: String) -> Option<String> {
     probe_artwork(Path::new(&path))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_list(store: State<'_, MediaStore>) -> Result<Vec<Playlist>, IpcError> {
     store.list_playlists().map_err(Into::into)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_create(store: State<'_, MediaStore>, name: String) -> Result<Playlist, IpcError> {
     store.create_playlist(&name).map_err(Into::into)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_rename(
     store: State<'_, MediaStore>,
     id: String,
@@ -193,12 +197,12 @@ pub fn playlist_rename(
     store.rename_playlist(&id, &name).map_err(Into::into)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_delete(store: State<'_, MediaStore>, id: String) -> Result<(), IpcError> {
     store.delete_playlist(&id).map_err(Into::into)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_tracks(
     store: State<'_, MediaStore>,
     id: String,
@@ -206,7 +210,7 @@ pub fn playlist_tracks(
     store.playlist_tracks(&id).map_err(Into::into)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_add(
     store: State<'_, MediaStore>,
     id: String,
@@ -215,7 +219,7 @@ pub fn playlist_add(
     store.add_to_playlist(&id, &path).map_err(Into::into)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_remove(
     store: State<'_, MediaStore>,
     id: String,
@@ -224,7 +228,7 @@ pub fn playlist_remove(
     store.remove_from_playlist(&id, &path).map_err(Into::into)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_reorder(
     store: State<'_, MediaStore>,
     id: String,

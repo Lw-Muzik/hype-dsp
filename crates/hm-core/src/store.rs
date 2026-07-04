@@ -34,6 +34,12 @@ impl PresetStore {
     }
 
     fn from_conn(conn: Connection) -> Result<Self, HmError> {
+        // WAL + relaxed sync (same pragmas as `MediaStore`): the built-in
+        // presets are reseeded on every launch, and in the default journal mode
+        // that costs two fsyncs per row before first paint. In-memory
+        // connections reject WAL — that's fine, `let _ =` skips it there.
+        let _ = conn.pragma_update(None, "journal_mode", "WAL");
+        let _ = conn.pragma_update(None, "synchronous", "NORMAL");
         conn.execute(
             "CREATE TABLE IF NOT EXISTS eq_presets (
                 id       TEXT PRIMARY KEY,
@@ -53,17 +59,29 @@ impl PresetStore {
     }
 
     fn seed_builtins(&self) -> Result<(), HmError> {
-        let conn = self.conn.lock().expect("preset store poisoned");
-        for (ord, preset) in builtins().into_iter().enumerate() {
-            let bands = serde_json::to_string(&preset.bands.to_vec())?;
-            // REPLACE keeps built-ins current across versions; custom ids never
-            // collide (they are `custom:*`).
-            conn.execute(
+        let mut conn = self.conn.lock().expect("preset store poisoned");
+        // One transaction for the whole seed: this runs on every launch, and in
+        // auto-commit mode each of the 13 REPLACEs would pay its own commit.
+        let tx = conn.transaction()?;
+        {
+            let mut stmt = tx.prepare(
                 "INSERT OR REPLACE INTO eq_presets (id, name, builtin, bands, pre_gain, ord)
                  VALUES (?1, ?2, 1, ?3, ?4, ?5)",
-                rusqlite::params![preset.id, preset.name, bands, preset.pre_gain, ord as i64],
             )?;
+            for (ord, preset) in builtins().into_iter().enumerate() {
+                let bands = serde_json::to_string(&preset.bands.to_vec())?;
+                // REPLACE keeps built-ins current across versions; custom ids never
+                // collide (they are `custom:*`).
+                stmt.execute(rusqlite::params![
+                    preset.id,
+                    preset.name,
+                    bands,
+                    preset.pre_gain,
+                    ord as i64
+                ])?;
+            }
         }
+        tx.commit()?;
         Ok(())
     }
 

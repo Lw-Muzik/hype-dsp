@@ -219,7 +219,10 @@ pub fn player_play_queue(
 }
 
 /// Capture the default input device through the chain (driver-free stand-in).
-#[tauri::command]
+// `(async)`: enumerating input devices can take seconds when Bluetooth audio is
+// involved, and opening the capture stream isn't instant either — keep both off
+// the Tauri main thread.
+#[tauri::command(async)]
 pub fn player_play_capture(engine: State<'_, AudioEngine>) -> Result<(), IpcError> {
     if hm_audio::list_input_devices()
         .map(|d| d.is_empty())
@@ -282,7 +285,10 @@ pub fn player_play_system_audio(engine: State<'_, AudioEngine>) -> Result<(), Ip
 
 /// Stop system-wide equalization and restore normal audio routing. On macOS this
 /// stops playback; on Linux/Windows it tears down the re-routing pipeline.
-#[tauri::command]
+// `(async)`: teardown joins the routing worker / rebuilds audio routing
+// synchronously — run it off the Tauri main thread like its `player_play_*`
+// counterpart.
+#[tauri::command(async)]
 pub fn stop_system_audio(engine: State<'_, AudioEngine>) {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     {
@@ -314,7 +320,9 @@ pub struct SystemAudioStatus {
 
 /// Report whether system-wide EQ is supported, ready, and (Windows) whether the
 /// bundled audio driver is installed — one round-trip for the Settings card.
-#[tauri::command]
+// `(async)`: the Windows probe enumerates audio endpoints over COM/WASAPI (and
+// macOS asks Core Audio) — not main-thread work.
+#[tauri::command(async)]
 pub fn system_audio_status() -> SystemAudioStatus {
     #[cfg(target_os = "macos")]
     {

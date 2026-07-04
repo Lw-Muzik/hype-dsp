@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { routeById } from "@/app/routes";
@@ -20,6 +20,43 @@ import { toast } from "@/stores/toast";
 const DB_MIN = -12;
 const DB_MAX = 12;
 
+interface BandColumnProps {
+  index: number;
+  value: number;
+  /** Stable store action — (bandIndex, valueDb). */
+  onBandChange: (index: number, valueDb: number) => void;
+}
+
+/**
+ * One fader column, memoized with a stable per-band handler so a drag on one
+ * band (or a live-spectrum frame elsewhere) doesn't re-reconcile all 31 rows.
+ */
+const BandColumn = memo(function BandColumn({
+  index,
+  value,
+  onBandChange,
+}: BandColumnProps) {
+  const label = formatHz(ISO_CENTERS_HZ[index] ?? 20);
+  const onChange = useCallback(
+    (v: number) => onBandChange(index, v),
+    [onBandChange, index],
+  );
+  return (
+    <div className="flex flex-1 flex-col items-center gap-1">
+      <EqBandSlider
+        value={value}
+        min={DB_MIN}
+        max={DB_MAX}
+        label={label}
+        onChange={onChange}
+      />
+      <span className="h-3 text-[8px] leading-none text-text-faint">
+        {index % 3 === 0 ? label : ""}
+      </span>
+    </div>
+  );
+});
+
 export function EqualizerView() {
   const route = routeById("equalizer");
 
@@ -27,7 +64,6 @@ export function EqualizerView() {
   const preGain = useEngineStore((s) => s.state.eq.preGain);
   const enabled = useEngineStore((s) => s.state.eq.enabled);
   const activePresetId = useEngineStore((s) => s.state.activePresetId);
-  const spectrum = useEngineStore((s) => s.spectrum);
   const setBand = useEngineStore((s) => s.setBand);
   const setBands = useEngineStore((s) => s.setBands);
   const setPreGain = useEngineStore((s) => s.setPreGain);
@@ -169,23 +205,12 @@ export function EqualizerView() {
             onApplyDdc={applyDdcPreset}
           />
 
-          <EqVisualizer bands={bands} spectrum={spectrum} />
+          <EqVisualizer bands={bands} />
 
           {/* 31 band faders */}
           <div className="flex h-44 items-stretch gap-1">
             {bands.map((value, i) => (
-              <div key={i} className="flex flex-1 flex-col items-center gap-1">
-                <EqBandSlider
-                  value={value}
-                  min={DB_MIN}
-                  max={DB_MAX}
-                  label={formatHz(ISO_CENTERS_HZ[i] ?? 20)}
-                  onChange={(v) => setBand(i, v)}
-                />
-                <span className="h-3 text-[8px] leading-none text-text-faint">
-                  {i % 3 === 0 ? formatHz(ISO_CENTERS_HZ[i] ?? 20) : ""}
-                </span>
-              </div>
+              <BandColumn key={i} index={i} value={value} onBandChange={setBand} />
             ))}
           </div>
 

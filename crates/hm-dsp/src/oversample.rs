@@ -232,20 +232,33 @@ impl Oversampler4x {
             self.up_dl[self.up_pos] = x;
             let write = self.up_pos;
 
+            // The circular read `(write + k − tap_i) % k` walks the history
+            // newest→oldest: dl[write], dl[write−1], …, dl[0], then wraps to
+            // dl[k−1], …, dl[write+1]. Split at the wrap point into two
+            // contiguous dot products (reversed slices) so the inner loops are
+            // modulo-free and autovectorizable; the accumulation order (and so
+            // the output) is bit-identical to the modulo form.
+            let (head, tail) = self.up_dl.split_at(write + 1);
+
             // Compute one output sample per phase.
             for phase in 0..OVERSAMPLE {
                 let taps = &self.up_taps[phase * k..(phase + 1) * k];
+                let (taps_head, taps_tail) = taps.split_at(write + 1);
                 let mut acc = 0.0f32;
-                for (tap_i, &h) in taps.iter().enumerate() {
-                    // Circular read: most-recent = write, previous = write-1, …
-                    let ri = (write + k - tap_i) % k;
-                    acc += h * self.up_dl[ri];
+                for (&h, &s) in taps_head.iter().zip(head.iter().rev()) {
+                    acc += h * s;
+                }
+                for (&h, &s) in taps_tail.iter().zip(tail.iter().rev()) {
+                    acc += h * s;
                 }
                 out4x[n * OVERSAMPLE + phase] = acc;
             }
 
-            // Advance write pointer.
-            self.up_pos = (write + 1) % k;
+            // Advance write pointer (branch wrap, no modulo).
+            self.up_pos = write + 1;
+            if self.up_pos == k {
+                self.up_pos = 0;
+            }
         }
     }
 

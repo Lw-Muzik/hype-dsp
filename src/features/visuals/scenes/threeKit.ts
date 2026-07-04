@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { RefObject } from "react";
 import * as THREE from "three";
-import { MAX_DPR, useAudioData } from "./sceneKit";
+import { createFpsGate, MAX_DPR, useAudioData } from "./sceneKit";
 import type { AudioSample } from "./sceneKit";
 
 export { THREE };
@@ -67,13 +67,15 @@ export function useThreeScene(
 
     let raf = 0;
     let last = performance.now();
+    const gate = createFpsGate();
     const loop = () => {
+      raf = requestAnimationFrame(loop);
       const now = performance.now();
+      if (!gate(now)) return;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       built.frame(sample(dt), dt);
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
 

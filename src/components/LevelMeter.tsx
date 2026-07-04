@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useEngineStore } from "@/stores/engine";
 import { initialBeat, stepBeat, type BeatState } from "@/lib/beat";
+import type { MeterFrame } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 const channelWidth = (peak: number): number =>
@@ -40,10 +41,16 @@ export function LevelMeter({ className }: { className?: string }) {
     // Once idle settles to zero, stop pushing state (the rAF keeps spinning, but
     // cheaply) until signal returns — no 60fps re-renders while nothing plays.
     let settled = false;
+    // Meter frames land at ~30fps while this rAF runs at display rate
+    // (60–120Hz): remember the last frame seen so ticks with no new data skip
+    // the React state write instead of re-rendering for identical values.
+    let lastMeters: MeterFrame | null = null;
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - prev) / 1000);
       prev = now;
       const s = useEngineStore.getState();
+      const metersChanged = s.meters !== lastMeters;
+      lastMeters = s.meters;
       const live = s.metersLive && s.playing && !s.paused;
       const peak: [number, number] = [
         live ? (s.meters.peak[0] ?? 0) : 0,
@@ -64,7 +71,14 @@ export function LevelMeter({ className }: { className?: string }) {
         }
       } else {
         settled = false;
-        setView({ peak, pulse: [beat[0].pulse, beat[1].pulse], live });
+        // Write only when a fresh meter frame arrived. When frames stop while
+        // a pulse is still glowing (the brief tail after pause/stop), keep
+        // writing so the decay animates to zero before the idle branch settles.
+        const pulseFading =
+          !live && (beat[0].pulse >= 0.005 || beat[1].pulse >= 0.005);
+        if (metersChanged || pulseFading) {
+          setView({ peak, pulse: [beat[0].pulse, beat[1].pulse], live });
+        }
       }
       raf = requestAnimationFrame(tick);
     };

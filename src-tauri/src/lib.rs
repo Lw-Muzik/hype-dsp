@@ -70,7 +70,18 @@ fn forward_frames(
     let mut last_media_dur: Option<u64> = None;
     let mut tick: u32 = 0;
     loop {
-        std::thread::sleep(Duration::from_millis(16));
+        // Idle backoff: when the transport is inactive nothing below emits (the
+        // settle frame fires on the stop transition itself, which is detected at
+        // the fast cadence because `last_playing` is still true on that tick),
+        // so a 16 ms tick would only buy faster *start* detection. 150 ms keeps
+        // that imperceptible while cutting the always-on wakeups ~10× — and
+        // "idle in the background" is the app's common state, since closing the
+        // window hides it rather than quitting.
+        std::thread::sleep(if last_playing {
+            Duration::from_millis(16)
+        } else {
+            Duration::from_millis(150)
+        });
         tick = tick.wrapping_add(1);
         let now_playing = playing.load(Ordering::Relaxed);
 
@@ -362,6 +373,9 @@ pub fn run() {
 
             // Cloud account listing cache, so reopening the app serves the
             // library instantly instead of re-walking the account over the wire.
+            // Constructed without touching the disk (the file can be MBs) and
+            // warmed on a background thread; commands that beat the warmer just
+            // trigger the same one-time load themselves.
             let cloud_list_path = app
                 .path()
                 .app_data_dir()
@@ -370,7 +384,14 @@ pub fn run() {
                     d.join("cloud-list.json")
                 })
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_cloud_list.json"));
-            app.manage(cloud_list::CloudListCache::load(cloud_list_path));
+            app.manage(cloud_list::CloudListCache::new(cloud_list_path));
+            let cloud_list_warm = app.handle().clone();
+            std::thread::Builder::new()
+                .name("hm-cloudlist-warm".into())
+                .spawn(move || {
+                    cloud_list_warm.state::<cloud_list::CloudListCache>().warm();
+                })
+                .ok();
 
             // MilkDrop visualizer sidecar process handle.
             app.manage(commands::visualizer::VisualizerState::default());
@@ -400,9 +421,15 @@ pub fn run() {
             app.manage(commands::link::DiscoveryState::default());
 
             // Remote (cross-network) phone link over iroh. When a phone pairs,
-            // `on_paired` registers it into LinkState as a loopback proxy so its
-            // library loads through the same path as a LAN phone, then notifies
-            // the UI to refresh.
+            // `on_paired` (wired inside `RemoteState::manager`) registers it
+            // into LinkState as a loopback proxy so its library loads through
+            // the same path as a LAN phone, then notifies the UI to refresh.
+            //
+            // The manager itself (a dedicated tokio runtime + a relay-connected
+            // iroh endpoint) is NOT built here: remote commands build it on
+            // first use, and the background thread below builds it at startup
+            // only when phones were previously paired — so they silently
+            // reconnect exactly as before, without ever blocking setup.
             let remote_dir = app
                 .path()
                 .app_data_dir()
@@ -410,43 +437,35 @@ pub fn run() {
                     let _ = std::fs::create_dir_all(d);
                 })
                 .unwrap_or_else(|_| std::env::temp_dir());
-            let pair_handle = app.handle().clone();
-            match hm_remote::RemoteManager::new(
+            app.manage(commands::link::RemoteState::new(
+                app.handle().clone(),
                 remote_dir.join("remote-secret.bin"),
                 remote_dir.join("remote-peers.json"),
-                hm_link::device_name(),
-                true,
-                move |phone| {
-                    pair_handle.state::<hm_link::LinkState>().register_remote(
-                        phone.id.clone(),
-                        phone.name.clone(),
-                        phone.port,
-                        phone.token.clone(),
-                    );
-                    let _ = pair_handle.emit("link:remote_connected", &phone.id);
-                },
-            ) {
-                Ok(remote) => {
-                    app.manage(remote);
-                    // Silently redial known remote phones in the background so
-                    // their libraries come back without blocking startup.
-                    let bg = app.handle().clone();
-                    std::thread::spawn(move || {
-                        let remote = bg.state::<hm_remote::RemoteManager>();
-                        let link = bg.state::<hm_link::LinkState>();
-                        for phone in remote.connect_known() {
-                            link.register_remote(
-                                phone.id.clone(),
-                                phone.name.clone(),
-                                phone.port,
-                                phone.token.clone(),
-                            );
-                            let _ = bg.emit("link:remote_connected", &phone.id);
-                        }
-                    });
-                }
-                Err(e) => eprintln!("remote phone link unavailable: {e}"),
-            }
+            ));
+            let bg = app.handle().clone();
+            std::thread::Builder::new()
+                .name("hm-remote-reconnect".into())
+                .spawn(move || {
+                    let state = bg.state::<commands::link::RemoteState>();
+                    if !state.has_known_peers() {
+                        return;
+                    }
+                    // Known phones exist: build the manager now (off the main
+                    // thread) and silently redial them so their libraries come
+                    // back without user action.
+                    let Ok(remote) = state.manager() else { return };
+                    let link = bg.state::<hm_link::LinkState>();
+                    for phone in remote.connect_known() {
+                        link.register_remote(
+                            phone.id.clone(),
+                            phone.name.clone(),
+                            phone.port,
+                            phone.token.clone(),
+                        );
+                        let _ = bg.emit("link:remote_connected", &phone.id);
+                    }
+                })
+                .ok();
 
             // Phone Link cast: a control server phones can push tracks to, plus
             // an mDNS advertisement so they can find this desktop.

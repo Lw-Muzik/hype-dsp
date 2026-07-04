@@ -69,7 +69,13 @@ export function Providers({ children }: { children: ReactNode }) {
       .then((state) => !cancelled && hydrate(state))
       .catch(() => {});
 
-    onEngineFrame((frame) => applyFrame(frame))
+    // The window hides (not quits) on close while audio keeps playing: drop
+    // meter/spectrum frames while hidden — nothing renders them, and the next
+    // frame after the window is shown repopulates everything. Transport and
+    // progress events below keep flowing so playback state stays correct.
+    onEngineFrame((frame) => {
+      if (!document.hidden) applyFrame(frame);
+    })
       .then((un) => (cancelled ? un() : unlisteners.push(un)))
       .catch(() => {});
 

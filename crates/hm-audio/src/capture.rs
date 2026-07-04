@@ -127,6 +127,9 @@ fn capture_loop(mut producer: rtrb::Producer<f32>, running: &AtomicBool) {
     let stream = device.build_input_stream::<f32, _, _>(
         config.config(),
         move |data: &[f32], _: &cpal::InputCallbackInfo| {
+            // Flush denormals on whichever thread runs this callback (it can
+            // migrate on some backends) — same policy as the output callback.
+            crate::thread_util::enable_denormal_flush_once();
             for frame in data.chunks(in_channels.max(1)) {
                 let l = frame.first().copied().unwrap_or(0.0);
                 let r = frame.get(1).copied().unwrap_or(l);
@@ -151,17 +154,28 @@ fn capture_loop(mut producer: rtrb::Producer<f32>, running: &AtomicBool) {
 }
 
 fn pick_f32_input_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig, AudioError> {
-    if let Ok(default) = device.default_input_config() {
+    let default = device.default_input_config().ok();
+    if let Some(default) = default {
         if default.sample_format() == cpal::SampleFormat::F32 {
             return Ok(default);
         }
     }
+    // Never blindly a range's maximum rate (192/384 kHz devices would multiply
+    // the DSP cost): prefer the device default, else 48 kHz, clamped in-range.
+    let preferred = default.map(|d| d.sample_rate());
     let configs = device
         .supported_input_configs()
         .map_err(|e| AudioError::Host(e.to_string()))?;
     for range in configs {
         if range.sample_format() == cpal::SampleFormat::F32 {
-            return Ok(range.with_max_sample_rate());
+            let rate = crate::engine::closest_supported_rate(
+                range.min_sample_rate(),
+                range.max_sample_rate(),
+                preferred,
+            );
+            if let Some(config) = range.try_with_sample_rate(rate) {
+                return Ok(config);
+            }
         }
     }
     Err(AudioError::UnsupportedFormat(

@@ -17,6 +17,7 @@
 mod onnx;
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
@@ -55,6 +56,10 @@ pub enum StemError {
     Engine(String),
     #[error("io error: {0}")]
     Io(String),
+    /// Separation was cancelled mid-run (the user armed a different track or
+    /// left the Stems view) — not a failure; callers treat it as a silent no-op.
+    #[error("stem separation aborted")]
+    Aborted,
 }
 
 /// In-process htdemucs_ft separator with on-disk result caching. The four ONNX
@@ -127,6 +132,24 @@ impl Separator {
         input: &Path,
         on_progress: impl Fn(f32),
     ) -> Result<StemSet, StemError> {
+        self.separate_cancellable(mix, input, on_progress, &AtomicBool::new(false))
+    }
+
+    /// [`separate`](Self::separate), but abortable: `cancel` is checked before
+    /// every model run, so a separation the user has abandoned (armed another
+    /// track, closed the Stems view) stops within one segment instead of
+    /// grinding all 4 models × ~41 segments to completion on a weak CPU.
+    /// Returns [`StemError::Aborted`] when cancelled; nothing is cached.
+    pub fn separate_cancellable(
+        &self,
+        mix: &[f32],
+        input: &Path,
+        on_progress: impl Fn(f32),
+        cancel: &AtomicBool,
+    ) -> Result<StemSet, StemError> {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(StemError::Aborted);
+        }
         if let Some(cached) = self.cached(input) {
             on_progress(1.0);
             return Ok(cached);
@@ -172,6 +195,11 @@ impl Separator {
             seg_in[segment..segment + take].copy_from_slice(&right[off..off + take]);
 
             for (mi, (_, _, slot)) in MODELS.iter().enumerate() {
+                // A model run is the smallest interruptible unit (an ONNX
+                // inference can't be stopped mid-flight), so check here.
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(StemError::Aborted);
+                }
                 let stem = models[mi].run_segment(&seg_in)?; // [2 × segment], channel-major
                 let dst = &mut acc[*slot];
                 for c in 0..2 {
@@ -290,6 +318,16 @@ mod tests {
         assert!(matches!(
             s.separate(&[0.0, 0.0], Path::new("/tmp/x.wav"), |_| {}),
             Err(StemError::Unavailable)
+        ));
+    }
+
+    #[test]
+    fn cancelled_separation_aborts_without_doing_work() {
+        let s = Separator::new("/no/such/models".into(), std::env::temp_dir());
+        let cancel = AtomicBool::new(true);
+        assert!(matches!(
+            s.separate_cancellable(&[0.0, 0.0], Path::new("/tmp/x.wav"), |_| {}, &cancel),
+            Err(StemError::Aborted)
         ));
     }
 

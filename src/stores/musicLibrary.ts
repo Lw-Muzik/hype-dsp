@@ -291,22 +291,40 @@ export async function mapIncrementally<S, T>(
 // full scan O(n²)).
 const CLOUD_META_CONCURRENCY = 4;
 const CLOUD_META_FLUSH_MS = 200;
+// Slowest flush cadence, reached at ≥ CLOUD_META_FLUSH_SCALE_AT tracks.
+const CLOUD_META_FLUSH_MAX_MS = 1000;
+const CLOUD_META_FLUSH_SCALE_AT = 20_000;
+
+/** Flush cadence for resolved cloud tags, scaled with library size: every
+ *  flush copies the whole meta Map *and* triggers an O(n) re-derivation of the
+ *  merged track arrays downstream, so the 200ms cadence that's fine at a few
+ *  thousand tracks becomes sustained alloc/GC churn on the first scan of a
+ *  50–100k-track cloud. 200ms small → 1000ms at ≥20k tracks (linear between). */
+function cloudMetaFlushMs(trackCount: number): number {
+  const t = Math.min(1, Math.max(0, trackCount / CLOUD_META_FLUSH_SCALE_AT));
+  return Math.round(
+    CLOUD_META_FLUSH_MS + t * (CLOUD_META_FLUSH_MAX_MS - CLOUD_META_FLUSH_MS),
+  );
+}
 
 /**
  * Read embedded **text tags** (title/artist/album — no cover) for cloud tracks
  * in the background, like the mobile app's `CloudMetadataService`. Runs a few at
  * a time and hands resolved tags to `onBatch` in time-budgeted batches (so the
  * store rebuilds its metadata Map a few times a second, not once per track).
- * `isStale` lets the caller cancel (disconnect / reload). Backend-cached →
- * re-scans cheap. Covers are deliberately excluded here and resolved lazily per
- * on-screen row instead, so a large library never holds thousands of ~100 KB
- * base64 covers in memory (the old behaviour that spiked memory + jank on load).
+ * `flushMs` is read per flush attempt, so the cadence can slow as the library
+ * grows (see {@link cloudMetaFlushMs}). `isStale` lets the caller cancel
+ * (disconnect / reload). Backend-cached → re-scans cheap. Covers are
+ * deliberately excluded here and resolved lazily per on-screen row instead, so
+ * a large library never holds thousands of ~100 KB base64 covers in memory
+ * (the old behaviour that spiked memory + jank on load).
  */
 async function preloadCloudMeta(
   tracks: MusicTrack[],
   onBatch: (updates: Array<[string, CloudTrackMeta]>) => void,
   isStale: () => boolean,
   now: () => number,
+  flushMs: () => number,
 ): Promise<void> {
   // Workers share one JS thread cooperatively (await points), so mutating this
   // buffer between awaits is race-free.
@@ -314,7 +332,7 @@ async function preloadCloudMeta(
   let lastFlush = -Infinity;
   const flush = (force: boolean) => {
     if (pending.length === 0) return;
-    if (!force && now() - lastFlush < CLOUD_META_FLUSH_MS) return;
+    if (!force && now() - lastFlush < flushMs()) return;
     onBatch(pending.splice(0)); // hand off everything pending and clear
     lastFlush = now();
   };
@@ -656,6 +674,9 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
         },
         isStale,
         now,
+        // Scale the flush cadence with the full library size — that's what the
+        // per-flush Map copy + downstream re-derivation cost is proportional to.
+        () => cloudMetaFlushMs(get().cloudBase.length),
       );
     })().catch(() => {
       if (isStale()) return;

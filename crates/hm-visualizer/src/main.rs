@@ -133,6 +133,9 @@ fn main() {
     // `gl_swap_window` then returns immediately — spinning a whole core at
     // uncapped fps). Capping to the target frame time keeps it bounded.
     let target_frame = Duration::from_secs_f64(1.0 / fps.max(1) as f64);
+    // Nobody can see a minimized/hidden window — rendering + swapping for it
+    // just burns a core and the GPU. Track visibility and idle while unseen.
+    let mut visible = true;
     'main: loop {
         let frame_start = Instant::now();
         for event in events.poll_iter() {
@@ -150,8 +153,24 @@ fn main() {
                     height = h.max(1) as u32;
                     projectm.set_window_size(width, height);
                 }
+                Event::Window {
+                    win_event: WindowEvent::Minimized | WindowEvent::Hidden, ..
+                } => visible = false,
+                Event::Window {
+                    win_event: WindowEvent::Restored | WindowEvent::Shown, ..
+                } => visible = true,
                 _ => {}
             }
+        }
+
+        // While minimized/hidden, skip rendering entirely: keep draining events
+        // (above) — and the stdin thread keeps absorbing PCM/preset commands —
+        // but sleep instead of render + swap. Restoring flips `visible` and the
+        // next iteration renders immediately (the newest pending preset and PCM
+        // frame are still waiting in their slots).
+        if !visible {
+            std::thread::sleep(Duration::from_millis(250));
+            continue;
         }
 
         // Apply an app-requested preset on the main (GL) thread.

@@ -20,6 +20,17 @@ const ALLPASS_FEEDBACK: f32 = 0.5;
 /// Input attenuation so the summed combs don't overload the tail.
 const INPUT_GAIN: f32 = 0.025;
 
+/// Flush near-denormal values to zero so the IIR feedback tails don't decay
+/// into the denormal range (which can cause large CPU slowdowns).
+#[inline]
+fn flush(x: f32) -> f32 {
+    if x.abs() < 1e-18 {
+        0.0
+    } else {
+        x
+    }
+}
+
 /// A damped feedback comb filter.
 struct Comb {
     buf: Vec<f32>,
@@ -45,8 +56,9 @@ impl Comb {
     #[inline]
     fn process(&mut self, x: f32) -> f32 {
         let out = self.buf[self.idx];
-        // One-pole damping low-pass inside the feedback loop.
-        self.store = out * self.damp2 + self.store * self.damp1;
+        // One-pole damping low-pass inside the feedback loop (flushed so the
+        // decaying tail can't linger in the denormal range).
+        self.store = flush(out * self.damp2 + self.store * self.damp1);
         self.buf[self.idx] = x + self.store * self.feedback;
         self.idx += 1;
         if self.idx == self.buf.len() {
@@ -74,7 +86,7 @@ impl Allpass {
     fn process(&mut self, x: f32) -> f32 {
         let buffed = self.buf[self.idx];
         let out = -x + buffed;
-        self.buf[self.idx] = x + buffed * ALLPASS_FEEDBACK;
+        self.buf[self.idx] = flush(x + buffed * ALLPASS_FEEDBACK);
         self.idx += 1;
         if self.idx == self.buf.len() {
             self.idx = 0;

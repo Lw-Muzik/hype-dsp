@@ -838,17 +838,44 @@ fn drive_all_audio(access: &str) -> Result<Vec<CloudEntry>, String> {
     }
 
     // Resolve distinct parent folder names (bounded), so songs group by folder.
-    let mut names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    for (_, _, _, parent) in &raw {
-        if let Some(pid) = parent {
-            if names.contains_key(pid) || names.len() >= DRIVE_FOLDER_NAME_CAP {
-                continue;
+    // Each lookup is an independent blocking GET, so fan them out over a small
+    // scoped worker pool instead of one-at-a-time (300 sequential round-trips
+    // could take minutes on a slow link). Same ids attempted in the same
+    // first-seen order, same cap on the resulting map.
+    let distinct: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        raw.iter()
+            .filter_map(|(_, _, _, parent)| parent.as_deref())
+            .filter(|pid| seen.insert(*pid))
+            .map(str::to_string)
+            .collect()
+    };
+    let names: std::collections::HashMap<String, String> = {
+        let names = Mutex::new(std::collections::HashMap::new());
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        std::thread::scope(|s| {
+            for _ in 0..distinct.len().min(4) {
+                s.spawn(|| loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(pid) = distinct.get(i) else { break };
+                    // Same bound as the sequential pass: once the map is full,
+                    // stop looking anything else up.
+                    if names.lock().unwrap_or_else(|e| e.into_inner()).len()
+                        >= DRIVE_FOLDER_NAME_CAP
+                    {
+                        break;
+                    }
+                    if let Some(n) = drive_folder_name(&client, access, pid) {
+                        let mut map = names.lock().unwrap_or_else(|e| e.into_inner());
+                        if map.len() < DRIVE_FOLDER_NAME_CAP {
+                            map.insert(pid.clone(), n);
+                        }
+                    }
+                });
             }
-            if let Some(n) = drive_folder_name(&client, access, pid) {
-                names.insert(pid.clone(), n);
-            }
-        }
-    }
+        });
+        names.into_inner().unwrap_or_else(|e| e.into_inner())
+    };
 
     Ok(raw
         .into_iter()

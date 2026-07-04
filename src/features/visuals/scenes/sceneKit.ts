@@ -1,11 +1,33 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useEngineStore } from "@/stores/engine";
+import { useVisualizerStore } from "@/stores/visualizer";
 import { initialBeat, stepBeat } from "@/lib/beat";
 import type { BeatState } from "@/lib/beat";
 
 /** Cap the render resolution so high-DPI displays don't over-tax the GPU. */
 export const MAX_DPR = 2;
+
+/**
+ * Frame-rate gate honouring the user's visualizer fps setting (15–60). Create
+ * one per rAF loop and call it with the frame's `performance.now()`: `false`
+ * means "skip this frame" (rAF keeps scheduling; skipping is a cheap early
+ * return). The fps is read live from the store, so changes in Settings apply
+ * immediately without remounting the scene.
+ */
+export function createFpsGate(): (now: number) => boolean {
+  let last = 0;
+  return (now: number): boolean => {
+    const fps = useVisualizerStore.getState().settings.fps;
+    const interval = 1000 / Math.max(1, fps);
+    const excess = now - last - interval;
+    // 1ms tolerance so rAF timing jitter on a 60Hz display can't halve the rate.
+    if (excess < -1) return false;
+    // Anchor to the fps grid (remainder carry) so the average rate stays true.
+    last = now - Math.max(0, excess % interval);
+    return true;
+  };
+}
 
 /** One frame's worth of audio, derived from the engine's live meters/spectrum. */
 export interface AudioSample {

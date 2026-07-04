@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 
 use crate::error::HmError;
 use crate::{LibraryPage, LibraryTrack, Playlist, RadioStation};
@@ -17,18 +17,63 @@ fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
+/// How long a computed available-track count stays fresh. The UI probes on
+/// every window focus; re-stat-ing every library directory each time is wasted
+/// work (and hangs on a dead network mount), so probes inside this window are
+/// answered from the cache.
+const AVAILABLE_COUNT_TTL: Duration = Duration::from_secs(30);
+
 /// Library + playlist store.
 pub struct MediaStore {
     conn: Mutex<Connection>,
+    /// Second, read-only connection to the same (WAL) database. WAL readers
+    /// never block on the writer, so routing read-only queries here keeps the
+    /// UI's list/count reads from queueing behind a long scan's write batches
+    /// on `conn`'s mutex. `None` for in-memory stores (a private in-memory DB
+    /// is visible only to its own connection) — reads then share `conn`.
+    read_conn: Option<Mutex<Connection>>,
+    /// Cached `(computed_at, count)` for [`Self::count_available_tracks`].
+    available_cache: Mutex<Option<(Instant, i64)>>,
 }
 
 impl MediaStore {
     pub fn open(path: &Path) -> Result<Self, HmError> {
-        Self::from_conn(Connection::open(path)?)
+        // Initialize schema/pragmas on the writer first so the reader opens an
+        // already-WAL database.
+        let mut store = Self::from_conn(Connection::open(path)?)?;
+        store.read_conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | OpenFlags::SQLITE_OPEN_URI,
+        )
+        .ok()
+        .and_then(|conn| {
+            // Same pragmas as the writer (journal_mode is already WAL in the
+            // file; a read-only connection can't change it, hence `let _ =`).
+            let _ = conn.pragma_update(None, "journal_mode", "WAL");
+            let _ = conn.pragma_update(None, "synchronous", "NORMAL");
+            // Probe: reading a WAL database read-only needs a writable `-shm`
+            // file — if this environment can't do that, fall back to sharing
+            // the writer connection instead of failing every read later.
+            conn.query_row("SELECT COUNT(*) FROM tracks", [], |r| r.get::<_, i64>(0))
+                .ok()?;
+            Some(Mutex::new(conn))
+        });
+        Ok(store)
     }
 
     pub fn open_in_memory() -> Result<Self, HmError> {
         Self::from_conn(Connection::open_in_memory()?)
+    }
+
+    /// The connection read-only queries should use: the dedicated reader when
+    /// available, else the writer.
+    fn read_lock(&self) -> std::sync::MutexGuard<'_, Connection> {
+        match &self.read_conn {
+            Some(conn) => conn.lock().expect("media store poisoned"),
+            None => self.conn.lock().expect("media store poisoned"),
+        }
     }
 
     fn from_conn(conn: Connection) -> Result<Self, HmError> {
@@ -78,6 +123,8 @@ impl MediaStore {
         let _ = conn.execute("ALTER TABLE tracks ADD COLUMN genre TEXT", []);
         Ok(Self {
             conn: Mutex::new(conn),
+            read_conn: None,
+            available_cache: Mutex::new(None),
         })
     }
 
@@ -103,6 +150,8 @@ impl MediaStore {
                 now_millis()
             ],
         )?;
+        drop(conn);
+        self.invalidate_available_cache();
         Ok(())
     }
 
@@ -139,11 +188,13 @@ impl MediaStore {
             }
         }
         tx.commit()?;
+        drop(conn);
+        self.invalidate_available_cache();
         Ok(())
     }
 
     pub fn list_tracks(&self) -> Result<Vec<LibraryTrack>, HmError> {
-        let conn = self.conn.lock().expect("media store poisoned");
+        let conn = self.read_lock();
         let mut stmt = conn.prepare(
             "SELECT path, title, artist, album, genre, duration_secs FROM tracks
              ORDER BY title COLLATE NOCASE",
@@ -155,7 +206,7 @@ impl MediaStore {
     /// Total number of library tracks — cheap, lets the UI show a load progress
     /// fraction ("12,000 / 234,000") rather than an open-ended spinner.
     pub fn count_tracks(&self) -> Result<i64, HmError> {
-        let conn = self.conn.lock().expect("media store poisoned");
+        let conn = self.read_lock();
         Ok(conn.query_row("SELECT COUNT(*) FROM tracks", [], |r| r.get(0))?)
     }
 
@@ -172,7 +223,7 @@ impl MediaStore {
     /// filtering, so the caller advances its offset correctly even when a page
     /// is partly (or wholly) hidden.
     pub fn list_tracks_page(&self, offset: i64, limit: i64) -> Result<LibraryPage, HmError> {
-        let conn = self.conn.lock().expect("media store poisoned");
+        let conn = self.read_lock();
         let mut stmt = conn.prepare(
             "SELECT path, title, artist, album, genre, duration_secs FROM tracks
              ORDER BY title COLLATE NOCASE
@@ -193,32 +244,71 @@ impl MediaStore {
     }
 
     /// How many library tracks are currently reachable (their file's directory
-    /// exists). Cheap (one `path` scan + a cached `stat` per distinct directory),
-    /// so the UI can probe it on focus and only reload when availability
-    /// actually changed — e.g. a drive was plugged in or ejected.
+    /// exists), so the UI can probe it on focus and only reload when
+    /// availability actually changed — e.g. a drive was plugged in or ejected.
+    ///
+    /// The UI probes on **every** window focus, so this is built to be cheap
+    /// and to never stall other DB users:
+    /// * results are cached for [`AVAILABLE_COUNT_TTL`] (writes to `tracks`
+    ///   invalidate the cache immediately);
+    /// * the paths are read under the (read) connection's lock, which is
+    ///   **dropped before any `stat`** — a dead SMB/NFS mount can hang a
+    ///   `stat` for seconds, and that must not happen while holding a DB lock;
+    /// * each distinct parent directory is stat-ed exactly once (same
+    ///   granularity as [`track_available`]).
     pub fn count_available_tracks(&self) -> Result<i64, HmError> {
-        let conn = self.conn.lock().expect("media store poisoned");
-        let mut stmt = conn.prepare("SELECT path FROM tracks")?;
-        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-        let mut dir_cache: HashMap<PathBuf, bool> = HashMap::new();
-        let mut available: i64 = 0;
-        for row in rows {
-            if track_available(&row?, &mut dir_cache) {
-                available += 1;
+        if let Some((at, count)) = *self.available_cache.lock().expect("media store poisoned") {
+            if at.elapsed() < AVAILABLE_COUNT_TTL {
+                return Ok(count);
             }
         }
+
+        // Collect the paths under the lock, then release it before stat-ing.
+        let paths: Vec<String> = {
+            let conn = self.read_lock();
+            let mut stmt = conn.prepare("SELECT path FROM tracks")?;
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+
+        // Group by parent directory so each distinct directory is stat-ed once.
+        // (A path with no parent is never hidden — same as `track_available`.)
+        let mut per_dir: HashMap<PathBuf, i64> = HashMap::new();
+        let mut available: i64 = 0;
+        for path in &paths {
+            match Path::new(path).parent() {
+                Some(parent) => *per_dir.entry(parent.to_path_buf()).or_insert(0) += 1,
+                None => available += 1,
+            }
+        }
+        for (dir, tracks) in per_dir {
+            if dir.is_dir() {
+                available += tracks;
+            }
+        }
+
+        *self.available_cache.lock().expect("media store poisoned") =
+            Some((Instant::now(), available));
         Ok(available)
+    }
+
+    /// Drop the cached available-track count (call after any `tracks` write so
+    /// the next probe reflects it immediately).
+    fn invalidate_available_cache(&self) {
+        *self.available_cache.lock().expect("media store poisoned") = None;
     }
 
     pub fn remove_track(&self, path: &str) -> Result<(), HmError> {
         let conn = self.conn.lock().expect("media store poisoned");
         conn.execute("DELETE FROM tracks WHERE path = ?1", [path])?;
         conn.execute("DELETE FROM playlist_items WHERE track_path = ?1", [path])?;
+        drop(conn);
+        self.invalidate_available_cache();
         Ok(())
     }
 
     pub fn list_playlists(&self) -> Result<Vec<Playlist>, HmError> {
-        let conn = self.conn.lock().expect("media store poisoned");
+        let conn = self.read_lock();
         let mut stmt =
             conn.prepare("SELECT id, name FROM playlists ORDER BY name COLLATE NOCASE")?;
         let rows = stmt.query_map([], |r| {
@@ -268,7 +358,7 @@ impl MediaStore {
 
     /// Tracks in a playlist, in order.
     pub fn playlist_tracks(&self, id: &str) -> Result<Vec<LibraryTrack>, HmError> {
-        let conn = self.conn.lock().expect("media store poisoned");
+        let conn = self.read_lock();
         let mut stmt = conn.prepare(
             "SELECT t.path, t.title, t.artist, t.album, t.genre, t.duration_secs
              FROM playlist_items pi JOIN tracks t ON t.path = pi.track_path
@@ -332,7 +422,7 @@ impl MediaStore {
 impl MediaStore {
     /// Favorited radio stations.
     pub fn list_favorites(&self) -> Result<Vec<RadioStation>, HmError> {
-        let conn = self.conn.lock().expect("media store poisoned");
+        let conn = self.read_lock();
         let mut stmt = conn.prepare(
             "SELECT id, name, url, genre, country, favicon FROM radio_favorites
              ORDER BY name COLLATE NOCASE",
@@ -418,6 +508,36 @@ mod tests {
         let tracks = store.list_tracks().unwrap();
         assert_eq!(tracks.len(), 2);
         assert!(tracks.iter().any(|t| t.title == "Alpha v2"));
+    }
+
+    /// A file-backed store gets the dedicated read-only connection — writes on
+    /// the writer must be visible through it (WAL reader snapshots).
+    #[test]
+    fn file_store_reads_through_readonly_connection() {
+        let path = std::env::temp_dir().join(format!(
+            "hm_media_store_ro_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        {
+            let store = MediaStore::open(&path).unwrap();
+            assert!(
+                store.read_conn.is_some(),
+                "file-backed store should have a read-only connection"
+            );
+            store.upsert_track(&track("/a.flac", "Alpha")).unwrap();
+            store.upsert_track(&track("/b.mp3", "Bravo")).unwrap();
+            // These all route through the read connection.
+            assert_eq!(store.count_tracks().unwrap(), 2);
+            assert_eq!(store.list_tracks().unwrap().len(), 2);
+            assert_eq!(store.list_tracks_page(0, 10).unwrap().scanned, 2);
+            assert!(store.list_playlists().unwrap().is_empty());
+            assert!(store.list_favorites().unwrap().is_empty());
+        }
+        let _ = std::fs::remove_file(&path);
+        // WAL sidecar files.
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
     }
 
     #[test]

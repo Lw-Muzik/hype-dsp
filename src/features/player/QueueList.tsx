@@ -30,7 +30,18 @@ function queueArt(item: QueueItem): ArtSource {
     };
   }
   if (item.source === "cloud") {
-    return { key, source: "cloud", cover: item.cover ?? null };
+    // The current track may carry a decoded cover (patched in from the engine's
+    // now-playing event) — used directly. Every other row resolves its cover
+    // lazily on demand (visible rows only, bounded cache + in-flight dedup in
+    // useTrackArtwork), so a huge queue never holds thousands of covers.
+    return {
+      key,
+      source: "cloud",
+      cover: item.cover ?? null,
+      cloudAccountId: item.cloud?.accountId,
+      cloudFileId: item.cloud?.id,
+      cloudName: item.cloud?.name,
+    };
   }
   // Local files read embedded art by path; radio has none (→ gradient).
   return { key, source: "local", path: item.track?.path ?? null };

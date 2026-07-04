@@ -12,7 +12,8 @@
 //! or decodes everything at once. The crossfade ramp itself matches the local
 //! queue exactly.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -20,7 +21,7 @@ use std::time::Duration;
 
 use hm_core::TrackMeta;
 
-use crate::decode::{decode_bytes, resample_stereo};
+use crate::decode::{decode_file, resample_stereo};
 use crate::engine::MetaSink;
 use crate::error::AudioError;
 use crate::queue::write_frame;
@@ -62,11 +63,54 @@ fn new_client() -> reqwest::Result<reqwest::blocking::Client> {
         .build()
 }
 
+/// A downloaded track body spooled to a temp file rather than held in RAM (a
+/// long lossless track can be hundreds of MB compressed — and the old
+/// buffer-then-copy path held it twice). The file is removed when this guard
+/// drops, so every exit path — decode success, decode failure, a retried
+/// truncated download, or the whole source being dropped — cleans up.
+struct SpooledBody {
+    path: PathBuf,
+}
+
+impl SpooledBody {
+    /// Create a unique spool file for one download attempt, keeping the track's
+    /// extension (sanitized) so the demuxer probe gets the same format hint
+    /// `decode_bytes` used to receive.
+    fn create(ext: Option<&str>) -> std::io::Result<(Self, std::fs::File)> {
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let mut name = format!(
+            "hm-stream-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        );
+        if let Some(ext) = ext {
+            let safe: String = ext
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .take(8)
+                .collect();
+            if !safe.is_empty() {
+                name.push('.');
+                name.push_str(&safe);
+            }
+        }
+        let path = std::env::temp_dir().join(name);
+        let file = std::fs::File::create(&path)?;
+        Ok((Self { path }, file))
+    }
+}
+
+impl Drop for SpooledBody {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 /// The outcome of a single fetch attempt, classified so the retry loop knows
 /// whether trying again could possibly help.
 enum FetchOutcome {
-    /// Got the full body.
-    Body(Vec<u8>),
+    /// Got the full body, spooled to a temp file (deleted when the guard drops).
+    Body(SpooledBody),
     /// Permanent failure (4xx) — retrying the same URL won't help; skip it.
     Skip,
     /// Transient failure (connect/read error, timeout, 408/429/5xx, a truncated
@@ -74,28 +118,35 @@ enum FetchOutcome {
     Retry,
 }
 
-/// Issue one GET for `target` and classify the outcome.
+/// Issue one GET for `target`, stream the body to a temp file, and classify the
+/// outcome. Streaming (rather than `resp.bytes()`) keeps the compressed file
+/// out of RAM; a spool I/O error is treated exactly like a failed body read —
+/// a transient failure worth retrying.
 fn fetch_once(client: &reqwest::blocking::Client, target: &StreamTarget) -> FetchOutcome {
     let mut req = client.get(&target.url);
     for (k, v) in &target.headers {
         req = req.header(k.as_str(), v.as_str());
     }
     match req.send() {
-        Ok(resp) => {
+        Ok(mut resp) => {
             let status = resp.status();
             if status.is_success() {
                 // A reset/truncated body surfaces here as an error — retry it,
                 // because a partial download would otherwise decode to a short
                 // track that ends early (and "jumps" to the next one).
                 let expected = resp.content_length();
-                match resp.bytes() {
+                let (spool, mut file) = match SpooledBody::create(target.ext.as_deref()) {
+                    Ok(v) => v,
+                    Err(_) => return FetchOutcome::Retry,
+                };
+                match std::io::copy(&mut resp, &mut file) {
                     // Belt-and-suspenders: if the server declared a length and we
                     // got fewer bytes, treat it as truncated and retry rather than
                     // decode a clipped track.
-                    Ok(b) if expected.is_none_or(|n| b.len() as u64 >= n) => {
-                        FetchOutcome::Body(b.to_vec())
+                    Ok(written) if expected.is_none_or(|n| written >= n) => {
+                        FetchOutcome::Body(spool)
                     }
-                    Ok(_) | Err(_) => FetchOutcome::Retry,
+                    Ok(_) | Err(_) => FetchOutcome::Retry, // spool guard cleans up
                 }
             } else if status.is_server_error()
                 || status == reqwest::StatusCode::TOO_MANY_REQUESTS
@@ -229,8 +280,12 @@ impl StreamQueueSource {
                                         LoadAttempt::Retry
                                     }
                                     Ok(target) => match fetch_once(&client, &target) {
-                                        FetchOutcome::Body(bytes) => {
-                                            match decode_bytes(bytes, target.ext.as_deref()) {
+                                        // Decode straight from the spool file
+                                        // (deleted when `spool` drops, on every
+                                        // path) so only the decoded PCM — never
+                                        // the compressed body — lives in RAM.
+                                        FetchOutcome::Body(spool) => {
+                                            match decode_file(&spool.path) {
                                                 Ok(d) => {
                                                     let samples = resample_stereo(
                                                         &d.samples,
@@ -584,5 +639,32 @@ mod tests {
         });
         assert!(track.1.is_empty());
         assert_eq!(calls, 0, "no attempts once stopped");
+    }
+
+    #[test]
+    fn spooled_body_deletes_its_temp_file_on_drop() {
+        let (spool, mut file) = SpooledBody::create(Some("mp3")).expect("create spool");
+        std::io::Write::write_all(&mut file, b"not really audio").unwrap();
+        drop(file);
+        let path = spool.path.clone();
+        assert!(path.exists(), "spool file exists while the guard lives");
+        assert_eq!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("mp3"),
+            "extension hint carried onto the spool file"
+        );
+        drop(spool);
+        assert!(!path.exists(), "spool file removed when the guard drops");
+    }
+
+    #[test]
+    fn spool_sanitizes_a_hostile_extension_hint() {
+        // The ext hint comes from a resolver (cloud metadata) — path separators
+        // or other junk must not escape the temp dir or break the filename.
+        let (spool, _file) = SpooledBody::create(Some("../../etc/passwd")).expect("create spool");
+        let name = spool.path.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with("hm-stream-"), "stays a spool file: {name}");
+        assert!(!name.contains('/') && !name.contains(".."), "sanitized: {name}");
+        assert_eq!(spool.path.parent(), Some(std::env::temp_dir().as_path()));
     }
 }

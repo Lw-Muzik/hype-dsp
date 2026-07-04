@@ -25,8 +25,19 @@ export function MixerView() {
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 3000);
-    return () => clearInterval(t);
+    // The window hides (not quits) on close: skip polls while hidden and
+    // refresh immediately when the window becomes visible again.
+    const t = setInterval(() => {
+      if (!document.hidden) refresh();
+    }, 3000);
+    const onVisible = () => {
+      if (!document.hidden) refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [refresh]);
 
   const patch = (id: string, change: Partial<AppSession>) =>

@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useEngineStore } from "@/stores/engine";
 import { ISO_CENTERS_HZ } from "@/lib/types";
 import { formatHz } from "@/lib/format";
 
@@ -11,7 +12,6 @@ const LOG_HI = Math.log10(20_000);
 
 interface EqVisualizerProps {
   bands: number[];
-  spectrum: number[];
 }
 
 const xForFreq = (hz: number) =>
@@ -47,8 +47,10 @@ function smoothPath(points: Point[]): string {
 
 const GRID_FREQS = [100, 1000, 10000];
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
 /** Live EQ response curve overlaid on the real-time spectrum. */
-export function EqVisualizer({ bands, spectrum }: EqVisualizerProps) {
+export function EqVisualizer({ bands }: EqVisualizerProps) {
   const curve = useMemo(() => {
     const pts = bands.map((db, i) => ({
       x: xForFreq(ISO_CENTERS_HZ[i] ?? 20),
@@ -57,7 +59,43 @@ export function EqVisualizer({ bands, spectrum }: EqVisualizerProps) {
     return smoothPath(pts);
   }, [bands]);
 
-  const barWidth = spectrum.length > 0 ? W / spectrum.length : 0;
+  // Real-time spectrum bars, driven by a transient store subscription and
+  // imperative attribute writes on a pooled set of <rect>s — the ~30fps frames
+  // never re-render the React tree (ScrollingWaveform-style). The rest of the
+  // component re-renders only when the user edits the bands.
+  const barsRef = useRef<SVGGElement>(null);
+  useEffect(() => {
+    const g = barsRef.current;
+    if (!g) return;
+    let count = -1;
+    const render = (spectrum: number[]) => {
+      const n = spectrum.length;
+      if (n !== count) {
+        count = n;
+        g.textContent = "";
+        const barWidth = n > 0 ? W / n : 0;
+        for (let i = 0; i < n; i++) {
+          const r = document.createElementNS(SVG_NS, "rect");
+          r.setAttribute("x", String(i * barWidth));
+          r.setAttribute("width", String(Math.max(0, barWidth - 1)));
+          r.setAttribute("fill", "var(--color-accent)");
+          r.setAttribute("opacity", "0.22");
+          g.appendChild(r);
+        }
+      }
+      const rects = g.children;
+      for (let i = 0; i < n; i++) {
+        const barHeight = (spectrum[i] ?? 0) * (H - 24);
+        const rect = rects[i] as SVGRectElement;
+        rect.setAttribute("y", String(H - barHeight));
+        rect.setAttribute("height", String(barHeight));
+      }
+    };
+    render(useEngineStore.getState().spectrum);
+    return useEngineStore.subscribe((state, prev) => {
+      if (state.spectrum !== prev.spectrum) render(state.spectrum);
+    });
+  }, []);
 
   return (
     <div className="overflow-hidden rounded-control border border-border bg-surface">
@@ -112,21 +150,8 @@ export function EqVisualizer({ bands, spectrum }: EqVisualizerProps) {
           </g>
         ))}
 
-        {/* real-time spectrum bars */}
-        {spectrum.map((v, i) => {
-          const barHeight = v * (H - 24);
-          return (
-            <rect
-              key={i}
-              x={i * barWidth}
-              y={H - barHeight}
-              width={Math.max(0, barWidth - 1)}
-              height={barHeight}
-              fill="var(--color-accent)"
-              opacity={0.22}
-            />
-          );
-        })}
+        {/* real-time spectrum bars (imperatively managed — see effect above) */}
+        <g ref={barsRef} />
 
         {/* response curve */}
         <path

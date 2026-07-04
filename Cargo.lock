@@ -2409,6 +2409,7 @@ dependencies = [
  "hm-core",
  "hm-dsp",
  "hound",
+ "libc",
  "objc2",
  "objc2-core-audio",
  "objc2-core-audio-types",

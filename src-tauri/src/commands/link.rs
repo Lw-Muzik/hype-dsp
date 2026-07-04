@@ -5,8 +5,9 @@
 //! lives in the pure `hm-link` crate; these commands are the thin bridge that
 //! also routes the resolved stream URL into the audio engine.
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use hm_audio::stream_queue::{StreamResolver, StreamTarget};
@@ -116,37 +117,144 @@ pub fn link_unpair(link: State<'_, LinkState>, device_id: String) {
 
 // ------------------------------------------------- remote (cross-network) link
 
+/// Lazily-constructed [`hm_remote::RemoteManager`].
+///
+/// Building the manager spins up a dedicated multi-thread tokio runtime and an
+/// iroh endpoint that connects to the n0 relays and stays connected for the
+/// app's lifetime — far too heavy to pay unconditionally in `setup()` (it used
+/// to block there, before first paint) for a feature many users never touch.
+/// Instead:
+/// * every remote command funnels through [`Self::manager`], which builds it
+///   on first use;
+/// * at startup, `lib.rs` spawns a background thread that builds it **only if
+///   the persisted peers file is non-empty**, so previously-paired phones
+///   silently reconnect exactly as before — without ever blocking setup.
+pub struct RemoteState {
+    app: AppHandle,
+    secret_path: PathBuf,
+    store_path: PathBuf,
+    /// `Err` caches a failed construction for the session — matching the old
+    /// behaviour, where a failure in `setup()` left remote link unavailable.
+    cell: OnceLock<Result<hm_remote::RemoteManager, String>>,
+}
+
+impl RemoteState {
+    pub fn new(app: AppHandle, secret_path: PathBuf, store_path: PathBuf) -> Self {
+        Self {
+            app,
+            secret_path,
+            store_path,
+            cell: OnceLock::new(),
+        }
+    }
+
+    /// Whether any remote phone is persisted on disk — answered from the peers
+    /// file, so it never triggers a build.
+    pub fn has_known_peers(&self) -> bool {
+        std::fs::read(&self.store_path)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<Vec<serde_json::Value>>(&b).ok())
+            .is_some_and(|peers| !peers.is_empty())
+    }
+
+    /// The already-built manager, if any (non-blocking) — for commands that are
+    /// correct no-ops when nothing was ever built, like cancelling a pairing
+    /// session that can't exist yet.
+    fn built(&self) -> Option<&hm_remote::RemoteManager> {
+        self.cell.get().and_then(|r| r.as_ref().ok())
+    }
+
+    /// Build-on-first-use funnel. The first caller pays the endpoint
+    /// construction (and others block on it), so call this from `(async)`
+    /// commands or background threads only. The `on_paired` callback registers
+    /// the phone into [`LinkState`] as a loopback proxy and notifies the UI —
+    /// the same wiring `setup()` used to do.
+    pub fn manager(&self) -> Result<&hm_remote::RemoteManager, String> {
+        self.cell
+            .get_or_init(|| {
+                let pair_handle = self.app.clone();
+                hm_remote::RemoteManager::new(
+                    self.secret_path.clone(),
+                    self.store_path.clone(),
+                    hm_link::device_name(),
+                    true,
+                    move |phone| {
+                        pair_handle.state::<LinkState>().register_remote(
+                            phone.id.clone(),
+                            phone.name.clone(),
+                            phone.port,
+                            phone.token.clone(),
+                        );
+                        let _ = pair_handle.emit("link:remote_connected", &phone.id);
+                    },
+                )
+                .map_err(|e| {
+                    eprintln!("remote phone link unavailable: {e}");
+                    e.to_string()
+                })
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+}
+
 /// Open a pairing session for a phone on a *different* network and return the
 /// QR payload + 6-digit PIN to display. The phone scans the QR and connects
 /// peer-to-peer over iroh (registered into [`LinkState`] by the `on_paired`
-/// callback wired in `lib.rs`).
-#[tauri::command]
-pub fn link_remote_qr(remote: State<'_, hm_remote::RemoteManager>) -> hm_remote::PairingInfo {
-    remote.start_pairing(Duration::from_secs(300))
+/// callback wired in [`RemoteState::manager`]).
+// `(async)`: the first call builds the iroh endpoint (network setup, ~seconds
+// worst case) — never on the Tauri main thread.
+#[tauri::command(async)]
+pub fn link_remote_qr(
+    remote: State<'_, RemoteState>,
+) -> Result<hm_remote::PairingInfo, IpcError> {
+    Ok(remote
+        .manager()
+        .map_err(|e| IpcError::new("remote", e))?
+        .start_pairing(Duration::from_secs(300)))
 }
 
 /// Close any open remote pairing session.
 #[tauri::command]
-pub fn link_remote_cancel(remote: State<'_, hm_remote::RemoteManager>) {
-    remote.cancel_pairing();
+pub fn link_remote_cancel(remote: State<'_, RemoteState>) {
+    // A session can only exist once the manager was built (by `link_remote_qr`),
+    // so never build the endpoint just to cancel nothing.
+    if let Some(manager) = remote.built() {
+        manager.cancel_pairing();
+    }
 }
 
 /// Current status of every paired remote phone (online = tunnel connected).
-#[tauri::command]
-pub fn link_remote_status(
-    remote: State<'_, hm_remote::RemoteManager>,
-) -> Vec<hm_remote::RemotePhoneStatus> {
-    remote.remote_phones()
+// `(async)`: may wait on (or trigger) the endpoint build when peers exist.
+#[tauri::command(async)]
+pub fn link_remote_status(remote: State<'_, RemoteState>) -> Vec<hm_remote::RemotePhoneStatus> {
+    // Nothing built and nothing ever paired → the answer is an empty list;
+    // don't build a relay-connected endpoint just to say so.
+    if remote.built().is_none() && !remote.has_known_peers() {
+        return Vec::new();
+    }
+    remote
+        .manager()
+        .map(|m| m.remote_phones())
+        .unwrap_or_default()
 }
 
 /// (Re)dial every known remote phone and register the connected ones into the
 /// device store so their libraries load. Returns the refreshed status list.
 #[tauri::command(async)]
 pub fn link_remote_connect(
-    remote: State<'_, hm_remote::RemoteManager>,
+    remote: State<'_, RemoteState>,
     link: State<'_, LinkState>,
     app: AppHandle,
 ) -> Vec<hm_remote::RemotePhoneStatus> {
+    // No peers on disk and nothing built → there is nothing to dial; keep the
+    // endpoint unbuilt (same empty result either way).
+    if remote.built().is_none() && !remote.has_known_peers() {
+        return Vec::new();
+    }
+    let Ok(remote) = remote.manager() else {
+        return Vec::new();
+    };
     for phone in remote.connect_known() {
         link.register_remote(phone.id.clone(), phone.name, phone.port, phone.token);
         let _ = app.emit("link:remote_connected", &phone.id);
@@ -155,13 +263,22 @@ pub fn link_remote_connect(
 }
 
 /// Forget a remote phone: drop its tunnel and remove it from both stores.
-#[tauri::command]
+// `(async)`: may wait on the endpoint build kicked off by the startup
+// reconnect thread (a forgettable peer implies a non-empty peers file).
+#[tauri::command(async)]
 pub fn link_remote_forget(
-    remote: State<'_, hm_remote::RemoteManager>,
+    remote: State<'_, RemoteState>,
     link: State<'_, LinkState>,
     device_id: String,
 ) {
-    remote.forget(&device_id);
+    // Forgetting must reach the manager's persisted peer store. If any peer
+    // exists the startup thread already built (or is building) the manager, so
+    // this doesn't construct a fresh endpoint in practice.
+    if remote.built().is_some() || remote.has_known_peers() {
+        if let Ok(manager) = remote.manager() {
+            manager.forget(&device_id);
+        }
+    }
     link.unpair(&device_id);
 }
 

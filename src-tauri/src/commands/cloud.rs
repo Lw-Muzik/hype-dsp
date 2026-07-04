@@ -47,7 +47,9 @@ pub fn cloud_connect(
 
 /// Forget the stored tokens for one account, and drop its cached listing so a
 /// reconnect (possibly a different account) starts clean.
-#[tauri::command]
+// `(async)`: dropping the cached listing re-serializes + rewrites the whole
+// cloud-list file (can be MBs) — run it off the Tauri main thread.
+#[tauri::command(async)]
 pub fn cloud_disconnect(
     cloud: State<'_, CloudState>,
     list_cache: State<'_, CloudListCache>,

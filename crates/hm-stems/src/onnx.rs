@@ -57,6 +57,18 @@ pub fn coreml_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Intra-op thread count for a session: leave one core for the audio + UI
+/// threads and cap at 4. ort's default is one thread per physical core, and
+/// with four specialist models running while a track plays (the Stems view
+/// auto-arms) that saturates the whole machine — audio glitches on weak CPUs.
+fn intra_threads() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .saturating_sub(1)
+        .clamp(1, 4)
+}
+
 /// One loaded htdemucs_ft specialist model, trusted for a single source row.
 pub struct Model {
     session: Session,
@@ -85,14 +97,21 @@ impl Model {
         // default to the reliable CPU path. `HM_STEMS_COREML=1` tries CoreML and
         // falls back to CPU if the session won't build.
         let want_coreml = std::env::var("HM_STEMS_COREML").is_ok() && coreml_available();
+        // Bounded parallelism (see `intra_threads`); the graphs have no
+        // parallel branches worth inter-op threads, so keep that at 1.
+        let threads = intra_threads();
         let cpu_session = || -> Result<Session, StemError> {
             Session::builder()
+                .and_then(|b| b.with_intra_threads(threads))
+                .and_then(|b| b.with_inter_threads(1))
                 .map_err(ort_err)?
                 .commit_from_file(path)
                 .map_err(ort_err)
         };
         let session = if want_coreml {
             match Session::builder()
+                .and_then(|b| b.with_intra_threads(threads))
+                .and_then(|b| b.with_inter_threads(1))
                 .and_then(|b| {
                     b.with_execution_providers([CoreMLExecutionProvider::default().build()])
                 })

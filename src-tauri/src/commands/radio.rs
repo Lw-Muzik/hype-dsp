@@ -90,12 +90,15 @@ pub fn radio_by_country(code: String) -> Vec<RadioStation> {
 }
 
 /// Favorited stations (persisted).
-#[tauri::command]
+// `(async)` (all three favorites commands): they take the shared `MediaStore`
+// connection mutex, which a running library scan holds for whole write batches
+// — run them on the worker pool so the webview main thread never waits on it.
+#[tauri::command(async)]
 pub fn radio_favorites_list(store: State<'_, MediaStore>) -> Result<Vec<RadioStation>, IpcError> {
     store.list_favorites().map_err(Into::into)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn radio_favorite_add(
     store: State<'_, MediaStore>,
     station: RadioStation,
@@ -103,7 +106,7 @@ pub fn radio_favorite_add(
     store.add_favorite(&station).map_err(Into::into)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn radio_favorite_remove(store: State<'_, MediaStore>, id: String) -> Result<(), IpcError> {
     store.remove_favorite(&id).map_err(Into::into)
 }

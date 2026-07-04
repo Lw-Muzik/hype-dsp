@@ -96,8 +96,9 @@ pub fn visualizer_available() -> bool {
 }
 
 /// Every bundled `.milk` preset name (file stem), sorted — the list the app's
-/// Visuals view browses and drives the window with.
-#[tauri::command]
+/// Visuals view browses and drives the window with. `async` so scanning the
+/// ~550-file preset directory runs on a worker thread, not the webview thread.
+#[tauri::command(async)]
 pub fn visualizer_preset_names(app: AppHandle) -> Vec<String> {
     let dir = preset_dir(&app);
     let mut names = Vec::new();
@@ -152,6 +153,7 @@ pub fn visualizer_start(
     let stdin = Arc::new(Mutex::new(raw_stdin));
 
     let tap = engine.spectrum();
+    let playing = engine.playing_flag();
     let stop = Arc::new(AtomicBool::new(false));
     let run = stop.clone();
     let pump_stdin = stdin.clone();
@@ -161,6 +163,14 @@ pub fn visualizer_start(
             let period = Duration::from_millis(1000 / PCM_FPS);
             let mut buf = Vec::with_capacity(1 + 2048);
             while !run.load(Ordering::Relaxed) {
+                // Nothing playing → the waveform is just silence; don't stream
+                // 2 KB frames at 30 Hz to an idle window. Poll gently and resume
+                // full-rate the moment playback starts (the same flag the
+                // engine's UI-forwarding thread watches).
+                if !playing.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(200));
+                    continue;
+                }
                 buf.clear();
                 buf.push(b'P'); // PCM frame tag
                 for s in tap.load_waveform() {

@@ -27,6 +27,17 @@ const HRTF_LP_HZ: f32 = 1100.0;
 /// Pinna-notch centre (HRTF only): a spectral cue that helps frontal imaging.
 const PINNA_HZ: f32 = 7500.0;
 
+/// Flush near-denormal values to zero so the head-shadow one-pole states don't
+/// decay into the denormal range (which can cause large CPU slowdowns).
+#[inline]
+fn flush(x: f32) -> f32 {
+    if x.abs() < 1e-18 {
+        0.0
+    } else {
+        x
+    }
+}
+
 /// Scaffold for measured-HRIR convolution. No set is bundled yet, so this
 /// reports "not loaded" and the [`Spatializer`] uses its parametric models.
 #[derive(Default)]
@@ -114,8 +125,8 @@ impl Spatializer {
             let dl = self.delay_l.process(l, d);
             let dr = self.delay_r.process(r, d);
             // Left ear hears the delayed right channel, and vice-versa.
-            self.bleed_lp[0] = self.bleed_lp[0] * a + dr * (1.0 - a);
-            self.bleed_lp[1] = self.bleed_lp[1] * a + dl * (1.0 - a);
+            self.bleed_lp[0] = flush(self.bleed_lp[0] * a + dr * (1.0 - a));
+            self.bleed_lp[1] = flush(self.bleed_lp[1] * a + dl * (1.0 - a));
             buffer[base] = (l + level * self.bleed_lp[0]) * norm;
             buffer[base + 1] = (r + level * self.bleed_lp[1]) * norm;
         }
@@ -142,8 +153,8 @@ impl Spatializer {
             let wr = mid - side;
             let dl = self.delay_l.process(wl, d);
             let dr = self.delay_r.process(wr, d);
-            self.bleed_lp[0] = self.bleed_lp[0] * a + dr * (1.0 - a);
-            self.bleed_lp[1] = self.bleed_lp[1] * a + dl * (1.0 - a);
+            self.bleed_lp[0] = flush(self.bleed_lp[0] * a + dr * (1.0 - a));
+            self.bleed_lp[1] = flush(self.bleed_lp[1] * a + dl * (1.0 - a));
             let bleed_l = self.pinna[0].process_sample(self.bleed_lp[0]) * ILD;
             let bleed_r = self.pinna[1].process_sample(self.bleed_lp[1]) * ILD;
             buffer[base] = (wl + level * bleed_l) * norm;

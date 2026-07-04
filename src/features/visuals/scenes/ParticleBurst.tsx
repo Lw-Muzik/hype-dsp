@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useAudioData, useDprCanvas } from "./sceneKit";
+import { createFpsGate, useAudioData, useDprCanvas } from "./sceneKit";
 
 interface P {
   x: number;
@@ -11,6 +11,47 @@ interface P {
 }
 
 const MAX_PARTICLES = 1400;
+/** Life-progress buckets for the pre-baked particle sprites. */
+const SPRITE_STEPS = 64;
+const SPRITE_BLUR = 8;
+
+interface Sprite {
+  img: HTMLCanvasElement;
+  half: number;
+}
+
+/**
+ * Particle colour/size/glow are pure functions of life progress `t`, so bake
+ * one glowing dot per `t` bucket once (the old per-particle `shadowBlur = 8`
+ * arc, up to 1400 per frame, was a software-raster cliff on WebKitGTK). Each
+ * sprite is rendered exactly like the old path — same fill, same shadow — so
+ * a `drawImage` per particle is visually identical.
+ */
+function bakeSprites(): Sprite[] {
+  const sprites: Sprite[] = [];
+  for (let j = 0; j < SPRITE_STEPS; j++) {
+    const t = (j + 0.5) / SPRITE_STEPS;
+    const radius = 1.5 + t * 2.5;
+    const r = ((146 * (1 - t)) | 0) + 100;
+    const g = (197 + 25 * (1 - t)) | 0;
+    const b = (68 + 60 * (1 - t)) | 0;
+    const col = `rgba(${Math.min(246, r)},${g},${b},${t})`;
+
+    const half = Math.ceil(radius + SPRITE_BLUR + 2);
+    const img = document.createElement("canvas");
+    img.width = half * 2;
+    img.height = half * 2;
+    const ctx = img.getContext("2d")!;
+    ctx.fillStyle = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = SPRITE_BLUR;
+    ctx.beginPath();
+    ctx.arc(half, half, radius, 0, Math.PI * 2);
+    ctx.fill();
+    sprites.push({ img, half });
+  }
+  return sprites;
+}
 
 /**
  * Particle Burst (2D) — a particle field that explodes outward from the centre
@@ -28,11 +69,15 @@ export function ParticleBurst() {
     if (!canvas || !ctx) return;
     let raf = 0;
     let last = performance.now();
+    const gate = createFpsGate();
     const particles: P[] = [];
     let prevBeat = 0;
+    const sprites = bakeSprites();
 
     const draw = () => {
+      raf = requestAnimationFrame(draw);
       const now = performance.now();
+      if (!gate(now)) return;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const a = sample(dt);
@@ -64,7 +109,6 @@ export function ParticleBurst() {
       }
       prevBeat = a.beat;
 
-      ctx.shadowBlur = 8;
       for (let k = particles.length - 1; k >= 0; k--) {
         const p = particles[k];
         if (!p) continue;
@@ -78,21 +122,12 @@ export function ParticleBurst() {
         p.vx *= 0.95;
         p.vy *= 0.95;
         const t = 1 - p.life / p.max;
-        const r = ((146 * (1 - t)) | 0) + 100;
-        const g = ((197 + 25 * (1 - t)) | 0);
-        const b = ((68 + 60 * (1 - t)) | 0);
-        const col = `rgba(${Math.min(246, r)},${g},${b},${t})`;
-        ctx.fillStyle = col;
-        ctx.shadowColor = col;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 1.5 + t * 2.5, 0, Math.PI * 2);
-        ctx.fill();
+        const s = sprites[Math.min(SPRITE_STEPS - 1, (t * SPRITE_STEPS) | 0)]!;
+        ctx.drawImage(s.img, p.x - s.half, p.y - s.half);
       }
       if (particles.length > MAX_PARTICLES) {
         particles.splice(0, particles.length - MAX_PARTICLES);
       }
-
-      raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);

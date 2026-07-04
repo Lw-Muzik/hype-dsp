@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { MAX_DPR, useAudioData } from "./sceneKit";
+import { createFpsGate, MAX_DPR, useAudioData } from "./sceneKit";
 
 // Ashima/Gustavson 3D simplex noise — drives the surface displacement.
 const SNOISE = /* glsl */ `
@@ -132,8 +132,11 @@ export function AudioSphere() {
 
     let raf = 0;
     let last = performance.now();
+    const gate = createFpsGate();
     const draw = () => {
+      raf = requestAnimationFrame(draw);
       const now = performance.now();
+      if (!gate(now)) return;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const a = sample(dt);
@@ -146,7 +149,6 @@ export function AudioSphere() {
       mesh.rotation.x += dt * 0.05;
       mesh.scale.setScalar(1 + a.beat * 0.08);
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
 

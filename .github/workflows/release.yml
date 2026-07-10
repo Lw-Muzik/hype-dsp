@@ -58,6 +58,14 @@ jobs:
             build-essential \
             file
 
+      # The visualizer sidecar (built by beforeBuildCommand → build-sidecar.mjs)
+      # compiles libprojectM, whose Windows CMake requires GLEW (find_package(GLEW
+      # REQUIRED)). Without it the sidecar build fails and no installer is produced.
+      # Same static-md triplet as ci.yml's milkdrop job so it links into the DLL.
+      - name: Install Windows build dependencies (GLEW for libprojectM)
+        if: matrix.platform == 'windows-2022'
+        run: vcpkg --triplet=x64-windows-static-md install glew
+
       - name: Setup pnpm
         # Version comes from the "packageManager" field in package.json.
         uses: pnpm/action-setup@v4

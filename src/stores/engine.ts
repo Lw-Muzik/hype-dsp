@@ -37,7 +37,7 @@ import {
 } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
 import { BAND_COUNT } from "@/lib/types";
-import { classify, chooseStreamMode } from "./networkMode";
+import { classify, chooseStreamMode, loadNetworkMode, saveNetworkMode } from "./networkMode";
 import type { NetworkMode } from "./networkMode";
 import type {
   CloudEntry,
@@ -358,7 +358,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
   // versus a single track / stream the store advances itself (false). Decides
   // how a natural end-of-stream is interpreted.
   let gaplessQueueRunning = false;
-  let networkMode: NetworkMode = "unknown";
+  // Persisted across queues and restarts so a proven-slow link stays on the
+  // single-track path and a proven-fast one keeps crossfading; an unmeasured
+  // link starts "unknown", which chooseStreamMode treats optimistically.
+  let networkMode: NetworkMode = loadNetworkMode();
   let lastRebuffer = 0;
 
   const pushEq = (eq: EngineState["eq"]) => {
@@ -612,8 +615,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     if (items.length === 0) return;
     const start = Math.max(0, Math.min(index, items.length - 1));
     const { order, orderPos } = buildOrder(items.length, get().shuffle, start);
-    // Reset per-queue network classifier so each queue re-measures from scratch.
-    networkMode = "unknown";
+    // Carry the network classification across queues (persisted) instead of
+    // resetting to "unknown" — a fresh reset made every queue re-measure from
+    // scratch, and since the routing decision is taken at play-start, before
+    // any sample exists, cloud/phone queues always fell to the single-track
+    // (no-crossfade) path. Only the per-stream rebuffer counter is reset.
     lastRebuffer = 0;
     set({ queue: items, order, orderPos, queueIndex: order[orderPos]! });
     startPlayback(orderPos);
@@ -837,7 +843,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     applyProgress: (p) => {
       const delta = Math.max(0, p.rebufferCount - lastRebuffer);
       lastRebuffer = p.rebufferCount;
+      const prevMode = networkMode;
       networkMode = classify(networkMode, { downloadBps: p.downloadBps, rebufferDelta: delta });
+      if (networkMode !== prevMode) saveNetworkMode(networkMode);
       set((s) => ({
         positionSecs: p.positionSecs,
         // Keep a known (item-provided) duration until the backend learns one,

@@ -26,13 +26,14 @@ use std::sync::Arc;
 use objc2::runtime::ProtocolObject;
 use objc2::AllocAnyThread;
 use objc2_core_audio::{
-    kAudioHardwarePropertyDefaultOutputDevice, kAudioHardwarePropertyTranslatePIDToProcessObject,
-    kAudioObjectPropertyElementMain, kAudioObjectPropertyScopeGlobal, kAudioObjectSystemObject,
-    kAudioTapPropertyFormat, kAudioTapPropertyUID, AudioDeviceCreateIOProcID, AudioDeviceIOProcID,
-    AudioDeviceStart, AudioDeviceStop, AudioHardwareCreateAggregateDevice,
-    AudioHardwareCreateProcessTap, AudioHardwareDestroyAggregateDevice,
-    AudioHardwareDestroyProcessTap, AudioObjectAddPropertyListener, AudioObjectGetPropertyData,
-    AudioObjectID, AudioObjectPropertyAddress, AudioObjectRemovePropertyListener, CATapDescription,
+    kAudioDevicePropertyDeviceIsAlive, kAudioHardwarePropertyDefaultOutputDevice,
+    kAudioHardwarePropertyTranslatePIDToProcessObject, kAudioObjectPropertyElementMain,
+    kAudioObjectPropertyScopeGlobal, kAudioObjectSystemObject, kAudioTapPropertyFormat,
+    kAudioTapPropertyUID, AudioDeviceCreateIOProcID, AudioDeviceIOProcID, AudioDeviceStart,
+    AudioDeviceStop, AudioHardwareCreateAggregateDevice, AudioHardwareCreateProcessTap,
+    AudioHardwareDestroyAggregateDevice, AudioHardwareDestroyProcessTap,
+    AudioObjectAddPropertyListener, AudioObjectGetPropertyData, AudioObjectID,
+    AudioObjectPropertyAddress, AudioObjectRemovePropertyListener, CATapDescription,
     CATapMuteBehavior,
 };
 use objc2_core_audio_types::{AudioBufferList, AudioStreamBasicDescription, AudioTimeStamp};
@@ -54,10 +55,85 @@ use crate::{AudioSource, StreamFormat};
 /// same approach the per-app capture path uses (`HypeMuzikAppTap-{tap_id}`).
 static TAP_SEQ: AtomicU64 = AtomicU64::new(0);
 
+/// Upper bound on the `f32` samples we will read out of a single tap callback
+/// buffer. Real tap buffers are a few thousand frames; this clamp is a hard
+/// defence against a corrupt `mDataByteSize` (e.g. under memory pressure) turning
+/// `slice::from_raw_parts` into a wild, process-killing out-of-bounds read.
+const MAX_TAP_SAMPLES: usize = 1 << 20; // 1,048,576 f32 = 4 MiB
+
+/// `f32` sample count implied by a Core Audio `mDataByteSize`, clamped to
+/// [`MAX_TAP_SAMPLES`]. Pure so it is unit-tested without Core Audio.
+#[inline]
+fn samples_in(byte_size: u32) -> usize {
+    (byte_size as usize / size_of::<f32>()).min(MAX_TAP_SAMPLES)
+}
+
+/// Allocation-free liveness + first-callback telemetry for the capture io_proc.
+///
+/// The io_proc runs on a real-time Core Audio thread, where file I/O, string
+/// formatting, and heap allocation are all forbidden — any of them can stall the
+/// callback or, under memory pressure, abort the process across the
+/// `extern "C-unwind"` boundary. So the io_proc only ever does atomic stores into
+/// this struct; a *normal* thread (the engine's tap watchdog) reads them and logs.
+///
+/// [`beat`](Self::beat) is the capture-side heartbeat: the engine watchdog watches
+/// it to catch a starved/dead capture proc that would drain the ring and play
+/// silence while the *output* heartbeat still looks healthy (leaving every other
+/// app muted with no other symptom).
+#[derive(Debug, Default)]
+pub struct CaptureTelemetry {
+    /// Bumped once per io_proc callback — the capture-side liveness heartbeat.
+    beat: AtomicU64,
+    /// Bumped by the engine each time it (re)builds a tap, so the watchdog can log
+    /// the first-callback layout exactly once per tap instance.
+    generation: AtomicU64,
+    /// Cleared on each (re)build; set by the io_proc once it has recorded the
+    /// first callback's buffer layout into the fields below.
+    layout_ready: AtomicBool,
+    first_buffers: AtomicU32,
+    first_channels: AtomicU32,
+    first_bytes: AtomicU32,
+    first_peak_bits: AtomicU32,
+}
+
+impl CaptureTelemetry {
+    /// The capture heartbeat. Monotonic while the tap runs; a frozen value means
+    /// the capture io_proc has stalled or died.
+    pub fn beat(&self) -> u64 {
+        self.beat.load(Ordering::Relaxed)
+    }
+
+    /// Current tap generation (bumped on every (re)build).
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Relaxed)
+    }
+
+    /// Mark the start of a fresh tap instance: re-arm first-callback capture and
+    /// bump the generation. Called (off the RT thread) just before building a tap.
+    pub fn begin_generation(&self) {
+        self.layout_ready.store(false, Ordering::Relaxed);
+        self.generation.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The first callback's `(n_buffers, channels, bytes, peak)` once recorded, for
+    /// one-shot diagnostics from a non-RT thread. `None` until the io_proc has run.
+    pub fn first_layout(&self) -> Option<(u32, u32, u32, f32)> {
+        self.layout_ready.load(Ordering::Relaxed).then(|| {
+            (
+                self.first_buffers.load(Ordering::Relaxed),
+                self.first_channels.load(Ordering::Relaxed),
+                self.first_bytes.load(Ordering::Relaxed),
+                f32::from_bits(self.first_peak_bits.load(Ordering::Relaxed)),
+            )
+        })
+    }
+}
+
 /// IO callback context (heap-owned, freed on drop).
 struct TapContext {
     producer: rtrb::Producer<f32>,
-    dbg_calls: AtomicU32,
+    /// Shared with the engine + watchdog; the io_proc only ever *stores* into it.
+    tel: Arc<CaptureTelemetry>,
 }
 
 /// A live system-audio source backed by a Core Audio tap + aggregate device.
@@ -157,6 +233,13 @@ fn tap_format(tap_id: AudioObjectID) -> Result<AudioStreamBasicDescription, Audi
 }
 
 /// IO callback: push the tapped input buffer (interleaved f32) into the ring.
+///
+/// REAL-TIME HOT PATH. This runs on a Core Audio io thread, so it must not
+/// allocate, take locks, do I/O, format strings, or panic — a panic unwinding
+/// into Core Audio's C frames would abort the whole process (which, under memory
+/// pressure, is exactly how the tap used to crash). Every array access below is
+/// length-checked or `.get()`-guarded, every `from_raw_parts` length is clamped by
+/// [`samples_in`], and there are no `unwrap`s: no code path here can panic.
 unsafe extern "C-unwind" fn io_proc(
     _device: AudioObjectID,
     _now: NonNull<AudioTimeStamp>,
@@ -170,6 +253,11 @@ unsafe extern "C-unwind" fn io_proc(
         return 0;
     }
     let ctx = &mut *(client_data as *mut TapContext);
+    // Capture-side liveness heartbeat: one relaxed add, RT-safe. The engine
+    // watchdog watches this to notice a starved/dead capture proc that would
+    // otherwise leave the system muted with a still-healthy output heartbeat.
+    ctx.tel.beat.fetch_add(1, Ordering::Relaxed);
+
     let list = input_data.as_ref();
     let n_buffers = list.mNumberBuffers as usize;
     if n_buffers == 0 {
@@ -182,20 +270,23 @@ unsafe extern "C-unwind" fn io_proc(
         return 0;
     }
 
-    // --- DIAGNOSTIC (temporary): log the first few callbacks' buffer layout ---
-    if crate::diag::first_n(&ctx.dbg_calls, 6) {
-        let f32s = first.mDataByteSize as usize / size_of::<f32>();
-        let s = std::slice::from_raw_parts(first.mData as *const f32, f32s);
+    // First-callback layout telemetry — recorded into preallocated atomics only
+    // (a non-RT thread logs it later). No format!/log/alloc on this hot path.
+    if !ctx.tel.layout_ready.load(Ordering::Relaxed) {
+        let n = samples_in(first.mDataByteSize);
+        let s = std::slice::from_raw_parts(first.mData as *const f32, n);
         let peak = s.iter().fold(0.0_f32, |m, v| m.max(v.abs()));
-        let b1ch = if n_buffers >= 2 {
-            buffers[1].mNumberChannels as i32
-        } else {
-            -1
-        };
-        crate::diag::log(&format!(
-            "io_proc: n_buffers={} buf0.ch={} buf0.bytes={} buf1.ch={} buf0_peak={:.4}",
-            n_buffers, first.mNumberChannels, first.mDataByteSize, b1ch, peak,
-        ));
+        ctx.tel.first_buffers.store(n_buffers as u32, Ordering::Relaxed);
+        ctx.tel
+            .first_channels
+            .store(first.mNumberChannels, Ordering::Relaxed);
+        ctx.tel
+            .first_bytes
+            .store(first.mDataByteSize, Ordering::Relaxed);
+        ctx.tel
+            .first_peak_bits
+            .store(peak.to_bits(), Ordering::Relaxed);
+        ctx.tel.layout_ready.store(true, Ordering::Relaxed);
     }
 
     // Verified layout: a single interleaved packed-float stereo buffer
@@ -204,13 +295,13 @@ unsafe extern "C-unwind" fn io_proc(
     // free — so a full ring drops whole frames and never desyncs the channels.
     if n_buffers >= 2 {
         // Defensive: non-interleaved planes (not observed from the tap).
-        let frames = first.mDataByteSize as usize / size_of::<f32>();
+        let frames = samples_in(first.mDataByteSize);
         let left = std::slice::from_raw_parts(first.mData as *const f32, frames);
         let right_buf = &buffers[1];
         let right = if right_buf.mData.is_null() {
             left
         } else {
-            let rn = (right_buf.mDataByteSize as usize / size_of::<f32>()).min(frames);
+            let rn = samples_in(right_buf.mDataByteSize).min(frames);
             std::slice::from_raw_parts(right_buf.mData as *const f32, rn)
         };
         for (i, &l) in left.iter().enumerate() {
@@ -224,7 +315,7 @@ unsafe extern "C-unwind" fn io_proc(
     } else {
         // Single buffer: interleaved by channel count.
         let in_ch = first.mNumberChannels.max(1) as usize;
-        let count = first.mDataByteSize as usize / size_of::<f32>();
+        let count = samples_in(first.mDataByteSize);
         let samples = std::slice::from_raw_parts(first.mData as *const f32, count);
         for frame in samples.chunks(in_ch) {
             if ctx.producer.slots() < 2 {
@@ -242,10 +333,16 @@ unsafe extern "C-unwind" fn io_proc(
 impl SystemTapSource {
     /// Build the tap + aggregate device and start capture. May trigger the
     /// audio-capture permission prompt on first use.
-    pub fn new(device_rate: u32) -> Result<Self, AudioError> {
+    ///
+    /// `tel` is the shared capture telemetry: its heartbeat is bumped by the io
+    /// proc and watched by the engine watchdog, and a fresh generation is started
+    /// here so first-callback diagnostics are re-armed for this new tap instance.
+    pub fn new(device_rate: u32, tel: Arc<CaptureTelemetry>) -> Result<Self, AudioError> {
         crate::diag::log(&format!(
             "=== SystemTapSource::new(device_rate={device_rate}) ==="
         ));
+        // Re-arm first-callback capture for this (re)built tap (non-RT).
+        tel.begin_generation();
         let own = own_process_object()?;
         // Process-unique suffix: distinct UID per (re)build so a fresh aggregate
         // never collides with the async teardown of the previous one.
@@ -299,10 +396,7 @@ impl SystemTapSource {
 
         let capacity = (device_rate.max(8_000) as usize) * 2 * 2;
         let (producer, consumer) = RingBuffer::<f32>::new(capacity);
-        let ctx = Box::into_raw(Box::new(TapContext {
-            producer,
-            dbg_calls: AtomicU32::new(0),
-        }));
+        let ctx = Box::into_raw(Box::new(TapContext { producer, tel }));
 
         let mut proc_id: AudioDeviceIOProcID = None;
         let status = unsafe {
@@ -505,6 +599,55 @@ pub fn available() -> bool {
     true
 }
 
+/// The system's current default **output** device, or `None` if it can't be
+/// resolved. The watchdog compares this against the device the tap was built on to
+/// tell a real default-device change (rebuild required) from a mere output stall.
+pub fn default_output_device_id() -> Option<AudioObjectID> {
+    let address = addr(kAudioHardwarePropertyDefaultOutputDevice);
+    let mut device: AudioObjectID = 0;
+    let mut size = size_of::<AudioObjectID>() as u32;
+    let status = unsafe {
+        AudioObjectGetPropertyData(
+            kAudioObjectSystemObject as AudioObjectID,
+            NonNull::from(&address),
+            0,
+            std::ptr::null(),
+            NonNull::from(&mut size),
+            NonNull::new(&mut device as *mut AudioObjectID as *mut c_void).unwrap(),
+        )
+    };
+    (status == 0 && device != 0).then_some(device)
+}
+
+/// Whether `device` currently reports itself alive
+/// (`kAudioDevicePropertyDeviceIsAlive`). Used before tearing a tap down: an
+/// *alive* device that merely stopped feeding the output callback is CPU
+/// starvation, not death, so the watchdog must NOT rebuild (which would churn
+/// coreaudiod and drop the EQ).
+///
+/// Fail-open: an unknown (`0`) device or a failed query returns `true`, so a
+/// transient probe glitch never triggers a needless — and possibly muting —
+/// teardown.
+pub fn device_is_alive(device: AudioObjectID) -> bool {
+    if device == 0 {
+        return true;
+    }
+    let address = addr(kAudioDevicePropertyDeviceIsAlive);
+    let mut alive: u32 = 0;
+    let mut size = size_of::<u32>() as u32;
+    let status = unsafe {
+        AudioObjectGetPropertyData(
+            device,
+            NonNull::from(&address),
+            0,
+            std::ptr::null(),
+            NonNull::from(&mut size),
+            NonNull::new(&mut alive as *mut u32 as *mut c_void).unwrap(),
+        )
+    };
+    status != 0 || alive != 0
+}
+
 /// Heap context for the default-output-device listener: a callback invoked from
 /// a Core Audio notification thread. Boxed and handed to the registration as
 /// `clientData`; reclaimed in [`DefaultOutputListener::drop`].
@@ -513,8 +656,12 @@ struct ListenerCtx {
 }
 
 /// Core Audio property-listener proc. The HAL invokes a given (proc, clientData)
-/// registration serially, so reading the shared `ListenerCtx` here is sound; the
-/// callback itself only touches `Send`-safe state (atomics + a channel sender).
+/// registration serially, so reading the shared `ListenerCtx` here is sound.
+///
+/// This runs on a Core Audio notification thread and unwinding into the HAL's C
+/// frames would abort the process, so `on_change` MUST be allocation-free and
+/// panic-free — the engine passes a closure that only flips an `AtomicBool`; the
+/// watchdog thread does the actual (allocating) channel send.
 unsafe extern "C-unwind" fn default_device_listener_proc(
     _object: AudioObjectID,
     _num_addresses: u32,
@@ -549,9 +696,10 @@ unsafe impl Sync for DefaultOutputListener {}
 
 impl DefaultOutputListener {
     /// Register a default-output-device listener on the system object. `on_change`
-    /// must be cheap and non-blocking (it runs on a Core Audio notification
-    /// thread). Returns an error if registration fails; the caller can treat that
-    /// as "no proactive recovery" and rely on the watchdog.
+    /// runs on a Core Audio notification thread, so it MUST be allocation-free and
+    /// panic-free (see [`default_device_listener_proc`]) — flip an atomic only.
+    /// Returns an error if registration fails; the caller can treat that as "no
+    /// proactive recovery" and rely on the watchdog.
     pub fn new(on_change: Box<dyn Fn() + Send>) -> Result<Self, AudioError> {
         let ctx = Box::into_raw(Box::new(ListenerCtx { on_change }));
         let address = addr(kAudioHardwarePropertyDefaultOutputDevice);
@@ -586,5 +734,59 @@ impl Drop for DefaultOutputListener {
             );
             drop(Box::from_raw(self.ctx));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn samples_in_divides_bytes_by_f32_width() {
+        assert_eq!(samples_in(0), 0);
+        assert_eq!(samples_in(4), 1);
+        assert_eq!(samples_in(4096), 1024);
+        // Non-multiples truncate toward zero (partial trailing float ignored).
+        assert_eq!(samples_in(7), 1);
+    }
+
+    #[test]
+    fn samples_in_clamps_a_corrupt_bytesize() {
+        // A wild/corrupt mDataByteSize must never yield a slice length past the
+        // hard cap — this is the guard against an out-of-bounds read killing us.
+        assert_eq!(samples_in(u32::MAX), MAX_TAP_SAMPLES);
+    }
+
+    #[test]
+    fn device_is_alive_fails_open_for_unknown_device() {
+        // Device id 0 (not yet recorded) must be treated as alive so the watchdog
+        // never tears down a tap it can't positively confirm is dead.
+        assert!(device_is_alive(0));
+    }
+
+    #[test]
+    fn capture_telemetry_generation_and_layout_roundtrip() {
+        let tel = CaptureTelemetry::default();
+        assert_eq!(tel.beat(), 0);
+        assert_eq!(tel.generation(), 0);
+        assert!(tel.first_layout().is_none());
+
+        tel.begin_generation();
+        assert_eq!(tel.generation(), 1);
+        // begin_generation re-arms layout capture (stays None until the io proc runs).
+        assert!(tel.first_layout().is_none());
+
+        // Simulate what the io proc records (via the internal atomics).
+        tel.first_buffers.store(1, Ordering::Relaxed);
+        tel.first_channels.store(2, Ordering::Relaxed);
+        tel.first_bytes.store(4096, Ordering::Relaxed);
+        tel.first_peak_bits.store(0.5f32.to_bits(), Ordering::Relaxed);
+        tel.layout_ready.store(true, Ordering::Relaxed);
+        assert_eq!(tel.first_layout(), Some((1, 2, 4096, 0.5)));
+
+        // A fresh generation clears the layout again.
+        tel.begin_generation();
+        assert_eq!(tel.generation(), 2);
+        assert!(tel.first_layout().is_none());
     }
 }

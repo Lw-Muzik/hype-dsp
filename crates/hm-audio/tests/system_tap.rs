@@ -11,12 +11,14 @@
 
 #![cfg(target_os = "macos")]
 
-use hm_audio::system_tap::SystemTapSource;
+use std::sync::Arc;
+
+use hm_audio::system_tap::{CaptureTelemetry, SystemTapSource};
 
 #[test]
 #[ignore = "creates a Core Audio tap; may trigger the audio-capture permission prompt"]
 fn tap_creation_does_not_crash() {
-    match SystemTapSource::new(48_000) {
+    match SystemTapSource::new(48_000, Arc::new(CaptureTelemetry::default())) {
         Ok(source) => {
             eprintln!("system tap created OK");
             drop(source);

@@ -591,6 +591,18 @@ export function systemAudioStatus(): Promise<SystemAudioStatus> {
   return invoke<SystemAudioStatus>("system_audio_status");
 }
 
+/** Runtime state of system-wide EQ. `"recovering"` means a transient failure
+ *  (e.g. a macOS tap stall under heavy load, or a device change) is being
+ *  recovered from in the background — audio is restored but currently unequalised
+ *  — rather than the EQ having silently stopped. */
+export type SystemEqRuntimeStatus = "active" | "recovering" | "disabled";
+
+/** Poll the current runtime state of system-wide EQ (active / recovering /
+ *  disabled), so the UI can surface background recovery instead of a silent stall. */
+export function systemEqStatus(): Promise<SystemEqRuntimeStatus> {
+  return invoke<SystemEqRuntimeStatus>("system_eq_status");
+}
+
 /** Install the bundled Windows virtual-audio driver (prompts for admin via UAC).
  *  No-op on platforms that need no driver. Re-query {@link systemAudioStatus}
  *  afterwards to confirm the device enumerated. */

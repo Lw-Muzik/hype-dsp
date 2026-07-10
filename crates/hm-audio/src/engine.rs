@@ -17,7 +17,9 @@
 //! [`stop`]: AudioEngine::stop
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{
+    AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
+};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -45,15 +47,42 @@ use crate::streaming::{RadioStreamSource, StreamTuning};
 use crate::system_tap::SystemTapSource;
 use crate::{AudioSource, StreamFormat};
 
-/// Output-liveness tracker for the macOS system-tap watchdog.
+/// The user-facing state of system-wide EQ, so the UI can distinguish "running"
+/// from "temporarily recovering" from "off". Read over IPC via a Tauri command.
 ///
-/// The audio callback bumps a heartbeat counter every block. This samples that
-/// counter on a fixed cadence and reports when the output has frozen for
-/// `threshold` consecutive samples *while a tap session is meant to be running*
-/// — the signature of a dead output stream (e.g. after a default-output-device
-/// change). Because the macOS tap mutes every other app, a dead output would
-/// otherwise leave the whole system silent until the app is restarted, so the
-/// watchdog rebuilds the tap on the current default device when this fires.
+/// Serialised as its lowercase variant name (`"active"` / `"recovering"` /
+/// `"disabled"`) for the frontend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+#[repr(u8)]
+pub enum SystemEqStatus {
+    /// Not running (never started, or turned off / superseded by normal playback).
+    Disabled = 0,
+    /// The tap is running and equalising system audio normally.
+    Active = 1,
+    /// A transient failure is being recovered from (rebuilding, or in a post-
+    /// give-up cool-down before the next retry). Audio is restored but unequalised.
+    Recovering = 2,
+}
+
+impl SystemEqStatus {
+    fn from_u8(v: u8) -> Self {
+        match v {
+            1 => SystemEqStatus::Active,
+            2 => SystemEqStatus::Recovering,
+            _ => SystemEqStatus::Disabled,
+        }
+    }
+}
+
+/// Output/capture-liveness tracker for the macOS system-tap watchdog.
+///
+/// The relevant callback bumps a heartbeat counter every block. This samples that
+/// counter on a fixed cadence and reports how many consecutive samples it has been
+/// frozen *while a tap session is meant to be running*. The watchdog treats a
+/// count at/above its threshold as a stall and then decides (via
+/// [`assess_tap_stall`]) whether that stall is a real device death/change (rebuild)
+/// or mere CPU starvation on a live device (back off).
 ///
 /// Pure and side-effect-free so it is unit-tested without Core Audio. Compiled on
 /// every platform (the tests run on the dev host); only the macOS watchdog uses it.
@@ -74,25 +103,104 @@ impl StallDetector {
     }
 
     /// Feed the latest heartbeat and whether a tap session should be live (i.e.
-    /// the tap is engaged and not paused). Returns `true` exactly when a rebuild
-    /// should fire, and re-arms so a still-dead output retries after another full
-    /// window rather than spinning.
-    fn observe(&mut self, beat: u64, active: bool, threshold: u32) -> bool {
+    /// the tap is engaged and not paused). Returns the number of consecutive
+    /// samples the heartbeat has been frozen — `0` the instant it advances, or
+    /// while inactive. The caller compares this against its stall threshold.
+    fn observe(&mut self, beat: u64, active: bool) -> u32 {
         if !active || beat != self.last_beat {
             // Not our concern, or output is progressing — healthy.
             self.last_beat = beat;
             self.misses = 0;
-            return false;
-        }
-        // Frozen heartbeat while the tap is supposed to be running.
-        self.misses += 1;
-        if self.misses >= threshold {
-            self.misses = 0; // re-arm: retry after another full window
-            true
         } else {
-            false
+            // Frozen heartbeat while the tap is supposed to be running.
+            self.misses += 1;
         }
+        self.misses
     }
+
+    /// Re-arm: forget the current freeze so a fresh stall must accumulate a full
+    /// window again. Called after the watchdog acts on a stall (rebuild or back
+    /// off) so it neither spins nor immediately re-fires.
+    fn reset(&mut self) {
+        self.misses = 0;
+    }
+}
+
+/// What the watchdog should do about a suspected tap stall. Kept as a small pure
+/// enum so the decision — the crux of telling CPU starvation from device death —
+/// is unit-tested without Core Audio.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TapAction {
+    /// Output + capture are progressing — nothing to do.
+    Healthy,
+    /// A confirmed device death / default-device change, or a dead capture proc:
+    /// tear the tap down and rebuild it on the current default device.
+    Rebuild,
+    /// A freeze on a live, unchanged device that looks like CPU starvation: keep
+    /// the existing tap and wait longer rather than churn coreaudiod (which drops
+    /// the EQ and can wedge the audio server under the very load that caused this).
+    BackOff,
+}
+
+/// Decide what to do about a suspected tap stall. Pure so it is unit-tested
+/// without Core Audio; this is the heart of the "starvation vs. death" fix.
+///
+/// - `output_stalled` / `capture_stalled`: the output / capture heartbeat has been
+///   frozen for a full detection window while a tap session is live.
+/// - `device_alive` / `device_changed`: liveness and identity of the output device
+///   the tap was built against, from Core Audio.
+/// - `backoff_exhausted`: we have already backed off the maximum number of times
+///   for this stall, so a bounded rebuild attempt is now warranted even on an
+///   ostensibly-alive device (e.g. a same-device sample-rate change kills the
+///   output stream while the device still reports alive — only a rebuild recovers).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn assess_tap_stall(
+    output_stalled: bool,
+    capture_stalled: bool,
+    device_alive: bool,
+    device_changed: bool,
+    backoff_exhausted: bool,
+) -> TapAction {
+    if !output_stalled && !capture_stalled {
+        return TapAction::Healthy;
+    }
+    // A real device death or default-device change: the current tap can never
+    // recover on its own — rebuild on the (new) default device.
+    if device_changed || !device_alive {
+        return TapAction::Rebuild;
+    }
+    // Device is alive and unchanged from here on.
+    //
+    // Capture frozen while the OUTPUT is still ticking proves callbacks CAN run
+    // (so it isn't global CPU starvation): the tap's capture io_proc is genuinely
+    // dead, and only a rebuild restarts it. This is "Chain B" — the failure that
+    // otherwise leaves every app muted with a perfectly healthy output heartbeat.
+    if capture_stalled && !output_stalled {
+        return TapAction::Rebuild;
+    }
+    // Otherwise (output stalled, or BOTH stalled) on a live, unchanged device: this
+    // looks like CPU starvation — a starved callback is indistinguishable from a
+    // dead one by heartbeat alone. Keep the tap and wait, unless we have already
+    // waited the maximum, in which case attempt one bounded rebuild anyway.
+    if backoff_exhausted {
+        TapAction::Rebuild
+    } else {
+        TapAction::BackOff
+    }
+}
+
+/// Cool-down (seconds) before the watchdog re-arms a tap rebuild after a give-up,
+/// growing exponentially with the number of consecutive give-ups and capped so we
+/// keep retrying forever instead of silently disabling system EQ. Pure/tested.
+///
+/// `1 → 30s, 2 → 60s, 3 → 120s, 4 → 240s, 5+ → 300s`.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn cooldown_secs(giveup_count: u32) -> u64 {
+    const BASE: u64 = 30;
+    const CAP: u64 = 300;
+    let shift = giveup_count.saturating_sub(1).min(4);
+    BASE.saturating_mul(1u64 << shift).min(CAP)
 }
 
 /// Bounds how hard the watchdog retries before giving up. Rapidly recreating the
@@ -492,6 +600,15 @@ pub struct AudioEngine {
     /// watchdog's stall window. Held only for its `Drop` (which unregisters it).
     #[cfg(target_os = "macos")]
     _device_listener: Option<crate::system_tap::DefaultOutputListener>,
+    /// Shared capture telemetry for the macOS tap: the io_proc bumps its heartbeat
+    /// (RT-safe) and the watchdog watches it. Held here so `play_system_tap` can
+    /// build the tap against the same instance the watchdog/control thread share.
+    #[cfg(target_os = "macos")]
+    capture_tel: Arc<crate::system_tap::CaptureTelemetry>,
+    /// Current system-wide-EQ status (`Active`/`Recovering`/`Disabled`), readable
+    /// over IPC so the UI can reflect recovery instead of a silent stall. Written
+    /// by the control + watchdog threads; read by [`AudioEngine::system_eq_status`].
+    system_eq_status: Arc<AtomicU8>,
     ctrl: Mutex<mpsc::Sender<EngineCommand>>,
     /// Active self-contained system-wide EQ pipeline (Linux/Windows re-routing).
     /// Held only to keep it running; dropping it tears the routing down. `Send`-
@@ -553,6 +670,16 @@ impl AudioEngine {
         let output_beat = Arc::new(AtomicU64::new(0));
         let tap_active = Arc::new(AtomicBool::new(false));
         let tap_rebuild_pending = Arc::new(AtomicBool::new(false));
+        let system_eq_status = Arc::new(AtomicU8::new(SystemEqStatus::Disabled as u8));
+        // macOS tap-recovery state (see `tap_watchdog` / `RestartSystemTap`).
+        #[cfg(target_os = "macos")]
+        let capture_tel = Arc::new(crate::system_tap::CaptureTelemetry::default());
+        #[cfg(target_os = "macos")]
+        let tap_output_device_id = Arc::new(AtomicU32::new(0));
+        #[cfg(target_os = "macos")]
+        let tap_gave_up = Arc::new(AtomicBool::new(false));
+        #[cfg(target_os = "macos")]
+        let device_change_signal = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
 
         let thread = {
@@ -572,6 +699,14 @@ impl AudioEngine {
             let output_beat = output_beat.clone();
             let tap_active = tap_active.clone();
             let tap_rebuild_pending = tap_rebuild_pending.clone();
+            #[cfg(target_os = "macos")]
+            let system_eq_status = system_eq_status.clone();
+            #[cfg(target_os = "macos")]
+            let capture_tel = capture_tel.clone();
+            #[cfg(target_os = "macos")]
+            let tap_output_device_id = tap_output_device_id.clone();
+            #[cfg(target_os = "macos")]
+            let tap_gave_up = tap_gave_up.clone();
             std::thread::Builder::new()
                 .name("hm-audio-engine".into())
                 .spawn(move || {
@@ -593,6 +728,14 @@ impl AudioEngine {
                         output_beat,
                         tap_active,
                         tap_rebuild_pending,
+                        #[cfg(target_os = "macos")]
+                        system_eq_status,
+                        #[cfg(target_os = "macos")]
+                        capture_tel,
+                        #[cfg(target_os = "macos")]
+                        tap_output_device_id,
+                        #[cfg(target_os = "macos")]
+                        tap_gave_up,
                     })
                 })
                 .expect("failed to spawn hm-audio engine thread")
@@ -606,35 +749,39 @@ impl AudioEngine {
         let watchdog_alive = Arc::new(AtomicBool::new(true));
         #[cfg(target_os = "macos")]
         {
-            let alive = watchdog_alive.clone();
-            let beat = output_beat.clone();
-            let tap_active = tap_active.clone();
-            let paused = paused.clone();
-            let pending = tap_rebuild_pending.clone();
-            let ctrl = tx.clone();
             std::thread::Builder::new()
                 .name("hm-audio-tap-watchdog".into())
-                .spawn(move || tap_watchdog(alive, beat, tap_active, paused, pending, ctrl))
+                .spawn({
+                    let watch = TapWatch {
+                        alive: watchdog_alive.clone(),
+                        output_beat: output_beat.clone(),
+                        capture_tel: capture_tel.clone(),
+                        tap_active: tap_active.clone(),
+                        paused: paused.clone(),
+                        rebuild_pending: tap_rebuild_pending.clone(),
+                        tap_output_device_id: tap_output_device_id.clone(),
+                        tap_gave_up: tap_gave_up.clone(),
+                        device_change_signal: device_change_signal.clone(),
+                        status: system_eq_status.clone(),
+                        ctrl: tx.clone(),
+                    };
+                    move || tap_watchdog(watch)
+                })
                 .expect("failed to spawn hm-audio tap watchdog");
         }
 
-        // Proactive recovery: rebuild the tap the instant macOS switches the
-        // default output device (one rebuild, coalesced with the watchdog via the
-        // in-flight flag). `None` if registration fails — the watchdog backstops.
+        // Proactive recovery: the instant macOS switches the default output device,
+        // flag it so the watchdog rebuilds the tap on the new device on its next
+        // tick. The listener callback runs on a Core Audio thread and must be
+        // allocation-free (an mpsc send allocates and could abort across the
+        // `C-unwind` boundary under memory pressure), so it ONLY flips an atomic;
+        // the watchdog thread performs the channel send. `None` if registration
+        // fails — the watchdog's stall detection backstops it.
         #[cfg(target_os = "macos")]
         let device_listener = {
-            let ctrl = tx.clone();
-            let tap_active = tap_active.clone();
-            let pending = tap_rebuild_pending.clone();
+            let signal = device_change_signal.clone();
             crate::system_tap::DefaultOutputListener::new(Box::new(move || {
-                // Act only while the tap is engaged; `swap` is the single
-                // coalescing point shared with the watchdog, so a device change
-                // requests exactly one rebuild.
-                if tap_active.load(Ordering::Relaxed)
-                    && !pending.swap(true, Ordering::Relaxed)
-                {
-                    let _ = ctrl.send(EngineCommand::RestartSystemTap);
-                }
+                signal.store(true, Ordering::Relaxed);
             }))
             .ok()
         };
@@ -658,6 +805,9 @@ impl AudioEngine {
             watchdog_alive,
             #[cfg(target_os = "macos")]
             _device_listener: device_listener,
+            #[cfg(target_os = "macos")]
+            capture_tel,
+            system_eq_status,
             ctrl: Mutex::new(tx),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             system_eq: Mutex::new(None),
@@ -690,6 +840,15 @@ impl AudioEngine {
     /// (e.g. an autosave loop that persists settings when they change).
     pub fn state_handle(&self) -> Arc<ArcSwap<EngineState>> {
         self.shared.clone()
+    }
+
+    /// Current system-wide-EQ status (`Active` / `Recovering` / `Disabled`).
+    ///
+    /// On macOS this reflects the tap watchdog's live view — notably `Recovering`
+    /// while a stall is being rebuilt or is in a post-give-up cool-down, so the UI
+    /// can show "recovering…" instead of appearing to have silently died.
+    pub fn system_eq_status(&self) -> SystemEqStatus {
+        SystemEqStatus::from_u8(self.system_eq_status.load(Ordering::Relaxed))
     }
 
     fn update(&self, f: impl FnOnce(&mut EngineState)) {
@@ -1101,7 +1260,7 @@ impl AudioEngine {
     /// its error synchronously (e.g. permission denied).
     #[cfg(target_os = "macos")]
     pub fn play_system_tap(&self) -> Result<(), AudioError> {
-        let source = SystemTapSource::new(48_000)?;
+        let source = SystemTapSource::new(48_000, self.capture_tel.clone())?;
         self.ctrl
             .lock()
             .expect("engine ctrl poisoned")
@@ -1125,6 +1284,8 @@ impl AudioEngine {
         let session: Box<dyn Send> =
             Box::new(crate::system_eq_windows::WindowsSystemEq::start(state)?);
         *self.system_eq.lock().expect("system_eq poisoned") = Some(session);
+        self.system_eq_status
+            .store(SystemEqStatus::Active as u8, Ordering::Relaxed);
         Ok(())
     }
 
@@ -1133,6 +1294,8 @@ impl AudioEngine {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub fn stop_system_eq(&self) {
         *self.system_eq.lock().expect("system_eq poisoned") = None;
+        self.system_eq_status
+            .store(SystemEqStatus::Disabled as u8, Ordering::Relaxed);
     }
 
     /// Stop playback.
@@ -1229,6 +1392,25 @@ struct ControlCtx {
     /// control thread once that rebuild attempt finishes, so only one rebuild is
     /// ever in flight (no create/destroy storm while the heartbeat is frozen).
     tap_rebuild_pending: Arc<AtomicBool>,
+    /// User-facing system-EQ status; the control thread sets `Active` on a good
+    /// (re)build, `Recovering` while rebuilding / cooling down, `Disabled` on stop.
+    /// macOS-only in the control thread — the Linux/Windows self-contained EQ sets
+    /// its status directly in `start_system_eq` / `stop_system_eq`.
+    #[cfg(target_os = "macos")]
+    system_eq_status: Arc<AtomicU8>,
+    /// Shared macOS tap capture telemetry (heartbeat + first-callback layout),
+    /// passed to each rebuilt `SystemTapSource` and watched by the watchdog.
+    #[cfg(target_os = "macos")]
+    capture_tel: Arc<crate::system_tap::CaptureTelemetry>,
+    /// Core Audio id of the output device the current tap was built against, so the
+    /// watchdog can tell a real default-device change from a mere output stall.
+    #[cfg(target_os = "macos")]
+    tap_output_device_id: Arc<AtomicU32>,
+    /// Raised by the control thread when it gives up a rebuild burst (audio is
+    /// restored unequalised); the watchdog reads it to start a cool-down before the
+    /// next retry, so system EQ is never disabled permanently or silently.
+    #[cfg(target_os = "macos")]
+    tap_gave_up: Arc<AtomicBool>,
 }
 
 fn control_loop(ctx: ControlCtx) {
@@ -1250,10 +1432,19 @@ fn control_loop(ctx: ControlCtx) {
         output_beat,
         tap_active,
         tap_rebuild_pending,
+        #[cfg(target_os = "macos")]
+        system_eq_status,
+        #[cfg(target_os = "macos")]
+        capture_tel,
+        #[cfg(target_os = "macos")]
+        tap_output_device_id,
+        #[cfg(target_os = "macos")]
+        tap_gave_up,
     } = ctx;
     let setup = output_setup().ok();
     // macOS tap-recovery budget: after this many consecutive failed rebuilds we
-    // disable the tap (fail safe to unmuted) rather than churn coreaudiod.
+    // stop the current burst, restore audio, and hand off to a watchdog cool-down
+    // rather than churn coreaudiod.
     #[cfg(target_os = "macos")]
     let mut rebuild_policy = RebuildPolicy::new(4);
     // The active stream is held only to keep audio flowing (RAII); replacing or
@@ -1302,7 +1493,14 @@ fn control_loop(ctx: ControlCtx) {
             | EngineCommand::Shutdown => {}
             #[cfg(target_os = "macos")]
             EngineCommand::RestartSystemTap => {}
-            _ => tap_active.store(false, Ordering::Relaxed),
+            _ => {
+                tap_active.store(false, Ordering::Relaxed);
+                // Normal playback superseded the macOS tap: system EQ is off. (The
+                // Linux/Windows self-contained EQ is independent of playback, so it
+                // is left to `start_system_eq`/`stop_system_eq` to set its status.)
+                #[cfg(target_os = "macos")]
+                system_eq_status.store(SystemEqStatus::Disabled as u8, Ordering::Relaxed);
+            }
         }
         match cmd {
             EngineCommand::Play(audio) => {
@@ -1596,14 +1794,19 @@ fn control_loop(ctx: ControlCtx) {
                 spectrum.zero();
                 paused.store(false, Ordering::Relaxed);
                 // A fresh manual (re)enable supersedes any in-flight watchdog
-                // rebuild and starts the recovery budget over.
+                // rebuild / cool-down and starts the recovery budget over.
                 tap_rebuild_pending.store(false, Ordering::Relaxed);
                 #[cfg(target_os = "macos")]
-                rebuild_policy.on_success();
+                {
+                    rebuild_policy.on_success();
+                    tap_gave_up.store(false, Ordering::Relaxed);
+                }
                 let Some((device, config)) = &setup else {
                     crate::diag::log("PlaySource: NO OUTPUT SETUP — aborting");
                     playing.store(false, Ordering::Relaxed);
                     tap_active.store(false, Ordering::Relaxed);
+                    #[cfg(target_os = "macos")]
+                    system_eq_status.store(SystemEqStatus::Disabled as u8, Ordering::Relaxed);
                     continue;
                 };
                 let sample_rate = config.sample_rate;
@@ -1634,40 +1837,57 @@ fn control_loop(ctx: ControlCtx) {
                         // This is the macOS system tap: arm the watchdog so a dead
                         // output stream is rebuilt instead of muting the system.
                         tap_active.store(true, Ordering::Relaxed);
+                        // Record the output device this tap was built against and
+                        // mark system EQ Active, so the watchdog can later tell a
+                        // real device change from a mere stall.
+                        #[cfg(target_os = "macos")]
+                        {
+                            let dev = crate::system_tap::default_output_device_id().unwrap_or(0);
+                            tap_output_device_id.store(dev, Ordering::Relaxed);
+                            system_eq_status.store(SystemEqStatus::Active as u8, Ordering::Relaxed);
+                        }
                         active = Some(s);
                     }
                     _ => {
                         playing.store(false, Ordering::Relaxed);
                         tap_active.store(false, Ordering::Relaxed);
+                        #[cfg(target_os = "macos")]
+                        system_eq_status.store(SystemEqStatus::Disabled as u8, Ordering::Relaxed);
                     }
                 }
             }
-            // Watchdog-driven recovery: the tap's output stream died (e.g. a
-            // default-output-device change). Rebuild a fresh tap on the *current*
-            // default device. Re-resolving here (rather than the frozen startup
-            // `setup`) is what lets the tap follow the new device.
+            // Watchdog-driven recovery: the tap's output/capture stream died (e.g. a
+            // default-output-device change, or a dead capture io_proc). Rebuild a
+            // fresh tap on the *current* default device. Re-resolving here (rather
+            // than the frozen startup `setup`) is what lets the tap follow the new
+            // device. The watchdog has already confirmed (via `assess_tap_stall`)
+            // that this is a real death/change and not mere CPU starvation.
             //
             // The watchdog sets `tap_rebuild_pending` before sending this and we
             // clear it on every exit, so at most one rebuild is ever in flight —
             // no create/destroy storm (which used to wedge coreaudiod and strand a
-            // muting tap). After `rebuild_policy` exhausts its budget we disable
-            // the tap entirely: audio is restored unequalised rather than risk
-            // leaving every app muted until the user quits.
+            // muting tap). When `rebuild_policy` exhausts its per-burst budget we do
+            // NOT disable system EQ forever: we restore audio (unequalised) and set
+            // `tap_gave_up`, handing off to the watchdog's exponential cool-down
+            // re-arm — so the tap keeps trying to come back and the UI can observe
+            // `Recovering` instead of a silent permanent failure.
             #[cfg(target_os = "macos")]
             EngineCommand::RestartSystemTap => {
                 if !tap_active.load(Ordering::Relaxed) {
                     tap_rebuild_pending.store(false, Ordering::Relaxed);
                     continue; // user turned the tap off in the meantime
                 }
+                system_eq_status.store(SystemEqStatus::Recovering as u8, Ordering::Relaxed);
                 crate::diag::log("RestartSystemTap: rebuilding tap on current default device");
                 drop(active.take()); // tear down old tap (unmutes) + dead stream
                 let Ok((device, config)) = output_setup() else {
                     crate::diag::log("RestartSystemTap: no output device — will retry");
                     playing.store(false, Ordering::Relaxed);
                     if rebuild_policy.on_failure() {
-                        tap_active.store(false, Ordering::Relaxed);
+                        tap_gave_up.store(true, Ordering::Relaxed);
                         crate::diag::log(
-                            "RestartSystemTap: giving up (no output device) — system EQ disabled",
+                            "RestartSystemTap: no output device after repeated tries — audio \
+                             restored; watchdog will retry after a cool-down",
                         );
                     }
                     tap_rebuild_pending.store(false, Ordering::Relaxed);
@@ -1676,7 +1896,7 @@ fn control_loop(ctx: ControlCtx) {
                 let sample_rate = config.sample_rate;
                 let channels = config.channels as usize;
                 pos.prepare(sample_rate, 0);
-                let rebuilt = match SystemTapSource::new(sample_rate) {
+                let rebuilt = match SystemTapSource::new(sample_rate, capture_tel.clone()) {
                     Ok(source) => match build_output_stream(
                         &device,
                         config,
@@ -1698,6 +1918,10 @@ fn control_loop(ctx: ControlCtx) {
                             // Bump the heartbeat so the watchdog sees progress and
                             // doesn't immediately re-fire before the first callback.
                             output_beat.fetch_add(1, Ordering::Relaxed);
+                            // Record the (possibly new) output device this tap runs on.
+                            let dev =
+                                crate::system_tap::default_output_device_id().unwrap_or(0);
+                            tap_output_device_id.store(dev, Ordering::Relaxed);
                             active = Some(s);
                             crate::diag::log("RestartSystemTap: tap rebuilt OK");
                             true
@@ -1718,17 +1942,23 @@ fn control_loop(ctx: ControlCtx) {
                 };
                 if rebuilt {
                     rebuild_policy.on_success();
+                    system_eq_status.store(SystemEqStatus::Active as u8, Ordering::Relaxed);
                 } else if rebuild_policy.on_failure() {
-                    // Budget exhausted: stop hammering coreaudiod. `active` is
-                    // already None on the failure paths; drop again to be certain
-                    // nothing is left muting, then disable the watchdog.
+                    // Per-burst budget exhausted: stop hammering coreaudiod for now.
+                    // Restore audio (drop any muting tap — `active` is already None
+                    // on the failure paths, drop again to be certain) and hand off
+                    // to the watchdog's cool-down re-arm. tap_active stays TRUE (the
+                    // user still wants system EQ); status is Recovering, not off.
                     drop(active.take());
-                    tap_active.store(false, Ordering::Relaxed);
+                    tap_gave_up.store(true, Ordering::Relaxed);
+                    system_eq_status.store(SystemEqStatus::Recovering as u8, Ordering::Relaxed);
                     crate::diag::log(
-                        "RestartSystemTap: giving up after repeated failures — disabling \
-                         system EQ (audio restored, unequalised) so apps aren't left muted",
+                        "RestartSystemTap: backing off after repeated failures — audio \
+                         restored (unequalised); watchdog will retry after a cool-down",
                     );
                 }
+                // else: within the per-burst budget — leave status Recovering; the
+                // watchdog's stall detection will pace the next attempt.
                 tap_rebuild_pending.store(false, Ordering::Relaxed);
             }
             EngineCommand::Pause => {
@@ -1752,6 +1982,11 @@ fn control_loop(ctx: ControlCtx) {
                 meters.zero();
                 spectrum.zero();
                 pos.reset();
+                // Stopping playback also stops the macOS tap (it plays through the
+                // same output stream). `tap_active` was cleared by the pre-match
+                // guard; reflect the same in the status.
+                #[cfg(target_os = "macos")]
+                system_eq_status.store(SystemEqStatus::Disabled as u8, Ordering::Relaxed);
             }
             EngineCommand::Shutdown => break,
         }
@@ -1811,58 +2046,228 @@ fn build_output_stream(
         .map_err(|e| AudioError::Stream(e.to_string()))
 }
 
-/// macOS tap watchdog loop. Samples the output heartbeat every `TICK` and, while a
-/// tap session is engaged and not paused, asks the control thread to rebuild the
-/// tap once the heartbeat has been frozen for `STALL_TICKS` samples — recovering
-/// from a dead output stream (e.g. a default-output-device change) that would
-/// otherwise leave the whole system muted until the app is restarted.
+/// Everything the macOS tap watchdog observes/controls. Bundled so the loop's
+/// signature stays readable (and clippy-clean) as the recovery logic grew.
+#[cfg(target_os = "macos")]
+struct TapWatch {
+    /// Cleared on engine drop so the loop exits.
+    alive: Arc<AtomicBool>,
+    /// Output-callback heartbeat (frozen ⇒ the output stream stalled/died).
+    output_beat: Arc<AtomicU64>,
+    /// Capture io_proc telemetry, incl. its heartbeat (frozen ⇒ capture stalled).
+    capture_tel: Arc<crate::system_tap::CaptureTelemetry>,
+    tap_active: Arc<AtomicBool>,
+    paused: Arc<AtomicBool>,
+    /// One-rebuild-in-flight coalescing gate (shared with the control thread).
+    rebuild_pending: Arc<AtomicBool>,
+    /// Output device the current tap was built against (for change detection).
+    tap_output_device_id: Arc<AtomicU32>,
+    /// Raised by the control thread when a rebuild burst gave up — starts a cool-down.
+    tap_gave_up: Arc<AtomicBool>,
+    /// Raised by the default-output-device Core Audio listener (allocation-free).
+    device_change_signal: Arc<AtomicBool>,
+    status: Arc<AtomicU8>,
+    ctrl: mpsc::Sender<EngineCommand>,
+}
+
+/// macOS tap watchdog loop. Samples the output *and* capture heartbeats every
+/// `TICK` and, while a tap session is engaged and not paused, decides via
+/// [`assess_tap_stall`] whether a frozen heartbeat is a real device death/change
+/// (rebuild) or mere CPU starvation on a live device (back off, keep the tap).
+/// This is what stops a heavy-load stall from needlessly tearing down the tap —
+/// the "suddenly stops under load" bug — while still recovering from genuine
+/// failures, including a dead *capture* proc that the old output-only heartbeat
+/// couldn't see (which left the system muted with a healthy output heartbeat).
+///
+/// Recovery is never permanent-off: after the control thread exhausts a rebuild
+/// burst it raises `tap_gave_up`, and this loop schedules an exponential cool-down
+/// ([`cooldown_secs`]) before re-arming another attempt — so system EQ keeps
+/// trying to come back and the status reflects `Recovering`, never a silent death.
 ///
 /// `rebuild_pending` gates re-firing: once a rebuild is requested it stays set
 /// until the control thread finishes that attempt, so the watchdog never queues a
-/// second rebuild while one is in progress. Rebuilding a tap takes longer than a
-/// single 250 ms tick, so without this gate a frozen heartbeat fires a rebuild
-/// every tick — a create/destroy storm that wedged coreaudiod (the root cause of
-/// the "everything stays muted" bug).
+/// second rebuild while one is in progress (the create/destroy storm that wedged
+/// coreaudiod). The device-change listener coalesces through the same gate.
 #[cfg(target_os = "macos")]
-fn tap_watchdog(
-    alive: Arc<AtomicBool>,
-    beat: Arc<AtomicU64>,
-    tap_active: Arc<AtomicBool>,
-    paused: Arc<AtomicBool>,
-    rebuild_pending: Arc<AtomicBool>,
-    ctrl: mpsc::Sender<EngineCommand>,
-) {
-    use std::time::Duration;
+fn tap_watchdog(watch: TapWatch) {
+    use std::time::{Duration, Instant};
     /// Sampling cadence. Short enough to recover quickly, long enough to be free.
     const TICK: Duration = Duration::from_millis(250);
-    /// Consecutive frozen samples before declaring the output dead (~750 ms).
+    /// Consecutive frozen samples before declaring a heartbeat stalled (~750 ms).
     const STALL_TICKS: u32 = 3;
+    /// How many times a live-device stall may back off (waiting out suspected CPU
+    /// starvation) before we attempt a bounded rebuild anyway. `4 × ~750 ms ≈ 3 s`
+    /// of patience — enough to ride out load spikes, bounded so a genuinely dead
+    /// output on an "alive" device (e.g. same-device sample-rate change) still
+    /// recovers.
+    const MAX_BACKOFF: u32 = 4;
 
-    let mut detector = StallDetector::new();
+    let TapWatch {
+        alive,
+        output_beat,
+        capture_tel,
+        tap_active,
+        paused,
+        rebuild_pending,
+        tap_output_device_id,
+        tap_gave_up,
+        device_change_signal,
+        status,
+        ctrl,
+    } = watch;
+
+    let mut out_detector = StallDetector::new();
+    let mut cap_detector = StallDetector::new();
+    let mut backoff_count: u32 = 0;
+    // Consecutive give-ups and the current post-give-up cool-down deadline.
+    let mut giveup_count: u32 = 0;
+    let mut cooldown_until: Option<Instant> = None;
+    // Tap generation last logged, so first-callback telemetry is logged once/tap.
+    let mut logged_generation: u64 = 0;
+
+    // Send a rebuild request iff we win the single in-flight slot. Returns false
+    // when the control thread has gone (engine shutting down) so the loop can exit.
+    let request_rebuild = |reason: &str| -> bool {
+        if rebuild_pending.swap(true, Ordering::Relaxed) {
+            return true; // a rebuild is already in flight — coalesce
+        }
+        crate::diag::log(reason);
+        ctrl.send(EngineCommand::RestartSystemTap).is_ok()
+    };
+
     while alive.load(Ordering::Relaxed) {
         std::thread::sleep(TICK);
         if !alive.load(Ordering::Relaxed) {
             break;
         }
-        let active = tap_active.load(Ordering::Relaxed) && !paused.load(Ordering::Relaxed);
-        // A rebuild is already in flight: don't sample toward another one. Keep the
-        // detector primed (treat as healthy) so it needs a fresh full window once
-        // the control thread reports the rebuild done by clearing the flag.
-        if rebuild_pending.load(Ordering::Relaxed) {
-            detector.observe(beat.load(Ordering::Relaxed), false, STALL_TICKS);
+
+        // A healthy/recovered tap (status Active) clears the give-up escalation and
+        // any pending cool-down. NOTE: `backoff_count` is deliberately NOT reset
+        // here — an ongoing output stall keeps the tap "active" (status stays
+        // Active because we haven't torn it down), so resetting it here would let a
+        // genuinely dead-but-"alive" device back off forever. It is cleared only by
+        // real heartbeat progress (below) or when we act on a stall.
+        if SystemEqStatus::from_u8(status.load(Ordering::Relaxed)) == SystemEqStatus::Active {
+            giveup_count = 0;
+            cooldown_until = None;
+        }
+
+        // One-shot, non-RT: log the first-callback buffer layout once per tap.
+        let generation = capture_tel.generation();
+        if generation != logged_generation {
+            if let Some((buffers, channels, bytes, peak)) = capture_tel.first_layout() {
+                crate::diag::log(&format!(
+                    "tap io_proc first callback: n_buffers={buffers} channels={channels} \
+                     bytes={bytes} peak={peak:.4}"
+                ));
+                logged_generation = generation;
+            }
+        }
+
+        // 1. The control thread gave up a rebuild burst → start (or lengthen) the
+        //    exponential cool-down before we re-arm. Audio is already restored.
+        if tap_gave_up.swap(false, Ordering::Relaxed) {
+            giveup_count = giveup_count.saturating_add(1);
+            let secs = cooldown_secs(giveup_count);
+            cooldown_until = Some(Instant::now() + Duration::from_secs(secs));
+            out_detector.reset();
+            cap_detector.reset();
+            crate::diag::log(&format!(
+                "tap watchdog: system EQ gave up (attempt {giveup_count}) — cooling down {secs}s \
+                 before retry"
+            ));
             continue;
         }
-        let now = beat.load(Ordering::Relaxed);
-        // `swap` is the shared coalescing point with the device-change listener:
-        // we send only if we win the in-flight slot (previous value was false), so
-        // a change the listener already reported isn't rebuilt twice.
-        if detector.observe(now, active, STALL_TICKS)
-            && !rebuild_pending.swap(true, Ordering::Relaxed)
-        {
-            crate::diag::log("tap watchdog: output stalled — requesting tap rebuild");
-            // If the control thread is gone the engine is shutting down: stop.
-            if ctrl.send(EngineCommand::RestartSystemTap).is_err() {
+
+        // 2. In a post-give-up cool-down: hold off entirely (keep detectors primed).
+        if let Some(deadline) = cooldown_until {
+            if Instant::now() < deadline {
+                out_detector.observe(output_beat.load(Ordering::Relaxed), false);
+                cap_detector.observe(capture_tel.beat(), false);
+                continue;
+            }
+            cooldown_until = None;
+            // Cool-down elapsed: attempt exactly one rebuild (if still wanted).
+            let active = tap_active.load(Ordering::Relaxed) && !paused.load(Ordering::Relaxed);
+            if active && !request_rebuild("tap watchdog: cool-down elapsed — retrying system EQ") {
                 break;
+            }
+            continue;
+        }
+
+        // 3. A rebuild is already in flight: don't sample toward another. Keep the
+        //    detectors primed so a fresh window is required once it completes.
+        if rebuild_pending.load(Ordering::Relaxed) {
+            out_detector.observe(output_beat.load(Ordering::Relaxed), false);
+            cap_detector.observe(capture_tel.beat(), false);
+            continue;
+        }
+
+        let active = tap_active.load(Ordering::Relaxed) && !paused.load(Ordering::Relaxed);
+
+        // 4. Proactive: the default output device changed (Core Audio listener).
+        //    Rebuild immediately — a device change always needs a fresh tap.
+        //    Always consume the signal; only act on it while the tap is engaged.
+        let device_changed_now = device_change_signal.swap(false, Ordering::Relaxed);
+        if device_changed_now && active {
+            out_detector.reset();
+            cap_detector.reset();
+            backoff_count = 0;
+            if !request_rebuild("tap watchdog: default output device changed — rebuilding tap") {
+                break;
+            }
+            continue;
+        }
+
+        // 5. Heartbeat stall assessment.
+        let out_misses = out_detector.observe(output_beat.load(Ordering::Relaxed), active);
+        let cap_misses = cap_detector.observe(capture_tel.beat(), active);
+        let output_stalled = out_misses >= STALL_TICKS;
+        let capture_stalled = cap_misses >= STALL_TICKS;
+
+        // Both heartbeats progressing while active ⇒ genuinely healthy; forget any
+        // accumulated starvation patience so an unrelated later stall gets it fresh.
+        if active && out_misses == 0 && cap_misses == 0 {
+            backoff_count = 0;
+        }
+
+        if active && (output_stalled || capture_stalled) {
+            let built = tap_output_device_id.load(Ordering::Relaxed);
+            let current = crate::system_tap::default_output_device_id();
+            let device_changed = matches!(current, Some(c) if built != 0 && c != built);
+            let device_alive = crate::system_tap::device_is_alive(built);
+            let backoff_exhausted = backoff_count >= MAX_BACKOFF;
+
+            match assess_tap_stall(
+                output_stalled,
+                capture_stalled,
+                device_alive,
+                device_changed,
+                backoff_exhausted,
+            ) {
+                TapAction::Rebuild => {
+                    out_detector.reset();
+                    cap_detector.reset();
+                    backoff_count = 0;
+                    if !request_rebuild(
+                        "tap watchdog: confirmed stall (device dead/changed or dead capture) \
+                         — rebuilding tap",
+                    ) {
+                        break;
+                    }
+                }
+                TapAction::BackOff => {
+                    // Live, unchanged device — treat as CPU starvation: keep the
+                    // tap, extend the wait. Don't churn coreaudiod under load.
+                    out_detector.reset();
+                    cap_detector.reset();
+                    backoff_count = backoff_count.saturating_add(1);
+                    crate::diag::log(
+                        "tap watchdog: heartbeat frozen but device alive & unchanged — likely \
+                         CPU load; keeping tap and backing off",
+                    );
+                }
+                TapAction::Healthy => {}
             }
         }
     }
@@ -1876,76 +2281,160 @@ mod tests {
     const THRESH: u32 = 3;
 
     #[test]
-    fn stall_detector_never_fires_when_inactive() {
+    fn stall_detector_stays_zero_when_inactive() {
         let mut d = StallDetector::new();
         // A frozen heartbeat is irrelevant while no tap session is live (or paused).
         for _ in 0..(THRESH * 3) {
-            assert!(!d.observe(42, false, THRESH));
+            assert_eq!(d.observe(42, false), 0);
         }
     }
 
     #[test]
-    fn stall_detector_never_fires_while_output_progresses() {
+    fn stall_detector_stays_zero_while_output_progresses() {
         let mut d = StallDetector::new();
         for beat in 1..=(THRESH * 3) as u64 {
-            assert!(!d.observe(beat, true, THRESH), "advancing output is healthy");
+            assert_eq!(d.observe(beat, true), 0, "advancing output is healthy");
         }
     }
 
     #[test]
-    fn stall_detector_fires_after_threshold_of_frozen_beats() {
+    fn stall_detector_counts_consecutive_frozen_beats() {
         let mut d = StallDetector::new();
-        // Prime with a healthy beat, then freeze.
-        assert!(!d.observe(100, true, THRESH));
-        assert!(!d.observe(100, true, THRESH)); // miss 1
-        assert!(!d.observe(100, true, THRESH)); // miss 2
-        assert!(
-            d.observe(100, true, THRESH),
-            "fires on the THRESH-th frozen sample"
-        );
+        // Prime with a healthy beat, then freeze: the count climbs each tick.
+        assert_eq!(d.observe(100, true), 0);
+        assert_eq!(d.observe(100, true), 1);
+        assert_eq!(d.observe(100, true), 2);
+        assert_eq!(d.observe(100, true), 3, "reaches the stall threshold");
+        assert_eq!(d.observe(100, true), 4, "keeps climbing while frozen");
     }
 
     #[test]
-    fn stall_detector_rearms_and_refires_if_still_dead() {
+    fn stall_detector_reset_rearms_the_window() {
         let mut d = StallDetector::new();
-        assert!(!d.observe(7, true, THRESH));
-        for _ in 0..(THRESH - 1) {
-            assert!(!d.observe(7, true, THRESH));
-        }
-        assert!(d.observe(7, true, THRESH), "first fire");
-        // Still frozen: should re-arm and fire again after another full window,
-        // not spin every tick.
-        for _ in 0..(THRESH - 1) {
-            assert!(!d.observe(7, true, THRESH));
-        }
-        assert!(d.observe(7, true, THRESH), "second fire after re-arm");
+        assert_eq!(d.observe(7, true), 0);
+        assert_eq!(d.observe(7, true), 1);
+        assert_eq!(d.observe(7, true), 2);
+        // The watchdog acts on a stall then re-arms: a fresh window must start over.
+        d.reset();
+        assert_eq!(d.observe(7, true), 1, "counts from zero after reset");
     }
 
     #[test]
     fn stall_detector_resets_on_recovery() {
         let mut d = StallDetector::new();
-        assert!(!d.observe(5, true, THRESH));
-        assert!(!d.observe(5, true, THRESH)); // miss 1
+        assert_eq!(d.observe(5, true), 0);
+        assert_eq!(d.observe(5, true), 1);
         // Output recovers before the threshold — counter must reset.
-        assert!(!d.observe(6, true, THRESH));
+        assert_eq!(d.observe(6, true), 0);
         // A fresh freeze needs the full window again.
-        assert!(!d.observe(6, true, THRESH)); // miss 1
-        assert!(!d.observe(6, true, THRESH)); // miss 2
-        assert!(d.observe(6, true, THRESH));
+        assert_eq!(d.observe(6, true), 1);
+        assert_eq!(d.observe(6, true), 2);
+        assert_eq!(d.observe(6, true), 3);
     }
 
     #[test]
     fn stall_detector_pause_resets_miss_count() {
         let mut d = StallDetector::new();
-        assert!(!d.observe(9, true, THRESH));
-        assert!(!d.observe(9, true, THRESH)); // miss 1
-        assert!(!d.observe(9, true, THRESH)); // miss 2
+        assert_eq!(d.observe(9, true), 0);
+        assert_eq!(d.observe(9, true), 1);
+        assert_eq!(d.observe(9, true), 2);
         // Pausing (active=false) clears the count even with a frozen beat.
-        assert!(!d.observe(9, false, THRESH));
-        // Resuming: a frozen beat must again take the full window to fire.
-        assert!(!d.observe(9, true, THRESH)); // miss 1
-        assert!(!d.observe(9, true, THRESH)); // miss 2
-        assert!(d.observe(9, true, THRESH));
+        assert_eq!(d.observe(9, false), 0);
+        // Resuming: a frozen beat must again take the full window to reach THRESH.
+        assert_eq!(d.observe(9, true), 1);
+        assert_eq!(d.observe(9, true), 2);
+        assert_eq!(d.observe(9, true), 3);
+    }
+
+    // --- assess_tap_stall: the starvation-vs-death decision -------------------
+
+    #[test]
+    fn assess_healthy_when_nothing_stalled() {
+        // No stall on either heartbeat ⇒ nothing to do, regardless of device state.
+        assert_eq!(
+            assess_tap_stall(false, false, true, false, false),
+            TapAction::Healthy
+        );
+        assert_eq!(
+            assess_tap_stall(false, false, false, true, true),
+            TapAction::Healthy
+        );
+    }
+
+    #[test]
+    fn assess_output_stall_on_live_unchanged_device_backs_off() {
+        // Chain A: output frozen but the device is alive and unchanged — this is
+        // CPU starvation, NOT death. Must NOT tear the tap down.
+        assert_eq!(
+            assess_tap_stall(true, false, true, false, false),
+            TapAction::BackOff
+        );
+        // Both frozen on a live, unchanged device is still treated as starvation.
+        assert_eq!(
+            assess_tap_stall(true, true, true, false, false),
+            TapAction::BackOff
+        );
+    }
+
+    #[test]
+    fn assess_rebuilds_on_device_death_or_change() {
+        // A dead device → rebuild even though we'd otherwise back off.
+        assert_eq!(
+            assess_tap_stall(true, false, false, false, false),
+            TapAction::Rebuild
+        );
+        // A default-device change → rebuild on the new device.
+        assert_eq!(
+            assess_tap_stall(true, false, true, true, false),
+            TapAction::Rebuild
+        );
+    }
+
+    #[test]
+    fn assess_rebuilds_on_dead_capture_while_output_runs() {
+        // Chain B: capture frozen while output still ticks proves callbacks run,
+        // so the capture io_proc is genuinely dead — only a rebuild restarts it.
+        assert_eq!(
+            assess_tap_stall(false, true, true, false, false),
+            TapAction::Rebuild
+        );
+    }
+
+    #[test]
+    fn assess_rebuilds_after_backoff_is_exhausted() {
+        // A live-device output stall we've already waited out (e.g. a same-device
+        // sample-rate change) must eventually rebuild rather than wait forever.
+        assert_eq!(
+            assess_tap_stall(true, false, true, false, true),
+            TapAction::Rebuild
+        );
+    }
+
+    // --- cooldown_secs: exponential back-off, capped --------------------------
+
+    #[test]
+    fn cooldown_grows_exponentially_then_caps() {
+        assert_eq!(cooldown_secs(1), 30);
+        assert_eq!(cooldown_secs(2), 60);
+        assert_eq!(cooldown_secs(3), 120);
+        assert_eq!(cooldown_secs(4), 240);
+        assert_eq!(cooldown_secs(5), 300, "capped at 300s");
+        assert_eq!(cooldown_secs(9), 300, "stays capped and never overflows");
+        // Defensive: a 0th give-up (shouldn't happen) still yields a sane value.
+        assert_eq!(cooldown_secs(0), 30);
+    }
+
+    #[test]
+    fn system_eq_status_u8_roundtrips() {
+        for s in [
+            SystemEqStatus::Disabled,
+            SystemEqStatus::Active,
+            SystemEqStatus::Recovering,
+        ] {
+            assert_eq!(SystemEqStatus::from_u8(s as u8), s);
+        }
+        // Unknown byte values fall back to Disabled (safe default).
+        assert_eq!(SystemEqStatus::from_u8(200), SystemEqStatus::Disabled);
     }
 
     #[test]

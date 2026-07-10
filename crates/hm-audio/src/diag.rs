@@ -4,9 +4,12 @@
 //! bundled GUI app (where stderr is invisible). Remove once the tap is fixed.
 
 use std::io::Write;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Append one line to the diagnostic log (best-effort; ignores errors).
+///
+/// This opens + writes a file, so it must NEVER be called from a real-time audio
+/// callback (the capture io_proc, the output callback). Non-RT threads only — the
+/// engine control thread and the tap watchdog.
 pub(crate) fn log(msg: &str) {
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -15,11 +18,4 @@ pub(crate) fn log(msg: &str) {
     {
         let _ = writeln!(f, "{msg}");
     }
-}
-
-/// True for the first `n` increments of `counter` — rate-limits hot-path logs.
-/// Only the macOS process-tap path uses this today; dead (but compiled) elsewhere.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub(crate) fn first_n(counter: &AtomicU32, n: u32) -> bool {
-    counter.fetch_add(1, Ordering::Relaxed) < n
 }

@@ -135,16 +135,31 @@ if (requested === "universal-apple-darwin") {
 
 if (isWin) {
   // projectM is a shared lib on Windows (its static feature is broken in
-  // projectm-sys) — ship the DLL next to the sidecar in the bundle, and beside
-  // the dev binary so `tauri dev` / manual runs resolve it too.
-  const dll = findFile(join(root, "target", "release", "build"), "projectM-4.dll");
-  if (dll) {
-    copyFileSync(dll, join(binDir, "projectM-4.dll"));
-    copyFileSync(dll, join(root, "target", "release", "projectM-4.dll"));
-    console.log(`[sidecar] staged projectM-4.dll (from ${dll})`);
-  } else {
-    console.warn(
-      "[sidecar] WARNING: projectM-4.dll not found — the visualizer won't run on Windows.",
+  // projectm-sys). The sidecar loads TWO DLLs at startup: projectM-4.dll and —
+  // because projectm-sys's default `playlist` feature links it too —
+  // projectM-4-playlist.dll. Both must sit next to hm-visualizer.exe or Windows
+  // aborts it in the loader (STATUS_DLL_NOT_FOUND, 0xC0000135) before main()
+  // runs. Stage both into the bundler's binaries dir (so tauri.windows.conf.json
+  // can bundle them) and beside the dev binary so `tauri dev` / manual runs
+  // resolve them too.
+  const buildDir = join(root, "target", "release", "build");
+  const dlls = ["projectM-4.dll", "projectM-4-playlist.dll"];
+  const missing = [];
+  for (const name of dlls) {
+    const src = findFile(buildDir, name);
+    if (!src) {
+      missing.push(name);
+      continue;
+    }
+    copyFileSync(src, join(binDir, name));
+    copyFileSync(src, join(root, "target", "release", name));
+    console.log(`[sidecar] staged ${name} (from ${src})`);
+  }
+  if (missing.length) {
+    // Fail the build rather than ship a sidecar that crashes on every launch.
+    throw new Error(
+      `[sidecar] required projectM DLL(s) not found under ${buildDir}: ` +
+        `${missing.join(", ")} — the Windows visualizer can't run without them.`,
     );
   }
 }

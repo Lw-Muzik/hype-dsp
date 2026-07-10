@@ -364,6 +364,15 @@ pub fn system_audio_status() -> SystemAudioStatus {
     }
 }
 
+/// Current runtime state of system-wide EQ: `"active"`, `"recovering"`, or
+/// `"disabled"`. Poll this to reflect recovery in the UI — notably on macOS, where
+/// a tap stall under heavy load is now recovered in the background (the card can
+/// show "recovering…") instead of the EQ appearing to silently stop.
+#[tauri::command]
+pub fn system_eq_status(engine: State<'_, AudioEngine>) -> hm_audio::SystemEqStatus {
+    engine.system_eq_status()
+}
+
 /// Install the bundled Windows virtual-audio driver (prompts for admin via UAC).
 /// No-op success on platforms that need no driver. The frontend should re-query
 /// [`system_audio_status`] afterwards to confirm the device enumerated.

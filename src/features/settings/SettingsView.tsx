@@ -42,7 +42,9 @@ import {
   playerPlayCapture,
   systemAudioStatus,
   systemAudioInstallDriver,
+  systemEqStatus,
   type SystemAudioStatus,
+  type SystemEqRuntimeStatus,
 } from "@/lib/ipc";
 import type { DeviceInfo, LicenseInfo } from "@/lib/types";
 
@@ -431,6 +433,12 @@ export function SettingsView() {
   });
   const [driverInstalling, setDriverInstalling] = useState(false);
   const [driverError, setDriverError] = useState<string | null>(null);
+  // Live engine truth for system-wide EQ (distinct from the persisted *intent*
+  // below): `recovering` means a transient failure — e.g. a macOS tap stall under
+  // heavy load or a device change — is being recovered in the background, so the
+  // card can say so instead of the EQ appearing to have silently stopped.
+  const [runtimeStatus, setRuntimeStatus] =
+    useState<SystemEqRuntimeStatus>("disabled");
   // System-wide EQ is a persisted session mode (re-engaged on launch), so its
   // on/off + last error live in a shared store rather than local state.
   const systemEqOn = useSystemEqStore((s) => s.enabled);
@@ -457,6 +465,23 @@ export function SettingsView() {
       .catch(() => {});
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // Poll the live system-EQ runtime status while the Settings view is open, so a
+  // background recovery (or a settled "active"/"disabled") is reflected promptly.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => {
+      systemEqStatus()
+        .then((s) => !cancelled && setRuntimeStatus(s))
+        .catch(() => {});
+    };
+    poll();
+    const id = window.setInterval(poll, 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -639,6 +664,30 @@ export function SettingsView() {
                   <p className="text-xs text-text-muted">
                     Routes all system audio through the equalizer and effects.
                   </p>
+                  {runtimeStatus !== "disabled" && (
+                    <span
+                      className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        runtimeStatus === "recovering"
+                          ? "bg-amber-500/15 text-amber-400"
+                          : "bg-success/15 text-success"
+                      }`}
+                      title={
+                        runtimeStatus === "recovering"
+                          ? "A transient failure (e.g. heavy CPU load or a device change) is being recovered in the background — audio is restored but momentarily unequalised."
+                          : "System-wide EQ is running."
+                      }
+                    >
+                      <span
+                        className={`size-1.5 rounded-full ${
+                          runtimeStatus === "recovering"
+                            ? "animate-pulse bg-amber-400"
+                            : "bg-success"
+                        }`}
+                        aria-hidden="true"
+                      />
+                      {runtimeStatus === "recovering" ? "Recovering…" : "Active"}
+                    </span>
+                  )}
                 </div>
                 <div className="flex shrink-0 gap-2">
                   {systemStatus.available ? (

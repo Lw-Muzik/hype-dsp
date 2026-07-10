@@ -602,6 +602,7 @@ pub fn run() {
             commands::engine::capture_virtual_available,
             commands::engine::system_audio_available,
             commands::engine::system_audio_status,
+            commands::engine::system_eq_status,
             commands::engine::system_audio_install_driver,
             commands::engine::player_stop,
             commands::engine::player_pause,

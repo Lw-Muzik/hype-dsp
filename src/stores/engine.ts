@@ -16,6 +16,7 @@ import {
   engineSetMasterVolume,
   engineSetPower,
   engineSetRoom,
+  engineSetOutput,
   engineSetSaturation,
   engineSetSpatializer,
   engineSetSurround3d,
@@ -51,6 +52,7 @@ import type {
   LibraryTrack,
   MeterFrame,
   PhoneDevice,
+  OutputState,
   PhoneTrack,
   RadioStation,
   RoomState,
@@ -293,6 +295,7 @@ interface EngineStore {
   setConvolver: (next: ConvolverState) => void;
   setCompander: (next: CompanderState) => void;
   setSaturation: (next: SaturationState) => void;
+  setOutput: (next: OutputState) => void;
   loadConvolverIr: (path: string) => Promise<void>;
   /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
@@ -744,6 +747,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setSaturation: (next) => {
       set((s) => ({ state: { ...s.state, saturation: next } }));
       void engineSetSaturation(next).catch(() => {});
+    },
+    setOutput: (next) => {
+      set((s) => ({ state: { ...s.state, output: next } }));
+      void engineSetOutput(next).catch(() => {});
     },
     loadConvolverIr: async (path) => {
       const info = await engineConvolverLoadIr(path);

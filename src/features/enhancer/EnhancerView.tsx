@@ -5,6 +5,7 @@ import {
   FolderOpen,
   Headphones,
   Orbit,
+  ShieldCheck,
   Speaker,
   Square,
   Waves,
@@ -50,6 +51,8 @@ export function EnhancerView() {
   const setSurround3d = useEngineStore((s) => s.setSurround3d);
   const applyProfile = useEngineStore((s) => s.applyProfile);
   const clearProfile = useEngineStore((s) => s.clearProfile);
+  const output = useEngineStore((s) => s.state.output);
+  const setOutput = useEngineStore((s) => s.setOutput);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -341,6 +344,25 @@ export function EnhancerView() {
               </p>
             )}
           </div>
+        </Card>
+
+        {/* Output limiter */}
+        <Card
+          title="Limiter"
+          icon={ShieldCheck}
+          actions={
+            <Switch
+              checked={output.limiterEnabled}
+              onChange={(v) => setOutput({ ...output, limiterEnabled: v })}
+              label="Enable limiter"
+            />
+          }
+        >
+          <p className="text-sm text-text-muted">
+            A look-ahead brickwall limiter that catches peaks so boosted audio
+            never clips. On by default — turn it off only if you want the raw,
+            unlimited output (loud material may then distort).
+          </p>
         </Card>
       </div>
 

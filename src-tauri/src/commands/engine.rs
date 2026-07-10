@@ -166,6 +166,13 @@ pub fn engine_set_saturation(engine: State<'_, AudioEngine>, saturation: hm_core
     engine.set_saturation(saturation);
 }
 
+/// Configure the output stage — notably the brickwall limiter on/off. The
+/// limiter is on by default; turning it off removes the clipping safety net.
+#[tauri::command]
+pub fn engine_set_output(engine: State<'_, AudioEngine>, output: hm_core::OutputState) {
+    engine.set_output(output);
+}
+
 /// Load an impulse-response file into the convolver (heavy prep off the audio thread).
 // `(async)`: loading + FFT-partitioning an impulse response does file I/O and
 // heavy CPU — run it off the Tauri main thread so the UI doesn't stall.

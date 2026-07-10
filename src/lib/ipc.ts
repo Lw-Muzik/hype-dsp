@@ -33,6 +33,7 @@ import type {
   LicenseStatus,
   MixerSnapshot,
   OutputDevice,
+  OutputState,
   PhoneDevice,
   PhoneTrack,
   Playlist,
@@ -144,6 +145,10 @@ export function engineSetCompander(compander: CompanderState): Promise<void> {
 }
 
 /** Configure the tube-saturation stage. */
+export function engineSetOutput(output: OutputState): Promise<void> {
+  return invoke("engine_set_output", { output });
+}
+
 export function engineSetSaturation(saturation: SaturationState): Promise<void> {
   return invoke<void>("engine_set_saturation", { saturation });
 }

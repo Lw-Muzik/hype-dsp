@@ -27,8 +27,8 @@ use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hm_core::{
     BassBoostState, CompanderState, ConvolverState, EngineState, HeadphoneCorrectionState,
-    MeterFrame, ParametricBand, RoomState, SaturationState, SpatialMode, SpatializerState,
-    Surround3DState, SurroundSpeakers, TrackMeta,
+    MeterFrame, OutputState, ParametricBand, RoomState, SaturationState, SpatialMode,
+    SpatializerState, Surround3DState, SurroundSpeakers, TrackMeta,
 };
 use hm_dsp::{empty_ir_slot, CompanderMeter, IrSlot, PreparedIr, ProcessChain};
 
@@ -992,6 +992,17 @@ impl AudioEngine {
         saturation.drive = saturation.drive.clamp(0.0, 1.0);
         saturation.mix = saturation.mix.clamp(0.0, 1.0);
         self.update(|s| s.saturation = saturation);
+    }
+
+    /// Configure the output stage: makeup gain and the brickwall limiter.
+    ///
+    /// The limiter is on by default and is the clip-safety net for boosted
+    /// audio; disabling it (`limiter_enabled = false`) is a deliberate user
+    /// choice that lets peaks pass through unlimited, so it can clip.
+    pub fn set_output(&self, mut output: OutputState) {
+        output.gain_db = output.gain_db.clamp(-24.0, 24.0);
+        output.ceiling_db = output.ceiling_db.clamp(-24.0, 0.0);
+        self.update(|s| s.output = output);
     }
 
     /// Update the convolver's cheap scalar params (enabled / wet-dry / gain).

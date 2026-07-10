@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Info, Volume2, VolumeX } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { Slider } from "@/components/Slider";
-import { mixerListSessions, mixerSetMuted, mixerSetVolume } from "@/lib/ipc";
+import { ipcErrorMessage, mixerListSessions, mixerSetMuted, mixerSetVolume } from "@/lib/ipc";
+import { toast } from "@/stores/toast";
 import type { AppSession, MixerSnapshot } from "@/lib/types";
 
 export function MixerView() {
@@ -39,6 +40,18 @@ export function MixerView() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [refresh]);
+
+  // A failed set (almost always: audio-capture not granted, or an unsigned
+  // build where macOS never prompts) used to fail silently — the slider moved
+  // but nothing happened. Surface it, throttled, since a dragged slider fires a
+  // burst of calls that would otherwise spam identical toasts.
+  const lastErrorAt = useRef(0);
+  const reportSetError = (e: unknown) => {
+    const now = Date.now();
+    if (now - lastErrorAt.current < 5000) return;
+    lastErrorAt.current = now;
+    toast.error(ipcErrorMessage(e));
+  };
 
   const patch = (id: string, change: Partial<AppSession>) =>
     setSnap((s) =>
@@ -100,7 +113,7 @@ export function MixerView() {
                   aria-label={s.muted ? "Unmute" : "Mute"}
                   onClick={() => {
                     patch(s.id, { muted: !s.muted });
-                    void mixerSetMuted(s.id, !s.muted).catch(() => {});
+                    void mixerSetMuted(s.id, !s.muted).catch(reportSetError);
                   }}
                   className="text-text-muted hover:text-text"
                 >
@@ -118,7 +131,7 @@ export function MixerView() {
                   value={s.volume}
                   onChange={(v) => {
                     patch(s.id, { volume: v });
-                    void mixerSetVolume(s.id, v).catch(() => {});
+                    void mixerSetVolume(s.id, v).catch(reportSetError);
                   }}
                   className="flex-1"
                 />

@@ -19,6 +19,9 @@ pub mod resampler;
 pub mod engine;
 pub mod error;
 pub mod meta;
+/// Output-device management: list output devices and switch the system default
+/// output. Core Audio on macOS; names-only cpal fallback elsewhere.
+pub mod output_device;
 pub mod queue;
 pub mod sources;
 pub mod spectrum;
@@ -64,6 +67,7 @@ pub use decode::{
     resample_stereo, DecodedAudio,
 };
 pub use device::{list_input_devices, list_output_devices, DeviceInfo};
+pub use output_device::{OutputDevice, OutputTransport};
 pub use fingerprint::fingerprint_file;
 pub use engine::{
     AudioEngine, ConvolverIrInfo, EngineMeters, MetaSink, PlaybackPos, Renderer, SystemEqStatus,

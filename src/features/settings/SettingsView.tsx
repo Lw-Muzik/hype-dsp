@@ -1,19 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  Airplay,
   AudioLines,
+  Cast,
+  Check,
   CircleAlert,
   FolderPlus,
+  Headphones,
   Info,
   KeyRound,
   Library,
   ListMusic,
   LogOut,
+  MonitorSpeaker,
   RefreshCw,
   RotateCcw,
   Speaker,
   Sparkles,
+  Usb,
   Wand2,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
@@ -37,7 +44,8 @@ import {
   libraryRefreshTags,
   libraryScan,
   onLibraryScanProgress,
-  listOutputDevices,
+  outputDevices,
+  setDefaultOutput,
   pickFolder,
   playerPlayCapture,
   systemAudioStatus,
@@ -46,7 +54,7 @@ import {
   type SystemAudioStatus,
   type SystemEqRuntimeStatus,
 } from "@/lib/ipc";
-import type { DeviceInfo, LicenseInfo } from "@/lib/types";
+import type { LicenseInfo, OutputDevice, OutputTransport } from "@/lib/types";
 
 /** Human date (e.g. "14 Jul 2026") for a server ISO timestamp, or null. */
 function formatDate(iso: string | null): string | null {
@@ -71,7 +79,21 @@ const PLAN_META: Record<LicenseInfo["state"], { label: string; cls: string }> = 
 type DeviceState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; devices: DeviceInfo[] };
+  | { status: "ready"; devices: OutputDevice[] };
+
+/** Icon for a device's physical transport (coarse speaker/headphone hint). */
+const TRANSPORT_ICON: Record<OutputTransport, LucideIcon> = {
+  builtin: Speaker,
+  usb: Usb,
+  bluetooth: Headphones,
+  hdmi: MonitorSpeaker,
+  displayport: MonitorSpeaker,
+  airplay: Airplay,
+  aggregate: AudioLines,
+  virtual: AudioLines,
+  thunderbolt: Cast,
+  other: Speaker,
+};
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
@@ -364,14 +386,28 @@ function MusicLibraryCard() {
   );
 }
 
-function OutputDevices({ state }: { state: DeviceState }) {
+/**
+ * Selectable output-device picker. Clicking a device makes it the system default
+ * output; the engine follows the default, so the whole app's audio moves with it
+ * (like macOS Sound settings). The active device is highlighted; failures surface
+ * as a toast and leave the previous selection intact.
+ */
+function OutputDevices({
+  state,
+  switchingUid,
+  onSelect,
+}: {
+  state: DeviceState;
+  switchingUid: string | null;
+  onSelect: (device: OutputDevice) => void;
+}) {
   if (state.status === "loading") {
     return (
       <div className="space-y-2" aria-busy="true" aria-label="Loading devices">
         {[0, 1, 2].map((i) => (
           <div
             key={i}
-            className="h-9 animate-pulse rounded-control bg-surface-overlay"
+            className="h-11 animate-pulse rounded-control bg-surface-overlay"
           />
         ))}
       </div>
@@ -392,28 +428,55 @@ function OutputDevices({ state }: { state: DeviceState }) {
   }
 
   return (
-    <ul className="divide-y divide-border">
-      {state.devices.map((device) => (
-        <li
-          key={device.name}
-          className="flex items-center justify-between py-2.5 text-sm"
-        >
-          <span className="truncate">{device.name}</span>
-          {device.isDefault && (
-            <span className="ml-3 shrink-0 rounded-full border border-accent/40 bg-accent-muted px-2 py-0.5 text-xs text-accent-strong">
-              Default
-            </span>
-          )}
-        </li>
-      ))}
+    <ul className="flex flex-col gap-1.5" role="radiogroup" aria-label="Output device">
+      {state.devices.map((device) => {
+        const Icon = TRANSPORT_ICON[device.transport] ?? Speaker;
+        const active = device.isDefault;
+        const busy = switchingUid === device.uid;
+        return (
+          <li key={device.uid}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={busy}
+              onClick={() => !active && onSelect(device)}
+              className={`flex w-full items-center gap-3 rounded-control border px-3 py-2.5 text-left text-sm transition-colors disabled:opacity-60 ${
+                active
+                  ? "border-accent/50 bg-accent-muted"
+                  : "border-border bg-surface hover:border-border-strong hover:bg-surface-overlay"
+              }`}
+            >
+              <Icon
+                className={`size-4 shrink-0 ${active ? "text-accent-strong" : "text-text-muted"}`}
+                aria-hidden="true"
+              />
+              <span className={`min-w-0 flex-1 truncate ${active ? "font-medium text-accent-strong" : ""}`}>
+                {device.name}
+              </span>
+              {busy ? (
+                <RefreshCw
+                  className="size-4 shrink-0 animate-spin text-text-muted"
+                  aria-hidden="true"
+                />
+              ) : active ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/40 bg-accent-muted px-2 py-0.5 text-xs text-accent-strong">
+                  <Check className="size-3" aria-hidden="true" />
+                  Active
+                </span>
+              ) : null}
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
 /**
- * Settings — the one Phase 0 view backed by live data: it shows real app
- * metadata (from `app_info`) and the system's real output devices (from
- * `audio_list_output_devices`), proving the typed IPC seam at runtime.
+ * Settings — backed by live data: real app metadata (from `app_info`) and the
+ * system's real output devices (from `audio_output_devices`), which are also
+ * selectable to switch the system default output (`audio_set_default_output`).
  */
 export function SettingsView() {
   const route = routeById("settings");
@@ -424,6 +487,7 @@ export function SettingsView() {
   const setPlayback = useEngineStore((s) => s.setPlayback);
   const setDataSaver = useEngineStore((s) => s.setDataSaver);
   const [devices, setDevices] = useState<DeviceState>({ status: "loading" });
+  const [switchingUid, setSwitchingUid] = useState<string | null>(null);
   const [, setVirtualAvailable] = useState(false);
   const [systemStatus, setSystemStatus] = useState<SystemAudioStatus>({
     supported: false,
@@ -447,16 +511,25 @@ export function SettingsView() {
   const disableSystemEq = useSystemEqStore((s) => s.disable);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
+  // Reload the output-device list. Kept in a ref-stable callback so it can be
+  // called on mount, on a poll (to catch hot-plugged / removed devices), and
+  // after switching the default. The list is a fresh snapshot each time, so we
+  // never leave the error state stuck once a device reappears.
+  const loadDevices = useCallback(async () => {
+    try {
+      const list = await outputDevices();
+      setDevices({ status: "ready", devices: list });
+    } catch (err) {
+      setDevices({ status: "error", message: ipcErrorMessage(err) });
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    listOutputDevices()
-      .then((list) => {
-        if (!cancelled) setDevices({ status: "ready", devices: list });
-      })
-      .catch((err: unknown) => {
-        if (!cancelled)
-          setDevices({ status: "error", message: ipcErrorMessage(err) });
-      });
+    void loadDevices();
+    // Poll for hot-plug / removal + external default-device changes while the
+    // view is open (no Core Audio listener needed for this cadence).
+    const id = window.setInterval(() => void loadDevices(), 3000);
     captureVirtualAvailable()
       .then((v) => !cancelled && setVirtualAvailable(v))
       .catch(() => {});
@@ -465,8 +538,28 @@ export function SettingsView() {
       .catch(() => {});
     return () => {
       cancelled = true;
+      window.clearInterval(id);
     };
-  }, []);
+  }, [loadDevices]);
+
+  // Make a device the system default output. The engine follows the default,
+  // so this moves all of the app's (and the system's) audio to it.
+  const selectDevice = useCallback(
+    async (device: OutputDevice) => {
+      setSwitchingUid(device.uid);
+      try {
+        await setDefaultOutput(device.uid);
+        await loadDevices();
+      } catch (err) {
+        toast.error(`Couldn't switch to ${device.name}: ${ipcErrorMessage(err)}`);
+        // Re-sync so the highlight reflects whatever the system actually did.
+        await loadDevices();
+      } finally {
+        setSwitchingUid(null);
+      }
+    },
+    [loadDevices],
+  );
 
   // Poll the live system-EQ runtime status while the Settings view is open, so a
   // background recovery (or a settled "active"/"disabled") is reflected promptly.
@@ -605,7 +698,18 @@ export function SettingsView() {
         </Card>
 
         <Card title="Output devices" icon={Speaker}>
-          <OutputDevices state={devices} />
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-text-muted">
+              Choose where sound plays. Selecting a device makes it the system
+              default output, so everything — this app and the rest of macOS —
+              follows.
+            </p>
+            <OutputDevices
+              state={devices}
+              switchingUid={switchingUid}
+              onSelect={(d) => void selectDevice(d)}
+            />
+          </div>
         </Card>
 
         <Card title="Account" icon={KeyRound}>

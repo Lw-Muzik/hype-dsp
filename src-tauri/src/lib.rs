@@ -536,7 +536,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app::app_info,
-            commands::audio::audio_list_output_devices,
+            commands::audio::audio_output_devices,
+            commands::audio::audio_set_default_output,
             commands::audio::audio_list_input_devices,
             commands::engine::engine_get_state,
             commands::engine::engine_set_power,

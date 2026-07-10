@@ -32,6 +32,7 @@ import type {
   LibraryTrack,
   LicenseStatus,
   MixerSnapshot,
+  OutputDevice,
   PhoneDevice,
   PhoneTrack,
   Playlist,
@@ -53,9 +54,15 @@ export function appInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("app_info");
 }
 
-/** System output (playback) devices. */
-export function listOutputDevices(): Promise<DeviceInfo[]> {
-  return invoke<DeviceInfo[]>("audio_list_output_devices");
+/** System output devices (UID + transport + default flag) for the picker. */
+export function outputDevices(): Promise<OutputDevice[]> {
+  return invoke<OutputDevice[]>("audio_output_devices");
+}
+
+/** Make the given device (by UID) the system default output. The engine follows
+ *  the default, so this moves the app's (and all system) audio to it. */
+export function setDefaultOutput(uid: string): Promise<void> {
+  return invoke<void>("audio_set_default_output", { uid });
 }
 
 /** System input (capture) devices. */

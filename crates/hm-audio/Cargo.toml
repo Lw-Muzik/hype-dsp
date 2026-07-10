@@ -83,3 +83,5 @@ windows-core = "0.61"
 [dev-dependencies]
 # Generates WAV fixtures for decode/playback tests.
 hound = { workspace = true }
+# Asserts the output-device DTO's serde wire shape (camelCase / lowercase tags).
+serde_json = { workspace = true }

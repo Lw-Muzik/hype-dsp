@@ -669,7 +669,12 @@ impl MacosSessionController {
     }
 
     /// Bring the running engine for `id` in line with its desired state.
-    fn apply(&self, id: &str) {
+    /// Reconcile the running tap engines with the desired state for `id`.
+    ///
+    /// Returns the tap-creation error instead of swallowing it, so the UI can
+    /// tell the user *why* a slider had no effect — almost always a missing
+    /// audio-capture grant or an unsigned build, which `AppTap::new` reports.
+    fn apply(&self, id: &str) -> Result<(), PlatformError> {
         let want = self
             .desired
             .lock()
@@ -681,19 +686,21 @@ impl MacosSessionController {
         let mut engines = self.engines.lock().expect("mixer engines poisoned");
         if want.is_passthrough() {
             engines.remove(id); // drop → tap destroyed → app plays normally
-            return;
+            return Ok(());
         }
         if let Some(engine) = engines.get(id) {
             engine.set_gain(want.gain());
-            return;
+            return Ok(());
         }
         let procs = process_objects_for_id(id);
         if procs.is_empty() {
-            return; // app isn't producing audio right now; (re)applied when it is
+            // App isn't producing audio right now; the desired gain is stored and
+            // (re)applied when it next outputs. Not an error.
+            return Ok(());
         }
-        if let Ok(engine) = AppTap::new(&procs, want.gain()) {
-            engines.insert(id.to_string(), engine);
-        }
+        let engine = AppTap::new(&procs, want.gain())?;
+        engines.insert(id.to_string(), engine);
+        Ok(())
     }
 }
 
@@ -743,8 +750,7 @@ impl SessionController for MacosSessionController {
             .entry(id.to_string())
             .or_default()
             .volume = gain.clamp(0.0, 1.0);
-        self.apply(id);
-        Ok(())
+        self.apply(id)
     }
 
     fn set_muted(&self, id: &str, muted: bool) -> Result<(), PlatformError> {
@@ -754,8 +760,7 @@ impl SessionController for MacosSessionController {
             .entry(id.to_string())
             .or_default()
             .muted = muted;
-        self.apply(id);
-        Ok(())
+        self.apply(id)
     }
 }
 

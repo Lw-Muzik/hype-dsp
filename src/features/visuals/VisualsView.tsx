@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import {
   AudioLines,
   Maximize2,
+  Minimize2,
   Monitor,
   Search,
   Shuffle,
@@ -10,6 +11,7 @@ import {
   Star,
   X,
 } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
@@ -18,6 +20,8 @@ import { useEngineStore } from "@/stores/engine";
 import { sceneList, sceneSelect, sceneSelected, visualizerPresetNames } from "@/lib/ipc";
 import type { SceneInfo } from "@/lib/ipc";
 import { BUILT_SCENES, SCENE_COMPONENTS } from "./scenes/registry";
+import { Combobox } from "@/components/Combobox";
+import type { ComboItem } from "@/components/Combobox";
 import { cn } from "@/lib/cn";
 
 type Tab = "scenes" | "milkdrop";
@@ -114,7 +118,7 @@ function TabButton({
 function ScenesPanel() {
   const [scenes, setScenes] = useState<SceneInfo[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     sceneList()
@@ -131,17 +135,59 @@ function ScenesPanel() {
     void sceneSelect(id).catch(() => {});
   };
 
-  const goFullscreen = () => {
-    void stageRef.current?.requestFullscreen?.().catch(() => {});
+  // Fullscreen the visualizer. We DON'T use the DOM Fullscreen API
+  // (`element.requestFullscreen`) — macOS WKWebView disables element fullscreen
+  // by default, so it silently rejects there (it works only on Windows'
+  // WebView2). Instead we drive the OS window into fullscreen via Tauri and
+  // expand the stage to cover the whole window with a CSS overlay, which behaves
+  // identically on macOS and Windows. Escape (and the button) exits.
+  const setStageFullscreen = (on: boolean) => {
+    setFullscreen(on);
+    void getCurrentWindow()
+      .setFullscreen(on)
+      .catch(() => {
+        // Window fullscreen unavailable — the CSS overlay still fills the app
+        // window, so the visualizer at least expands over the in-app chrome.
+      });
+    // Nudge scenes that only listen for window resize (R3F/ResizeObserver-based
+    // ones already follow the container) to re-fit the new stage size.
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
   };
 
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setStageFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // setStageFullscreen is stable enough for this handler's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullscreen]);
+
   const Scene = selected ? SCENE_COMPONENTS[selected] : undefined;
+
+  // Searchable dropdown of every scene; built ones show their kind (2D/3D),
+  // not-yet-built ones are tagged "soon" (selecting them is a no-op via `select`).
+  const sceneItems: ComboItem[] = useMemo(
+    () =>
+      scenes.map((s) => ({
+        id: s.id,
+        label: s.name,
+        sublabel: s.id in SCENE_COMPONENTS ? s.kind : "soon",
+      })),
+    [scenes],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div
-        ref={stageRef}
-        className="relative min-h-0 flex-1 overflow-hidden rounded-card bg-black ring-1 ring-border"
+        className={cn(
+          "overflow-hidden bg-black",
+          fullscreen
+            ? "fixed inset-0 z-[100] rounded-none"
+            : "relative min-h-0 flex-1 rounded-card ring-1 ring-border",
+        )}
       >
         {Scene ? (
           <Suspense fallback={<StageMessage>Loading visualizer…</StageMessage>}>
@@ -154,41 +200,29 @@ function ScenesPanel() {
         )}
         <button
           type="button"
-          onClick={goFullscreen}
-          title="Fullscreen"
-          aria-label="Fullscreen"
+          onClick={() => setStageFullscreen(!fullscreen)}
+          title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+          aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
           className="absolute right-3 top-3 grid size-9 place-items-center rounded-full bg-white/10 text-text backdrop-blur transition-colors hover:bg-white/20"
         >
-          <Maximize2 className="size-4" aria-hidden="true" />
+          {fullscreen ? (
+            <Minimize2 className="size-4" aria-hidden="true" />
+          ) : (
+            <Maximize2 className="size-4" aria-hidden="true" />
+          )}
         </button>
       </div>
 
-      {/* Scene picker */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {scenes.map((s) => {
-          const built = s.id in SCENE_COMPONENTS;
-          return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => select(s.id)}
-              disabled={!built}
-              aria-pressed={s.id === selected}
-              className={cn(
-                "flex shrink-0 items-center gap-2 rounded-control border px-3 py-2 text-sm transition-colors",
-                s.id === selected
-                  ? "border-accent/50 bg-accent-muted text-accent-strong"
-                  : "border-border bg-surface-raised text-text hover:bg-surface-overlay",
-                !built && "cursor-not-allowed opacity-40 hover:bg-surface-raised",
-              )}
-            >
-              <span className="whitespace-nowrap">{s.name}</span>
-              <span className="rounded-full bg-black/30 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-text-faint">
-                {built ? s.kind : "soon"}
-              </span>
-            </button>
-          );
-        })}
+      {/* Scene picker — searchable dropdown */}
+      <div className="w-full max-w-xs">
+        <Combobox
+          items={sceneItems}
+          value={selected}
+          onSelect={select}
+          placeholder="Choose a visualizer…"
+          searchPlaceholder="Search visualizers…"
+          emptyText="No matching visualizers"
+        />
       </div>
     </div>
   );

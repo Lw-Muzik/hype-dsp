@@ -327,6 +327,31 @@ export interface DeviceInfo {
   isDefault: boolean;
 }
 
+/** How an output device is attached — drives the picker icon + speaker/headphone hint. */
+export type OutputTransport =
+  | "builtin"
+  | "usb"
+  | "bluetooth"
+  | "hdmi"
+  | "displayport"
+  | "airplay"
+  | "aggregate"
+  | "virtual"
+  | "thunderbolt"
+  | "other";
+
+/** A selectable system output device (from `audio_output_devices`). */
+export interface OutputDevice {
+  /** Core Audio AudioObjectID on macOS; 0 elsewhere. */
+  id: number;
+  /** Stable selection key (device UID on macOS, name elsewhere). */
+  uid: string;
+  name: string;
+  transport: OutputTransport;
+  isDefault: boolean;
+  isAlive: boolean;
+}
+
 export interface StreamFormat {
   sampleRate: number;
   channels: number;

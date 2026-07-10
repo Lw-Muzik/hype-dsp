@@ -2420,6 +2420,7 @@ dependencies = [
  "rtrb",
  "rusty-chromaprint",
  "serde",
+ "serde_json",
  "symphonia",
  "thiserror 2.0.18",
  "windows 0.61.3",

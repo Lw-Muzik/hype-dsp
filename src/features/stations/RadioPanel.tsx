@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Radio, Search, Star } from "lucide-react";
 import { Button } from "@/components/Button";
+import { LayoutToggle, type LayoutMode } from "@/components/LayoutToggle";
 import { useEngineStore } from "@/stores/engine";
 import {
   radioAfricanCountries,
@@ -50,6 +51,7 @@ export function RadioPanel() {
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
 
   const [mode, setMode] = useState<Mode>("browse");
+  const [layout, setLayout] = useState<LayoutMode>("list");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<RadioStation[]>([]);
   const [favorites, setFavorites] = useState<RadioStation[]>([]);
@@ -103,7 +105,7 @@ export function RadioPanel() {
     return q ? countries.filter((c) => c.name.toLowerCase().includes(q)) : countries;
   }, [countries, countryQuery]);
 
-  const stationProps = { nowPlaying, favIds, onPlay: playRadio, onToggleFavorite: toggleFavorite };
+  const stationProps = { nowPlaying, favIds, layout, onPlay: playRadio, onToggleFavorite: toggleFavorite };
 
   return (
     <div className="flex h-full w-full flex-col gap-4">
@@ -176,6 +178,10 @@ export function RadioPanel() {
             <span>{flag(country.code)} {country.name}</span>
           </button>
         )}
+
+        <div className="ml-auto">
+          <LayoutToggle value={layout} onChange={setLayout} />
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto rounded-card border border-border bg-surface-raised">
@@ -238,29 +244,75 @@ function CountryGrid({
   );
 }
 
-function StationList({
-  stations,
-  loading,
-  emptyLabel,
-  nowPlaying,
-  favIds,
-  onPlay,
-  onToggleFavorite,
-}: {
+type StationProps = {
   stations: RadioStation[];
   loading: boolean;
   emptyLabel: string;
+  layout: LayoutMode;
   nowPlaying: string | null;
   favIds: Set<string>;
   onPlay: (s: RadioStation) => void;
   onToggleFavorite: (s: RadioStation) => void;
-}) {
+};
+
+function stationSubtitle(s: RadioStation): string {
+  return [s.genre, s.country].filter(Boolean).join(" · ") || "Radio station";
+}
+
+function StationList(props: StationProps) {
+  const { stations, loading, emptyLabel, layout } = props;
   if (stations.length === 0) {
     return (
       <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 p-8 text-center">
         <Radio className="size-8 text-text-faint" aria-hidden="true" />
         <p className="text-sm text-text-muted">{loading ? "Loading…" : emptyLabel}</p>
       </div>
+    );
+  }
+  return layout === "grid" ? <StationRows {...props} grid /> : <StationRows {...props} />;
+}
+
+/** Renders the stations as a divided list (default) or a card grid. */
+function StationRows({
+  stations,
+  nowPlaying,
+  favIds,
+  onPlay,
+  onToggleFavorite,
+  grid,
+}: StationProps & { grid?: boolean }) {
+  if (grid) {
+    return (
+      <ul className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4">
+        {stations.map((s) => {
+          const isPlaying = nowPlaying === s.name;
+          const isFav = favIds.has(s.id);
+          return (
+            <li key={s.id}>
+              <div
+                onClick={() => onPlay(s)}
+                className={cn(
+                  "relative flex cursor-pointer flex-col gap-2 rounded-card border border-border bg-surface p-3 transition-colors hover:bg-surface-overlay",
+                  isPlaying && "border-accent bg-accent-muted/30",
+                )}
+              >
+                <div className="grid aspect-video w-full place-items-center overflow-hidden rounded-control bg-surface-overlay">
+                  <StationLogo src={s.favicon} className="size-14" />
+                </div>
+                <div className="min-w-0">
+                  <p className={cn("truncate text-sm font-medium", isPlaying && "text-accent-strong")}>
+                    {s.name}
+                  </p>
+                  <p className="truncate text-xs text-text-muted">{stationSubtitle(s)}</p>
+                </div>
+                <div className="absolute right-2 top-2">
+                  <FavStar isFav={isFav} onClick={() => onToggleFavorite(s)} className="bg-black/30 backdrop-blur" />
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     );
   }
   return (
@@ -277,38 +329,14 @@ function StationList({
                 isPlaying && "bg-accent-muted/40",
               )}
             >
-              <StationLogo src={s.favicon} />
+              <StationLogo src={s.favicon} className="size-10" />
               <div className="min-w-0 flex-1">
-                <p
-                  className={cn(
-                    "truncate text-sm font-medium",
-                    isPlaying && "text-accent-strong",
-                  )}
-                >
+                <p className={cn("truncate text-sm font-medium", isPlaying && "text-accent-strong")}>
                   {s.name}
                 </p>
-                <p className="truncate text-xs text-text-muted">
-                  {[s.genre, s.country].filter(Boolean).join(" · ") || "Radio station"}
-                </p>
+                <p className="truncate text-xs text-text-muted">{stationSubtitle(s)}</p>
               </div>
-              <button
-                type="button"
-                aria-label={isFav ? "Remove favorite" : "Add favorite"}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavorite(s);
-                }}
-                className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-control transition-colors",
-                  isFav ? "text-warning" : "text-text-faint hover:text-text",
-                )}
-              >
-                <Star
-                  className="size-4"
-                  fill={isFav ? "currentColor" : "none"}
-                  aria-hidden="true"
-                />
-              </button>
+              <FavStar isFav={isFav} onClick={() => onToggleFavorite(s)} />
             </div>
           </li>
         );
@@ -317,12 +345,45 @@ function StationList({
   );
 }
 
+function FavStar({
+  isFav,
+  onClick,
+  className,
+}: {
+  isFav: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={isFav ? "Remove favorite" : "Add favorite"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-control transition-colors",
+        isFav ? "text-warning" : "text-text-faint hover:text-text",
+        className,
+      )}
+    >
+      <Star className="size-4" fill={isFav ? "currentColor" : "none"} aria-hidden="true" />
+    </button>
+  );
+}
+
 /** A station's logo (favicon) with a graceful fallback to a radio glyph. */
-function StationLogo({ src }: { src: string | null }) {
+function StationLogo({ src, className }: { src: string | null; className?: string }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return (
-      <div className="grid size-10 shrink-0 place-items-center rounded-md bg-surface-overlay text-text-faint">
+      <div
+        className={cn(
+          "grid shrink-0 place-items-center rounded-md bg-surface-overlay text-text-faint",
+          className,
+        )}
+      >
         <Radio className="size-4" aria-hidden="true" />
       </div>
     );
@@ -333,7 +394,7 @@ function StationLogo({ src }: { src: string | null }) {
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
-      className="size-10 shrink-0 rounded-md bg-surface-overlay object-contain"
+      className={cn("shrink-0 rounded-md bg-surface-overlay object-contain", className)}
     />
   );
 }

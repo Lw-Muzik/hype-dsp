@@ -2511,13 +2511,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hm-video"
-version = "0.1.10"
-dependencies = [
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "hm-visualizer"
 version = "0.1.10"
 dependencies = [
@@ -2609,7 +2602,6 @@ dependencies = [
  "hm-platform",
  "hm-remote",
  "hm-stems",
- "hm-video",
  "hound",
  "libc",
  "lofty",
@@ -2627,6 +2619,7 @@ dependencies = [
  "tauri-plugin-store",
  "thiserror 2.0.18",
  "tiny_http",
+ "url",
 ]
 
 [[package]]

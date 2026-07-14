@@ -36,6 +36,7 @@ arc-swap = { workspace = true }
 reqwest = { workspace = true }
 sha2 = "0.10"
 base64 = "0.22"
+url = "2"
 getrandom = "0.2"
 
 # Phone Link: a small control server phones cast to (POST /cast, /transport).
@@ -53,7 +54,6 @@ hm-platform = { workspace = true }
 hm-link = { workspace = true }
 hm-remote = { workspace = true }
 hm-stems = { workspace = true }
-hm-video = { workspace = true }
 hound = { workspace = true }
 lofty = "0.24.0"
 

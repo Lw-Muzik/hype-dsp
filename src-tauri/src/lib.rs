@@ -12,6 +12,7 @@ mod cloud_meta;
 mod commands;
 mod control;
 mod media;
+mod tv_proxy;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -249,10 +250,12 @@ pub fn run() {
             app.state::<commands::open_with::PendingOpen>()
                 .push(std::env::args().skip(1));
 
-            // Native TV player: drives a bundled (or PATH) mpv process in its own
-            // window. Cheap to construct — no process runs until a channel plays.
-            let mpv = commands::video::resolve_mpv(app.handle());
-            app.manage(hm_video::VideoPlayer::new(mpv));
+            // In-app TV: a local HLS proxy so channels play in an embedded
+            // `<video>` (hls.js) — it launders CSP/CORS/custom-header/mixed-content
+            // so no native window and no external player are needed.
+            if let Some(proxy) = tv_proxy::start() {
+                app.manage(proxy);
+            }
 
             // Open the preset store in the app data dir; fall back to an
             // in-memory store so the app still runs if the disk path fails.
@@ -664,9 +667,7 @@ pub fn run() {
             commands::tv::tv_favorites_list,
             commands::tv::tv_favorite_add,
             commands::tv::tv_favorite_remove,
-            commands::video::tv_play,
-            commands::video::tv_stop,
-            commands::video::tv_player_status,
+            commands::tv::tv_stream_url,
             commands::mixer::mixer_list_sessions,
             commands::mixer::mixer_set_volume,
             commands::mixer::mixer_set_muted,

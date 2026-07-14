@@ -1,15 +1,18 @@
-//! World TV directory + favorites commands (iptv-org).
+//! World TV directory + favorites + playback-URL commands (iptv-org).
 //!
 //! The TV counterpart to [`radio`](super::radio): browse channels by country or
-//! category, search the global catalog, and persist favorites. Playback of a
-//! chosen channel is handled separately by [`super::video`] (a native mpv
-//! window), since TV is video and cannot go through the audio engine.
+//! category, search the global catalog, and persist favorites. Playback happens
+//! in an embedded `<video>` in the webview (hls.js) — [`tv_stream_url`] returns a
+//! loopback URL served by the app's [HLS proxy](crate::tv_proxy) so the stream
+//! plays in-app with no native window.
 
 use std::path::PathBuf;
 
 use hm_core::{IpcError, MediaStore, TvCategory, TvChannel, TvCountry};
 use hm_media::tv;
 use tauri::{AppHandle, Manager, State};
+
+use crate::tv_proxy::TvProxy;
 
 /// The directory playlists are cached under (the app data dir). `None` in the
 /// unlikely event it can't be resolved — the directory falls back to
@@ -64,4 +67,16 @@ pub fn tv_favorite_add(store: State<'_, MediaStore>, channel: TvChannel) -> Resu
 #[tauri::command(async)]
 pub fn tv_favorite_remove(store: State<'_, MediaStore>, id: String) -> Result<(), IpcError> {
     store.remove_tv_favorite(&id).map_err(Into::into)
+}
+
+/// The in-app playback URL for a channel: a loopback HLS-proxy URL the embedded
+/// `<video>`/hls.js can load (the proxy adds the stream's `User-Agent`/`Referer`
+/// and permissive CORS). Errors only if the proxy failed to start.
+#[tauri::command]
+pub fn tv_stream_url(proxy: State<'_, TvProxy>, channel: TvChannel) -> Result<String, IpcError> {
+    Ok(proxy.stream_url(
+        &channel.url,
+        channel.user_agent.as_deref(),
+        channel.referrer.as_deref(),
+    ))
 }

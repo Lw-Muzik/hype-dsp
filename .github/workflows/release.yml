@@ -66,37 +66,6 @@ jobs:
         if: matrix.platform == 'windows-2022'
         run: vcpkg --triplet=x64-windows-static-md install glew
 
-      # ---- Bundle mpv (the native TV player for Stations → TV) -------------
-      # tauri.conf's bundle.resources "mpv/" mapping ships whatever lands in
-      # src-tauri/resources/mpv/ inside the app, and resolve_mpv() finds it at
-      # <resource_dir>/mpv/mpv[.exe]. Each OS stages mpv differently:
-      #   macOS   → relocatable copy via dylibbundler (scripts/get_mpv.sh)
-      #   Windows → portable mpv.exe + DLLs (choco), copied into resources/mpv/
-      #   Linux   → NOT bundled; the .deb/.rpm depends on the system `mpv`
-      #             (tauri.conf bundle.linux.*.depends), found via PATH fallback.
-      - name: Bundle mpv (macOS)
-        if: matrix.platform == 'macos-latest'
-        run: |
-          brew install mpv dylibbundler
-          scripts/get_mpv.sh
-          echo "Bundled mpv (matches the runner arch — arm64 on macos-latest):"
-          file src-tauri/resources/mpv/mpv || true
-
-      - name: Bundle mpv (Windows)
-        if: matrix.platform == 'windows-2022'
-        shell: pwsh
-        run: |
-          # Portable mpv package = a self-contained mpv.exe + its DLLs.
-          choco install mpv -y --no-progress
-          $exe = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib\mpv" -Recurse -Filter mpv.exe |
-                 Select-Object -First 1
-          if (-not $exe) { throw "mpv.exe not found after 'choco install mpv'" }
-          $dest = "src-tauri/resources/mpv"
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-          # Copy the whole portable folder (mpv.exe + runtime DLLs) alongside.
-          Copy-Item "$($exe.DirectoryName)\*" -Destination $dest -Recurse -Force
-          Get-ChildItem $dest | Select-Object Name
-
       - name: Setup pnpm
         # Version comes from the "packageManager" field in package.json.
         uses: pnpm/action-setup@v4

@@ -996,20 +996,10 @@ export function tvFavoriteRemove(id: string): Promise<void> {
   return invoke<void>("tv_favorite_remove", { id });
 }
 
-/** Play (or switch to) a TV channel in the native mpv window. Pauses the audio
- * engine so radio/local audio doesn't play underneath. */
-export function tvPlay(channel: TvChannel): Promise<void> {
-  return invoke<void>("tv_play", { channel });
-}
-
-/** Stop TV playback and close the native window. */
-export function tvStop(): Promise<void> {
-  return invoke<void>("tv_stop");
-}
-
-/** Whether a TV channel is currently playing (false once the window is closed). */
-export function tvPlayerStatus(): Promise<boolean> {
-  return invoke<boolean>("tv_player_status");
+/** The in-app playback URL for a channel — a loopback HLS-proxy URL the embedded
+ * `<video>`/hls.js loads (the proxy adds the stream's headers + CORS). */
+export function tvStreamUrl(channel: TvChannel): Promise<string> {
+  return invoke<string>("tv_stream_url", { channel });
 }
 
 /** Open a native folder picker; returns the chosen directory. */

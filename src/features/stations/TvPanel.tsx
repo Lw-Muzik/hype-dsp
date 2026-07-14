@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ChevronLeft, Search, Star, Tv, X } from "lucide-react";
+import { ChevronLeft, Search, Star, Tv } from "lucide-react";
 import { Button } from "@/components/Button";
-import { toast } from "@/stores/toast";
-import { ipcErrorMessage } from "@/lib/ipc";
+import { LayoutToggle, type LayoutMode } from "@/components/LayoutToggle";
 import {
   tvByCategory,
   tvByCountry,
@@ -12,13 +11,11 @@ import {
   tvFavoriteAdd,
   tvFavoriteRemove,
   tvFavoritesList,
-  tvPlay,
-  tvPlayerStatus,
   tvSearch,
-  tvStop,
 } from "@/lib/ipc";
 import type { TvCategory, TvChannel, TvCountry } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { TvPlayer } from "./TvPlayer";
 
 type Mode = "browse" | "country" | "category" | "favorites";
 
@@ -30,13 +27,13 @@ function flag(code: string): string {
 }
 
 /**
- * The TV kind of the Stations hub — world television from iptv-org, played in a
- * native mpv window. Browse by country or category, search the global catalog,
- * or keep favorites. `active` gates the first data load and the player-status
- * poll so nothing runs while the Radio tab is showing.
+ * The TV kind of the Stations hub — world television from iptv-org, played
+ * in-app in an embedded player. Browse by country or category, search the global
+ * catalog, or keep favorites, in a list or grid.
  */
 export function TvPanel({ active }: { active: boolean }) {
   const [mode, setMode] = useState<Mode>("browse");
+  const [layout, setLayout] = useState<LayoutMode>("list");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TvChannel[]>([]);
   const [favorites, setFavorites] = useState<TvChannel[]>([]);
@@ -67,7 +64,6 @@ export function TvPanel({ active }: { active: boolean }) {
       .finally(() => setLoading(false));
   }, []);
 
-  // First time the TV tab is shown, hydrate everything once.
   useEffect(() => {
     if (!active || loadedRef.current) return;
     loadedRef.current = true;
@@ -76,20 +72,6 @@ export function TvPanel({ active }: { active: boolean }) {
     tvCategories().then(setCategories).catch(() => setCategories([]));
     tvCountries().then(setCountries).catch(() => setCountries([]));
   }, [active, doSearch, refreshFavorites]);
-
-  // Poll the native player while TV is active so the "now watching" bar clears
-  // when the user closes the mpv window.
-  useEffect(() => {
-    if (!active || !watching) return;
-    const timer = setInterval(() => {
-      tvPlayerStatus()
-        .then((running) => {
-          if (!running) setWatching(null);
-        })
-        .catch(() => {});
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [active, watching]);
 
   const openCountry = (c: TvCountry) => {
     setCountry(c);
@@ -111,19 +93,6 @@ export function TvPanel({ active }: { active: boolean }) {
       .finally(() => setLoading(false));
   };
 
-  const play = (c: TvChannel) => {
-    setWatching(c);
-    tvPlay(c).catch((e) => {
-      setWatching(null);
-      toast.error(`Couldn't start TV: ${ipcErrorMessage(e)}`);
-    });
-  };
-
-  const stop = () => {
-    setWatching(null);
-    tvStop().catch(() => {});
-  };
-
   const toggleFavorite = (c: TvChannel) => {
     const op = favIds.has(c.id) ? tvFavoriteRemove(c.id) : tvFavoriteAdd(c);
     op.then(refreshFavorites).catch(() => {});
@@ -134,15 +103,23 @@ export function TvPanel({ active }: { active: boolean }) {
     return q ? countries.filter((c) => c.name.toLowerCase().includes(q)) : countries;
   }, [countries, countryQuery]);
 
+  const channels =
+    mode === "favorites" ? favorites : mode === "browse" ? results : list;
+
   const channelProps = {
     watchingId: watching?.id ?? null,
     favIds,
-    onPlay: play,
+    layout,
+    onPlay: setWatching,
     onToggleFavorite: toggleFavorite,
   };
 
   return (
     <div className="flex h-full w-full flex-col gap-4">
+      {watching && (
+        <TvPlayer channel={watching} onClose={() => setWatching(null)} />
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1 rounded-control border border-border bg-surface-raised p-1">
           {(["browse", "country", "category", "favorites"] as const).map((m) => (
@@ -212,22 +189,20 @@ export function TvPanel({ active }: { active: boolean }) {
         {mode === "category" && category && (
           <BackButton onClick={() => setCategory(null)}>{category.name}</BackButton>
         )}
+
+        <div className="ml-auto">
+          <LayoutToggle value={layout} onChange={setLayout} />
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto rounded-card border border-border bg-surface-raised">
         {mode === "country" && !country ? (
-          <CountryGrid countries={filteredCountries} onPick={openCountry} />
+          <PickGrid items={filteredCountries.map((c) => ({ key: c.code, label: c.name, badge: flag(c.code) }))} onPick={(k) => openCountry(filteredCountries.find((c) => c.code === k)!)} empty="Loading countries…" />
         ) : mode === "category" && !category ? (
-          <CategoryGrid categories={categories} onPick={openCategory} />
+          <PickGrid items={categories.map((c) => ({ key: c.id, label: c.name }))} onPick={(k) => openCategory(categories.find((c) => c.id === k)!)} empty="Loading categories…" />
         ) : (
-          <ChannelList
-            channels={
-              mode === "favorites"
-                ? favorites
-                : mode === "browse"
-                  ? results
-                  : list
-            }
+          <ChannelCollection
+            channels={channels}
             loading={loading}
             emptyLabel={
               mode === "favorites"
@@ -238,43 +213,11 @@ export function TvPanel({ active }: { active: boolean }) {
           />
         )}
       </div>
-
-      {watching && (
-        <div className="flex items-center gap-3 rounded-card border border-accent/40 bg-accent-muted/30 px-4 py-2.5">
-          <span className="relative flex size-2 shrink-0">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent-strong/70" />
-            <span className="relative inline-flex size-2 rounded-full bg-accent-strong" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-text">
-              Now watching · {watching.name}
-            </p>
-            <p className="truncate text-xs text-text-muted">
-              Playing in the native TV window.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={stop}
-            aria-label="Stop TV"
-            className="flex items-center gap-1.5 rounded-control border border-border bg-surface-raised px-3 py-1.5 text-sm text-text-muted transition-colors hover:text-text"
-          >
-            <X className="size-4" aria-hidden="true" />
-            Stop
-          </button>
-        </div>
-      )}
     </div>
   );
 }
 
-function BackButton({
-  onClick,
-  children,
-}: {
-  onClick: () => void;
-  children: ReactNode;
-}) {
+function BackButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
@@ -287,33 +230,36 @@ function BackButton({
   );
 }
 
-function CountryGrid({
-  countries,
+/** A country/category picker grid (flag/label tiles). */
+function PickGrid({
+  items,
   onPick,
+  empty,
 }: {
-  countries: TvCountry[];
-  onPick: (c: TvCountry) => void;
+  items: { key: string; label: string; badge?: string }[];
+  onPick: (key: string) => void;
+  empty: string;
 }) {
-  if (countries.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="grid h-full min-h-[200px] place-items-center p-8 text-sm text-text-muted">
-        Loading countries…
+        {empty}
       </div>
     );
   }
   return (
     <ul className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3">
-      {countries.map((c) => (
-        <li key={c.code}>
+      {items.map((it) => (
+        <li key={it.key}>
           <button
             type="button"
-            onClick={() => onPick(c)}
+            onClick={() => onPick(it.key)}
             className="flex w-full items-center gap-3 rounded-control border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:bg-surface-overlay"
           >
             <span className="text-2xl leading-none" aria-hidden="true">
-              {flag(c.code)}
+              {it.badge ?? <Tv className="size-4 text-text-faint" />}
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{it.label}</span>
           </button>
         </li>
       ))}
@@ -321,55 +267,19 @@ function CountryGrid({
   );
 }
 
-function CategoryGrid({
-  categories,
-  onPick,
-}: {
-  categories: TvCategory[];
-  onPick: (c: TvCategory) => void;
-}) {
-  if (categories.length === 0) {
-    return (
-      <div className="grid h-full min-h-[200px] place-items-center p-8 text-sm text-text-muted">
-        Loading categories…
-      </div>
-    );
-  }
-  return (
-    <ul className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3">
-      {categories.map((c) => (
-        <li key={c.id}>
-          <button
-            type="button"
-            onClick={() => onPick(c)}
-            className="flex w-full items-center gap-3 rounded-control border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:bg-surface-overlay"
-          >
-            <Tv className="size-4 shrink-0 text-text-faint" aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function ChannelList({
-  channels,
-  loading,
-  emptyLabel,
-  watchingId,
-  favIds,
-  onPlay,
-  onToggleFavorite,
-}: {
+type ChannelProps = {
   channels: TvChannel[];
   loading: boolean;
   emptyLabel: string;
+  layout: LayoutMode;
   watchingId: string | null;
   favIds: Set<string>;
   onPlay: (c: TvChannel) => void;
   onToggleFavorite: (c: TvChannel) => void;
-}) {
+};
+
+function ChannelCollection(props: ChannelProps) {
+  const { channels, loading, emptyLabel, layout } = props;
   if (channels.length === 0) {
     return (
       <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 p-8 text-center">
@@ -378,13 +288,19 @@ function ChannelList({
       </div>
     );
   }
+  return layout === "grid" ? <ChannelGrid {...props} /> : <ChannelList {...props} />;
+}
+
+function subtitleOf(c: TvChannel): string {
+  return [c.group, c.country, c.quality].filter(Boolean).join(" · ") || "TV channel";
+}
+
+function ChannelList({ channels, watchingId, favIds, onPlay, onToggleFavorite }: ChannelProps) {
   return (
     <ul className="divide-y divide-border/60">
       {channels.map((c) => {
         const isPlaying = watchingId === c.id;
         const isFav = favIds.has(c.id);
-        const subtitle =
-          [c.group, c.country, c.quality].filter(Boolean).join(" · ") || "TV channel";
         return (
           <li key={c.id}>
             <div
@@ -394,36 +310,14 @@ function ChannelList({
                 isPlaying && "bg-accent-muted/40",
               )}
             >
-              <ChannelLogo src={c.logo} />
+              <ChannelLogo src={c.logo} className="size-10" />
               <div className="min-w-0 flex-1">
-                <p
-                  className={cn(
-                    "truncate text-sm font-medium",
-                    isPlaying && "text-accent-strong",
-                  )}
-                >
+                <p className={cn("truncate text-sm font-medium", isPlaying && "text-accent-strong")}>
                   {c.name}
                 </p>
-                <p className="truncate text-xs text-text-muted">{subtitle}</p>
+                <p className="truncate text-xs text-text-muted">{subtitleOf(c)}</p>
               </div>
-              <button
-                type="button"
-                aria-label={isFav ? "Remove favorite" : "Add favorite"}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavorite(c);
-                }}
-                className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-control transition-colors",
-                  isFav ? "text-warning" : "text-text-faint hover:text-text",
-                )}
-              >
-                <Star
-                  className="size-4"
-                  fill={isFav ? "currentColor" : "none"}
-                  aria-hidden="true"
-                />
-              </button>
+              <FavButton isFav={isFav} onClick={() => onToggleFavorite(c)} />
             </div>
           </li>
         );
@@ -432,12 +326,87 @@ function ChannelList({
   );
 }
 
+function ChannelGrid({ channels, watchingId, favIds, onPlay, onToggleFavorite }: ChannelProps) {
+  return (
+    <ul className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4">
+      {channels.map((c) => {
+        const isPlaying = watchingId === c.id;
+        const isFav = favIds.has(c.id);
+        return (
+          <li key={c.id}>
+            <div
+              onClick={() => onPlay(c)}
+              className={cn(
+                "group relative flex cursor-pointer flex-col gap-2 rounded-card border border-border bg-surface p-3 transition-colors hover:bg-surface-overlay",
+                isPlaying && "border-accent bg-accent-muted/30",
+              )}
+            >
+              <div className="grid aspect-video w-full place-items-center overflow-hidden rounded-control bg-surface-overlay">
+                <ChannelLogo src={c.logo} className="size-14" contain />
+              </div>
+              <div className="min-w-0">
+                <p className={cn("truncate text-sm font-medium", isPlaying && "text-accent-strong")}>
+                  {c.name}
+                </p>
+                <p className="truncate text-xs text-text-muted">{subtitleOf(c)}</p>
+              </div>
+              <div className="absolute right-2 top-2">
+                <FavButton
+                  isFav={isFav}
+                  onClick={() => onToggleFavorite(c)}
+                  className="bg-black/30 backdrop-blur"
+                />
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function FavButton({
+  isFav,
+  onClick,
+  className,
+}: {
+  isFav: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={isFav ? "Remove favorite" : "Add favorite"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-control transition-colors",
+        isFav ? "text-warning" : "text-text-faint hover:text-text",
+        className,
+      )}
+    >
+      <Star className="size-4" fill={isFav ? "currentColor" : "none"} aria-hidden="true" />
+    </button>
+  );
+}
+
 /** A channel's logo with a graceful fallback to a TV glyph. */
-function ChannelLogo({ src }: { src: string | null }) {
+function ChannelLogo({
+  src,
+  className,
+  contain,
+}: {
+  src: string | null;
+  className?: string;
+  contain?: boolean;
+}) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return (
-      <div className="grid size-10 shrink-0 place-items-center rounded-md bg-surface-overlay text-text-faint">
+      <div className={cn("grid shrink-0 place-items-center rounded-md bg-surface-overlay text-text-faint", className)}>
         <Tv className="size-4" aria-hidden="true" />
       </div>
     );
@@ -448,7 +417,7 @@ function ChannelLogo({ src }: { src: string | null }) {
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
-      className="size-10 shrink-0 rounded-md bg-surface-overlay object-contain"
+      className={cn("shrink-0 rounded-md bg-surface-overlay object-contain", contain ? "max-h-full max-w-full" : "", className)}
     />
   );
 }

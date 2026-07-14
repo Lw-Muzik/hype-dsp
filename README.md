@@ -27,8 +27,9 @@ chain and live UI:
   - **Radio** — radio-browser directory + favorites + **live streaming** through
     the chain.
   - **TV** — the world TV directory ([iptv-org](https://github.com/iptv-org/iptv)):
-    browse by country/category, search, favorites, played in a native **mpv**
-    window (every format; VLC-class). See `scripts/get_mpv.sh` to bundle mpv.
+    browse by country/category, search, favorites (list or grid), played
+    **in-app** in an embedded player (hls.js over a local HLS proxy — no external
+    window).
 - **Mixer** — per-app volume (native on Windows; a graceful notice on macOS).
 - **Licensing** — an explicitly-marked local trial/activation **mock**.
 

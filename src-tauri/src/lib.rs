@@ -248,6 +248,12 @@ pub fn run() {
             // to drain on init. macOS delivers these via `RunEvent::Opened`.
             app.state::<commands::open_with::PendingOpen>()
                 .push(std::env::args().skip(1));
+
+            // Native TV player: drives a bundled (or PATH) mpv process in its own
+            // window. Cheap to construct — no process runs until a channel plays.
+            let mpv = commands::video::resolve_mpv(app.handle());
+            app.manage(hm_video::VideoPlayer::new(mpv));
+
             // Open the preset store in the app data dir; fall back to an
             // in-memory store so the app still runs if the disk path fails.
             let store = app
@@ -650,6 +656,17 @@ pub fn run() {
             commands::radio::radio_favorites_list,
             commands::radio::radio_favorite_add,
             commands::radio::radio_favorite_remove,
+            commands::tv::tv_search,
+            commands::tv::tv_by_country,
+            commands::tv::tv_by_category,
+            commands::tv::tv_categories,
+            commands::tv::tv_countries,
+            commands::tv::tv_favorites_list,
+            commands::tv::tv_favorite_add,
+            commands::tv::tv_favorite_remove,
+            commands::video::tv_play,
+            commands::video::tv_stop,
+            commands::video::tv_player_status,
             commands::mixer::mixer_list_sessions,
             commands::mixer::mixer_set_volume,
             commands::mixer::mixer_set_muted,

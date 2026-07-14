@@ -39,6 +39,9 @@ import type {
   Playlist,
   RadioCountry,
   RadioStation,
+  TvChannel,
+  TvCategory,
+  TvCountry,
   ConvolverState,
   RoomState,
   SaturationState,
@@ -952,6 +955,61 @@ export function radioFavoriteAdd(station: RadioStation): Promise<void> {
 }
 export function radioFavoriteRemove(id: string): Promise<void> {
   return invoke<void>("radio_favorite_remove", { id });
+}
+
+/* -------------------------------------------------------------------- tv */
+
+/** Search the world TV directory (falls back to the bundled seed offline). */
+export function tvSearch(query: string): Promise<TvChannel[]> {
+  return invoke<TvChannel[]>("tv_search", { query });
+}
+
+/** Every channel for a country (ISO 3166-1 alpha-2 code). */
+export function tvByCountry(code: string): Promise<TvChannel[]> {
+  return invoke<TvChannel[]>("tv_by_country", { code });
+}
+
+/** Every channel for a category (iptv-org slug, e.g. "news"). */
+export function tvByCategory(id: string): Promise<TvChannel[]> {
+  return invoke<TvChannel[]>("tv_by_category", { id });
+}
+
+/** The browsable TV categories. */
+export function tvCategories(): Promise<TvCategory[]> {
+  return invoke<TvCategory[]>("tv_categories");
+}
+
+/** The world country list for the browse grid. */
+export function tvCountries(): Promise<TvCountry[]> {
+  return invoke<TvCountry[]>("tv_countries");
+}
+
+export function tvFavoritesList(): Promise<TvChannel[]> {
+  return invoke<TvChannel[]>("tv_favorites_list");
+}
+
+export function tvFavoriteAdd(channel: TvChannel): Promise<void> {
+  return invoke<void>("tv_favorite_add", { channel });
+}
+
+export function tvFavoriteRemove(id: string): Promise<void> {
+  return invoke<void>("tv_favorite_remove", { id });
+}
+
+/** Play (or switch to) a TV channel in the native mpv window. Pauses the audio
+ * engine so radio/local audio doesn't play underneath. */
+export function tvPlay(channel: TvChannel): Promise<void> {
+  return invoke<void>("tv_play", { channel });
+}
+
+/** Stop TV playback and close the native window. */
+export function tvStop(): Promise<void> {
+  return invoke<void>("tv_stop");
+}
+
+/** Whether a TV channel is currently playing (false once the window is closed). */
+export function tvPlayerStatus(): Promise<boolean> {
+  return invoke<boolean>("tv_player_status");
 }
 
 /** Open a native folder picker; returns the chosen directory. */

@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Radio, Search, Star } from "lucide-react";
-import { routeById } from "@/app/routes";
-import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
 import { useEngineStore } from "@/stores/engine";
 import {
@@ -46,8 +44,8 @@ const FALLBACK_COUNTRIES: RadioCountry[] = (
   ] as const
 ).map(([code, name]) => ({ code, name }));
 
-export function RadioView() {
-  const route = routeById("radio");
+/** The Radio kind of the Stations hub — internet radio through the DSP engine. */
+export function RadioPanel() {
   const playRadio = useEngineStore((s) => s.playRadio);
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
 
@@ -108,9 +106,7 @@ export function RadioView() {
   const stationProps = { nowPlaying, favIds, onPlay: playRadio, onToggleFavorite: toggleFavorite };
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-4">
-      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
-
+    <div className="flex h-full w-full flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1 rounded-control border border-border bg-surface-raised p-1">
           {(["browse", "africa", "favorites"] as const).map((m) => (

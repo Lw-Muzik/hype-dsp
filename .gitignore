@@ -44,3 +44,11 @@ pnpm-debug.log*
 
 # Generated visualizer sidecar binaries (built by scripts/build-sidecar.mjs)
 /src-tauri/binaries/
+
+# Bundled mpv binary + dylibs (fetched by scripts/get_mpv.sh); keep the README
+/src-tauri/resources/mpv/*
+!/src-tauri/resources/mpv/README.md
+
+# claude
+/.claude/*
+/.superpowers/

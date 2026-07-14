@@ -5,8 +5,8 @@ import { EnhancerView } from "@/features/enhancer/EnhancerView";
 import { EqualizerView } from "@/features/equalizer/EqualizerView";
 import { MixerView } from "@/features/mixer/MixerView";
 import { PlayerView } from "@/features/player/PlayerView";
-import { RadioView } from "@/features/radio/RadioView";
 import { SettingsView } from "@/features/settings/SettingsView";
+import { StationsView } from "@/features/stations/StationsView";
 import { StemsPanel } from "@/features/stems/StemsPanel";
 import { VisualsView } from "@/features/visuals/VisualsView";
 
@@ -20,7 +20,7 @@ const VIEWS: Record<Route, FC> = {
   mixer: MixerView,
   stems: StemsPanel,
   player: PlayerView,
-  radio: RadioView,
+  stations: StationsView,
   visuals: VisualsView,
   settings: SettingsView,
 };

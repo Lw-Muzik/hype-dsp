@@ -8,7 +8,7 @@ export type Route =
   | "mixer"
   | "stems"
   | "player"
-  | "radio"
+  | "stations"
   | "visuals"
   | "settings";
 

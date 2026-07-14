@@ -8,7 +8,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, OpenFlags};
 
 use crate::error::HmError;
-use crate::{LibraryPage, LibraryTrack, Playlist, RadioStation};
+use crate::{LibraryPage, LibraryTrack, Playlist, RadioStation, TvChannel};
 
 fn now_millis() -> i64 {
     SystemTime::now()
@@ -111,6 +111,18 @@ impl MediaStore {
                 country  TEXT,
                 favicon  TEXT,
                 added_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS tv_favorites (
+                id         TEXT PRIMARY KEY,
+                name       TEXT NOT NULL,
+                url        TEXT NOT NULL,
+                logo       TEXT,
+                grp        TEXT,
+                country    TEXT,
+                user_agent TEXT,
+                referrer   TEXT,
+                quality    TEXT,
+                added_at   INTEGER NOT NULL
             );
             -- Backs the `ORDER BY title COLLATE NOCASE` used by listing/paging so
             -- a huge library (100k–1M tracks) pages by index seek instead of a
@@ -457,6 +469,52 @@ impl MediaStore {
     }
 }
 
+impl MediaStore {
+    /// Favorited TV channels. Stored separately from radio so the two kinds
+    /// never collide and radio's schema is untouched.
+    pub fn list_tv_favorites(&self) -> Result<Vec<TvChannel>, HmError> {
+        let conn = self.read_lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, url, logo, grp, country, user_agent, referrer, quality
+             FROM tv_favorites ORDER BY name COLLATE NOCASE",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(TvChannel {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                url: r.get(2)?,
+                logo: r.get(3)?,
+                group: r.get(4)?,
+                country: r.get(5)?,
+                user_agent: r.get(6)?,
+                referrer: r.get(7)?,
+                quality: r.get(8)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn add_tv_favorite(&self, c: &TvChannel) -> Result<(), HmError> {
+        let conn = self.conn.lock().expect("media store poisoned");
+        conn.execute(
+            "INSERT OR REPLACE INTO tv_favorites
+                (id, name, url, logo, grp, country, user_agent, referrer, quality, added_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            rusqlite::params![
+                c.id, c.name, c.url, c.logo, c.group, c.country,
+                c.user_agent, c.referrer, c.quality, now_millis()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_tv_favorite(&self, id: &str) -> Result<(), HmError> {
+        let conn = self.conn.lock().expect("media store poisoned");
+        conn.execute("DELETE FROM tv_favorites WHERE id = ?1", [id])?;
+        Ok(())
+    }
+}
+
 /// Whether a track's file is currently reachable, judged by its parent
 /// directory existing. The `dir_cache` collapses a whole disconnected drive to a
 /// handful of `stat`s — every file under a missing directory shares the cached
@@ -671,5 +729,34 @@ mod tests {
 
         store.delete_playlist(&pl.id).unwrap();
         assert!(store.list_playlists().unwrap().is_empty());
+    }
+
+    #[test]
+    fn tv_favorites_round_trip() {
+        let store = MediaStore::open_in_memory().unwrap();
+        assert!(store.list_tv_favorites().unwrap().is_empty());
+
+        let ch = TvChannel {
+            id: "AlJazeera.qa".into(),
+            name: "Al Jazeera English".into(),
+            url: "https://live.example/aje.m3u8".into(),
+            logo: Some("https://logo.example/aje.png".into()),
+            group: Some("News".into()),
+            country: Some("QA".into()),
+            user_agent: Some("Mozilla/5.0".into()),
+            referrer: None,
+            quality: Some("1080p".into()),
+        };
+        store.add_tv_favorite(&ch).unwrap();
+
+        let got = store.list_tv_favorites().unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0], ch); // every field survives the round-trip
+
+        // Idempotent re-add (INSERT OR REPLACE), then remove.
+        store.add_tv_favorite(&ch).unwrap();
+        assert_eq!(store.list_tv_favorites().unwrap().len(), 1);
+        store.remove_tv_favorite(&ch.id).unwrap();
+        assert!(store.list_tv_favorites().unwrap().is_empty());
     }
 }

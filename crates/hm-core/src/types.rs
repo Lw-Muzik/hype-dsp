@@ -503,6 +503,46 @@ pub struct RadioStation {
     pub favicon: Option<String>,
 }
 
+/// A television channel from the world TV directory (iptv-org). Unlike a
+/// [`RadioStation`], the `url` is a video stream (usually HLS) played by the
+/// native mpv window, and `user_agent`/`referrer` carry the HTTP headers some
+/// streams require.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TvChannel {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub logo: Option<String>,
+    /// Category / genre from the playlist's `group-title` (e.g. "News").
+    pub group: Option<String>,
+    /// ISO 3166-1 alpha-2 country code, when known.
+    pub country: Option<String>,
+    pub user_agent: Option<String>,
+    pub referrer: Option<String>,
+    /// Resolution hint parsed from the channel name (e.g. "720p"), when present.
+    pub quality: Option<String>,
+}
+
+/// A browsable TV category (iptv-org `group-title` bucket).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TvCategory {
+    /// The iptv-org category id used in the playlist URL (e.g. "news").
+    pub id: String,
+    /// Display name (e.g. "News").
+    pub name: String,
+}
+
+/// A country in the world TV browser (ISO 3166-1 alpha-2 code + English name).
+/// The frontend renders the flag from the code.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TvCountry {
+    pub code: String,
+    pub name: String,
+}
+
 /// A single application's audio session, for the per-app mixer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

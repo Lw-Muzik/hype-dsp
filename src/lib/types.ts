@@ -227,6 +227,37 @@ export interface RadioCountry {
   name: string;
 }
 
+/** A television channel from the world TV directory (iptv-org). The `url` is a
+ * video stream (usually HLS) played by the native mpv window. */
+export interface TvChannel {
+  id: string;
+  name: string;
+  url: string;
+  logo: string | null;
+  /** Category from the playlist's `group-title` (e.g. "News"). */
+  group: string | null;
+  /** ISO 3166-1 alpha-2 country code, when known. */
+  country: string | null;
+  userAgent: string | null;
+  referrer: string | null;
+  /** Resolution hint parsed from the name (e.g. "720p"). */
+  quality: string | null;
+}
+
+/** A browsable TV category (iptv-org bucket). */
+export interface TvCategory {
+  /** Slug used in the playlist URL (e.g. "news"). */
+  id: string;
+  name: string;
+}
+
+/** A country in the world TV browser. */
+export interface TvCountry {
+  /** ISO 3166-1 alpha-2 code. */
+  code: string;
+  name: string;
+}
+
 export interface AppSession {
   id: string;
   name: string;

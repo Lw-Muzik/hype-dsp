@@ -88,7 +88,22 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
         const { default: Hls } = await import("hls.js");
         if (cancelled) return;
         if (Hls.isSupported()) {
-          const hls = new Hls({ lowLatencyMode: true, enableWorker: true, backBufferLength: 30 });
+          const hls = new Hls({
+            enableWorker: true,
+            // Fast start: prefetch the first fragment while the manifest is still
+            // parsing, and don't chase the live edge (which stalls on regular,
+            // non-low-latency IPTV). Default `testBandwidth` already loads the
+            // first fragment at the lowest quality for a quick first frame.
+            startFragPrefetch: true,
+            lowLatencyMode: false,
+            backBufferLength: 30,
+            // Give up on stuck manifests/levels quickly so the retry/error path
+            // kicks in instead of an endless spinner.
+            manifestLoadingTimeOut: 8000,
+            manifestLoadingMaxRetry: 3,
+            levelLoadingTimeOut: 8000,
+            fragLoadingTimeOut: 20000,
+          });
           hlsRef.current = hls;
           hls.loadSource(url);
           hls.attachMedia(video);

@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tiny_http::{Header, Response, Server};
+use tiny_http::{Header, Response, Server, StatusCode};
 use url::Url;
 
 /// Handle to the running proxy (managed Tauri state). Playback URLs are built
@@ -51,7 +51,14 @@ pub fn start() -> Option<TvProxy> {
     let port = server.server_addr().to_ip()?.port();
     let client = Arc::new(
         reqwest::blocking::Client::builder()
+            // Fail fast on dead/geo-blocked hosts (→ the error card, not a long
+            // hang), but allow a slow live segment to finish downloading.
+            .connect_timeout(Duration::from_secs(6))
             .timeout(Duration::from_secs(20))
+            // Low-latency forwarding + reuse warm keep-alive connections across
+            // the manifest → variant → segment chain (avoids re-doing DNS/TLS).
+            .tcp_nodelay(true)
+            .pool_max_idle_per_host(8)
             .build()
             .ok()?,
     );
@@ -130,8 +137,9 @@ fn serve_playlist(
     );
 }
 
-/// Stream a segment / key / media file straight through, preserving its
-/// content-type.
+/// Stream a segment / key / media file straight through — piping the upstream
+/// body as it arrives (no download-then-forward buffering), preserving its
+/// content-type. Lower time-to-first-byte and memory per segment.
 fn serve_segment(
     client: &reqwest::blocking::Client,
     upstream: &str,
@@ -150,17 +158,28 @@ fn serve_segment(
         respond(request, 502, "text/plain", b"upstream fetch failed".to_vec(), None);
         return;
     };
+    let status = resp.status().as_u16();
     let content_type = resp
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("application/octet-stream")
         .to_string();
-    let Ok(bytes) = resp.bytes() else {
-        respond(request, 502, "text/plain", b"upstream read failed".to_vec(), None);
-        return;
-    };
-    respond(request, 200, &content_type, bytes.to_vec(), None);
+    let len = resp.content_length().map(|l| l as usize);
+
+    let headers: Vec<Header> = [
+        ("Content-Type", content_type.as_str()),
+        ("Access-Control-Allow-Origin", "*"),
+        ("Cache-Control", "no-store"),
+    ]
+    .iter()
+    .filter_map(|(n, v)| Header::from_bytes(n.as_bytes(), v.as_bytes()).ok())
+    .collect();
+
+    // `resp` implements `Read`; tiny_http pulls bytes from it and writes them to
+    // the socket as they come (chunked when the length is unknown).
+    let response = Response::new(StatusCode(status), headers, resp, len, None);
+    let _ = request.respond(response);
 }
 
 /// Rewrite a `URI="…"` attribute inside a playlist tag (EXT-X-KEY / -MAP /

@@ -71,6 +71,9 @@ export function TvPanel({ active }: { active: boolean }) {
     refreshFavorites();
     tvCategories().then(setCategories).catch(() => setCategories([]));
     tvCountries().then(setCountries).catch(() => setCountries([]));
+    // Warm the hls.js chunk now (the TV tab is open) so the first channel click
+    // doesn't pay the ~157 KB import on its critical path.
+    void import("hls.js").catch(() => {});
   }, [active, doSearch, refreshFavorites]);
 
   const openCountry = (c: TvCountry) => {

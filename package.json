@@ -10,9 +10,9 @@
     "build:sidecar": "node scripts/build-sidecar.mjs",
     "tauri:prebuild": "node scripts/build-sidecar.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
+    "app:dev": "tauri dev",
     "build:app": "tauri build",
-    "build:app:debug": "tauri build --debug",
+    "build:debug": "tauri build --debug",
     "build:mac": "tauri build --target universal-apple-darwin"
   },
   "dependencies": {

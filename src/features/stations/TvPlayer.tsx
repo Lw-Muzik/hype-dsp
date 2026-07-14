@@ -4,14 +4,20 @@ import { createPortal } from "react-dom";
 import type HlsType from "hls.js";
 import {
   AlertTriangle,
+  Check,
   Loader2,
   Maximize,
   Maximize2,
   Minimize,
   Minimize2,
   Pause,
+  PictureInPicture2,
   Play,
   RotateCw,
+  Settings,
+  SkipBack,
+  SkipForward,
+  Volume1,
   Volume2,
   VolumeX,
   X,
@@ -24,19 +30,29 @@ import { cn } from "@/lib/cn";
 type Status = "loading" | "playing" | "paused" | "error";
 /** normal = docked PiP, mini = small PiP, full = covers the app window. */
 type Mode = "normal" | "mini" | "full";
+type Level = { index: number; label: string };
+type Track = { id: number; label: string };
 
 const WIDTHS: Record<Exclude<Mode, "full">, number> = { normal: 448, mini: 288 };
 const MARGIN = 24;
 
+function fmtTime(s: number): string {
+  if (!isFinite(s) || s < 0) return "0:00";
+  const total = Math.floor(s);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  return `${h > 0 ? `${h}:` : ""}${mm}:${String(sec).padStart(2, "0")}`;
+}
+
 /**
- * In-app TV player. Plays a channel in an embedded `<video>` (hls.js, native-HLS
- * fallback) fed by the local HLS proxy — no native window, no external player.
- *
- * It renders through a portal to `document.body` so it floats above the whole app
- * as a draggable picture-in-picture: the channel list stays fully browsable and
- * selecting another channel just re-points the same player (playback never
- * remounts). Fullscreen covers the app window (a portalled `fixed` overlay, not
- * the flaky webview Fullscreen API). Starting a channel stops the audio engine.
+ * In-app TV player: an embedded `<video>` (hls.js, native-HLS fallback) fed by
+ * the local HLS proxy — no native window. Renders through a portal to
+ * document.body as a draggable picture-in-picture (mini / normal / fullscreen)
+ * so the channel list stays browsable; selecting another channel re-points the
+ * same element. Full control set: play/pause, seek + time (VOD/DVR), volume,
+ * quality, audio tracks, PiP, keyboard shortcuts, fullscreen.
  */
 export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -52,16 +68,30 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
   const [controlsShown, setControlsShown] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
 
+  const [isLive, setIsLive] = useState(true);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [buffered, setBuffered] = useState(0);
+
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [currentLevel, setCurrentLevel] = useState(-1); // -1 = auto
+  const [audioTracks, setAudioTracks] = useState<Track[]>([]);
+  const [audioTrack, setAudioTrack] = useState(-1);
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pipActive, setPipActive] = useState(false);
+
   const stopEngine = useEngineStore((s) => s.stop);
 
   // Load / switch the stream whenever the channel (or a manual retry) changes.
-  // The <video> element is stable across mode changes (portal), so switching
-  // channels swaps the source in place without interrupting the player chrome.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     let cancelled = false;
     setStatus("loading");
+    setLevels([]);
+    setAudioTracks([]);
+    setIsLive(true);
     void stopEngine();
 
     const teardown = () => {
@@ -90,15 +120,9 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
         if (Hls.isSupported()) {
           const hls = new Hls({
             enableWorker: true,
-            // Fast start: prefetch the first fragment while the manifest is still
-            // parsing, and don't chase the live edge (which stalls on regular,
-            // non-low-latency IPTV). Default `testBandwidth` already loads the
-            // first fragment at the lowest quality for a quick first frame.
             startFragPrefetch: true,
             lowLatencyMode: false,
             backBufferLength: 30,
-            // Give up on stuck manifests/levels quickly so the retry/error path
-            // kicks in instead of an endless spinner.
             manifestLoadingTimeOut: 8000,
             manifestLoadingMaxRetry: 3,
             levelLoadingTimeOut: 8000,
@@ -107,7 +131,26 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
           hlsRef.current = hls;
           hls.loadSource(url);
           hls.attachMedia(video);
-          hls.on(Hls.Events.MANIFEST_PARSED, play);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            play();
+            setLevels(
+              hls.levels.map((l, i) => ({
+                index: i,
+                label: l.height ? `${l.height}p` : `${Math.round((l.bitrate || 0) / 1000)}k`,
+              })),
+            );
+          });
+          hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
+            setCurrentLevel(hls.autoLevelEnabled ? -1 : data.level);
+          });
+          hls.on(Hls.Events.LEVEL_LOADED, (_e, data) => setIsLive(data.details.live));
+          hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+            setAudioTracks(
+              hls.audioTracks.map((t) => ({ id: t.id, label: t.name || t.lang || `Track ${t.id + 1}` })),
+            );
+            setAudioTrack(hls.audioTrack);
+          });
+          hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_e, data) => setAudioTrack(data.id));
           hls.on(Hls.Events.ERROR, (_e, data) => {
             if (!data.fatal) return;
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
@@ -131,7 +174,7 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
     };
   }, [channel, reloadKey, stopEngine]);
 
-  // Reflect the media element's state in the UI.
+  // Reflect the media element's state.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -143,21 +186,92 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
       setMuted(video.muted);
       setVolume(video.volume);
     };
+    const onTime = () => setCurrentTime(video.currentTime);
+    const onDuration = () => {
+      setDuration(video.duration);
+      if (!isFinite(video.duration)) setIsLive(true);
+    };
+    const onProgress = () => {
+      const b = video.buffered;
+      setBuffered(b.length ? b.end(b.length - 1) : 0);
+    };
+    const onEnterPip = () => setPipActive(true);
+    const onLeavePip = () => setPipActive(false);
     video.addEventListener("playing", onPlaying);
     video.addEventListener("waiting", onWaiting);
     video.addEventListener("pause", onPause);
     video.addEventListener("error", onError);
     video.addEventListener("volumechange", onVolume);
+    video.addEventListener("timeupdate", onTime);
+    video.addEventListener("durationchange", onDuration);
+    video.addEventListener("progress", onProgress);
+    video.addEventListener("enterpictureinpicture", onEnterPip);
+    video.addEventListener("leavepictureinpicture", onLeavePip);
     return () => {
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("waiting", onWaiting);
       video.removeEventListener("pause", onPause);
       video.removeEventListener("error", onError);
       video.removeEventListener("volumechange", onVolume);
+      video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("durationchange", onDuration);
+      video.removeEventListener("progress", onProgress);
+      video.removeEventListener("enterpictureinpicture", onEnterPip);
+      video.removeEventListener("leavepictureinpicture", onLeavePip);
     };
   }, []);
 
-  // Escape leaves fullscreen (falls back to the docked view).
+  const togglePlay = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) void v.play().catch(() => {});
+    else v.pause();
+  }, []);
+  const toggleMute = useCallback(() => {
+    const v = videoRef.current;
+    if (v) v.muted = !v.muted;
+  }, []);
+  const changeVolume = (value: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.volume = value;
+    v.muted = value === 0;
+  };
+  const nudgeVolume = useCallback((delta: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.volume = Math.max(0, Math.min(1, v.volume + delta));
+    v.muted = false;
+  }, []);
+  const seekTo = (t: number) => {
+    const v = videoRef.current;
+    if (v) v.currentTime = t;
+  };
+  const skip = useCallback((delta: number) => {
+    const v = videoRef.current;
+    if (v && isFinite(v.duration)) v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + delta));
+  }, []);
+
+  const setLevel = (index: number) => {
+    if (hlsRef.current) hlsRef.current.currentLevel = index; // -1 = auto
+    setCurrentLevel(index);
+  };
+  const setAudio = (id: number) => {
+    if (hlsRef.current) hlsRef.current.audioTrack = id;
+    setAudioTrack(id);
+  };
+  const togglePip = async () => {
+    const v = videoRef.current;
+    if (!v) return;
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await v.requestPictureInPicture();
+    } catch {
+      /* PiP unsupported/blocked — ignore. */
+    }
+  };
+
+  // --- Fullscreen escape + drag + resize clamp + auto-hide -----------------
   useEffect(() => {
     if (mode !== "full") return;
     const onKey = (e: KeyboardEvent) => {
@@ -167,7 +281,44 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
     return () => window.removeEventListener("keydown", onKey);
   }, [mode]);
 
-  // Keep the floating player within the viewport when the window resizes.
+  // Global keyboard shortcuts (ignored while typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as HTMLElement).isContentEditable))
+        return;
+      switch (e.key) {
+        case " ":
+        case "k":
+          e.preventDefault();
+          togglePlay();
+          break;
+        case "m":
+          toggleMute();
+          break;
+        case "f":
+          setMode((m) => (m === "full" ? "normal" : "full"));
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          nudgeVolume(0.05);
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          nudgeVolume(-0.05);
+          break;
+        case "ArrowLeft":
+          skip(-10);
+          break;
+        case "ArrowRight":
+          skip(10);
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [togglePlay, toggleMute, nudgeVolume, skip]);
+
   useEffect(() => {
     const onResize = () => setPos((p) => (p ? clamp(p, mode) : p));
     window.addEventListener("resize", onResize);
@@ -182,30 +333,11 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
     setControlsShown(true);
     if (hideTimer.current) window.clearTimeout(hideTimer.current);
     hideTimer.current = window.setTimeout(() => {
-      if (!videoRef.current?.paused) setControlsShown(false);
+      if (!videoRef.current?.paused && !settingsOpen) setControlsShown(false);
     }, 2600);
-  }, []);
+  }, [settingsOpen]);
 
-  const togglePlay = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) void v.play().catch(() => {});
-    else v.pause();
-  };
-  const toggleMute = () => {
-    const v = videoRef.current;
-    if (v) v.muted = !v.muted;
-  };
-  const changeVolume = (value: number) => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.volume = value;
-    v.muted = value === 0;
-  };
-
-  // --- Drag (floating modes only) -----------------------------------------
   const effPos = mode === "full" ? null : (pos ?? defaultPos(mode));
-
   const onDragDown = (e: ReactPointerEvent) => {
     if (mode === "full" || !effPos) return;
     drag.current = { px: e.clientX, py: e.clientY, ox: effPos.x, oy: effPos.y };
@@ -222,11 +354,16 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
 
   const busy = status === "loading";
   const floating = mode !== "full";
+  const compact = mode === "mini";
+  const seekable = !isLive && isFinite(duration) && duration > 1;
+  const pipSupported = typeof document !== "undefined" && document.pictureInPictureEnabled;
+  const hasSettings = levels.length > 1 || audioTracks.length > 1;
+  const VolIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
 
   const player = (
     <div
       onMouseMove={nudgeControls}
-      onMouseLeave={() => !videoRef.current?.paused && setControlsShown(false)}
+      onMouseLeave={() => !videoRef.current?.paused && !settingsOpen && setControlsShown(false)}
       style={floating && effPos ? { left: effPos.x, top: effPos.y, width: WIDTHS[mode] } : undefined}
       className={cn(
         "group fixed z-[80] overflow-hidden bg-black shadow-2xl",
@@ -234,14 +371,9 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
       )}
     >
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-      <video
-        ref={videoRef}
-        playsInline
-        onClick={togglePlay}
-        className="absolute inset-0 size-full bg-black object-contain"
-      />
+      <video ref={videoRef} playsInline onClick={togglePlay} className="absolute inset-0 size-full bg-black object-contain" />
 
-      {/* Top bar — also the drag handle in floating modes. */}
+      {/* Top bar (drag handle in floating modes). */}
       <div
         onPointerDown={onDragDown}
         onPointerMove={onDragMove}
@@ -252,21 +384,21 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
           controlsShown ? "opacity-100" : "opacity-0",
         )}
       >
-        {channel.logo && (
-          <img src={channel.logo} alt="" className="size-7 shrink-0 rounded bg-white/10 object-contain" />
-        )}
+        {channel.logo && <img src={channel.logo} alt="" className="size-7 shrink-0 rounded bg-white/10 object-contain" />}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-white">{channel.name}</p>
-          {mode !== "mini" && (
+          {!compact && (
             <p className="truncate text-xs text-white/60">
               {[channel.group, channel.country, channel.quality].filter(Boolean).join(" · ")}
             </p>
           )}
         </div>
-        <span className="flex items-center gap-1 rounded-full bg-red-600/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-          <span className="size-1.5 rounded-full bg-white" />
-          Live
-        </span>
+        {isLive && (
+          <span className="flex items-center gap-1 rounded-full bg-red-600/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+            <span className="size-1.5 rounded-full bg-white" />
+            Live
+          </span>
+        )}
         <IconBtn label="Close player" onClick={onClose}>
           <X className="size-4" aria-hidden="true" />
         </IconBtn>
@@ -303,65 +435,112 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
         ) : null}
       </div>
 
-      {/* Bottom control bar. */}
+      {/* Bottom controls. */}
       <div
         className={cn(
-          "absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-3 py-2 transition-opacity",
+          "absolute inset-x-0 bottom-0 flex flex-col gap-1.5 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-6 transition-opacity",
           controlsShown ? "opacity-100" : "opacity-0",
         )}
       >
-        <IconBtn label={status === "playing" ? "Pause" : "Play"} onClick={togglePlay}>
-          {status === "playing" ? (
-            <Pause className="size-5" aria-hidden="true" />
-          ) : (
-            <Play className="size-5 translate-x-0.5" aria-hidden="true" />
-          )}
-        </IconBtn>
-
-        <IconBtn label={muted ? "Unmute" : "Mute"} onClick={toggleMute}>
-          {muted || volume === 0 ? (
-            <VolumeX className="size-5" aria-hidden="true" />
-          ) : (
-            <Volume2 className="size-5" aria-hidden="true" />
-          )}
-        </IconBtn>
-        {mode !== "mini" && (
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.02}
-            value={muted ? 0 : volume}
-            onChange={(e) => changeVolume(Number(e.target.value))}
-            aria-label="Volume"
-            className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-white/30 accent-white"
-          />
+        {/* Seek bar (VOD / DVR only). */}
+        {seekable && !compact && (
+          <div className="flex items-center gap-2 text-[11px] tabular-nums text-white/80">
+            <span>{fmtTime(currentTime)}</span>
+            <div className="relative flex-1">
+              <div className="absolute inset-y-1/2 h-1 w-full -translate-y-1/2 rounded-full bg-white/25" />
+              <div
+                className="absolute inset-y-1/2 h-1 -translate-y-1/2 rounded-full bg-white/40"
+                style={{ width: `${duration ? (buffered / duration) * 100 : 0}%` }}
+              />
+              <input
+                type="range"
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={currentTime}
+                onChange={(e) => seekTo(Number(e.target.value))}
+                aria-label="Seek"
+                className="relative h-1 w-full cursor-pointer appearance-none rounded-full bg-transparent accent-accent"
+              />
+            </div>
+            <span>{fmtTime(duration)}</span>
+          </div>
         )}
 
-        <div className="flex-1" />
-
-        {floating && (
-          <IconBtn
-            label={mode === "mini" ? "Larger" : "Mini player"}
-            onClick={() => setMode(mode === "mini" ? "normal" : "mini")}
-          >
-            {mode === "mini" ? (
-              <Maximize2 className="size-4" aria-hidden="true" />
-            ) : (
-              <Minimize2 className="size-4" aria-hidden="true" />
-            )}
+        <div className="flex items-center gap-1.5">
+          <IconBtn label={status === "playing" ? "Pause" : "Play"} onClick={togglePlay}>
+            {status === "playing" ? <Pause className="size-5" aria-hidden="true" /> : <Play className="size-5 translate-x-0.5" aria-hidden="true" />}
           </IconBtn>
-        )}
-        <IconBtn
-          label={mode === "full" ? "Exit fullscreen" : "Fullscreen"}
-          onClick={() => setMode(mode === "full" ? "normal" : "full")}
-        >
-          {mode === "full" ? (
-            <Minimize className="size-5" aria-hidden="true" />
-          ) : (
-            <Maximize className="size-5" aria-hidden="true" />
+
+          {seekable && !compact && (
+            <>
+              <IconBtn label="Back 10 seconds" onClick={() => skip(-10)}>
+                <SkipBack className="size-4" aria-hidden="true" />
+              </IconBtn>
+              <IconBtn label="Forward 10 seconds" onClick={() => skip(10)}>
+                <SkipForward className="size-4" aria-hidden="true" />
+              </IconBtn>
+            </>
           )}
-        </IconBtn>
+
+          <IconBtn label={muted ? "Unmute" : "Mute"} onClick={toggleMute}>
+            <VolIcon className="size-5" aria-hidden="true" />
+          </IconBtn>
+          {!compact && (
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.02}
+              value={muted ? 0 : volume}
+              onChange={(e) => changeVolume(Number(e.target.value))}
+              aria-label="Volume"
+              className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-white/30 accent-white"
+            />
+          )}
+
+          <div className="flex-1" />
+
+          {!compact && hasSettings && (
+            <div className="relative">
+              <IconBtn label="Settings" onClick={() => setSettingsOpen((o) => !o)}>
+                <Settings className="size-5" aria-hidden="true" />
+              </IconBtn>
+              {settingsOpen && (
+                <SettingsMenu
+                  levels={levels}
+                  currentLevel={currentLevel}
+                  onLevel={(i) => {
+                    setLevel(i);
+                    setSettingsOpen(false);
+                  }}
+                  audioTracks={audioTracks}
+                  audioTrack={audioTrack}
+                  onAudio={(id) => {
+                    setAudio(id);
+                    setSettingsOpen(false);
+                  }}
+                  onClose={() => setSettingsOpen(false)}
+                />
+              )}
+            </div>
+          )}
+
+          {!compact && pipSupported && (
+            <IconBtn label="Picture in picture" onClick={togglePip}>
+              <PictureInPicture2 className={cn("size-5", pipActive && "text-accent-strong")} aria-hidden="true" />
+            </IconBtn>
+          )}
+
+          {floating && (
+            <IconBtn label={compact ? "Larger" : "Mini player"} onClick={() => setMode(compact ? "normal" : "mini")}>
+              {compact ? <Maximize2 className="size-4" aria-hidden="true" /> : <Minimize2 className="size-4" aria-hidden="true" />}
+            </IconBtn>
+          )}
+          <IconBtn label={mode === "full" ? "Exit fullscreen" : "Fullscreen"} onClick={() => setMode(mode === "full" ? "normal" : "full")}>
+            {mode === "full" ? <Minimize className="size-5" aria-hidden="true" /> : <Maximize className="size-5" aria-hidden="true" />}
+          </IconBtn>
+        </div>
       </div>
     </div>
   );
@@ -369,21 +548,84 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
   return createPortal(player, document.body);
 }
 
-/** A round translucent control button. */
-function IconBtn({
-  label,
-  onClick,
-  children,
+function SettingsMenu({
+  levels,
+  currentLevel,
+  onLevel,
+  audioTracks,
+  audioTrack,
+  onAudio,
+  onClose,
 }: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
+  levels: Level[];
+  currentLevel: number;
+  onLevel: (index: number) => void;
+  audioTracks: Track[];
+  audioTrack: number;
+  onAudio: (id: number) => void;
+  onClose: () => void;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-11 right-0 w-48 overflow-hidden rounded-card border border-white/15 bg-neutral-900/95 py-1 text-sm text-white shadow-2xl backdrop-blur"
+    >
+      {levels.length > 1 && (
+        <Section title="Quality">
+          <MenuItem selected={currentLevel === -1} onClick={() => onLevel(-1)} label="Auto" />
+          {levels.map((l) => (
+            <MenuItem key={l.index} selected={currentLevel === l.index} onClick={() => onLevel(l.index)} label={l.label} />
+          ))}
+        </Section>
+      )}
+      {audioTracks.length > 1 && (
+        <Section title="Audio">
+          {audioTracks.map((t) => (
+            <MenuItem key={t.id} selected={audioTrack === t.id} onClick={() => onAudio(t.id)} label={t.label} />
+          ))}
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="border-b border-white/10 py-1 last:border-0">
+      <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/40">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+function MenuItem({ selected, onClick, label }: { selected: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-white/10"
+    >
+      <Check className={cn("size-3.5 shrink-0", selected ? "text-accent-strong" : "opacity-0")} aria-hidden="true" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+/** A round translucent control button. */
+function IconBtn({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
       aria-label={label}
-      // Don't let a click on a control start a drag on the bar behind it.
       onPointerDown={(e) => e.stopPropagation()}
       onClick={onClick}
       className="flex size-8 shrink-0 items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/15 hover:text-white"
@@ -396,14 +638,12 @@ function IconBtn({
 function heightFor(mode: Exclude<Mode, "full">): number {
   return Math.round((WIDTHS[mode] * 9) / 16);
 }
-
 function defaultPos(mode: Exclude<Mode, "full">): { x: number; y: number } {
   return {
     x: window.innerWidth - WIDTHS[mode] - MARGIN,
     y: window.innerHeight - heightFor(mode) - MARGIN,
   };
 }
-
 function clamp(p: { x: number; y: number }, mode: Mode): { x: number; y: number } {
   if (mode === "full") return p;
   const w = WIDTHS[mode];

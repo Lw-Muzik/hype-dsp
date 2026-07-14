@@ -77,6 +77,9 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
   const [currentLevel, setCurrentLevel] = useState(-1); // -1 = auto
   const [audioTracks, setAudioTracks] = useState<Track[]>([]);
   const [audioTrack, setAudioTrack] = useState(-1);
+  const [subtitleTracks, setSubtitleTracks] = useState<Track[]>([]);
+  const [subtitleTrack, setSubtitleTrack] = useState(-1); // -1 = off
+  const [speed, setSpeed] = useState(1);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pipActive, setPipActive] = useState(false);
@@ -91,6 +94,9 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
     setStatus("loading");
     setLevels([]);
     setAudioTracks([]);
+    setSubtitleTracks([]);
+    setSubtitleTrack(-1);
+    setSpeed(1);
     setIsLive(true);
     void stopEngine();
 
@@ -151,6 +157,12 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
             setAudioTrack(hls.audioTrack);
           });
           hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_e, data) => setAudioTrack(data.id));
+          hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+            setSubtitleTracks(
+              hls.subtitleTracks.map((t) => ({ id: t.id, label: t.name || t.lang || `Track ${t.id + 1}` })),
+            );
+          });
+          hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, (_e, data) => setSubtitleTrack(data.id));
           hls.on(Hls.Events.ERROR, (_e, data) => {
             if (!data.fatal) return;
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
@@ -260,6 +272,19 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
     if (hlsRef.current) hlsRef.current.audioTrack = id;
     setAudioTrack(id);
   };
+  const setSubtitle = (id: number) => {
+    const hls = hlsRef.current;
+    if (hls) {
+      hls.subtitleTrack = id;
+      hls.subtitleDisplay = id !== -1;
+    }
+    setSubtitleTrack(id);
+  };
+  const changeSpeed = (rate: number) => {
+    const v = videoRef.current;
+    if (v) v.playbackRate = rate;
+    setSpeed(rate);
+  };
   const togglePip = async () => {
     const v = videoRef.current;
     if (!v) return;
@@ -357,7 +382,7 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
   const compact = mode === "mini";
   const seekable = !isLive && isFinite(duration) && duration > 1;
   const pipSupported = typeof document !== "undefined" && document.pictureInPictureEnabled;
-  const hasSettings = levels.length > 1 || audioTracks.length > 1;
+  const hasSettings = levels.length > 1 || audioTracks.length > 1 || subtitleTracks.length > 0 || seekable;
   const VolIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
 
   const player = (
@@ -520,6 +545,18 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
                     setAudio(id);
                     setSettingsOpen(false);
                   }}
+                  subtitleTracks={subtitleTracks}
+                  subtitleTrack={subtitleTrack}
+                  onSubtitle={(id) => {
+                    setSubtitle(id);
+                    setSettingsOpen(false);
+                  }}
+                  seekable={seekable}
+                  speed={speed}
+                  onSpeed={(r) => {
+                    changeSpeed(r);
+                    setSettingsOpen(false);
+                  }}
                   onClose={() => setSettingsOpen(false)}
                 />
               )}
@@ -548,6 +585,8 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
   return createPortal(player, document.body);
 }
 
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
 function SettingsMenu({
   levels,
   currentLevel,
@@ -555,6 +594,12 @@ function SettingsMenu({
   audioTracks,
   audioTrack,
   onAudio,
+  subtitleTracks,
+  subtitleTrack,
+  onSubtitle,
+  seekable,
+  speed,
+  onSpeed,
   onClose,
 }: {
   levels: Level[];
@@ -563,6 +608,12 @@ function SettingsMenu({
   audioTracks: Track[];
   audioTrack: number;
   onAudio: (id: number) => void;
+  subtitleTracks: Track[];
+  subtitleTrack: number;
+  onSubtitle: (id: number) => void;
+  seekable: boolean;
+  speed: number;
+  onSpeed: (rate: number) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -577,7 +628,7 @@ function SettingsMenu({
   return (
     <div
       ref={ref}
-      className="absolute bottom-11 right-0 w-48 overflow-hidden rounded-card border border-white/15 bg-neutral-900/95 py-1 text-sm text-white shadow-2xl backdrop-blur"
+      className="absolute bottom-11 right-0 max-h-80 w-48 overflow-y-auto rounded-card border border-white/15 bg-neutral-900/95 py-1 text-sm text-white shadow-2xl backdrop-blur"
     >
       {levels.length > 1 && (
         <Section title="Quality">
@@ -591,6 +642,21 @@ function SettingsMenu({
         <Section title="Audio">
           {audioTracks.map((t) => (
             <MenuItem key={t.id} selected={audioTrack === t.id} onClick={() => onAudio(t.id)} label={t.label} />
+          ))}
+        </Section>
+      )}
+      {subtitleTracks.length > 0 && (
+        <Section title="Subtitles">
+          <MenuItem selected={subtitleTrack === -1} onClick={() => onSubtitle(-1)} label="Off" />
+          {subtitleTracks.map((t) => (
+            <MenuItem key={t.id} selected={subtitleTrack === t.id} onClick={() => onSubtitle(t.id)} label={t.label} />
+          ))}
+        </Section>
+      )}
+      {seekable && (
+        <Section title="Speed">
+          {SPEEDS.map((r) => (
+            <MenuItem key={r} selected={speed === r} onClick={() => onSpeed(r)} label={r === 1 ? "Normal" : `${r}×`} />
           ))}
         </Section>
       )}

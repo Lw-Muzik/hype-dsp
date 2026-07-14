@@ -40,11 +40,19 @@
     "resources": {
       "../crates/hm-visualizer/presets/*.milk": "presets/",
       "drivers/HypeMuzikAudio/*": "drivers/HypeMuzikAudio/",
-      "resources/mpv/**": "mpv/"
+      "resources/mpv/*": "mpv/"
     },
     "windows": {
       "nsis": {
         "installerHooks": "installer-hooks.nsh"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["mpv"]
+      },
+      "rpm": {
+        "depends": ["mpv"]
       }
     },
     "fileAssociations": [

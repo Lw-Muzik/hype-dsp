@@ -29,6 +29,10 @@ case "$(uname -s)" in
     cp -f "$SRC" "$DEST/mpv"
 
     if command -v dylibbundler >/dev/null 2>&1; then
+      # Gather + relink dylibs into resources/mpv/lib/. mpv runs as its own
+      # process, so @executable_path is resources/mpv/ and @executable_path/lib/
+      # resolves to the bundled libs. tauri.conf's "resources/mpv/*" mapping
+      # copies the whole mpv/ folder (binary + lib/) into the app recursively.
       echo "Relinking dylibs with dylibbundler..."
       dylibbundler -od -b -x "$DEST/mpv" -d "$DEST/lib" -p "@executable_path/lib/"
     else

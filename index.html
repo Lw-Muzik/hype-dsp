@@ -15,22 +15,46 @@
     </style>
     <script>
       // Runs before the bundle, so a Light user doesn't watch the window flash
-      // near-black on every launch. Deliberately duplicates resolveTheme's rule
-      // in a few lines rather than pulling the bundle forward -- keep in sync
-      // with src/stores/theme.ts.
+      // near-black on every launch. Deliberately duplicates theme.ts in plain JS
+      // rather than pulling the bundle forward. Mirrors per-source error handling:
+      // localStorage catch (fallback "system"), matchMedia only inside c==="system"
+      // branch with its own catch (fallback dark/true). Never leaves both unset.
       (function () {
+        var c = "system"; // parseChoice default
+
+        // Mirror loadChoice() — catch only localStorage
         try {
-          var c = localStorage.getItem("hm.theme") || "system";
-          if (["system", "dynamic", "light", "dark"].indexOf(c) === -1) c = "system";
-          var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          var r = c === "system" ? (dark ? "dark" : "light") : c;
-          document.documentElement.dataset.theme = r;
-          document.documentElement.style.setProperty(
-            "--hm-boot-bg", r === "light" ? "#f4f5f7" : "#0a0b0e"
-          );
+          var stored = localStorage.getItem("hm.theme");
+          if (stored !== null) {
+            c = stored;
+          }
         } catch (e) {
-          /* No storage — fall through to the dark default. */
+          // No storage — c stays "system"
         }
+
+        // Validate choice (mirror parseChoice)
+        if (["system", "dynamic", "light", "dark"].indexOf(c) === -1) {
+          c = "system";
+        }
+
+        // Mirror prefersDarkNow() — catch only matchMedia, only if needed
+        var dark = true; // Dark-first app; safer default
+        if (c === "system") {
+          try {
+            dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          } catch (e) {
+            // matchMedia failed — dark stays true
+          }
+        }
+
+        // Mirror resolveTheme()
+        var r = c === "system" ? (dark ? "dark" : "light") : c;
+
+        // Always set both; never leave either unset
+        document.documentElement.dataset.theme = r;
+        document.documentElement.style.setProperty(
+          "--hm-boot-bg", r === "light" ? "#f4f5f7" : "#0a0b0e"
+        );
       })();
     </script>
   </head>

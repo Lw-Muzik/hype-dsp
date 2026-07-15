@@ -462,7 +462,7 @@ function SourcePill({
       {Icon && <Icon className="size-4" aria-hidden="true" />}
       {label}
       {count != null && (
-        <span className={cn("tabular-nums text-xs", active ? "text-surface/70" : "text-text-faint")}>
+        <span className={cn("tabular-nums text-xs", active ? "text-on-accent" : "text-text-faint")}>
           {count.toLocaleString()}
         </span>
       )}

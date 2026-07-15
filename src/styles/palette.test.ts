@@ -152,6 +152,20 @@ describe("palette", () => {
     expect(ratio(get(t, "--color-text"), sidebar)).toBeGreaterThanOrEqual(4.5);
     expect(ratio(get(t, "--color-text-muted"), sidebar)).toBeGreaterThanOrEqual(4.5);
   });
+
+  // The brand mark (logo tile) is deliberately exempt from theming — see the
+  // `--color-brand-*` comment in index.css. Asserted in all three themes even
+  // though the tokens never change, so that if a `[data-theme]` override is
+  // ever "helpfully" added to one of them, this starts failing (or at least
+  // has the coverage to) rather than silently drifting.
+  it.each(["dark", "light", "dynamic"] as const)(
+    "%s: the brand mark is legible against both gradient stops",
+    (name) => {
+      const t = theme(name);
+      expect(ratio(get(t, "--color-on-brand"), get(t, "--color-brand-from"))).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(get(t, "--color-on-brand"), get(t, "--color-brand-to"))).toBeGreaterThanOrEqual(4.5);
+    },
+  );
 });
 
 /**
@@ -182,10 +196,16 @@ function tsxFiles(dir: string): string[] {
 }
 
 describe("accent usage", () => {
-  // `text-surface` on an accent fill only ever worked because surface was
-  // near-black. Under [data-theme=light] it is near-white, so amber-on-white.
-  // The correct pairing is text-on-accent, which flips with the theme.
-  it("no element pairs an accent fill with surface/text colours", () => {
+  // `text-text` on an accent fill is still a live risk — --color-text is
+  // near-white on dark and near-black on light, and --color-accent's fill
+  // flips brightness the opposite way, so this pairing is wrong in both
+  // themes. (The former `text-surface`-on-accent half of this check is now
+  // covered, more strongly, by the flat ban below — see that describe block
+  // for why a narrow "only inside a string literal containing bg-accent"
+  // heuristic isn't a real guarantee: it can't see gradient fills or a
+  // pairing that lives in a sibling class string, which is exactly how the
+  // logo gradient and the MusicLibrary count badge both slipped past it.)
+  it("no element pairs an accent fill with text-text", () => {
     const src = fileURLToPath(new URL("../", import.meta.url));
     const offenders: string[] = [];
     for (const file of tsxFiles(src)) {
@@ -197,11 +217,60 @@ describe("accent usage", () => {
         const cls = m[1]!;
         // (?![\w-]) matters: \btext-text\b also matches `text-text-muted`,
         // which is a perfectly good pairing, and would fail this test forever.
-        if (/\btext-(?:surface|text)(?![\w-])/.test(cls)) {
+        if (/\btext-text(?![\w-])/.test(cls)) {
           offenders.push(`${file.replace(src, "")}: ${cls.trim().slice(0, 60)}`);
         }
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("text-surface is banned outright", () => {
+  // `text-surface` means "text coloured like the base surface" — which is
+  // only ever a *contrasting* colour by accident (e.g. sitting on an accent
+  // fill instead of on the surface itself), and it stops being one the
+  // instant --color-surface flips from near-black to near-white under
+  // [data-theme="light"]. The narrow heuristic above — "does this string
+  // literal contain both bg-accent and text-surface" — missed the logo
+  // gradient (a *from-accent* gradient fill, not `bg-accent`) and the
+  // MusicLibrary count badge (`text-surface/70` in a sibling class string,
+  // not the same literal as `bg-accent`). After fixing both of those there
+  // is no longer a single legitimate use of this token anywhere in the app,
+  // so ban the token itself, file-wide, rather than trying to special-case
+  // "good" pairings again.
+  //
+  // The boundary matters: `text-surface-raised` and `text-surface-overlay`
+  // are different, legitimate tokens and must NOT trip this. A bare `\b`
+  // is not enough to exclude them — "surface" ends in a word character and
+  // is followed by `-`, which is itself a non-word character, so `\b` is
+  // satisfied right there regardless of what follows. The negative lookahead
+  // `(?![\w-])` instead requires the next character be neither a word
+  // character nor a hyphen, which rejects `-raised`/`-overlay` continuations
+  // while still matching an opacity modifier (`text-surface/70`): `/` is
+  // neither, so the lookahead allows it through. Verified against both cases
+  // (plus `bg-surface`, `hover:text-surface`, and a mid-string occurrence)
+  // with a standalone regex test before wiring it in here.
+  const BANNED_TOKEN = /\btext-surface(?![\w-])/;
+
+  it("no .tsx file under src/ contains the text-surface token", () => {
+    const src = fileURLToPath(new URL("../", import.meta.url));
+    const offenders: string[] = [];
+    for (const file of tsxFiles(src)) {
+      const body = readFileSync(file, "utf8");
+      if (BANNED_TOKEN.test(body)) {
+        offenders.push(file.replace(src, ""));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("the ban's regex does not trip on the legitimate surface-raised/-overlay tokens", () => {
+    expect(BANNED_TOKEN.test("text-surface-raised")).toBe(false);
+    expect(BANNED_TOKEN.test("text-surface-overlay")).toBe(false);
+  });
+
+  it("the ban's regex still catches an opacity modifier", () => {
+    expect(BANNED_TOKEN.test("text-surface/70")).toBe(true);
   });
 });

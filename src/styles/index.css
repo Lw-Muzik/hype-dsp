@@ -39,6 +39,23 @@
      is a mid-tone: on dark the fill is bright amber and wants dark text, on
      light the fill is dark amber and wants white. */
   --color-on-accent: #0a0b0e;
+
+  /* Logo-only tokens. This is the app-icon gradient (AuthScreen.tsx,
+     Onboarding.tsx) — a brand mark, not a UI surface, so it must render
+     identically in every theme. Deliberately fixed to the dark palette's
+     values and NEVER overridden by a `[data-theme]` block: do not "fix" a
+     future light-mode complaint by adding one. `--color-accent` and
+     `--color-on-accent` already flip per theme (see above), which is
+     exactly why the logo cannot borrow them — under [data-theme="light"]
+     the gradient's --color-success stop stays vivid green while
+     --color-surface flips to near-white, so amber-to-green-on-white
+     glyph text collapses to ~2.2:1. These three constants sidestep that
+     entirely by never participating in theming.
+     --color-brand-from = dark --color-accent, --color-brand-to = dark
+     --color-success, --color-on-brand = dark --color-on-accent. */
+  --color-brand-from: #f5b40f;
+  --color-brand-to: #34c13a;
+  --color-on-brand: #0a0b0e;
 }
 
 :root {

@@ -65,7 +65,7 @@ export function AuthScreen() {
     <div className="flex h-screen w-screen items-center justify-center bg-surface p-4 text-text">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-surface-raised p-7 shadow-lg">
         <div className="mb-5">
-          <div className="mb-3 grid size-11 place-items-center rounded-xl bg-gradient-to-br from-accent to-success text-surface">
+          <div className="mb-3 grid size-11 place-items-center rounded-xl bg-gradient-to-br from-brand-from to-brand-to text-on-brand">
             <AudioLines className="size-5" aria-hidden="true" />
           </div>
           {step === "details" ? (

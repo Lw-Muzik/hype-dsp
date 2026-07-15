@@ -75,7 +75,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
 
       <header className="relative z-10 flex items-center justify-between px-7 py-5">
         <div className="flex items-center gap-2">
-          <div className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-accent to-success text-surface">
+          <div className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-brand-from to-brand-to text-on-brand">
             <AudioLines className="size-4" aria-hidden="true" />
           </div>
           <span className="text-sm font-semibold">HypeMuzik</span>
@@ -106,7 +106,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                       ),
                 )}
               >
-                <div className="mb-7 grid size-20 place-items-center rounded-2xl bg-gradient-to-br from-accent to-success text-surface shadow-lg shadow-accent/20">
+                <div className="mb-7 grid size-20 place-items-center rounded-2xl bg-gradient-to-br from-brand-from to-brand-to text-on-brand shadow-lg shadow-accent/20">
                   <Icon className="size-9" aria-hidden="true" />
                 </div>
                 <h1 className="text-2xl font-semibold tracking-tight">

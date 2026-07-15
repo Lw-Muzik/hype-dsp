@@ -111,24 +111,60 @@ moving content is unreadable — the token names already draw that line.
 
 ### Layers
 
-`ThemeBackdrop` renders two crossfading art wrappers plus two static layers:
+**Implemented as a growing, pruned stack of layers, not the two-slot A/B
+ping-pong originally planned here.** Each committed source (real cover art or
+the deterministic gradient) gets its own layer, appended on top of whatever's
+already stacked, mounted once and **never mutated** afterwards — no layer's
+`background`/`background-image` is ever reassigned once it exists:
 
 ```html
-<!-- A and B: promoted wrappers. Blur rasterises into THIS texture and is reused
-     across the whole crossfade; only opacity animates here. -->
-<div class="backdrop" style="will-change:transform; opacity:…; transition:opacity 600ms linear">
+<!-- Newest on top. Each layer's wrapper is a promoted stacking-context that
+     paints once, fades in exactly once via a CSS *animation* against
+     whatever is already stacked beneath it, then is left permanently
+     opaque. -->
+<div class="backdrop" style="will-change:transform; animation:hm-backdrop-in 600ms linear both">
   <!-- un-promoted child, oversized so the Gaussian fade is off-screen -->
   <div class="art" style="inset:calc(var(--hm-backdrop-blur) * -3);
                           filter:blur(var(--hm-backdrop-blur)) saturate(1.5)"></div>
 </div>
-<div class="backdrop"><div class="art">…</div></div>   <!-- the other of A/B -->
+<!-- ...earlier layers below this one, most recently one per track change -->
 
-<div class="scrim"></div>   <!-- var(--hm-backdrop-scrim), above both art layers -->
+<div class="scrim"></div>   <!-- var(--hm-backdrop-scrim), above every art layer -->
 <div class="grain"></div>   <!-- unscaled, unblurred, topmost -->
 ```
 
-Scrim and grain sit above *both* art layers and never animate, so a track change
-only touches the two opacities.
+Once a new layer's own fade-in finishes covering it (immediate under reduced
+motion), everything beneath it is pruned from the DOM, so the stack holds at
+most two layers in the common case; a hard cap of `MAX_LAYERS = 3` only guards
+the pathological case of skip-spam arriving faster than layers can settle.
+Scrim and grain are separate siblings above every art layer and never animate,
+so a track change only ever adds one new layer and (a beat later) drops old
+ones — it never touches a layer that's already on screen.
+
+**Why not the planned two-slot ping-pong (reassign `background-image` on
+whichever of two fixed layers is hidden, crossfade via an opacity
+*transition*)?** That design was built and found broken in three ways a
+mutate-nothing stack fixes structurally, the first being disqualifying on its
+own:
+
+* A CSS **transition** needs a prior style value to animate away from and does
+  nothing on a freshly-mounted node — so the very first crossfade after mount
+  had no "from" opacity to transition from, and rendered as a hard cut, not a
+  fade. A CSS **animation** (`hm-backdrop-in`, the `@keyframes` in
+  `index.css`) runs the instant its node is inserted into the DOM regardless
+  of prior state, which is what makes every crossfade — including the first
+  — actually fade.
+* Reassigning a hidden layer's `background-image` while it might still be
+  mid-fade-out pops visibly on rapid skips (X→Y→X inside one fade window):
+  the content most recently displayed under an old identity gets silently
+  swapped for content under a new one. A stack sidesteps this by never
+  mutating a layer's content after it mounts — a new source always gets a new
+  layer instead.
+* Two fixed slots have nowhere to hold "the previous art" while a new track's
+  *real* cover is still decoding — every track change flashed the seeded
+  gradient between two real covers. The stack's append-only model is what
+  lets the cover-pending hold (below) simply defer *when* a layer gets
+  pushed, with no special-casing against a fixed slot count.
 
 Four details here are load-bearing, and each one is a mistake we already made
 once on paper:
@@ -173,8 +209,24 @@ matching the existing `VISUALIZER_LIMITS` / `SIDEBAR_LIMITS` shape.
 
 `nowPlayingMeta.cover` is `null` for a beat after every track change while tags
 decode or a cloud cover is fetched, so a naive backdrop flashes empty between
-tracks. The component keeps the previous art until a new cover actually arrives,
-then A/B ping-pongs two layers and crossfades opacity over **600ms linear**.
+tracks. The component holds off committing anything for `COVER_HOLD_MS` (400ms)
+from the moment the source changes — long enough to cover a local decode
+landing, or a fast cloud fetch — during which whatever is already stacked stays
+on screen untouched:
+
+* If the real cover arrives before the hold expires, it commits directly:
+  whatever's currently on screen crossfades straight to the new art (or, if
+  nothing has been committed yet — the very first layer of a mount — it paints
+  solid with no fade, since there's nothing beneath it to fade in against).
+* If the hold expires first, the track genuinely has no art, so the
+  deterministic gradient commits late rather than never — this is what keeps
+  an art-less track from ever flashing through the gradient on its way to
+  landing on it, and also covers the mirror-image case (an art-less track
+  followed by one that does have art).
+
+A commit pushes one new layer onto the stack (see Layers above), which fades
+in via the `hm-backdrop-in` keyframe animation over **600ms linear** against
+whatever is already stacked beneath it.
 
 Linear, not eased — an eased crossfade dips visibly in the middle. 600ms is
 longer than Material's <400ms guidance, which targets functional transitions; an

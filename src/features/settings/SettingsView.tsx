@@ -26,6 +26,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { DevicesView } from "@/features/devices/DevicesView";
 import { CloudView } from "@/features/cloud/CloudView";
+import ThemeCard from "@/features/settings/ThemeCard";
 import { Button } from "@/components/Button";
 import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
@@ -635,6 +636,8 @@ export function SettingsView() {
             />
           </div>
         </Card>
+
+        <ThemeCard />
 
         <MusicLibraryCard />
 

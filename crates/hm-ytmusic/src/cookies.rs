@@ -28,17 +28,34 @@ const ACCOUNT: &str = "ytmusic-cookies";
 /// on `.google.com`. Capturing only one silently yields a signed-out client.
 pub const COOKIE_DOMAINS: &[&str] = &["youtube.com", "google.com"];
 
-/// Whether a cookie's domain is one we harvest from: `base` itself, or a
-/// subdomain of it.
+/// Which [`COOKIE_DOMAINS`] entry `domain` belongs to, if any.
 ///
 /// Matching on the dot boundary rather than a bare suffix is what keeps
 /// `notyoutube.com` out — these are credentials, and they get written to a
 /// `cookies.txt` for yt-dlp, so a loose match would hand them to a stranger.
-pub fn wanted_domain(domain: &str) -> bool {
+fn base_index(domain: &str) -> Option<usize> {
     let host = domain.strip_prefix('.').unwrap_or(domain);
     COOKIE_DOMAINS
         .iter()
-        .any(|base| host == *base || host.ends_with(&format!(".{base}")))
+        .position(|base| host == *base || host.ends_with(&format!(".{base}")))
+}
+
+/// Whether a cookie's domain is one we harvest from: a [`COOKIE_DOMAINS`] entry
+/// itself, or a subdomain of one.
+pub fn wanted_domain(domain: &str) -> bool {
+    base_index(domain).is_some()
+}
+
+/// Sort key that puts `youtube.com` cookies ahead of `google.com` ones.
+///
+/// This decides an auth outcome, not just an ordering. `SID` and `SAPISID`
+/// exist on *both* domains, and [`header`] keeps the first of a duplicated
+/// name — so the winner here is the value the API actually sees. The webview's
+/// jar comes back in no defined order, so rank it ourselves and prefer
+/// `.youtube.com`: that's the value a browser would send to `music.youtube.com`,
+/// which is who we're impersonating.
+pub fn domain_rank(domain: &str) -> usize {
+    base_index(domain).unwrap_or(usize::MAX)
 }
 
 /// Cookies that must be present for an authenticated YT Music session.
@@ -305,6 +322,30 @@ mod tests {
         assert!(!wanted_domain("youtube.com.evil.net"));
         assert!(!wanted_domain("example.com"));
         assert!(!wanted_domain(""));
+    }
+
+    #[test]
+    fn youtube_cookies_outrank_google_ones() {
+        // `header` keeps the first of a duplicated name, so this ordering picks
+        // which `SID` the API is handed.
+        assert!(domain_rank(".youtube.com") < domain_rank(".google.com"));
+        assert!(domain_rank("music.youtube.com") < domain_rank("accounts.google.com"));
+        // Anything unwanted sorts last rather than displacing a real cookie.
+        assert!(domain_rank("example.com") > domain_rank(".google.com"));
+    }
+
+    #[test]
+    fn sorting_by_rank_makes_the_youtube_value_win_dedup() {
+        // The jar arrives in no defined order; this is the google-first case.
+        let mut google_sid = cookie("SID", "google-value");
+        google_sid.domain = ".google.com".to_string();
+        let youtube_sid = cookie("SID", "youtube-value");
+        let mut jar = vec![google_sid, youtube_sid];
+
+        jar.sort_by_key(|c| domain_rank(&c.domain));
+
+        // Without the sort this would be "SID=google-value".
+        assert_eq!(header(&jar), "SID=youtube-value");
     }
 
     #[test]

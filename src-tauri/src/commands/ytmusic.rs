@@ -211,6 +211,10 @@ fn harvest_cookies(win: &WebviewWindow) -> Vec<YtCookie> {
             out.push(mapped);
         }
     }
+    // The jar arrives in no defined order, and `cookies::header` keeps the first
+    // of a duplicated name — so without this, which `SID` the API sees would be
+    // luck. Stable, so it only reorders across domains.
+    out.sort_by_key(|c| cookies::domain_rank(&c.domain));
     out
 }
 

@@ -67,8 +67,8 @@ export function Combobox({
   const q = query.trim().toLowerCase();
   const filtered = q
     ? items.filter((i) =>
-        `${i.label} ${i.sublabel ?? ""}`.toLowerCase().includes(q),
-      )
+      `${i.label} ${i.sublabel ?? ""}`.toLowerCase().includes(q),
+    )
     : items;
 
   const close = useCallback(() => {
@@ -262,7 +262,7 @@ export function Combobox({
                 aria-activedescendant={
                   filtered[active] ? `${baseId}-opt-${active}` : undefined
                 }
-                className="w-full bg-transparent py-2.5 text-sm placeholder:text-text-faint"
+                className="w-full bg-transparent py-2.5 text-sm placeholder:text-text-faint focus:outline-none"
               />
               {query && (
                 <button

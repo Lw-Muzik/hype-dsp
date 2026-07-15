@@ -1,0 +1,90 @@
+[
+  {
+    "id": "AlJazeeraEnglish.qa",
+    "name": "Al Jazeera English",
+    "url": "https://live-hls-web-aje.getaj.net/AJE/index.m3u8",
+    "logo": "https://i.imgur.com/7bRVpnu.png",
+    "group": "News",
+    "country": "QA",
+    "userAgent": null,
+    "referrer": null,
+    "quality": "1080p"
+  },
+  {
+    "id": "DWEnglish.de",
+    "name": "DW English",
+    "url": "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8",
+    "logo": "https://i.imgur.com/A1xzjOI.png",
+    "group": "News",
+    "country": "DE",
+    "userAgent": null,
+    "referrer": null,
+    "quality": "720p"
+  },
+  {
+    "id": "France24English.fr",
+    "name": "France 24 English",
+    "url": "https://static.france24.com/live/F24_EN_HI_HLS/live_web.m3u8",
+    "logo": "https://i.imgur.com/61TmZbW.png",
+    "group": "News",
+    "country": "FR",
+    "userAgent": null,
+    "referrer": null,
+    "quality": "720p"
+  },
+  {
+    "id": "NASATVPublic.us",
+    "name": "NASA TV Public",
+    "url": "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8",
+    "logo": "https://i.imgur.com/6Y0Yg7b.png",
+    "group": "Science",
+    "country": "US",
+    "userAgent": null,
+    "referrer": null,
+    "quality": "1080p"
+  },
+  {
+    "id": "RedBullTV.at",
+    "name": "Red Bull TV",
+    "url": "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
+    "logo": "https://i.imgur.com/8tXytev.png",
+    "group": "Sports",
+    "country": "AT",
+    "userAgent": null,
+    "referrer": null,
+    "quality": "1080p"
+  },
+  {
+    "id": "BloombergTVUS.us",
+    "name": "Bloomberg TV US",
+    "url": "https://www.bloomberg.com/media-manifest/streams/us.m3u8",
+    "logo": "https://i.imgur.com/OuogLHx.png",
+    "group": "Business",
+    "country": "US",
+    "userAgent": null,
+    "referrer": null,
+    "quality": "720p"
+  },
+  {
+    "id": "ABCNewsLive.us",
+    "name": "ABC News Live",
+    "url": "https://content.uplynk.com/channel/3324f2467c414329b3b0cc5cd987b6be.m3u8",
+    "logo": "https://i.imgur.com/dCkuFyG.png",
+    "group": "News",
+    "country": "US",
+    "userAgent": null,
+    "referrer": null,
+    "quality": "720p"
+  },
+  {
+    "id": "TRTWorld.tr",
+    "name": "TRT World",
+    "url": "https://tv-trtworld.medya.trt.com.tr/master.m3u8",
+    "logo": "https://i.imgur.com/K0GmnaS.png",
+    "group": "News",
+    "country": "TR",
+    "userAgent": null,
+    "referrer": null,
+    "quality": "1080p"
+  }
+]

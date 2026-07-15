@@ -11,14 +11,15 @@
     "tauri:prebuild": "node scripts/build-sidecar.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "tauri": "tauri",
+    "app:dev": "tauri dev",
     "build:app": "tauri build",
-    "build:app:debug": "tauri build --debug",
+    "build:debug": "tauri build --debug",
     "build:mac": "tauri build --target universal-apple-darwin"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-dialog": "2.7.1",
+    "hls.js": "^1.6.16",
     "lucide-react": "1.20.0",
     "qrcode.react": "^4.2.0",
     "react": "19.2.7",

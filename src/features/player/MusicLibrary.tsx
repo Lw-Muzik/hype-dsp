@@ -12,6 +12,7 @@ import {
   Play,
   Search,
   Smartphone,
+  SquarePlay,
   Tag,
   Users,
 } from "lucide-react";
@@ -24,13 +25,14 @@ import type { ArtSource } from "@/lib/useTrackArtwork";
 import { AlbumDeck } from "@/features/player/AlbumDeck";
 import type { DeckItem } from "@/features/player/AlbumDeck";
 import { TrackRow } from "@/features/player/TrackRow";
+import { DownloadAction } from "@/features/ytmusic/DownloadAction";
 import { Artwork } from "@/features/player/Artwork";
 import { VirtualList } from "@/components/VirtualList";
 import { VirtualGrid } from "@/components/VirtualGrid";
 import { Button } from "@/components/Button";
 import { cn } from "@/lib/cn";
 
-type SourceFilter = "all" | "local" | "phone" | "cloud";
+type SourceFilter = "all" | "local" | "phone" | "cloud" | "ytmusic";
 type Facet = "songs" | "albums" | "artists" | "folders" | "genres";
 type ViewMode = "list" | "grid";
 
@@ -119,6 +121,13 @@ function pickDeck(tracks: MusicTrack[]): DeckItem[] {
   }));
 }
 
+/** YT Music lists region-blocked / removed tracks so a playlist matches what the
+ *  user sees on YouTube, but nothing can play them. Every other source only
+ *  lists what it can play. */
+function isUnavailable(t: MusicTrack): boolean {
+  return t.ytTrack?.isAvailable === false;
+}
+
 function matches(t: MusicTrack, q: string): boolean {
   return (
     t.title.toLowerCase().includes(q) ||
@@ -141,8 +150,17 @@ const GRID_TEXT_H = 52;
  * source filter. Replaces the old per-source views.
  */
 export function MusicLibrary() {
-  const { tracks, localTracks, phoneTracks, cloudTracks, library, phone, cloud } =
-    useMusicLibrary();
+  const {
+    tracks,
+    localTracks,
+    phoneTracks,
+    cloudTracks,
+    ytmusicTracks,
+    library,
+    phone,
+    cloud,
+    ytmusic,
+  } = useMusicLibrary();
   const playQueueItems = useEngineStore((s) => s.playQueueItems);
   const current = useEngineStore((s) =>
     s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined,
@@ -171,7 +189,9 @@ export function MusicLibrary() {
         ? localTracks
         : sourceFilter === "phone"
           ? phoneTracks
-          : cloudTracks;
+          : sourceFilter === "cloud"
+            ? cloudTracks
+            : ytmusicTracks;
 
   // Heavy browse derivations (search / facet grouping / hero deck) run against a
   // *deferred* copy so they never block input or navigation: while a large
@@ -201,24 +221,45 @@ export function MusicLibrary() {
   // The track list currently shown (and what playback enqueues).
   const shownTracks = searching ? searchResults : drill ? drill.tracks : filtered;
 
-  const playAt = (list: MusicTrack[], index: number) => playQueueItems(list, index);
+  // Unavailable tracks can't stream, so they never enter the queue — otherwise
+  // next/prev would walk onto dead entries. The start index is re-based onto the
+  // playable set (as `playCloudList` does when filtering folders out), skipping
+  // forward when the requested one is itself unavailable — "Play all" and the
+  // hero deck can both land on one.
+  const playAt = (list: MusicTrack[], index: number) => {
+    const from = list.findIndex((t, i) => i >= index && !isUnavailable(t));
+    if (from < 0) return;
+    const target = list[from]!;
+    const playable = list.filter((t) => !isUnavailable(t));
+    playQueueItems(
+      playable,
+      Math.max(
+        0,
+        playable.findIndex((t) => t.uid === target.uid),
+      ),
+    );
+  };
 
   // Has the active source finished its first load? For "All" we wait on every
   // source so we don't flash an empty state while others are still arriving.
   const activeReady =
     sourceFilter === "all"
-      ? library.ready && phone.ready && cloud.ready
+      ? library.ready && phone.ready && cloud.ready && ytmusic.ready
       : sourceFilter === "local"
         ? library.ready
         : sourceFilter === "phone"
           ? phone.ready
-          : cloud.ready;
+          : sourceFilter === "cloud"
+            ? cloud.ready
+            : ytmusic.ready;
 
-  // Phone/Cloud selected, finished checking, and genuinely not connected →
-  // offer to set them up (only *after* the status check, never mid-load).
+  // Phone/Cloud/YouTube Music selected, finished checking, and genuinely not
+  // connected → offer to set them up (only *after* the status check, never
+  // mid-load).
   const needsConnect =
     (sourceFilter === "phone" && phone.ready && !phone.connected) ||
-    (sourceFilter === "cloud" && cloud.ready && !cloud.connected);
+    (sourceFilter === "cloud" && cloud.ready && !cloud.connected) ||
+    (sourceFilter === "ytmusic" && ytmusic.ready && !ytmusic.connected);
 
   // First load still running with nothing to show yet → show a loading state
   // instead of a blank pane or a misleading "not connected" prompt.
@@ -228,10 +269,13 @@ export function MusicLibrary() {
       ? "Loading music from your phone…"
       : sourceFilter === "cloud"
         ? "Loading your cloud library…"
-        : "Loading your music…";
+        : sourceFilter === "ytmusic"
+          ? "Loading your YouTube Music playlists…"
+          : "Loading your music…";
 
   // A source is still streaming in behind already-visible tracks.
-  const stillLoading = library.loading || phone.loading || cloud.loading;
+  const stillLoading =
+    library.loading || phone.loading || cloud.loading || ytmusic.loading;
 
   // While a big local library pages in, show how far along we are.
   const loadProgress =
@@ -268,6 +312,14 @@ export function MusicLibrary() {
             active={sourceFilter === "cloud"}
             onClick={() => setSourceFilter("cloud")}
           />
+          <SourcePill
+            icon={SquarePlay}
+            label="YouTube"
+            count={ytmusic.connected ? ytmusic.count : undefined}
+            dot={ytmusic.connected}
+            active={sourceFilter === "ytmusic"}
+            onClick={() => setSourceFilter("ytmusic")}
+          />
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle view={view} onChange={setView} />
@@ -291,7 +343,13 @@ export function MusicLibrary() {
         <LibraryLoading message={loadingMessage} />
       ) : needsConnect ? (
         <ConnectPrompt
-          kind={sourceFilter === "phone" ? "phone" : "cloud"}
+          kind={
+            sourceFilter === "phone"
+              ? "phone"
+              : sourceFilter === "ytmusic"
+                ? "ytmusic"
+                : "cloud"
+          }
           onConnect={() => setRoute("settings")}
         />
       ) : filtered.length === 0 ? (
@@ -379,8 +437,12 @@ export function MusicLibrary() {
                       art={trackArt(t)}
                       seed={t.album?.trim() || t.title}
                       source={t.source}
+                      unavailable={isUnavailable(t)}
                       playing={`${t.source}:${t.id}` === playingKey}
                       onPlay={() => playAt(shownTracks, i)}
+                      trailing={
+                        t.ytTrack && <DownloadAction track={t.ytTrack} />
+                      }
                     />
                   )}
                 />
@@ -569,6 +631,16 @@ function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode
   );
 }
 
+/** The corner badge marking a card's non-local source. */
+const CARD_BADGE: Record<
+  Exclude<MusicTrack["source"], "local">,
+  LucideIcon
+> = {
+  phone: Smartphone,
+  cloud: Cloud,
+  ytmusic: SquarePlay,
+};
+
 /** A track rendered as a grid card (square cover + title + artist). */
 function TrackCard({
   track,
@@ -579,9 +651,26 @@ function TrackCard({
   playing: boolean;
   onPlay: () => void;
 }) {
+  const unavailable = isUnavailable(track);
+  const Badge = track.source === "local" ? null : CARD_BADGE[track.source];
   return (
-    <button type="button" onClick={onPlay} className="group flex h-full w-full flex-col gap-2 text-left">
-      <div className={cn("relative", playing && "rounded-xl ring-2 ring-accent")}>
+    <button
+      type="button"
+      onClick={unavailable ? undefined : onPlay}
+      disabled={unavailable}
+      title={unavailable ? "Not available on YouTube Music" : undefined}
+      className={cn(
+        "group flex h-full w-full flex-col gap-2 text-left",
+        unavailable && "cursor-not-allowed",
+      )}
+    >
+      <div
+        className={cn(
+          "relative",
+          playing && "rounded-xl ring-2 ring-accent",
+          unavailable && "opacity-40 grayscale",
+        )}
+      >
         <Artwork
           art={trackArt(track)}
           seed={track.album?.trim() || track.title}
@@ -589,26 +678,32 @@ function TrackCard({
           rounded="rounded-xl"
           className="aspect-square w-full shadow-md ring-1 ring-white/5"
         />
-        <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-          <span className="grid size-10 place-items-center rounded-full bg-accent text-on-accent shadow-lg">
-            <Play className="size-5 fill-current" aria-hidden="true" />
+        {!unavailable && (
+          <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+            <span className="grid size-10 place-items-center rounded-full bg-accent text-surface shadow-lg">
+              <Play className="size-5 fill-current" aria-hidden="true" />
+            </span>
           </span>
-        </span>
-        {track.source !== "local" && (
+        )}
+        {Badge && (
           <span className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-black/55 text-white backdrop-blur">
-            {track.source === "phone" ? (
-              <Smartphone className="size-3" aria-hidden="true" />
-            ) : (
-              <Cloud className="size-3" aria-hidden="true" />
-            )}
+            <Badge className="size-3" aria-hidden="true" />
           </span>
         )}
       </div>
       <div className="min-w-0">
-        <p className={cn("truncate text-sm font-medium", playing && "text-accent-strong")}>
+        <p
+          className={cn(
+            "truncate text-sm font-medium",
+            playing && "text-accent-strong",
+            unavailable && "text-text-faint line-through",
+          )}
+        >
           {track.title}
         </p>
-        <p className="truncate text-xs text-text-muted">{track.artist ?? "Unknown artist"}</p>
+        <p className="truncate text-xs text-text-muted">
+          {unavailable ? "Unavailable" : (track.artist ?? "Unknown artist")}
+        </p>
       </div>
     </button>
   );
@@ -699,6 +794,15 @@ function EmptySource({ source }: { source: SourceFilter }) {
       />
     );
   }
+  if (source === "ytmusic") {
+    return (
+      <CenteredEmpty
+        icon={SquarePlay}
+        title="No playlists found"
+        body="You're signed in, but this account has no playlists with tracks in them yet."
+      />
+    );
+  }
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       <div className="grid size-14 place-items-center rounded-2xl bg-surface-raised ring-1 ring-border">
@@ -737,26 +841,47 @@ function CenteredEmpty({
   );
 }
 
-function ConnectPrompt({ kind, onConnect }: { kind: "phone" | "cloud"; onConnect: () => void }) {
-  const Icon = kind === "phone" ? Smartphone : Cloud;
+/** The sources that can be absent and offer a way to set them up. */
+type ConnectKind = "phone" | "cloud" | "ytmusic";
+
+const CONNECT_PROMPT: Record<
+  ConnectKind,
+  { icon: LucideIcon; title: string; body: string; action: string }
+> = {
+  phone: {
+    icon: Smartphone,
+    title: "No phone connected",
+    body: "Pair a phone in Settings, then its music shows up here.",
+    action: "Pair in Settings",
+  },
+  cloud: {
+    icon: Cloud,
+    title: "No cloud connected",
+    body: "Connect Google Drive or Dropbox in Settings to stream your music here.",
+    action: "Connect in Settings",
+  },
+  ytmusic: {
+    icon: SquarePlay,
+    title: "Not signed in to YouTube Music",
+    body: "Sign in from Settings to browse and play your playlists here.",
+    action: "Sign in from Settings",
+  },
+};
+
+function ConnectPrompt({ kind, onConnect }: { kind: ConnectKind; onConnect: () => void }) {
+  const { icon: Icon, title, body, action } = CONNECT_PROMPT[kind];
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       <div className="grid size-14 place-items-center rounded-2xl bg-surface-raised ring-1 ring-border">
         <Icon className="size-7 text-text-faint" aria-hidden="true" />
       </div>
       <div>
-        <p className="text-base font-medium">
-          {kind === "phone" ? "No phone connected" : "No cloud connected"}
-        </p>
-        <p className="mt-1 max-w-xs text-sm text-text-muted">
-          {kind === "phone"
-            ? "Pair a phone in Settings, then its music shows up here."
-            : "Connect Google Drive or Dropbox in Settings to stream your music here."}
-        </p>
+        <p className="text-base font-medium">{title}</p>
+        <p className="mt-1 max-w-xs text-sm text-text-muted">{body}</p>
       </div>
       <Button variant="primary" onClick={onConnect}>
         <ListMusic className="size-4" aria-hidden="true" />
-        {kind === "phone" ? "Pair in Settings" : "Connect in Settings"}
+        {action}
       </Button>
     </div>
   );

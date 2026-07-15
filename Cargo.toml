@@ -10,6 +10,7 @@ members = [
     "crates/hm-stems",
     "crates/hm-core",
     "crates/hm-visualizer",
+    "crates/hm-ytmusic",
     "src-tauri",
 ]
 
@@ -87,6 +88,7 @@ hm-link = { path = "crates/hm-link" }
 hm-remote = { path = "crates/hm-remote" }
 hm-stems = { path = "crates/hm-stems" }
 hm-core = { path = "crates/hm-core" }
+hm-ytmusic = { path = "crates/hm-ytmusic" }
 
 # Release profile tuned for real-time audio: optimize hard, keep panic=unwind
 # so a DSP/decode error can be surfaced rather than aborting the whole app.

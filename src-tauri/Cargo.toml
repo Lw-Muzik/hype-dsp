@@ -31,11 +31,15 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 arc-swap = { workspace = true }
+# Async commands that need to wait without blocking a thread — the YouTube Music
+# sign-in polls the login window's cookie jar.
+tokio = { workspace = true }
 
 # Cloud (Google Drive / Dropbox) — REST + desktop OAuth (loopback + PKCE).
 reqwest = { workspace = true }
 sha2 = "0.10"
 base64 = "0.22"
+url = "2"
 getrandom = "0.2"
 
 # Phone Link: a small control server phones cast to (POST /cast, /transport).
@@ -47,6 +51,7 @@ souvlaki = "0.8"
 
 # Internal crates wired into the app.
 hm-core = { workspace = true }
+hm-ytmusic = { workspace = true }
 hm-audio = { workspace = true }
 hm-media = { workspace = true }
 hm-platform = { workspace = true }

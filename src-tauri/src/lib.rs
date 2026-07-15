@@ -12,6 +12,8 @@ mod cloud_meta;
 mod commands;
 mod control;
 mod media;
+mod tv_proxy;
+mod ytmusic;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -248,6 +250,14 @@ pub fn run() {
             // to drain on init. macOS delivers these via `RunEvent::Opened`.
             app.state::<commands::open_with::PendingOpen>()
                 .push(std::env::args().skip(1));
+
+            // In-app TV: a local HLS proxy so channels play in an embedded
+            // `<video>` (hls.js) — it launders CSP/CORS/custom-header/mixed-content
+            // so no native window and no external player are needed.
+            if let Some(proxy) = tv_proxy::start() {
+                app.manage(proxy);
+            }
+
             // Open the preset store in the app data dir; fall back to an
             // in-memory store so the app still runs if the disk path fails.
             let store = app
@@ -390,6 +400,49 @@ pub fn run() {
                 .name("hm-cloudlist-warm".into())
                 .spawn(move || {
                     cloud_list_warm.state::<cloud_list::CloudListCache>().warm();
+                })
+                .ok();
+
+            // YouTube Music. The session (Google cookies — full account
+            // credentials) lives in the OS keychain, not next to these JSON
+            // stores; `load` restores it, or falls back to signed-out if the
+            // keychain is locked or unavailable.
+            app.manage(hm_ytmusic::YtMusicState::load());
+
+            let yt_settings_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("ytmusic-settings.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_ytmusic_settings.json"));
+            // Downloads default under the OS music dir; home, then temp, are
+            // last-resort fallbacks so a download always has somewhere to land.
+            let music_dir = app
+                .path()
+                .audio_dir()
+                .or_else(|_| app.path().home_dir())
+                .unwrap_or_else(|_| std::env::temp_dir());
+            app.manage(ytmusic::YtSettings::load(yt_settings_path, music_dir));
+
+            // Cached playlist listing, so relaunching shows the library instantly
+            // instead of re-walking every playlist. Same lazy-load + background
+            // warm as the cloud listing, for the same reason.
+            let yt_lib_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("ytmusic-library.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_ytmusic_library.json"));
+            app.manage(ytmusic::YtLibraryCache::new(yt_lib_path));
+            let yt_warm = app.handle().clone();
+            std::thread::Builder::new()
+                .name("hm-ytlib-warm".into())
+                .spawn(move || {
+                    yt_warm.state::<ytmusic::YtLibraryCache>().warm();
                 })
                 .ok();
 
@@ -584,6 +637,17 @@ pub fn run() {
             commands::link::link_lyrics,
             commands::link::link_play,
             commands::link::link_play_queue,
+            commands::ytmusic::ytmusic_status,
+            commands::ytmusic::ytmusic_sign_in,
+            commands::ytmusic::ytmusic_sign_out,
+            commands::ytmusic::ytmusic_all_tracks,
+            commands::ytmusic::ytmusic_play,
+            commands::ytmusic::player_play_ytmusic_queue,
+            commands::ytmusic::ytmusic_download,
+            commands::ytmusic::ytmusic_download_to_phone,
+            commands::ytmusic::ytmusic_download_dir,
+            commands::ytmusic::ytmusic_set_download_dir,
+            commands::link::link_upload,
             commands::engine::player_play_file,
             commands::engine::player_play_radio,
             commands::engine::player_play_queue,
@@ -650,6 +714,15 @@ pub fn run() {
             commands::radio::radio_favorites_list,
             commands::radio::radio_favorite_add,
             commands::radio::radio_favorite_remove,
+            commands::tv::tv_search,
+            commands::tv::tv_by_country,
+            commands::tv::tv_by_category,
+            commands::tv::tv_categories,
+            commands::tv::tv_countries,
+            commands::tv::tv_favorites_list,
+            commands::tv::tv_favorite_add,
+            commands::tv::tv_favorite_remove,
+            commands::tv::tv_stream_url,
             commands::mixer::mixer_list_sessions,
             commands::mixer::mixer_set_volume,
             commands::mixer::mixer_set_muted,

@@ -5,12 +5,13 @@ import { cloudTrackCover, libraryArtwork, linkArtwork } from "@/lib/ipc";
  * Where a track's cover art comes from. Local files read embedded art by path;
  * phone tracks fetch it from the paired device; cloud tracks fetch it lazily
  * from the metadata cache (only the on-screen rows, so a big library never holds
- * thousands of covers in memory).
+ * thousands of covers in memory). YouTube Music tracks always arrive with their
+ * thumbnail URL in `cover`, so they resolve with no fetch at all.
  */
 export interface ArtSource {
   /** Stable cache key (the track's uid). */
   key: string;
-  source: "local" | "phone" | "cloud";
+  source: "local" | "phone" | "cloud" | "ytmusic";
   /** Local file path. */
   path?: string | null;
   /** Phone device + track ids. */
@@ -22,8 +23,8 @@ export interface ArtSource {
   cloudAccountId?: string;
   cloudFileId?: string;
   cloudName?: string;
-  /** Already-resolved cover (a `data:` URI), e.g. the now-playing track after
-   *  decode — used directly, skipping any fetch. */
+  /** Already-resolved cover (a `data:` URI, or a YT Music thumbnail URL), e.g.
+   *  the now-playing track after decode — used directly, skipping any fetch. */
   cover?: string | null;
 }
 

@@ -27,6 +27,7 @@ import { Card } from "@/components/Card";
 import { DevicesView } from "@/features/devices/DevicesView";
 import { CloudView } from "@/features/cloud/CloudView";
 import ThemeCard from "@/features/settings/ThemeCard";
+import { YtMusicView } from "@/features/ytmusic/YtMusicView";
 import { Button } from "@/components/Button";
 import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
@@ -247,7 +248,7 @@ function MusicLibraryCard() {
     let cancelled = false;
     onLibraryScanProgress((p) => setProgress(p))
       .then((fn) => (cancelled ? fn() : (un = fn)))
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
       un?.();
@@ -442,11 +443,10 @@ function OutputDevices({
               aria-checked={active}
               disabled={busy}
               onClick={() => !active && onSelect(device)}
-              className={`flex w-full items-center gap-3 rounded-control border px-3 py-2.5 text-left text-sm transition-colors disabled:opacity-60 ${
-                active
+              className={`flex w-full items-center gap-3 rounded-control border px-3 py-2.5 text-left text-sm transition-colors disabled:opacity-60 ${active
                   ? "border-accent/50 bg-accent-muted"
                   : "border-border bg-surface hover:border-border-strong hover:bg-surface-overlay"
-              }`}
+                }`}
             >
               <Icon
                 className={`size-4 shrink-0 ${active ? "text-accent-strong" : "text-text-muted"}`}
@@ -533,10 +533,10 @@ export function SettingsView() {
     const id = window.setInterval(() => void loadDevices(), 3000);
     captureVirtualAvailable()
       .then((v) => !cancelled && setVirtualAvailable(v))
-      .catch(() => {});
+      .catch(() => { });
     systemAudioStatus()
       .then((s) => !cancelled && setSystemStatus(s))
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -569,7 +569,7 @@ export function SettingsView() {
     const poll = () => {
       systemEqStatus()
         .then((s) => !cancelled && setRuntimeStatus(s))
-        .catch(() => {});
+        .catch(() => { });
     };
     poll();
     const id = window.setInterval(poll, 1500);
@@ -644,6 +644,8 @@ export function SettingsView() {
         <DevicesView />
 
         <CloudView />
+        {/* youtube music view */}
+        <YtMusicView />
 
         <Card
           title="Playback"
@@ -773,11 +775,10 @@ export function SettingsView() {
                   </p>
                   {runtimeStatus !== "disabled" && (
                     <span
-                      className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        runtimeStatus === "recovering"
+                      className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${runtimeStatus === "recovering"
                           ? "bg-amber-500/15 text-amber-400"
                           : "bg-success/15 text-success"
-                      }`}
+                        }`}
                       title={
                         runtimeStatus === "recovering"
                           ? "A transient failure (e.g. heavy CPU load or a device change) is being recovered in the background — audio is restored but momentarily unequalised."
@@ -785,11 +786,10 @@ export function SettingsView() {
                       }
                     >
                       <span
-                        className={`size-1.5 rounded-full ${
-                          runtimeStatus === "recovering"
+                        className={`size-1.5 rounded-full ${runtimeStatus === "recovering"
                             ? "animate-pulse bg-amber-400"
                             : "bg-success"
-                        }`}
+                          }`}
                         aria-hidden="true"
                       />
                       {runtimeStatus === "recovering" ? "Recovering…" : "Active"}

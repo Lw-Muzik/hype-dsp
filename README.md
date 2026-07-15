@@ -23,8 +23,13 @@ chain and live UI:
 - **Headphone profiles** — 37 genuine AutoEq (oratory1990) curves, searchable.
 - **Player** — multi-format decode (mp3/flac/aac/wav/ogg) via symphonia, a
   scanned library, and playlists.
-- **Radio** — radio-browser directory + favorites + **live streaming** through
-  the chain.
+- **Stations** — one hub, two kinds of live media:
+  - **Radio** — radio-browser directory + favorites + **live streaming** through
+    the chain.
+  - **TV** — the world TV directory ([iptv-org](https://github.com/iptv-org/iptv)):
+    browse by country/category, search, favorites (list or grid), played
+    **in-app** in an embedded player (hls.js over a local HLS proxy — no external
+    window).
 - **Mixer** — per-app volume (native on Windows; a graceful notice on macOS).
 - **Licensing** — an explicitly-marked local trial/activation **mock**.
 

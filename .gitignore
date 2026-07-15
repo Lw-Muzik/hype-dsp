@@ -44,3 +44,8 @@ pnpm-debug.log*
 
 # Generated visualizer sidecar binaries (built by scripts/build-sidecar.mjs)
 /src-tauri/binaries/
+
+
+# claude
+/.claude/*
+/.superpowers/

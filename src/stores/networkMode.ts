@@ -18,7 +18,7 @@ export function classify(
   return prev; // not enough evidence yet
 }
 
-/** Pick the playback mode for a streamed (cloud/phone) queue.
+/** Pick the playback mode for a streamed (cloud/phone/YouTube Music) queue.
  *
  *  Optimistic by default: crossfade/gapless is used unless the link has
  *  actually proven it can't keep up (a rebuffer this session → "constrained")
@@ -28,7 +28,7 @@ export function classify(
  *  cut (never a stall) when a lookahead track isn't ready in time, so being
  *  optimistic can only cost a missed crossfade, never wedge playback. */
 export function chooseStreamMode(
-  source: "cloud" | "phone",
+  source: "cloud" | "phone" | "ytmusic",
   dataSaver: boolean,
   net: NetworkMode,
 ): "gapless" | "progressive" {

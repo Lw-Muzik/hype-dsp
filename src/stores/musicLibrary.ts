@@ -9,8 +9,10 @@ import {
   libraryListPage,
   linkLibrary,
   linkPaired,
+  ytmusicAllTracks,
+  ytmusicStatus,
 } from "@/lib/ipc";
-import { cloudItem, localItem, phoneItem } from "@/stores/engine";
+import { cloudItem, localItem, phoneItem, ytmusicItem } from "@/stores/engine";
 import type { QueueItem } from "@/stores/engine";
 import type {
   CloudAudioPage,
@@ -20,11 +22,14 @@ import type {
   LibraryTrack,
   PhoneDevice,
   PhoneTrack,
+  YtDlpInfo,
+  YtPlaylist,
+  YtTrack,
 } from "@/lib/types";
 
 /** A browsable track from any source, ready to enqueue (it's a `QueueItem`). */
 export interface MusicTrack extends QueueItem {
-  source: "local" | "phone" | "cloud";
+  source: "local" | "phone" | "cloud" | "ytmusic";
   /** Unique across sources, for React keys and highlight matching. */
   uid: string;
   /** Genre from tags (local only for now), for the Genres facet. */
@@ -201,6 +206,22 @@ function cloudEntryToTrack(e: CloudEntry): MusicTrack {
   };
 }
 
+/** Map one YouTube Music track into a browsable `MusicTrack` (O(1)). Cheaper
+ *  than cloud: the listing already carries title/artist/album/duration and a
+ *  thumbnail, so there's no tags pass and no lazy cover fetch to arrange. */
+export function ytTrackToTrack(t: YtTrack): MusicTrack {
+  return {
+    ...ytmusicItem(t),
+    source: "ytmusic" as const,
+    uid: `ytmusic:${t.videoId}`,
+    genre: null,
+    // Playlists ride the Folders facet — that's the whole browse design here.
+    folder: t.playlistTitle,
+    artPath: null,
+    cover: t.thumbnail,
+  };
+}
+
 /** Map one paired-phone track into a browsable `MusicTrack` (O(1)). */
 function phoneTrackToTrack(d: PhoneDevice, t: PhoneTrack): MusicTrack {
   return {
@@ -367,6 +388,13 @@ interface MusicLibraryStore {
   cloudBase: MusicTrack[];
   cloudMeta: Map<string, CloudTrackMeta>;
 
+  ytmusic: MusicTrack[];
+  /** The account's playlists, as listed alongside the tracks. */
+  ytPlaylists: YtPlaylist[];
+  /** yt-dlp's install state, learned from the same status call the load makes.
+   *  Null until first checked. Playback/downloads need it; browsing doesn't. */
+  ytdlp: YtDlpInfo | null;
+
   localLoad: LoadStatus;
   /** The library `version` the local set was loaded for (re-fetch when it bumps). */
   localVersion: number;
@@ -377,12 +405,16 @@ interface MusicLibraryStore {
   phoneConnected: boolean;
   cloudLoad: LoadStatus;
   cloudConnected: boolean;
+  ytmusicLoad: LoadStatus;
+  /** Signed in to YouTube Music — the source's equivalent of "connected". */
+  ytmusicSignedIn: boolean;
 
   /** Load a source once. No-ops while loading/ready (local also re-loads when
    *  `version` changes); errors are terminal until an invalidate/reload. */
   ensureLocal: (version: number) => void;
   ensurePhone: () => void;
   ensureCloud: () => void;
+  ensureYtMusic: () => void;
   /** Re-check paired phones and refresh their libraries **in place** (keeping the
    *  current tracks visible, no empty flash). Runs regardless of whether the
    *  Library view is mounted, so a phone coming online auto-syncs without a
@@ -394,6 +426,7 @@ interface MusicLibraryStore {
   /** Mark a source stale so the next `ensure*` reloads it (after pair/connect). */
   invalidatePhone: () => void;
   invalidateCloud: () => void;
+  invalidateYtMusic: () => void;
   /** Force every source to reload on the next `ensure*` (e.g. a manual refresh). */
   reloadAll: () => void;
 }
@@ -403,22 +436,27 @@ interface MusicLibraryStore {
 let localGen = 0;
 let phoneGen = 0;
 let cloudGen = 0;
+let ytGen = 0;
 // Guards against overlapping focus probes (one cheap availability check at a time).
 let revalidating = false;
 
 /**
  * The single source of truth for the merged music library (local + phones +
- * cloud). Living in a store rather than component state is deliberate: the
- * Player view unmounts when you navigate away, so holding tracks here means a
- * source is fetched **once** and survives navigation — it only reloads when its
- * `ensure*` is told to (a library re-scan, a phone pairing, or a cloud
- * connect/disconnect), never just because you reopened the Library tab.
+ * cloud + YouTube Music). Living in a store rather than component state is
+ * deliberate: the Player view unmounts when you navigate away, so holding tracks
+ * here means a source is fetched **once** and survives navigation — it only
+ * reloads when its `ensure*` is told to (a library re-scan, a phone pairing, a
+ * cloud connect/disconnect, a YT Music sign-in/out), never just because you
+ * reopened the Library tab.
  */
 export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
   local: [],
   phone: [],
   cloudBase: [],
   cloudMeta: new Map(),
+  ytmusic: [],
+  ytPlaylists: [],
+  ytdlp: null,
   localLoad: "idle",
   localVersion: -1,
   localTotal: 0,
@@ -426,6 +464,8 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
   phoneConnected: false,
   cloudLoad: "idle",
   cloudConnected: false,
+  ytmusicLoad: "idle",
+  ytmusicSignedIn: false,
 
   ensureLocal: (version) => {
     const s = get();
@@ -684,6 +724,77 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
     });
   },
 
+  ensureYtMusic: () => {
+    const s = get();
+    if (s.ytmusicLoad !== "idle") return;
+    const gen = ++ytGen;
+    const isStale = () => gen !== ytGen;
+    const now = () => performance.now();
+    set({ ytmusicLoad: "loading" });
+    (async () => {
+      // Listing while signed out is a guaranteed error, so settle on the status
+      // instead — the same shape as cloud settling on "no accounts".
+      const status = await ytmusicStatus();
+      if (isStale()) return;
+      set({ ytdlp: status.ytdlp });
+      if (!status.signedIn) {
+        set({
+          ytmusic: [],
+          ytPlaylists: [],
+          ytmusicSignedIn: false,
+          ytmusicLoad: "ready",
+        });
+        return;
+      }
+
+      // ---- Phase 1: instant. A cached listing is a pure disk read, so the
+      // library appears immediately on relaunch rather than re-walking every
+      // playlist over the network. A cold cache fetches once, here.
+      const page = await ytmusicAllTracks(false);
+      if (isStale()) return;
+      set({ ytmusicSignedIn: true, ytPlaylists: page.playlists });
+      await mapIncrementally({
+        source: page.tracks,
+        map: ytTrackToTrack,
+        publish: (mapped) => {
+          if (!isStale()) set({ ytmusic: mapped });
+        },
+        yieldToLoop: yieldToMain,
+        isStale,
+        now,
+      });
+      if (isStale()) return;
+      set({ ytmusicLoad: "ready" });
+
+      // ---- Phase 2: background refresh, so playlist edits made elsewhere
+      // surface. Keyed on `gen`, so a sign-out mid-flight discards it. Its own
+      // catch, because phase 1 already published a good library: a failed
+      // *refresh* must leave those tracks on screen (as `syncPhone` does), not
+      // fall through to the outer handler and empty the source.
+      if (!page.fromCache) return;
+      try {
+        const fresh = await ytmusicAllTracks(true);
+        if (isStale()) return;
+        set({ ytPlaylists: fresh.playlists });
+        await mapIncrementally({
+          source: fresh.tracks,
+          map: ytTrackToTrack,
+          publish: (mapped) => {
+            if (!isStale()) set({ ytmusic: mapped });
+          },
+          yieldToLoop: yieldToMain,
+          isStale,
+          now,
+        });
+      } catch {
+        // Keep the cached listing; the next ensure/invalidate retries.
+      }
+    })().catch(() => {
+      if (isStale()) return;
+      set({ ytmusic: [], ytPlaylists: [], ytmusicSignedIn: false, ytmusicLoad: "error" });
+    });
+  },
+
   revalidateLocal: () => {
     const s = get();
     // Only reconcile a settled library — a load in flight already reflects
@@ -724,10 +835,26 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
     set({ cloudLoad: "idle", cloudConnected: false, cloudBase: [], cloudMeta: new Map() });
   },
 
+  invalidateYtMusic: () => {
+    ytGen++; // cancel any in-flight load (both phases)
+    set({
+      ytmusicLoad: "idle",
+      ytmusicSignedIn: false,
+      ytmusic: [],
+      ytPlaylists: [],
+    });
+  },
+
   reloadAll: () => {
     localGen++;
     phoneGen++;
     cloudGen++;
-    set({ localLoad: "idle", phoneLoad: "idle", cloudLoad: "idle" });
+    ytGen++;
+    set({
+      localLoad: "idle",
+      phoneLoad: "idle",
+      cloudLoad: "idle",
+      ytmusicLoad: "idle",
+    });
   },
 }));

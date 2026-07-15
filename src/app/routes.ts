@@ -3,10 +3,10 @@ import {
   Gauge,
   Layers,
   LibraryBig,
-  Radio,
   Settings,
   SlidersHorizontal,
   SlidersVertical,
+  Tv,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Route } from "@/stores/ui";
@@ -62,11 +62,11 @@ export const ROUTES: readonly NavRoute[] = [
     tagline: "Split the track into vocals, drums, bass and instruments — then remix.",
   },
   {
-    id: "radio",
-    label: "Radio",
-    icon: Radio,
+    id: "stations",
+    label: "Stations",
+    icon: Tv,
     group: "main",
-    tagline: "Browse and stream internet radio through the same engine.",
+    tagline: "Live radio and TV from around the world, streamed natively.",
   },
   {
     id: "visuals",

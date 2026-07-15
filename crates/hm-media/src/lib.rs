@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod error;
 pub mod radio;
+pub mod tv;
 pub use error::MediaError;
 
 /// Playback transport state shared with the UI.

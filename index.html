@@ -4,15 +4,35 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HypeMuzik</title>
-    <!-- Paint the surface color before CSS loads to avoid a white flash. -->
+    <!-- Paint the surface colour before CSS loads to avoid a white flash. -->
     <style>
       html,
       body {
         margin: 0;
         height: 100%;
-        background: #0a0b0e;
+        background: var(--hm-boot-bg, #0a0b0e);
       }
     </style>
+    <script>
+      // Runs before the bundle, so a Light user doesn't watch the window flash
+      // near-black on every launch. Deliberately duplicates resolveTheme's rule
+      // in a few lines rather than pulling the bundle forward -- keep in sync
+      // with src/stores/theme.ts.
+      (function () {
+        try {
+          var c = localStorage.getItem("hm.theme") || "system";
+          if (["system", "dynamic", "light", "dark"].indexOf(c) === -1) c = "system";
+          var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var r = c === "system" ? (dark ? "dark" : "light") : c;
+          document.documentElement.dataset.theme = r;
+          document.documentElement.style.setProperty(
+            "--hm-boot-bg", r === "light" ? "#f4f5f7" : "#0a0b0e"
+          );
+        } catch (e) {
+          /* No storage — fall through to the dark default. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

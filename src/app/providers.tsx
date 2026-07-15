@@ -18,6 +18,7 @@ import {
 import { useUiStore } from "@/stores/ui";
 import { useEngineStore, localItem } from "@/stores/engine";
 import { useLibraryStore } from "@/stores/library";
+import { useThemeStore, watchPrefersDark } from "@/stores/theme";
 
 /**
  * App-wide startup effects. Loads `AppInfo` and the engine state, then
@@ -36,6 +37,9 @@ export function Providers({ children }: { children: ReactNode }) {
   const handleMediaCommand = useEngineStore((s) => s.handleMediaCommand);
   const playQueueItems = useEngineStore((s) => s.playQueueItems);
   const refreshLibrary = useLibraryStore((s) => s.refresh);
+  const resolved = useThemeStore((s) => s.resolved);
+  const blur = useThemeStore((s) => s.blur);
+  const setPrefersDark = useThemeStore((s) => s.setPrefersDark);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +124,19 @@ export function Providers({ children }: { children: ReactNode }) {
     playQueueItems,
     refreshLibrary,
   ]);
+
+  useEffect(() => watchPrefersDark(setPrefersDark), [setPrefersDark]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = resolved;
+    // The slider retargets this one variable, so dragging it never re-renders
+    // the image — only the blur filter's input changes.
+    root.style.setProperty("--hm-backdrop-blur", `${blur}px`);
+    // The boot script painted a guess; once React owns the theme, keep them
+    // agreeing so a later theme change repaints the base too.
+    root.style.setProperty("--hm-boot-bg", resolved === "light" ? "#f4f5f7" : "#0a0b0e");
+  }, [resolved, blur]);
 
   return <>{children}</>;
 }

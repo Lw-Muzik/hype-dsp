@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import ThemeBackdrop from "@/features/theme/ThemeBackdrop";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { TrialBanner } from "@/components/TrialBanner";
@@ -66,7 +67,8 @@ export function App() {
   }, []);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-surface text-text">
+    <div className="relative isolate flex h-screen w-screen overflow-hidden bg-surface text-text">
+      <ThemeBackdrop />
       <Sidebar />
       <ResizeHandle side="left" />
       <div className="flex min-w-0 flex-1 flex-col">

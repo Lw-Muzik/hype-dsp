@@ -6,6 +6,10 @@
  * text-text-muted, border-border, bg-accent — never raw hex.
  */
 @theme {
+  /* Body's base. Separate from --color-surface because Dynamic gives that an
+     alpha, and a translucent body would expose the page canvas behind the app. */
+  --color-canvas: #0a0b0e;
+
   --color-surface: #0a0b0e;
   --color-surface-raised: #14161c;
   --color-surface-overlay: #1b1e26;
@@ -30,10 +34,71 @@
 
   --radius-card: 14px;
   --radius-control: 10px;
+
+  /* Text that sits ON an accent fill. Distinct from --color-text because accent
+     is a mid-tone: on dark the fill is bright amber and wants dark text, on
+     light the fill is dark amber and wants white. */
+  --color-on-accent: #0a0b0e;
 }
 
 :root {
   color-scheme: dark;
+  /* Providers sets this from the store on mount. Until then the var would be
+     undefined, which makes blur(var(…)) invalid and flashes unblurred art.
+     Keep in sync with THEME_LIMITS.blur.default. */
+  --hm-backdrop-blur: 48px;
+}
+
+/*
+ * Themes override the @theme defaults. Tailwind v4 emits utilities that
+ * reference var(--color-*), so re-pointing the variable re-points every
+ * utility — no component changes. `:root[data-theme=…]` (0,1,1) outranks
+ * `:root` (0,1,0), so this lands without !important.
+ *
+ * Every value is asserted in palette.test.ts. Do not hand-tune them.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-canvas: #f4f5f7;
+  --color-surface: #f4f5f7; /* a soft grey base; pure white is harsh */
+  --color-surface-raised: #ffffff; /* light UIs lift *toward* white */
+  --color-surface-overlay: #ffffff;
+  --color-border: #e3e5ea;
+  --color-border-strong: #cdd1d9;
+
+  --color-text: #16181d;
+  --color-text-muted: #5a616e;
+  --color-text-faint: #767d8a;
+
+  /* The brand amber is unreadable as text on white, so accent flips: a dark
+     amber fill with white on it. "Stronger" still means more emphasis — it is
+     simply darker here rather than brighter. */
+  --color-accent: #8a6000;
+  --color-accent-strong: #6b4a00;
+  --color-accent-muted: #fdf3d9;
+  --color-on-accent: #ffffff;
+}
+
+/*
+ * Dynamic is dark-based. It changes only what the backdrop forces:
+ * the two chrome surfaces gain alpha so the art shows through, and the muted
+ * tiers brighten because the backdrop lifts the effective background.
+ * Overlays stay opaque — a translucent dropdown over moving art is unreadable.
+ */
+:root[data-theme="dynamic"] {
+  color-scheme: dark;
+
+  --color-surface: rgb(10 11 14 / 0.55);
+  --color-surface-raised: rgb(20 22 28 / 0.55);
+
+  --color-text-muted: #c5cbd6;
+  --color-text-faint: #a7aeba;
+
+  /* The backdrop's only darkening step. ThemeBackdrop reads this via var(), and
+     palette.test.ts reads it from this file — one source, so the contrast the
+     component depends on is the contrast that gets asserted. */
+  --hm-backdrop-scrim: rgb(10 11 14 / 0.72);
 }
 
 html,
@@ -44,7 +109,7 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-surface);
+  background: var(--color-canvas);
   color: var(--color-text);
   font-family: var(--font-sans);
   font-weight: 400;

@@ -22,6 +22,8 @@
     "exactOptionalPropertyTypes": false,
     "skipLibCheck": true,
 
+    "types": ["node"],
+
     "paths": {
       "@/*": ["./src/*"]
     }

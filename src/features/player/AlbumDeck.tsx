@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { Artwork } from "@/features/player/Artwork";
 import type { ArtSource } from "@/lib/useTrackArtwork";
 import { cn } from "@/lib/cn";
+import { prefersReducedMotion as reduceMotion } from "@/lib/reducedMotion";
 
 /** One spotlighted album/track in the deck. */
 export interface DeckItem {
@@ -18,9 +19,6 @@ export interface DeckItem {
 }
 
 const THROW_PX = 90; // drag distance that commits to the next/prev card
-const reduceMotion =
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
  * The library's hero: a stack of album cards fanned like a hand, with the

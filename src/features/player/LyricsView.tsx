@@ -6,10 +6,7 @@ import { useLyrics } from "@/features/player/useLyrics";
 import { activeLineIndex } from "@/lib/lrc";
 import type { LyricLine } from "@/lib/lrc";
 import { cn } from "@/lib/cn";
-
-const reduceMotion =
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+import { prefersReducedMotion as reduceMotion } from "@/lib/reducedMotion";
 
 /** Where the active line sits, as a fraction of the viewport height. */
 const FOCAL = 0.4;

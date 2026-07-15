@@ -185,3 +185,20 @@ body {
 .hm-pop {
   animation: hm-pop 130ms cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+/*
+ * Dither for the Dynamic backdrop. The scrim leaves the art ~71 of 255 levels,
+ * and a heavily blurred image is a maximally smooth gradient — it bands on
+ * 8-bit displays. KDE and Windows Acrylic pair blur with noise for the same
+ * reason.
+ *
+ * An SVG data-URI, not a live filter: the browser rasterises it once and tiles
+ * it. `stitchTiles="stitch"` is load-bearing — without it the tile seams show.
+ */
+.hm-grain {
+  pointer-events: none;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 182px;
+}

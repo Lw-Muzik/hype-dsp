@@ -219,3 +219,18 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 182px;
 }
+
+/*
+ * The media query built for exactly this pattern (macOS Reduce transparency).
+ * Not yet Baseline, so it is progressive enhancement: it may only ever *remove*
+ * effects. Making the chrome opaque leaves the layout untouched.
+ */
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-theme="dynamic"] {
+    --color-surface: #0a0b0e;
+    --color-surface-raised: #14161c;
+  }
+  :root[data-theme="dynamic"] .hm-grain {
+    display: none;
+  }
+}

@@ -66,9 +66,11 @@ In-app webview → `music.youtube.com` login → harvest cookies. One login feed
 
 The payoff beyond private playlists: **yt-dlp uses the cookies to detect Premium, and Premium subscribers skip the GVS PO token requirement entirely** — removing the single most fragile dependency for a large slice of YT Music users.
 
-Two subtleties:
+Four subtleties:
+- **Read the jar with `cookies()` and filter it ourselves — never `cookies_for_url`.** It is the obvious API here and it silently returns nothing useful: it matches on `cookie.domain() == url.domain()`, and the `cookie` crate's `domain()` has already stripped the leading dot, so a `.youtube.com` cookie reports `youtube.com` and never equals `music.youtube.com`. Every cookie carrying the session is a domain cookie, so asking per-host drops all of them and sign-in can never complete.
 - **Both `.youtube.com` and `.google.com` cookies are required.** The session lives on the former; `SAPISID`, which the API's auth hash derives from, is set on the latter. Capturing one yields a client that looks signed in and returns nothing.
 - **Sign-in polls the cookie jar rather than matching a redirect URL.** The flow bounces through consent, 2FA and account-picker pages; any URL match would be a guess about Google's routing. The cookies are what we actually need.
+- **The login window must spoof its User-Agent.** Tauri is Chromium *only* on Windows. WKWebView omits the `Version/<n>` token Safari sends, so YouTube can't identify it and serves a "not optimized for your browser — get Chrome" wall instead of a login form. macOS claims Safari (honest — WKWebView *is* Safari's engine, and YT Music supports Safari); Linux claims Chrome (WebKitGTK; Safari-on-Linux would be implausible); Windows is left alone.
 
 ### Storage
 
@@ -116,3 +118,14 @@ The bearer token that grants read access is the same one that authorises uploads
 - `hm-ytmusic`: 33 unit tests. yt-dlp is behind a `YtDlpRunner` trait, so resolution/download are testable against canned output with no binary installed.
 - One `--ignored` live test hits the real binary and CDN — the contract check to re-run after a yt-dlp or YouTube change. **It caught the `web_music` bug that every fake passed.**
 - `hm-link`: `pct_encode` is tested against CRLF header injection; `ProgressReader` for byte-accuracy and pass-through.
+
+### What testing did not catch
+
+Worth recording, because the pattern repeated. **Two of the three worst bugs in this feature passed every automated check:**
+
+- `player_client=web_music` — every unit test green; caught only by the live CDN test.
+- The WKWebView User-Agent — unit tests, live CLI tests, `tsc`, `clippy` and `vite build` *all* green while sign-in was completely non-functional. Caught by running the app for one minute.
+
+Both were integration-boundary bugs against a system we don't control. The lesson isn't "write more unit tests" — it's that for this feature, **only the live test and the running app carry real signal.** Re-run `cargo test -p hm-ytmusic -- --ignored` after any yt-dlp or YouTube change, and drive the actual UI before believing sign-in or playback works.
+
+Also: for gradle, **never trust an exit code** — `flutter build apk --debug 2>&1 | tail -8` reports *tail's* status. Check for emitted `.class` artifacts (and that their mtime beats the source's). And use `:app:compileDebugJavaWithJavac`, not `assembleDebug`, which runs cmake across 4 ABIs before it ever reaches javac.

@@ -23,14 +23,23 @@ use std::path::{Path, PathBuf};
 const SERVICE: &str = "com.lwmuzik.hypemuzik";
 const ACCOUNT: &str = "ytmusic-cookies";
 
-/// Hosts whose cookies matter. YT Music auth is split: the session lives on
+/// Domains whose cookies matter. YT Music auth is split: the session lives on
 /// `.youtube.com`, but `SAPISID` (which the API's auth hash derives from) is set
 /// on `.google.com`. Capturing only one silently yields a signed-out client.
-pub const COOKIE_URLS: &[&str] = &[
-    "https://music.youtube.com",
-    "https://www.youtube.com",
-    "https://accounts.google.com",
-];
+pub const COOKIE_DOMAINS: &[&str] = &["youtube.com", "google.com"];
+
+/// Whether a cookie's domain is one we harvest from: `base` itself, or a
+/// subdomain of it.
+///
+/// Matching on the dot boundary rather than a bare suffix is what keeps
+/// `notyoutube.com` out — these are credentials, and they get written to a
+/// `cookies.txt` for yt-dlp, so a loose match would hand them to a stranger.
+pub fn wanted_domain(domain: &str) -> bool {
+    let host = domain.strip_prefix('.').unwrap_or(domain);
+    COOKIE_DOMAINS
+        .iter()
+        .any(|base| host == *base || host.ends_with(&format!(".{base}")))
+}
 
 /// Cookies that must be present for an authenticated YT Music session.
 /// `SAPISID` has a `__Secure-3PAPISID` twin; either satisfies the requirement.
@@ -268,6 +277,34 @@ mod tests {
         c.domain = "music.youtube.com".to_string();
         let line = netscape(&[c]);
         assert!(line.contains("music.youtube.com\tFALSE\t"));
+    }
+
+    #[test]
+    fn wanted_domain_accepts_the_domains_the_session_lives_on() {
+        // The cookies that carry the session are domain cookies on the apex.
+        // These are exactly the ones the old `cookies_for_url` capture dropped.
+        assert!(wanted_domain(".youtube.com"));
+        assert!(wanted_domain(".google.com"));
+        assert!(wanted_domain("youtube.com"));
+        assert!(wanted_domain("google.com"));
+    }
+
+    #[test]
+    fn wanted_domain_accepts_subdomains() {
+        assert!(wanted_domain("music.youtube.com"));
+        assert!(wanted_domain("accounts.google.com"));
+        assert!(wanted_domain(".www.youtube.com"));
+    }
+
+    #[test]
+    fn wanted_domain_rejects_lookalikes() {
+        // Matching on a bare suffix would admit these, and they'd be handed to
+        // yt-dlp in a cookies.txt — a credential leak to an unrelated host.
+        assert!(!wanted_domain("notyoutube.com"));
+        assert!(!wanted_domain("evil-google.com"));
+        assert!(!wanted_domain("youtube.com.evil.net"));
+        assert!(!wanted_domain("example.com"));
+        assert!(!wanted_domain(""));
     }
 
     #[test]

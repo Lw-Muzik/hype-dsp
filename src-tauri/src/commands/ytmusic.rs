@@ -30,6 +30,33 @@ const LOGIN_URL: &str = "https://accounts.google.com/ServiceLogin?service=youtub
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 const LOGIN_POLL: Duration = Duration::from_millis(700);
 
+/// User-agent for the sign-in window.
+///
+/// Tauri's webview is not Chromium outside Windows, and the engines it does use
+/// send a UA that music.youtube.com rejects with a "not optimized for your
+/// browser — get Chrome" wall instead of a login form:
+///
+/// * **macOS** — WKWebView omits the `Version/<n>` token that Safari sends, so
+///   YouTube can't identify it. Claiming Safari is honest here (WKWebView *is*
+///   Safari's engine) and YT Music supports Safari, so this asks for the page
+///   it would already serve us.
+/// * **Linux** — WebKitGTK is likewise unrecognised, and a Safari UA would be a
+///   lie (there is no Safari on Linux), so it claims Chrome.
+/// * **Windows** — WebView2 is Chromium and is recognised as-is; overriding it
+///   could only make things worse.
+#[cfg(target_os = "macos")]
+const LOGIN_UA: Option<&str> = Some(
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 \
+     (KHTML, like Gecko) Version/18.5 Safari/605.1.15",
+);
+#[cfg(target_os = "linux")]
+const LOGIN_UA: Option<&str> = Some(
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
+     (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+);
+#[cfg(target_os = "windows")]
+const LOGIN_UA: Option<&str> = None;
+
 /// A library listing plus whether it came from the on-disk cache — same contract
 /// as `CloudAudioPage`, so the front end can render instantly and refresh behind.
 #[derive(Serialize)]
@@ -88,7 +115,7 @@ pub async fn ytmusic_sign_in(
     if let Some(existing) = app.get_webview_window(LOGIN_WINDOW) {
         let _ = existing.set_focus();
     } else {
-        WebviewWindowBuilder::new(
+        let mut builder = WebviewWindowBuilder::new(
             &app,
             LOGIN_WINDOW,
             WebviewUrl::External(LOGIN_URL.parse().map_err(|e| {
@@ -96,9 +123,13 @@ pub async fn ytmusic_sign_in(
             })?),
         )
         .title("Sign in to YouTube Music")
-        .inner_size(520.0, 760.0)
-        .build()
-        .map_err(|e| IpcError::new("ytmusic", format!("couldn't open the sign-in window: {e}")))?;
+        .inner_size(520.0, 760.0);
+        if let Some(ua) = LOGIN_UA {
+            builder = builder.user_agent(ua);
+        }
+        builder.build().map_err(|e| {
+            IpcError::new("ytmusic", format!("couldn't open the sign-in window: {e}"))
+        })?;
     }
 
     let deadline = Instant::now() + LOGIN_TIMEOUT;
@@ -146,26 +177,38 @@ pub async fn ytmusic_sign_out(
 
 /// Reads the session out of the login window's cookie jar.
 ///
-/// Both hosts are needed: the session lives on `.youtube.com`, but `SAPISID` —
+/// Both domains are needed: the session lives on `.youtube.com`, but `SAPISID` —
 /// which the API's auth hash is derived from — is set on `.google.com`. Taking
 /// only one yields a client that looks signed in and returns nothing.
+///
+/// This takes the whole jar and filters it here, rather than asking for the
+/// cookies of each host with `cookies_for_url`. That looks like the obvious API
+/// for the job and is a trap: it matches with `cookie.domain() == url.domain()`,
+/// and `domain()` has already had its leading dot stripped — so a `.youtube.com`
+/// cookie reports `youtube.com` and never equals `music.youtube.com`. Every
+/// cookie that carries the session is a domain cookie, so *all* of them were
+/// silently dropped and sign-in could never complete. Owning the match keeps the
+/// rule visible, tested (`cookies::wanted_domain`), and ours to reason about.
 fn harvest_cookies(win: &WebviewWindow) -> Vec<YtCookie> {
+    let Ok(found) = win.cookies() else {
+        return Vec::new();
+    };
     let mut out: Vec<YtCookie> = Vec::new();
-    for url in cookies::COOKIE_URLS {
-        let Ok(parsed) = url.parse() else { continue };
-        let Ok(found) = win.cookies_for_url(parsed) else {
+    for c in found {
+        // Filter on the cookie's own domain, before `map_cookie` massages it:
+        // this jar holds every host the login flow touched, and a cookie we
+        // can't attribute must not be assumed to be YouTube's.
+        if !c.domain().is_some_and(cookies::wanted_domain) {
             continue;
-        };
-        for c in found {
-            let mapped = map_cookie(&c);
-            // The same cookie comes back for several of these URLs; keeping
-            // duplicates would double it up in the cookies.txt we hand yt-dlp.
-            if !out
-                .iter()
-                .any(|e| e.name == mapped.name && e.domain == mapped.domain)
-            {
-                out.push(mapped);
-            }
+        }
+        let mapped = map_cookie(&c);
+        // A name can legitimately appear on both domains; keeping exact
+        // duplicates would double it up in the cookies.txt we hand yt-dlp.
+        if !out
+            .iter()
+            .any(|e| e.name == mapped.name && e.domain == mapped.domain)
+        {
+            out.push(mapped);
         }
     }
     out

@@ -17,7 +17,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -73,6 +73,17 @@ struct LibraryResponse {
 #[derive(Debug, Deserialize)]
 struct PairResponse {
     token: String,
+}
+
+/// The phone's `POST /upload` reply: where the file landed, and the MediaStore
+/// id it was registered under (`None` if the phone stored it but the media scan
+/// hasn't caught up — the file is safe either way, it just isn't listed yet).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadedTrack {
+    pub path: String,
+    #[serde(default)]
+    pub id: Option<String>,
 }
 
 /// The phone's `GET /ping` reply — its id + display name.
@@ -439,6 +450,67 @@ impl LinkState {
         Ok(stream_url(&dev, track_id, ext))
     }
 
+    /// Send a local audio file to a paired phone, into its music library.
+    ///
+    /// This is the first desktop→phone *write* in Phone Link — every other call
+    /// here pulls from the phone. It needs no new transport: the phone's shelf
+    /// server already listens, and because `hm-remote` tunnels bytes both ways
+    /// over a desktop-dialled QUIC connection, this works unchanged for a phone
+    /// on the far side of the internet as for one on the LAN.
+    ///
+    /// The body is streamed from disk rather than buffered — an album push
+    /// shouldn't mean holding an album in RAM. `on_progress(sent, total)` is
+    /// called as it goes.
+    ///
+    /// Note the bearer token here is the same one that grants read access. That
+    /// widens a read capability into a write one; the phone gates uploads behind
+    /// its own opt-in setting rather than treating pairing as consent to write.
+    pub fn upload(
+        &self,
+        device_id: &str,
+        path: &Path,
+        on_progress: impl FnMut(u64, u64) + Send + 'static,
+    ) -> Result<UploadedTrack, String> {
+        let dev = self.find(device_id)?;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .ok_or_else(|| "that file has no name".to_string())?;
+        let file = std::fs::File::open(path).map_err(|e| format!("couldn't read {name}: {e}"))?;
+        let total = file
+            .metadata()
+            .map_err(|e| format!("couldn't size {name}: {e}"))?
+            .len();
+
+        let body =
+            reqwest::blocking::Body::sized(ProgressReader::new(file, total, on_progress), total);
+        let url = format!("http://{}:{}/upload", dev.host, dev.port);
+        let resp = upload_client()?
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", dev.token))
+            .header("Content-Type", "application/octet-stream")
+            // The name rides a header because the body is the raw file. It's
+            // percent-encoded: track titles carry non-ASCII freely, and a raw
+            // header value would be rejected (or mangled) in transit.
+            .header("X-File-Name", pct_encode(&name))
+            .body(body)
+            .send()
+            .map_err(|e| format!("couldn't reach {}: {e}", dev.name))?;
+
+        match resp.status().as_u16() {
+            200 | 201 => resp
+                .json::<UploadedTrack>()
+                .map_err(|e| format!("the phone sent back an unreadable reply: {e}")),
+            401 | 403 => Err(format!(
+                "{} refused the upload — turn on \"Receive files\" in HypeMuzik on the phone",
+                dev.name
+            )),
+            413 => Err(format!("{} says that file is too large", dev.name)),
+            507 => Err(format!("{} is out of storage", dev.name)),
+            other => Err(format!("{} rejected the upload ({other})", dev.name)),
+        }
+    }
+
     // ----- cast (push) support -----
 
     /// Whether `token` belongs to a phone we've paired with. Used to
@@ -472,6 +544,70 @@ impl LinkState {
         let dev = s.devices.iter().find(|d| d.token == token)?;
         Some(stream_url(dev, track_id, ext))
     }
+}
+
+/// Wraps a reader, reporting bytes read as they stream past.
+///
+/// This is how upload progress is observed without buffering the file: reqwest
+/// pulls from it lazily, so the callback fires as bytes actually go out.
+struct ProgressReader<R, F> {
+    inner: R,
+    sent: u64,
+    total: u64,
+    on_progress: F,
+}
+
+impl<R: std::io::Read, F: FnMut(u64, u64)> ProgressReader<R, F> {
+    fn new(inner: R, total: u64, on_progress: F) -> Self {
+        Self {
+            inner,
+            sent: 0,
+            total,
+            on_progress,
+        }
+    }
+}
+
+impl<R: std::io::Read, F: FnMut(u64, u64)> std::io::Read for ProgressReader<R, F> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        if n > 0 {
+            self.sent += n as u64;
+            (self.on_progress)(self.sent, self.total);
+        }
+        Ok(n)
+    }
+}
+
+/// A client for uploads.
+///
+/// Separate from [`http_client`] because that one caps requests at 20s, which is
+/// right for a metadata call and wrong for pushing a 10 MB track over a phone's
+/// uplink. There's no total timeout here at all — a stalled transfer is caught
+/// by the connect timeout and by the phone dropping the connection, whereas a
+/// wall-clock cap would kill healthy transfers on slow links.
+fn upload_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(None)
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+/// Percent-encodes a header value. Conservative on purpose: anything outside
+/// unreserved ASCII gets escaped, so a track title with `"`, a newline, or any
+/// non-ASCII can't break (or inject into) the header.
+fn pct_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 /// Build the `(stream url, bearer headers)` for a paired device + track.
@@ -1065,5 +1201,53 @@ mod tests {
         let v6: IpAddr = "fe80::1".parse().unwrap();
         assert_eq!(ip_host(&v4), "192.168.1.9");
         assert_eq!(ip_host(&v6), "[fe80::1]");
+    }
+
+    #[test]
+    fn pct_encode_passes_unreserved_through() {
+        assert_eq!(pct_encode("Track-01_final.v2~x"), "Track-01_final.v2~x");
+    }
+
+    #[test]
+    fn pct_encode_escapes_spaces_and_unicode() {
+        assert_eq!(pct_encode("A B"), "A%20B");
+        // Non-ASCII in a raw header value would be rejected or mangled.
+        assert_eq!(pct_encode("Björk"), "Bj%C3%B6rk");
+    }
+
+    #[test]
+    fn pct_encode_neutralises_header_injection() {
+        // A CRLF in a filename must not be able to start a new header.
+        let evil = pct_encode("a\r\nAuthorization: Bearer stolen");
+        assert!(!evil.contains('\r') && !evil.contains('\n'));
+        assert!(evil.starts_with("a%0D%0A"));
+    }
+
+    #[test]
+    fn progress_reader_reports_cumulative_bytes() {
+        use std::io::Read;
+        use std::sync::{Arc, Mutex};
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        let data = [7u8; 10];
+        let mut r = ProgressReader::new(&data[..], 10, move |sent, total| {
+            sink.lock().unwrap().push((sent, total));
+        });
+
+        let mut buf = [0u8; 4];
+        r.read_exact(&mut buf).unwrap();
+        r.read_exact(&mut buf).unwrap();
+        assert_eq!(&*seen.lock().unwrap(), &[(4, 10), (8, 10)]);
+    }
+
+    #[test]
+    fn progress_reader_passes_bytes_through_unchanged() {
+        use std::io::Read;
+        let data = b"hypemuzik".to_vec();
+        let mut r = ProgressReader::new(&data[..], data.len() as u64, |_, _| {});
+        let mut out = Vec::new();
+        r.read_to_end(&mut out).unwrap();
+        assert_eq!(out, data);
     }
 }

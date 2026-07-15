@@ -74,7 +74,7 @@ pub(crate) fn track_from_path(path: &Path) -> LibraryTrack {
 /// Read tags + duration for `paths` and upsert them in batched transactions,
 /// emitting `library:scan_progress` as it goes. Shared by the folder scan and
 /// the tag refresh. Returns the number indexed.
-fn index_paths(app: &tauri::AppHandle, store: &MediaStore, paths: &[PathBuf]) -> usize {
+pub(crate) fn index_paths(app: &tauri::AppHandle, store: &MediaStore, paths: &[PathBuf]) -> usize {
     let total = paths.len();
     let _ = app.emit("library:scan_progress", ScanProgress { done: 0, total });
     let mut done = 0;

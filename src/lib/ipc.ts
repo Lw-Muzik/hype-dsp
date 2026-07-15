@@ -42,6 +42,9 @@ import type {
   TvChannel,
   TvCategory,
   TvCountry,
+  YtDownloadProgress,
+  YtMusicPage,
+  YtMusicStatus,
   ConvolverState,
   RoomState,
   SaturationState,
@@ -280,6 +283,95 @@ export function playerPlayCloudQueue(
   start: number,
 ): Promise<void> {
   return invoke<void>("player_play_cloud_queue", { accountId, items, start });
+}
+
+/* ---------------------------------------------------------- YouTube Music */
+
+/** Whether we're signed in, and whether yt-dlp/ffmpeg are installed. */
+export function ytmusicStatus(): Promise<YtMusicStatus> {
+  return invoke<YtMusicStatus>("ytmusic_status");
+}
+
+/** Open Google's sign-in window and resolve once a session appears. Rejects
+ *  with code `cancelled` (window closed) or `timeout`. */
+export function ytmusicSignIn(): Promise<YtMusicStatus> {
+  return invoke<YtMusicStatus>("ytmusic_sign_in");
+}
+
+/** Forget the session and drop the cached listing. */
+export function ytmusicSignOut(): Promise<void> {
+  return invoke<void>("ytmusic_sign_out");
+}
+
+/** Every track across the account's playlists. Like {@link cloudAllAudio}, the
+ *  listing is cached on disk: by default a cached copy returns instantly (with
+ *  `fromCache: true`); pass `refresh` to re-list and update the cache. */
+export function ytmusicAllTracks(refresh = false): Promise<YtMusicPage> {
+  return invoke<YtMusicPage>("ytmusic_all_tracks", { refresh });
+}
+
+/** Stream one track through the enhancement chain. Passing the known length
+ *  (seconds) makes the seek bar right from the first frame. */
+export function ytmusicPlay(
+  videoId: string,
+  durationSecs?: number | null,
+): Promise<void> {
+  return invoke<void>("ytmusic_play", {
+    videoId,
+    durationSecs: durationSecs ?? null,
+  });
+}
+
+/** One track in a YouTube Music crossfade/gapless queue. */
+export interface YtQueueItem {
+  videoId: string;
+}
+
+/** Play a YT Music queue gaplessly/crossfading; URLs resolve lazily per track
+ *  (they're short-lived and IP-pinned, so they can't be resolved up front). */
+export function playerPlayYtmusicQueue(
+  items: YtQueueItem[],
+  start: number,
+): Promise<void> {
+  return invoke<void>("player_play_ytmusic_queue", { items, start });
+}
+
+/** Download a track to this machine and index it into the library; returns the
+ *  written path. Progress arrives over {@link onYtDownload}. */
+export function ytmusicDownload(videoId: string): Promise<string> {
+  return invoke<string>("ytmusic_download", { videoId });
+}
+
+/** Download a track and send it on to a paired phone. */
+export function ytmusicDownloadToPhone(
+  videoId: string,
+  deviceId: string,
+): Promise<void> {
+  return invoke<void>("ytmusic_download_to_phone", { videoId, deviceId });
+}
+
+/** Send any already-local file to a paired phone. */
+export function linkUpload(deviceId: string, path: string): Promise<void> {
+  return invoke<void>("link_upload", { deviceId, path });
+}
+
+/** The folder downloads are written to. */
+export function ytmusicDownloadDir(): Promise<string> {
+  return invoke<string>("ytmusic_download_dir");
+}
+
+/** Set the download folder; `null` resets it to the default. Returns the
+ *  folder now in effect. */
+export function ytmusicSetDownloadDir(dir: string | null): Promise<string> {
+  return invoke<string>("ytmusic_set_download_dir", { dir });
+}
+
+/** Subscribe to download progress. Every download reports on this one event,
+ *  keyed by `videoId` (a `link_upload` of a local file keys by its path). */
+export function onYtDownload(
+  handler: (p: YtDownloadProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<YtDownloadProgress>("ytmusic:download", (e) => handler(e.payload));
 }
 
 /* ------------------------------------------------------------- Phone Link */

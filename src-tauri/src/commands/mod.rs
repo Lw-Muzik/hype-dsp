@@ -25,3 +25,4 @@ pub mod scenes;
 pub mod stems;
 pub mod tv;
 pub mod visualizer;
+pub mod ytmusic;

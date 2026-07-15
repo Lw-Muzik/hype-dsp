@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 interface DialogProps {
@@ -9,7 +10,14 @@ interface DialogProps {
   children: ReactNode;
 }
 
-/** A simple modal dialog (backdrop click / Escape to close). */
+/**
+ * A simple modal dialog (backdrop click / Escape to close).
+ *
+ * Portalled to `document.body`, like the Combobox panel: `position: fixed`
+ * resolves against the nearest transformed ancestor rather than the viewport, so
+ * a dialog opened from inside a virtualized list (whose rows sit under a
+ * `translateY`) would otherwise be centred and clipped inside that row.
+ */
 export function Dialog({ open, onClose, title, children }: DialogProps) {
   useEffect(() => {
     if (!open) return;
@@ -21,7 +29,7 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
@@ -47,6 +55,7 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
         </div>
         <div className="p-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -26,6 +26,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { DevicesView } from "@/features/devices/DevicesView";
 import { CloudView } from "@/features/cloud/CloudView";
+import { YtMusicView } from "@/features/ytmusic/YtMusicView";
 import { Button } from "@/components/Button";
 import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
@@ -641,6 +642,8 @@ export function SettingsView() {
         <DevicesView />
 
         <CloudView />
+
+        <YtMusicView />
 
         <Card
           title="Playback"

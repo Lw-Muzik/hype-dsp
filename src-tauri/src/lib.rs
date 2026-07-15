@@ -13,6 +13,7 @@ mod commands;
 mod control;
 mod media;
 mod tv_proxy;
+mod ytmusic;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -402,6 +403,49 @@ pub fn run() {
                 })
                 .ok();
 
+            // YouTube Music. The session (Google cookies — full account
+            // credentials) lives in the OS keychain, not next to these JSON
+            // stores; `load` restores it, or falls back to signed-out if the
+            // keychain is locked or unavailable.
+            app.manage(hm_ytmusic::YtMusicState::load());
+
+            let yt_settings_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("ytmusic-settings.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_ytmusic_settings.json"));
+            // Downloads default under the OS music dir; home, then temp, are
+            // last-resort fallbacks so a download always has somewhere to land.
+            let music_dir = app
+                .path()
+                .audio_dir()
+                .or_else(|_| app.path().home_dir())
+                .unwrap_or_else(|_| std::env::temp_dir());
+            app.manage(ytmusic::YtSettings::load(yt_settings_path, music_dir));
+
+            // Cached playlist listing, so relaunching shows the library instantly
+            // instead of re-walking every playlist. Same lazy-load + background
+            // warm as the cloud listing, for the same reason.
+            let yt_lib_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("ytmusic-library.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_ytmusic_library.json"));
+            app.manage(ytmusic::YtLibraryCache::new(yt_lib_path));
+            let yt_warm = app.handle().clone();
+            std::thread::Builder::new()
+                .name("hm-ytlib-warm".into())
+                .spawn(move || {
+                    yt_warm.state::<ytmusic::YtLibraryCache>().warm();
+                })
+                .ok();
+
             // MilkDrop visualizer sidecar process handle.
             app.manage(commands::visualizer::VisualizerState::default());
 
@@ -593,6 +637,17 @@ pub fn run() {
             commands::link::link_lyrics,
             commands::link::link_play,
             commands::link::link_play_queue,
+            commands::ytmusic::ytmusic_status,
+            commands::ytmusic::ytmusic_sign_in,
+            commands::ytmusic::ytmusic_sign_out,
+            commands::ytmusic::ytmusic_all_tracks,
+            commands::ytmusic::ytmusic_play,
+            commands::ytmusic::player_play_ytmusic_queue,
+            commands::ytmusic::ytmusic_download,
+            commands::ytmusic::ytmusic_download_to_phone,
+            commands::ytmusic::ytmusic_download_dir,
+            commands::ytmusic::ytmusic_set_download_dir,
+            commands::link::link_upload,
             commands::engine::player_play_file,
             commands::engine::player_play_radio,
             commands::engine::player_play_queue,

@@ -14,7 +14,7 @@ use hm_audio::stream_queue::{StreamResolver, StreamTarget};
 use hm_audio::AudioEngine;
 use hm_core::IpcError;
 use hm_link::{LinkState, PhoneDevice, PhoneTrack};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Managed handle to the continuous-discovery thread (if running).
@@ -373,4 +373,80 @@ pub fn link_play_queue(
     engine
         .play_stream_queue(resolver, count, start)
         .map_err(Into::into)
+}
+
+/// Progress of a file being sent to a phone, emitted on `link:upload`.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadProgress {
+    /// The source path — identifies which transfer this is, since several can
+    /// run at once.
+    pub path: String,
+    pub sent: u64,
+    pub total: u64,
+    pub done: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Send a local audio file to a paired phone, into its music library.
+///
+/// This is the only *write* toward the phone — everything else here pulls from
+/// it. It fills a real gap: there was previously no way to put a track the user
+/// already owns onto their phone. It also needs no transport work of its own,
+/// because `hm-remote` tunnels bytes both ways over a desktop-dialled QUIC
+/// connection, so this reaches a phone on cellular exactly as it does one on the
+/// LAN.
+// `(async)`: streams a whole file over the network — seconds to minutes.
+#[tauri::command(async)]
+pub fn link_upload(
+    app: AppHandle,
+    link: State<'_, LinkState>,
+    device_id: String,
+    path: String,
+) -> Result<(), IpcError> {
+    let source = PathBuf::from(&path);
+    let progress_app = app.clone();
+    let progress_path = path.clone();
+    let result = link.upload(&device_id, &source, move |sent, total| {
+        let _ = progress_app.emit(
+            "link:upload",
+            UploadProgress {
+                path: progress_path.clone(),
+                sent,
+                total,
+                done: false,
+                error: None,
+            },
+        );
+    });
+
+    match result {
+        Ok(_) => {
+            let _ = app.emit(
+                "link:upload",
+                UploadProgress {
+                    path,
+                    sent: 0,
+                    total: 0,
+                    done: true,
+                    error: None,
+                },
+            );
+            Ok(())
+        }
+        Err(e) => {
+            let _ = app.emit(
+                "link:upload",
+                UploadProgress {
+                    path,
+                    sent: 0,
+                    total: 0,
+                    done: true,
+                    error: Some(e.clone()),
+                },
+            );
+            Err(IpcError::new("link", e))
+        }
+    }
 }

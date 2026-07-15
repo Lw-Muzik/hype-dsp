@@ -1,0 +1,35 @@
+[package]
+name = "hm-ytmusic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "YouTube Music — playlist metadata (ytmapi-rs) and yt-dlp stream-URL resolution for playing a user's YT Music library through the desktop DSP chain."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+
+# YouTube Music's internal (youtubei) API — playlists and library metadata.
+# `rustls` matches the workspace's reqwest TLS choice; the default `default-tls`
+# feature would drag in native-tls (and openssl on Linux) alongside it.
+ytmapi-rs = { version = "0.3.2", default-features = false, features = [
+    "rustls",
+    "simplified-queries",
+] }
+
+# Session cookies are full Google account credentials, so they live in the OS
+# credential store (Keychain / Credential Manager / Secret Service) rather than
+# the plaintext JSON the cloud tokens use.
+# `zbus-*` rather than `dbus-*` on Linux: it's pure Rust, so the build doesn't
+# need libdbus headers on the box.
+keyring = { version = "4.1.5", features = [
+    "apple-native-keyring-store",
+    "windows-native-keyring-store",
+    "zbus-secret-service-keyring-store",
+] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

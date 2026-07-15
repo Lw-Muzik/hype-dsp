@@ -443,6 +443,72 @@ export interface CloudStatus {
   dropboxConfigured: boolean;
 }
 
+/* ---------------------------------------------------------- YouTube Music */
+
+/** One of the signed-in account's playlists. */
+export interface YtPlaylist {
+  id: string;
+  title: string;
+  author: string;
+  /** Null when YT Music reports it in a form the backend doesn't recognise. */
+  trackCount: number | null;
+  thumbnail: string | null;
+}
+
+/** One track inside a playlist. Unlike cloud files, YT Music hands us the tags
+ *  up front, so there's no metadata pass — the listing is already complete. */
+export interface YtTrack {
+  videoId: string;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  durationSecs: number | null;
+  /** Cover art URL (https), used directly as an `<img src>`. */
+  thumbnail: string | null;
+  /** The playlist this track was listed under — the library's Folders facet
+   *  groups by it, so playlists browse like folders. */
+  playlistId: string;
+  playlistTitle: string;
+  /** Region-blocked / removed tracks stay listed (the playlist matches what
+   *  the user sees on YouTube) but can't be played. */
+  isAvailable: boolean;
+}
+
+/** Whether yt-dlp — which resolves every stream and download — is installed.
+ *  Playlists browse without it; only playback and downloads need it. */
+export interface YtDlpInfo {
+  present: boolean;
+  version: string | null;
+  path: string | null;
+  /** Without ffmpeg, downloads skip embedded tags/artwork. */
+  haveFfmpeg: boolean;
+}
+
+export interface YtMusicStatus {
+  signedIn: boolean;
+  ytdlp: YtDlpInfo;
+}
+
+/** A whole-library listing. `fromCache` mirrors {@link CloudAudioPage}: true
+ *  means it was served from the on-disk cache, so refresh it behind the UI. */
+export interface YtMusicPage {
+  playlists: YtPlaylist[];
+  tracks: YtTrack[];
+  fromCache: boolean;
+}
+
+/** Progress of a download (to this machine or on to a phone), per `videoId`. */
+export interface YtDownloadProgress {
+  videoId: string;
+  /** "fetching" (YouTube → here), "sending" (here → phone), "done", "error". */
+  phase: "fetching" | "sending" | "done" | "error";
+  bytes: number;
+  /** Absent until the transfer's length is known. */
+  total: number | null;
+  /** Set on `error` only (the backend omits it otherwise). */
+  message?: string;
+}
+
 /* ------------------------------------------------------------- Phone Link */
 
 /** A phone discovered on the LAN, or one we've already paired with. */

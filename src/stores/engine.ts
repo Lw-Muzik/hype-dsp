@@ -31,10 +31,12 @@ import {
   playerPlayFile,
   playerPlayQueue,
   playerPlayRadio,
+  playerPlayYtmusicQueue,
   playerResume,
   playerSeek,
   playerStop,
   profileClear,
+  ytmusicPlay,
 } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
 import { BAND_COUNT } from "@/lib/types";
@@ -61,10 +63,11 @@ import type {
   Surround3DState,
   TrackMeta,
   TransportProgress,
+  YtTrack,
 } from "@/lib/types";
 
 /** How the engine reaches the audio for a queued item. */
-export type QueueSource = "local" | "phone" | "cloud" | "radio" | "cast";
+export type QueueSource = "local" | "phone" | "cloud" | "ytmusic" | "radio" | "cast";
 
 /** Auto-advance behaviour at the end of a track. */
 export type RepeatMode = "off" | "all" | "one";
@@ -90,6 +93,7 @@ export interface QueueItem {
   device?: PhoneDevice;
   phoneTrack?: PhoneTrack;
   cloud?: CloudEntry;
+  ytTrack?: YtTrack;
   radioUrl?: string;
 }
 
@@ -193,6 +197,21 @@ export function cloudItem(file: CloudEntry): QueueItem {
     album: null,
     durationSecs: null,
     cloud: file,
+  };
+}
+
+export function ytmusicItem(t: YtTrack): QueueItem {
+  return {
+    id: t.videoId,
+    source: "ytmusic",
+    title: t.title,
+    artist: t.artist,
+    album: t.album,
+    durationSecs: t.durationSecs,
+    // The API hands us the thumbnail with the listing, so the card has its art
+    // from the start — no lazy per-track cover fetch like cloud needs.
+    cover: t.thumbnail,
+    ytTrack: t,
   };
 }
 
@@ -418,9 +437,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
 
     const { gapless, crossfadeSecs, dataSaver } = state.playback;
     // The engine's gapless/crossfade queue needs a homogeneous source: an all-
-    // local, all-cloud (same account), or all-phone (same device) queue. A
-    // cloud queue resolves URLs with one account's tokens, so accounts can't be
-    // mixed in it; mixed queues advance track-by-track from the store instead.
+    // local, all-cloud (same account), all-phone (same device), or all-YT Music
+    // queue. A cloud queue resolves URLs with one account's tokens, so accounts
+    // can't be mixed in it; mixed queues advance track-by-track from the store
+    // instead. YT Music has a single signed-in account, so it needs no such
+    // same-account constraint — being all-ytmusic is enough.
     const wantQueue = (gapless || crossfadeSecs > 0) && repeat !== "one";
     const allLocal = order.every((i) => queue[i]?.source === "local");
     const allCloud =
@@ -429,9 +450,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     const allPhone =
       order.every((i) => queue[i]?.phoneTrack != null) &&
       order.every((i) => queue[i]?.device?.id === item.device?.id);
+    const allYtMusic = order.every((i) => queue[i]?.ytTrack != null);
 
     const streamMode =
-      item.source === "cloud" || item.source === "phone"
+      item.source === "cloud" || item.source === "phone" || item.source === "ytmusic"
         ? chooseStreamMode(item.source, dataSaver, networkMode)
         : "progressive";
     const useEngineQueue = item.source === "local" && allLocal && wantQueue;
@@ -439,8 +461,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       item.source === "cloud" && allCloud && wantQueue && streamMode === "gapless";
     const usePhoneQueue =
       item.source === "phone" && allPhone && wantQueue && streamMode === "gapless";
+    const useYtMusicQueue =
+      item.source === "ytmusic" && allYtMusic && wantQueue && streamMode === "gapless";
 
-    gaplessQueueRunning = useEngineQueue || useCloudQueue || usePhoneQueue;
+    gaplessQueueRunning =
+      useEngineQueue || useCloudQueue || usePhoneQueue || useYtMusicQueue;
 
     switch (item.source) {
       case "local":
@@ -479,6 +504,14 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           void playerPlayCloudQueue(item.cloud!.accountId, items, pos).catch(onError);
         } else {
           void cloudPlay(item.cloud!.accountId, item.cloud!.id).catch(onError);
+        }
+        break;
+      case "ytmusic":
+        if (useYtMusicQueue) {
+          const items = order.map((i) => ({ videoId: queue[i]!.ytTrack!.videoId }));
+          void playerPlayYtmusicQueue(items, pos).catch(onError);
+        } else {
+          void ytmusicPlay(item.ytTrack!.videoId, item.durationSecs).catch(onError);
         }
         break;
       case "radio":

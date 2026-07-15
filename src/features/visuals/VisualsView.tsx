@@ -105,7 +105,7 @@ function TabButton({
       aria-pressed={active}
       className={cn(
         "rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-accent text-text" : "text-text-muted hover:text-text",
+        active ? "bg-accent text-on-accent" : "text-text-muted hover:text-text",
       )}
     >
       {children}

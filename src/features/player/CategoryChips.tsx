@@ -32,7 +32,7 @@ export function CategoryChips({
             className={cn(
               "shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
               selected
-                ? "bg-accent text-surface"
+                ? "bg-accent text-on-accent"
                 : "border border-border text-text-muted hover:border-border-strong hover:text-text",
             )}
           >

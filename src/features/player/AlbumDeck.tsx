@@ -216,7 +216,7 @@ function DeckCard({
         #{rank}
       </span>
       {interactive && (
-        <span className="absolute right-4 top-3 grid size-10 place-items-center rounded-full bg-accent text-surface shadow-lg transition-transform group-hover:scale-105">
+        <span className="absolute right-4 top-3 grid size-10 place-items-center rounded-full bg-accent text-on-accent shadow-lg transition-transform group-hover:scale-105">
           <Play className="size-5 fill-current" aria-hidden="true" />
         </span>
       )}

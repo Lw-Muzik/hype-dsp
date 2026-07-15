@@ -69,7 +69,7 @@ export function TransportBar() {
           onClick={togglePause}
           disabled={!nowPlaying}
           className={cn(
-            "flex size-10 items-center justify-center rounded-full bg-accent text-text transition-colors hover:bg-accent-strong",
+            "flex size-10 items-center justify-center rounded-full bg-accent text-on-accent transition-colors hover:bg-accent-strong",
             "disabled:pointer-events-none disabled:opacity-40",
           )}
         >

@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -32,11 +33,25 @@ function parseColor(value: string): Rgba {
   throw new Error(`palette.test: cannot parse color ${JSON.stringify(value)}`);
 }
 
-/** All custom-property declarations inside the block opened by `selector`. */
+/** Escapes regex-special characters so a literal selector can anchor a RegExp. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * All custom-property declarations inside the block opened by `selector`.
+ *
+ * Anchored on the selector's opening brace (`selector\s*{`), not a bare
+ * `indexOf(selector)`. `@theme` also appears inside the file's line-4
+ * comment ("... CSS-first via @theme.") — a plain indexOf would lock onto
+ * that occurrence (no brace between it and the real rule at line 8 is what
+ * makes it "work" today) and silently scope every lookup to nothing the
+ * moment that ordering changes.
+ */
 function tokens(selector: string): Record<string, string> {
-  const at = CSS.indexOf(selector);
-  if (at === -1) throw new Error(`palette.test: no block for ${selector}`);
-  const open = CSS.indexOf("{", at);
+  const rule = new RegExp(`${escapeRegExp(selector)}\\s*\\{`).exec(CSS);
+  if (!rule) throw new Error(`palette.test: no block for ${selector}`);
+  const open = rule.index + rule[0].length - 1;
   const close = CSS.indexOf("}", open);
   const body = CSS.slice(open + 1, close);
   const out: Record<string, string> = {};
@@ -136,5 +151,57 @@ describe("palette", () => {
     const sidebar = over(get(t, "--color-surface-raised"), backdrop);
     expect(ratio(get(t, "--color-text"), sidebar)).toBeGreaterThanOrEqual(4.5);
     expect(ratio(get(t, "--color-text-muted"), sidebar)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+/**
+ * Recursively lists `.tsx` files under `dir`. Skips (rather than throws on)
+ * any entry it cannot stat or read — e.g. a permission-denied directory —
+ * so one bad entry doesn't take out the whole suite. Only ever called with
+ * `src/` (see `tsxFiles(src)` below), so it never walks outside the app's
+ * own source.
+ */
+function tsxFiles(dir: string): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return entries.flatMap((entry) => {
+    const full = join(dir, entry);
+    let isDir: boolean;
+    try {
+      isDir = statSync(full).isDirectory();
+    } catch {
+      return [];
+    }
+    if (isDir) return tsxFiles(full);
+    return full.endsWith(".tsx") ? [full] : [];
+  });
+}
+
+describe("accent usage", () => {
+  // `text-surface` on an accent fill only ever worked because surface was
+  // near-black. Under [data-theme=light] it is near-white, so amber-on-white.
+  // The correct pairing is text-on-accent, which flips with the theme.
+  it("no element pairs an accent fill with surface/text colours", () => {
+    const src = fileURLToPath(new URL("../", import.meta.url));
+    const offenders: string[] = [];
+    for (const file of tsxFiles(src)) {
+      const body = readFileSync(file, "utf8");
+      // Any string literal holding both, wherever it sits. Anchoring on
+      // `className=` would miss the common shapes — these classes live inside
+      // cn(...) and ternaries, not directly after the attribute.
+      for (const m of body.matchAll(/["'`]([^"'`\n]*bg-accent[^"'`\n]*)["'`]/g)) {
+        const cls = m[1]!;
+        // (?![\w-]) matters: \btext-text\b also matches `text-text-muted`,
+        // which is a perfectly good pairing, and would fail this test forever.
+        if (/\btext-(?:surface|text)(?![\w-])/.test(cls)) {
+          offenders.push(`${file.replace(src, "")}: ${cls.trim().slice(0, 60)}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

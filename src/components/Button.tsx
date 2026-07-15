@@ -9,7 +9,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<Variant, string> = {
-  primary: "bg-accent text-text hover:bg-accent-strong",
+  // text-on-accent, not text-text: the fill is a mid-tone amber, and light text
+  // on it measures 1.58:1. This token flips with the theme so the pairing holds.
+  primary: "bg-accent text-on-accent hover:bg-accent-strong",
   secondary:
     "border border-border bg-surface-raised text-text hover:bg-surface-overlay",
   ghost: "text-text-muted hover:bg-surface-raised hover:text-text",

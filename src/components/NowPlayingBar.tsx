@@ -202,7 +202,7 @@ export function NowPlayingBar() {
             onClick={togglePause}
             disabled={!active}
             className={cn(
-              "flex size-10 items-center justify-center rounded-full bg-accent text-surface shadow transition-transform hover:scale-105 active:scale-100",
+              "flex size-10 items-center justify-center rounded-full bg-accent text-on-accent shadow transition-transform hover:scale-105 active:scale-100",
               "disabled:pointer-events-none disabled:opacity-30",
             )}
           >

@@ -456,7 +456,7 @@ function SourcePill({
       onClick={onClick}
       className={cn(
         "flex items-center gap-1.5 rounded-[7px] px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-accent text-surface" : "text-text-muted hover:text-text",
+        active ? "bg-accent text-on-accent" : "text-text-muted hover:text-text",
       )}
     >
       {Icon && <Icon className="size-4" aria-hidden="true" />}
@@ -491,7 +491,7 @@ function FacetTabs({ facet, onSelect }: { facet: Facet; onSelect: (f: Facet) => 
             className={cn(
               "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
               active
-                ? "bg-accent text-surface"
+                ? "bg-accent text-on-accent"
                 : "border border-border text-text-muted hover:border-border-strong hover:text-text",
             )}
           >
@@ -555,7 +555,7 @@ function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode
       onClick={() => onChange(mode)}
       className={cn(
         "grid size-7 place-items-center rounded-[7px] transition-colors",
-        view === mode ? "bg-accent text-surface" : "text-text-muted hover:text-text",
+        view === mode ? "bg-accent text-on-accent" : "text-text-muted hover:text-text",
       )}
     >
       <Icon className="size-4" aria-hidden="true" />
@@ -590,7 +590,7 @@ function TrackCard({
           className="aspect-square w-full shadow-md ring-1 ring-white/5"
         />
         <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-          <span className="grid size-10 place-items-center rounded-full bg-accent text-surface shadow-lg">
+          <span className="grid size-10 place-items-center rounded-full bg-accent text-on-accent shadow-lg">
             <Play className="size-5 fill-current" aria-hidden="true" />
           </span>
         </span>
@@ -643,7 +643,7 @@ function GroupCard({
           </span>
         )}
         <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-          <span className="grid size-10 place-items-center rounded-full bg-accent text-surface shadow-lg">
+          <span className="grid size-10 place-items-center rounded-full bg-accent text-on-accent shadow-lg">
             <Play className="size-5 fill-current" aria-hidden="true" />
           </span>
         </span>

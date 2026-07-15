@@ -219,11 +219,14 @@ show) as a static data-URI background, `background-size: 182px`, `opacity 0.04`,
 
 ## The accent split
 
-`--color-accent` is overloaded: 24 uses as a fill (`bg-accent`) and 52 as text
-on a surface (`text-accent` ×19, `text-accent-strong` ×33). Those need opposite
+`--color-accent` is overloaded: 24 uses as a fill (`bg-accent`) and 43 as text
+on a surface (`text-accent` ×18, `text-accent-strong` ×25). Those need opposite
 treatment under a light background. Worse, `bg-accent` pairs with `text-surface`
 in 8 places — which works only because `surface` is near-black today. Flip it to
 near-white and every amber button becomes unreadable.
+
+The 8 sites: `CategoryChips.tsx:35`, `NowPlayingBar.tsx:205`,
+`AlbumDeck.tsx:219`, `MusicLibrary.tsx:459,494,558,593,646`.
 
 Fix: add **`--color-on-accent`**, the text colour that sits on an accent fill,
 and point those 8 sites plus `Button` at it. The accent then flips per theme:
@@ -292,14 +295,18 @@ reads this, and a round-trip would only add a flash on launch.
 ## Settings
 
 A new feature-owned `ThemeCard`, dropped into `SettingsView`'s card grid like
-`YtMusicCard` and the others. A segmented control for the four themes, and the
-blur `Slider`, disabled unless the resolved theme is Dynamic.
+the others. A segmented control for the four themes, and the blur `Slider`,
+disabled unless the resolved theme is Dynamic.
 
-The segmented control means generalising `LayoutToggle`, which is currently
-hardcoded to `list | grid` with baked-in icons. Its markup is already the house
-segmented pattern; it grows an item list and `LayoutToggle` becomes a caller.
+This branch has **no segmented control to reuse**, so one is added:
+`components/Segmented.tsx`, generic over a string union. A `LayoutToggle` does
+exist — but only on `feat/stations-tv`, not on `main`, which this branch is cut
+from. When that branch merges, `LayoutToggle` should be refactored onto
+`Segmented`; that is a follow-up, not part of this work, and nothing here may
+reference it.
+
 `Slider` needs an explicit width class — passing `className` replaces its
-`flex-1` default and a 0px track silently ignores drags.
+`flex-1` default, and a 0px track silently ignores drags.
 
 ## Files
 
@@ -307,13 +314,14 @@ segmented pattern; it grows an item list and `LayoutToggle` becomes a caller.
 | --- | --- |
 | `src/styles/index.css` | `--color-canvas`, `--color-on-accent`; `[data-theme]` blocks for light/dynamic; grain tile |
 | `src/stores/theme.ts` | new — choice, resolver, blur, `THEME_LIMITS`, persistence |
+| `src/features/theme/backdropSource.ts` | new — the pure "what to paint" rule |
 | `src/features/theme/ThemeBackdrop.tsx` | new — layers, crossfade, fallback |
 | `src/features/settings/ThemeCard.tsx` | new |
 | `src/lib/reducedMotion.ts` | new — promoted from two copies |
 | `src/app/App.tsx` | `relative isolate` + mount `<ThemeBackdrop/>` |
-| `src/components/LayoutToggle.tsx` | generalise to a segmented control |
+| `src/components/Segmented.tsx` | new — generic segmented control |
 | `src/components/Button.tsx` | `text-text` → `text-on-accent` (bug fix) |
-| 8 call sites | `text-surface` on accent → `text-on-accent` |
+| 8 call sites (listed above) | `text-surface` on accent → `text-on-accent` |
 | `index.html` | pre-paint theme script |
 | `src/features/settings/SettingsView.tsx` | mount `ThemeCard` |
 | `src/stores/theme.test.ts` | new — resolver, clamp, persistence |
@@ -340,8 +348,13 @@ Vitest (`pnpm test`, `vitest run`; 2 store tests exist today).
 * **Resolver** — `system` follows `matchMedia` and reacts to a live OS flip;
   unknown stored values fall back.
 * **Blur clamp** — out-of-range and non-numeric stored values clamp.
-* **Backdrop** — renders nothing unless Dynamic; holds previous art when `cover`
-  goes `null`; falls back to the gradient when a track has no art.
+* **Backdrop source** — the *decision* of what to paint is a pure function
+  (`backdropSource`), so it is unit-tested: cover when present, the same
+  deterministic gradient `Artwork` uses when not, nothing when idle. The
+  *rendering* — crossfade, layer order, "nothing unless Dynamic" — needs a DOM
+  and would mean adding jsdom for a handful of assertions about CSS that only
+  the eye can really judge. It is covered by the manual pass instead. That is a
+  deliberate line: pure rules get tests, pixels get eyes.
 
 Manual, on device: bright vs dark album art, a cover with text on it, track
 changes, the blur slider through its range, all four themes, macOS *Reduce

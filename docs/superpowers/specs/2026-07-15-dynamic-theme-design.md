@@ -123,7 +123,7 @@ moving content is unreadable — the token names already draw that line.
 </div>
 <div class="backdrop"><div class="art">…</div></div>   <!-- the other of A/B -->
 
-<div class="scrim"></div>   <!-- rgb(10 11 14 / 0.72), above both art layers -->
+<div class="scrim"></div>   <!-- var(--hm-backdrop-scrim), above both art layers -->
 <div class="grain"></div>   <!-- unscaled, unblurred, topmost -->
 ```
 

@@ -74,7 +74,7 @@ function parseColor(value: string): Rgba {
   throw new Error(`palette.test: cannot parse color ${JSON.stringify(value)}`);
 }
 
-/** All `--color-*` declarations inside the block opened by `selector`. */
+/** All custom-property declarations inside the block opened by `selector`. */
 function tokens(selector: string): Record<string, string> {
   const at = CSS.indexOf(selector);
   if (at === -1) throw new Error(`palette.test: no block for ${selector}`);
@@ -82,7 +82,7 @@ function tokens(selector: string): Record<string, string> {
   const close = CSS.indexOf("}", open);
   const body = CSS.slice(open + 1, close);
   const out: Record<string, string> = {};
-  for (const m of body.matchAll(/(--color-[a-z-]+)\s*:\s*([^;]+);/g)) {
+  for (const m of body.matchAll(/(--[a-z-]+)\s*:\s*([^;]+);/g)) {
     out[m[1]!] = m[2]!.trim();
   }
   return out;
@@ -159,8 +159,9 @@ describe("palette", () => {
     ["black art", BLACK],
   ])("dynamic: text survives %s behind the scrim", (_label, art) => {
     const t = theme("dynamic");
-    const scrim = parseColor("rgb(10 11 14 / 0.72)"); // must match ThemeBackdrop
-    const backdrop = over(scrim, art);
+    // Read from the stylesheet, same as every other token — the component uses
+    // var(--hm-backdrop-scrim), so there is exactly one source of this value.
+    const backdrop = over(get(t, "--hm-backdrop-scrim"), art);
     expect(ratio(get(t, "--color-text"), backdrop)).toBeGreaterThanOrEqual(4.5);
     expect(ratio(get(t, "--color-text-muted"), backdrop)).toBeGreaterThanOrEqual(4.5);
     expect(ratio(get(t, "--color-text-faint"), backdrop)).toBeGreaterThanOrEqual(3);
@@ -168,7 +169,7 @@ describe("palette", () => {
 
   it("dynamic: chrome stays legible over the worst backdrop", () => {
     const t = theme("dynamic");
-    const backdrop = over(parseColor("rgb(10 11 14 / 0.72)"), WHITE);
+    const backdrop = over(get(t, "--hm-backdrop-scrim"), WHITE);
     const sidebar = over(get(t, "--color-surface-raised"), backdrop);
     expect(ratio(get(t, "--color-text"), sidebar)).toBeGreaterThanOrEqual(4.5);
     expect(ratio(get(t, "--color-text-muted"), sidebar)).toBeGreaterThanOrEqual(4.5);
@@ -249,6 +250,23 @@ Then append the two theme blocks after the `:root { color-scheme: dark; }` rule:
 
   --color-text-muted: #c5cbd6;
   --color-text-faint: #a7aeba;
+
+  /* The backdrop's only darkening step. ThemeBackdrop reads this via var(), and
+     palette.test.ts reads it from this file — one source, so the contrast the
+     component depends on is the contrast that gets asserted. */
+  --hm-backdrop-scrim: rgb(10 11 14 / 0.72);
+}
+```
+
+Also give the blur variable a boot value on the existing `:root` rule:
+
+```css
+:root {
+  color-scheme: dark;
+  /* Providers sets this from the store on mount. Until then the var would be
+     undefined, which makes blur(var(…)) invalid and flashes unblurred art.
+     Keep in sync with THEME_LIMITS.blur.default. */
+  --hm-backdrop-blur: 48px;
 }
 ```
 
@@ -326,9 +344,14 @@ describe("accent usage", () => {
     const offenders: string[] = [];
     for (const file of tsxFiles(src)) {
       const body = readFileSync(file, "utf8");
-      for (const m of body.matchAll(/class(?:Name)?=?\{?["'`]([^"'`]*bg-accent[^"'`]*)["'`]/g)) {
+      // Any string literal holding both, wherever it sits. Anchoring on
+      // `className=` would miss the common shapes — these classes live inside
+      // cn(...) and ternaries, not directly after the attribute.
+      for (const m of body.matchAll(/["'`]([^"'`\n]*bg-accent[^"'`\n]*)["'`]/g)) {
         const cls = m[1]!;
-        if (/\btext-(surface|text)\b/.test(cls)) {
+        // (?![\w-]) matters: \btext-text\b also matches `text-text-muted`,
+        // which is a perfectly good pairing, and would fail this test forever.
+        if (/\btext-(?:surface|text)(?![\w-])/.test(cls)) {
           offenders.push(`${file.replace(src, "")}: ${cls.trim().slice(0, 60)}`);
         }
       }
@@ -851,9 +874,9 @@ export default function ThemeBackdrop() {
       <Layer source={layers.a} show={layers.showA} />
       <Layer source={layers.b} show={!layers.showA} />
       {/* Single darkening step. Art opacity AND a scrim would multiply, crushing
-          peak white to ~31/255 and guaranteeing banding. Value is asserted in
-          palette.test.ts — keep the two in sync. */}
-      <div className="absolute inset-0" style={{ background: "rgb(10 11 14 / 0.72)" }} />
+          peak white to ~31/255 and guaranteeing banding. The value lives in
+          index.css as --hm-backdrop-scrim, which palette.test.ts asserts on. */}
+      <div className="absolute inset-0" style={{ background: "var(--hm-backdrop-scrim)" }} />
       {/* Dither. 71 levels of blurred gradient bands on 8-bit displays. Must be
           unscaled and unblurred, or it stops working as per-pixel noise. */}
       <div className="hm-grain absolute inset-0" />
@@ -1278,5 +1301,5 @@ Run `pnpm tauri dev` and confirm:
 ## Notes for the implementer
 
 - **`bg-surface/NN` compounds in Dynamic.** Tailwind v4 compiles opacity modifiers to `color-mix(… var(--color-surface) NN%, transparent)`. Dynamic already gives `--color-surface` an alpha, so `bg-surface/70` becomes ~0.55 × 0.70. Check the call sites (`LyricsView.tsx:243` uses `bg-surface/70`); if any scrim looks too thin in Dynamic, give it an explicit colour rather than removing the token's alpha.
-- **The scrim value lives in two places** — `ThemeBackdrop.tsx` and `palette.test.ts`. If you change one, change both; the test asserts the contrast the component depends on.
+- **The scrim has exactly one home**: `--hm-backdrop-scrim` in `index.css`. The component reads it via `var()`, the test parses it from the file. Don't inline the literal anywhere.
 - **WebKitGTK below 2.46 blurs slowly** (CSS filters only became Skia-backed there), and this app has been bitten before — the cross-arch audit logged WebKitGTK `shadowBlur` as a P0. If Linux drags, cap the ceiling per platform via `src/lib/platform.ts`. Don't pre-emptively add the cap.

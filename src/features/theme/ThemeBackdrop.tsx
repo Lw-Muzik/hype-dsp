@@ -30,7 +30,17 @@ const COVER_HOLD_MS = 400;
 const MAX_LAYERS = 3;
 
 interface StackLayer {
-  key: string;
+  /** Unique per commit (a monotonically increasing counter, never reused —
+   *  see `layerIdRef` below). This is the React `key` and the identity
+   *  `pruneBelow` matches against. It must never collide, which a
+   *  source-derived string can: a quick skip forward and back (X->Y->X
+   *  inside one fade window), or a `coverGradient` hash collision between
+   *  two different art-less albums, can each produce two layers with the
+   *  same source. The source string itself (`nextKey`/`committedKeyRef`)
+   *  remains the *change-detection* key — it answers "did the underlying
+   *  source actually change between renders?", a different question from
+   *  "is this layer's identity unique?", which `id` answers. */
+  id: number;
   source: BackdropSource;
   /** False only for the very first layer of a mount: it must paint solid
    *  from the first frame (see the component doc comment below) rather than
@@ -112,21 +122,40 @@ export default function ThemeBackdrop() {
   const next = backdropSource(meta);
   const nextKey = keyOf(next);
 
-  // The very first layer of a mount paints immediately (animate: false) — it
-  // has nothing beneath it to crossfade from, so fading it in from nothing
-  // would flash the theme's plain surface for 600ms. Every layer after that
-  // fades in over whatever is already stacked beneath it.
-  const [stack, setStack] = useState<StackLayer[]>(() =>
-    next ? [{ key: nextKey, source: next, animate: false }] : [],
-  );
+  // The very first layer of a mount paints immediately (animate: false) —
+  // but only when we already have real art to show: it has nothing beneath
+  // it to crossfade from, so fading it in from nothing would flash the
+  // theme's plain surface for 600ms. When the only thing available at mount
+  // is a gradient, we deliberately do NOT seed it here — a gradient is
+  // ambiguous (see COVER_HOLD_MS above), and painting it immediately would
+  // flash a placeholder that a moment later gets replaced by real art: the
+  // exact double-fade this file exists to prevent. Instead the stack starts
+  // empty and the mount effect below applies the same cover-pending hold as
+  // any other track change, so mount gets a brief empty backdrop (the
+  // theme's plain surface) while it waits, rather than a placeholder
+  // gradient. Every layer after the first fades in over whatever is already
+  // stacked beneath it.
+  const initialLayer: StackLayer | null =
+    next && next.kind === "art" ? { id: 0, source: next, animate: false } : null;
 
-  // Key of the source actually committed (pushed onto the stack), as
+  const [stack, setStack] = useState<StackLayer[]>(() => (initialLayer ? [initialLayer] : []));
+
+  // Source string of what's actually committed (pushed onto the stack), as
   // opposed to `next`, which reflects the store on every render including
-  // while a cover-pending hold is outstanding.
-  const committedKeyRef = useRef(nextKey);
-  // Kind of the last *committed* source, so the hold below can tell "we're
-  // currently showing art" from "we're currently showing a gradient".
-  const shownKindRef = useRef<BackdropSource["kind"] | null>(next?.kind ?? null);
+  // while a cover-pending hold is outstanding. Purely for change detection —
+  // "did the source change since the last commit?" — never used as a React
+  // key (see `StackLayer.id` for why that has to be a separate, always-
+  // unique value). Left "" when nothing has been committed yet, which is
+  // also true right after a mount whose only available source was a
+  // gradient and got deferred to the hold below: "" mismatches `nextKey` on
+  // the very next effect run, so that deferred mount is picked up by the
+  // same hold logic as any other change, not a special case.
+  const committedKeyRef = useRef(initialLayer ? nextKey : "");
+  // Hands out each layer's unique `id`. 0 is reserved for the initial
+  // (mount-time) layer above; every layer committed after that gets the
+  // next integer, so ids never collide no matter how the source strings
+  // collide (see `StackLayer.id`).
+  const layerIdRef = useRef(0);
   const holdTimerRef = useRef<number | null>(null);
   // Every outstanding setTimeout (the cover-pending hold, plus one
   // prune-below-me per commit), so they can all be cancelled on unmount and
@@ -148,17 +177,21 @@ export default function ThemeBackdrop() {
   };
 
   /** Push `source` as the new top layer, capped, and arrange for whatever is
-   *  now permanently hidden beneath it to be dropped from the DOM. */
-  const commit = (source: BackdropSource, key: string) => {
-    committedKeyRef.current = key;
-    shownKindRef.current = source.kind;
+   *  now permanently hidden beneath it to be dropped from the DOM.
+   *  `sourceKey` is the change-detection string (see `committedKeyRef`); the
+   *  layer's actual identity is minted fresh here from `layerIdRef` and
+   *  never derived from `sourceKey`, so it can't collide even when two
+   *  layers share a source. */
+  const commit = (source: BackdropSource, sourceKey: string) => {
+    committedKeyRef.current = sourceKey;
+    const id = ++layerIdRef.current;
     setStack((prev) => {
-      const appended: StackLayer[] = [...prev, { key, source, animate: prev.length > 0 }];
+      const appended: StackLayer[] = [...prev, { id, source, animate: prev.length > 0 }];
       return appended.length > MAX_LAYERS ? appended.slice(appended.length - MAX_LAYERS) : appended;
     });
     const pruneBelow = () => {
       setStack((prev) => {
-        const idx = prev.findIndex((l) => l.key === key);
+        const idx = prev.findIndex((l) => l.id === id);
         // idx < 0: already pruned by a later commit. idx === 0: nothing
         // beneath it to drop. Either way, leave the stack alone.
         return idx > 0 ? prev.slice(idx) : prev;
@@ -179,19 +212,26 @@ export default function ThemeBackdrop() {
     if (!next) {
       // Nothing playing: paint nothing, per backdropSource's contract.
       committedKeyRef.current = "";
-      shownKindRef.current = null;
       setStack([]);
       return;
     }
 
-    // Cover-pending hold: if we're currently showing real art and the new
-    // track's source is (so far) only a gradient, don't commit it yet. Wait
-    // for the real cover — if it arrives before the hold expires, `next`
-    // becomes an `art` source with a different key, this effect re-runs, and
-    // we commit that directly (one crossfade: old art -> new art). If the
-    // hold expires first, the track genuinely has no art, so the gradient
-    // commits late rather than never.
-    if (next.kind === "gradient" && shownKindRef.current === "art") {
+    // Cover-pending hold: a gradient is ambiguous — it might mean the track
+    // genuinely has no art, or it might just mean the real cover hasn't
+    // decoded yet (`itemMeta` sets `cover: null` on every track change; the
+    // real cover, if any, lands a beat later via `applyNowPlaying` or
+    // `fillNowPlayingCover`). So an incoming gradient is never committed
+    // immediately, regardless of what — if anything — is already on screen;
+    // depending on what's currently shown would miss the mirror-image case
+    // (an art-less track followed by one that DOES have art, where nothing
+    // "currently showing art" would otherwise skip the hold and still
+    // double-fade). If the real cover arrives before the hold expires,
+    // `next` becomes an `art` source with a different key, this effect
+    // re-runs, and we commit that directly (one crossfade: whatever's on
+    // screen -> new art, or a plain solid paint if the stack is still
+    // empty). If the hold expires first, the track genuinely has no art, so
+    // the gradient commits late rather than never.
+    if (next.kind === "gradient") {
       const pending = next;
       const pendingKey = nextKey;
       holdTimerRef.current = schedule(() => {
@@ -222,7 +262,7 @@ export default function ThemeBackdrop() {
   return (
     <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
       {stack.map((l) => (
-        <Layer key={l.key} source={l.source} animate={l.animate} />
+        <Layer key={l.id} source={l.source} animate={l.animate} />
       ))}
       {/* Single darkening step. Art opacity AND a scrim would multiply, crushing
           peak white to ~31/255 and guaranteeing banding. The value lives in

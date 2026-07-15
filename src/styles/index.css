@@ -186,6 +186,23 @@ body {
   animation: hm-pop 130ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Fade-in step for a Dynamic-backdrop art layer (ThemeBackdrop.tsx). A CSS
+ * *animation*, not a transition: transitions need a prior style value to
+ * animate away from and do nothing on a freshly-mounted node, but an
+ * animation runs the instant the node is inserted — which is what lets a
+ * stacked layer crossfade against whatever is beneath it from its very
+ * first frame. Linear, matching the constraint that an eased crossfade dips
+ * visibly mid-transition.
+ */
+@keyframes hm-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /*
  * Dither for the Dynamic backdrop. The scrim leaves the art ~71 of 255 levels,
  * and a heavily blurred image is a maximally smooth gradient — it bands on

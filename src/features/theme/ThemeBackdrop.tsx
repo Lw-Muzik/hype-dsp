@@ -147,9 +147,10 @@ export default function ThemeBackdrop() {
   // key (see `StackLayer.id` for why that has to be a separate, always-
   // unique value). Left "" when nothing has been committed yet, which is
   // also true right after a mount whose only available source was a
-  // gradient and got deferred to the hold below: "" mismatches `nextKey` on
-  // the very next effect run, so that deferred mount is picked up by the
-  // same hold logic as any other change, not a special case.
+  // gradient and got deferred to the hold below. When nextKey changes, any
+  // outstanding hold is cancelled unconditionally; the effect then either
+  // commits the new source or clears the stack, handling the "" case like
+  // any other.
   const committedKeyRef = useRef(initialLayer ? nextKey : "");
   // Hands out each layer's unique `id`. 0 is reserved for the initial
   // (mount-time) layer above; every layer committed after that gets the
@@ -205,9 +206,9 @@ export default function ThemeBackdrop() {
   };
 
   useEffect(() => {
-    if (nextKey === committedKeyRef.current) return;
     cancel(holdTimerRef.current);
     holdTimerRef.current = null;
+    if (nextKey === committedKeyRef.current) return;
 
     if (!next) {
       // Nothing playing: paint nothing, per backdropSource's contract.

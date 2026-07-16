@@ -1,16 +1,22 @@
-//! Streamed gapless / crossfade queue (cloud & phone).
+//! Streamed gapless / crossfade queue (cloud, phone, and YouTube Music).
 //!
 //! Mirrors [`QueuePlaybackSource`](crate::queue::QueuePlaybackSource) but decodes
 //! each track by **streaming it over the network** rather than reading a local
 //! file, and resolves each track's URL **lazily** — just before it's needed —
 //! via a caller-supplied [`StreamResolver`]. That matters because some providers
-//! (e.g. Dropbox) cost an API call per URL and hand out short-lived links, so
-//! resolving the whole queue up front would be slow and the links could go stale.
+//! cost real time per URL and hand out short-lived links: Dropbox an API call,
+//! YouTube Music a whole yt-dlp process. Resolving the queue up front would be
+//! slow and the links could go stale before they were reached.
 //!
 //! Only the current track and a one-track lookahead are held decoded in memory;
-//! tracks already played are freed. So a long cloud/phone queue never downloads
-//! or decodes everything at once. The crossfade ramp itself matches the local
-//! queue exactly.
+//! tracks already played are freed. So a long queue never downloads or decodes
+//! everything at once. The lookahead is requested at each track boundary, giving
+//! it a whole track's duration to resolve, download and decode.
+//!
+//! When it doesn't make it in time the crossfade is not abandoned — it ramps
+//! over whatever frames remain (see `xf_len`). A ramp that has to be short is
+//! still better than one cut off partway, and that case belongs to slow links,
+//! which is where the seams show most.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -215,6 +221,15 @@ pub struct StreamQueueSource {
     index: usize,
     cursor: usize,
     xf_cursor: usize,
+    /// Frames the in-progress crossfade ramps over, latched when it starts;
+    /// 0 when not crossfading.
+    ///
+    /// Not simply `crossfade_frames()`: a lookahead that finishes decoding after
+    /// the window has already opened leaves fewer frames than that, and ramping
+    /// against the full width would leave the outgoing track at audible gain
+    /// when it's cut. Which is to say the click would land exactly when the
+    /// network is slowest — the case crossfade most needs to survive.
+    xf_len: usize,
     rx: Option<Receiver<DecodedTrack>>,
     /// Asks the worker to ensure tracks are decoded up to (and incl.) this index.
     want_tx: Option<Sender<usize>>,
@@ -337,6 +352,7 @@ impl StreamQueueSource {
             index: start,
             cursor: 0,
             xf_cursor: 0,
+            xf_len: 0,
             rx: Some(rx),
             want_tx: Some(want_tx),
             running,
@@ -447,7 +463,14 @@ impl AudioSource for StreamQueueSource {
             let crossfading = xf > 0 && next_ready && self.cursor + xf >= cur_len;
 
             let (l, r) = if crossfading {
-                let t = (self.xf_cursor as f32 / xf as f32).min(1.0);
+                // Latch the ramp width on the first faded frame: whatever is
+                // actually left, which is `xf` when the next track was ready on
+                // time and less when it wasn't. A shorter complete fade beats a
+                // full-width one truncated at the cut.
+                if self.xf_len == 0 {
+                    self.xf_len = xf.min(cur_len.saturating_sub(self.cursor)).max(1);
+                }
+                let t = (self.xf_cursor as f32 / self.xf_len as f32).min(1.0);
                 let (lc, rc) = self.frame(self.index, self.cursor);
                 let (ln, rn) = self.frame(self.index + 1, self.xf_cursor);
                 self.cursor += 1;
@@ -456,6 +479,7 @@ impl AudioSource for StreamQueueSource {
                     self.index += 1;
                     self.cursor = self.xf_cursor;
                     self.xf_cursor = 0;
+                    self.xf_len = 0;
                     self.signal_track();
                     self.advance_window();
                 }
@@ -468,6 +492,7 @@ impl AudioSource for StreamQueueSource {
                 // Gapless boundary: advance to the next track.
                 self.index += 1;
                 self.cursor = 0;
+                self.xf_len = 0;
                 self.advance_window();
                 if self.ready(self.index) {
                     self.signal_track();
@@ -497,6 +522,8 @@ impl AudioSource for StreamQueueSource {
     fn seek(&mut self, frame: usize) {
         self.cursor = frame.min(self.track_len(self.index));
         self.xf_cursor = 0;
+        // Any ramp in progress belongs to where we just were.
+        self.xf_len = 0;
     }
 
     fn position(&self) -> usize {
@@ -530,6 +557,7 @@ mod tests {
             index: 0,
             cursor: 0,
             xf_cursor: 0,
+            xf_len: 0,
             rx: None,
             want_tx: None,
             running: Arc::new(AtomicBool::new(true)),
@@ -560,6 +588,42 @@ mod tests {
         for (got, want) in left.iter().zip([1.0, 0.75, 0.5, 0.25]) {
             assert!((got - want).abs() < 1e-6, "crossfade ramp: {got} vs {want}");
         }
+    }
+
+    /// A lookahead that lands *after* the crossfade window has opened — the
+    /// normal case for a slow resolve — must still ramp all the way out.
+    ///
+    /// Otherwise the outgoing track is cut at whatever gain the truncated ramp
+    /// reached and the incoming one jumps to full: a click, arriving exactly
+    /// when the network is worst.
+    #[test]
+    fn a_late_lookahead_still_ramps_fully_out() {
+        // 100-frame tracks, 40-frame crossfade → the window opens at frame 60.
+        let mut src = eager(vec![stereo(1.0, 100), stereo(-1.0, 100)], 40);
+        src.tracks[1] = None; // still decoding
+
+        // Play to frame 80 — 20 frames INTO the window with nothing to fade to.
+        let mut out = vec![0.0f32; 160];
+        src.read(&mut out, 2);
+        assert!(
+            out.iter().all(|s| (*s - 1.0).abs() < 1e-6),
+            "current track should play untouched while there's nothing to fade to"
+        );
+
+        // It lands now, with 20 of the current track's frames left.
+        src.tracks[1] = Some(stereo(-1.0, 100));
+
+        // Ramp over what's actually left: the last frame before the boundary
+        // should be almost entirely the incoming track. Dividing by the full 40
+        // instead only reaches the halfway point, cutting the outgoing track at
+        // audible gain — the click this guards.
+        let mut out = vec![0.0f32; 40];
+        src.read(&mut out, 2);
+        let last = out[38];
+        assert!(
+            last < -0.8,
+            "ramp must reach the incoming track before the cut, got {last}"
+        );
     }
 
     #[test]

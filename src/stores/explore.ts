@@ -6,7 +6,13 @@ import {
   ytmusicExploreTracks,
   ytmusicStatus,
 } from "@/lib/ipc";
-import type { ExploreCategory, ExploreItem, ExploreSection, ExploreShelf } from "@/lib/types";
+import type {
+  ExploreCategory,
+  ExploreItem,
+  ExploreSection,
+  ExploreShelf,
+  YtTrack,
+} from "@/lib/types";
 import type { LoadStatus } from "@/stores/musicLibrary";
 import { ytmusicItem, useEngineStore } from "@/stores/engine";
 
@@ -42,14 +48,24 @@ interface ExploreStore {
   /** Id of the item being opened, so its tile can show a spinner. */
   opening: string | null;
 
+  /** The playlist/album being viewed, with its tracks. Null = the shelves.
+   *  Opening a tile shows what's in it rather than playing it outright — a
+   *  hundred tracks starting unannounced is not a browse. */
+  opened: { item: ExploreItem; tracks: YtTrack[] } | null;
+  openError: string | null;
+
   /** Load the category list once. No-op unless idle (retry via `retry`). */
   ensureCategories: () => void;
   /** Open a category and fetch its shelves. */
   select: (category: ExploreCategory) => void;
   /** Back to the category picker. */
   clear: () => void;
-  /** Fetch an item's tracks and play them. */
-  play: (item: ExploreItem) => Promise<void>;
+  /** Fetch an item's tracks and show them. */
+  open: (item: ExploreItem) => Promise<void>;
+  /** Back to the shelves from an opened item. */
+  close: () => void;
+  /** Play the opened item's tracks from `index`. */
+  playOpened: (index: number) => void;
   /** Re-run whichever load failed. */
   retry: () => void;
 }
@@ -61,6 +77,8 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
   sectionsError: null,
   selected: null,
   shelves: [],
+  opened: null,
+  openError: null,
   pageLoad: "idle",
   pageError: null,
   opening: null,
@@ -90,7 +108,14 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
   select: (category) => {
     const gen = ++pageGen;
     const isStale = () => gen !== pageGen;
-    set({ selected: category, shelves: [], pageLoad: "loading", pageError: null });
+    set({
+      selected: category,
+      shelves: [],
+      pageLoad: "loading",
+      pageError: null,
+      opened: null,
+      openError: null,
+    });
     ytmusicExplorePage(category.params)
       .then((shelves) => {
         if (isStale()) return;
@@ -104,26 +129,48 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
 
   clear: () => {
     pageGen++; // abandon any in-flight page
-    set({ selected: null, shelves: [], pageLoad: "idle", pageError: null });
+    set({
+      selected: null,
+      shelves: [],
+      pageLoad: "idle",
+      pageError: null,
+      opened: null,
+      openError: null,
+    });
   },
 
-  play: async (item) => {
+  open: async (item) => {
     // Opening is a network read; mark the tile so a slow album doesn't look dead.
-    set({ opening: item.id });
+    set({ opening: item.id, openError: null });
     try {
       const tracks = await ytmusicExploreTracks(item);
-      if (tracks.length === 0) {
-        set({ pageError: `"${item.title}" has no playable tracks.` });
-        return;
-      }
-      // Same queue items the library builds, so Explore rides the existing
-      // streaming stack (Range seeking, resume-on-drop, gapless) unchanged.
-      useEngineStore.getState().playQueueItems(tracks.map(ytmusicItem), 0);
+      set({
+        opened: { item, tracks },
+        openError: tracks.length === 0 ? `"${item.title}" has no playable tracks.` : null,
+      });
     } catch (e) {
-      set({ pageError: ipcErrorMessage(e) });
+      set({ opened: { item, tracks: [] }, openError: ipcErrorMessage(e) });
     } finally {
       set({ opening: null });
     }
+  },
+
+  close: () => set({ opened: null, openError: null }),
+
+  playOpened: (index) => {
+    const opened = get().opened;
+    if (!opened) return;
+    // Unavailable tracks can't stream, so they never enter the queue — otherwise
+    // next/prev would walk onto dead entries. The start index is re-based onto
+    // the playable set, as the Library's `playAt` does.
+    const target = opened.tracks[index];
+    if (!target) return;
+    const playable = opened.tracks.filter((t) => t.isAvailable);
+    const from = playable.findIndex((t) => t.videoId === target.videoId);
+    if (from < 0) return;
+    // Same queue items the library builds, so Explore rides the existing
+    // streaming stack (Range seeking, resume-on-drop, gapless) unchanged.
+    useEngineStore.getState().playQueueItems(playable.map(ytmusicItem), from);
   },
 
   retry: () => {

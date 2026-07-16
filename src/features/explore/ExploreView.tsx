@@ -1,10 +1,21 @@
 import { useEffect } from "react";
-import { ChevronLeft, CircleAlert, Disc3, ListMusic, Loader2, RotateCw, SquarePlay } from "lucide-react";
+import {
+  ChevronLeft,
+  CircleAlert,
+  Disc3,
+  ListMusic,
+  Loader2,
+  Play,
+  RotateCw,
+  SquarePlay,
+} from "lucide-react";
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
 import { Artwork } from "@/features/player/Artwork";
+import { TrackRow } from "@/features/player/TrackRow";
 import { useExploreStore } from "@/stores/explore";
+import { useEngineStore } from "@/stores/engine";
 import { useUiStore } from "@/stores/ui";
 import type { ExploreItem, ExploreShelf } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -12,9 +23,14 @@ import { cn } from "@/lib/cn";
 /**
  * Explore — YouTube Music's own catalog.
  *
- * Two screens: a picker of the mood/genre categories, and one category's
- * shelves. Everything is fetched on click and nothing is kept: this is the live
- * catalog, and a cached copy of it would just be a worse Library.
+ * Three screens: the mood/genre categories, one category's shelves, and one
+ * opened playlist/album's tracks. Everything is fetched on click and nothing is
+ * kept: this is the live catalog, and a cached copy of it would just be a worse
+ * Library.
+ *
+ * Opening a tile *lists* its tracks rather than playing them. Browsing is how
+ * you find out what something is — a hundred tracks starting unannounced on a
+ * single click answers a question you hadn't asked yet.
  */
 export function ExploreView() {
   const route = routeById("explore");
@@ -31,6 +47,8 @@ export function ExploreView() {
   const ensureCategories = useExploreStore((s) => s.ensureCategories);
   const select = useExploreStore((s) => s.select);
   const clear = useExploreStore((s) => s.clear);
+  const opened = useExploreStore((s) => s.opened);
+  const close = useExploreStore((s) => s.close);
   const retry = useExploreStore((s) => s.retry);
 
   useEffect(() => {
@@ -44,18 +62,25 @@ export function ExploreView() {
     <div className="mx-auto flex h-full w-full max-w-5xl flex-col gap-4">
       <PageHeader
         icon={route.icon}
-        title={selected ? selected.title : route.label}
-        subtitle={selected ? "Playlists and albums from YouTube Music." : route.tagline}
+        title={opened ? opened.item.title : selected ? selected.title : route.label}
+        subtitle={
+          opened
+            ? (opened.item.subtitle ?? "From YouTube Music.")
+            : selected
+              ? "Playlists and albums from YouTube Music."
+              : route.tagline
+        }
       />
 
-      {selected && (
+      {/* One step back, whichever level you're on. */}
+      {(selected || opened) && (
         <button
           type="button"
-          onClick={clear}
+          onClick={opened ? close : clear}
           className="flex items-center gap-1 self-start text-sm text-text-muted transition-colors hover:text-text"
         >
           <ChevronLeft className="size-4" aria-hidden="true" />
-          All categories
+          {opened ? (selected?.title ?? "Back") : "All categories"}
         </button>
       )}
 
@@ -90,6 +115,8 @@ export function ExploreView() {
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
             {selected ? `Loading ${selected.title}…` : "Loading Explore…"}
           </div>
+        ) : opened ? (
+          <OpenedItem />
         ) : selected ? (
           <div className="flex flex-col gap-8 pb-4">
             {shelves.map((shelf) => (
@@ -122,6 +149,78 @@ export function ExploreView() {
   );
 }
 
+/** One opened playlist/album: what's in it, and where to start. */
+function OpenedItem() {
+  const opened = useExploreStore((s) => s.opened)!;
+  const openError = useExploreStore((s) => s.openError);
+  const playOpened = useExploreStore((s) => s.playOpened);
+  // Same derivation the Library uses, so a track shows as playing here whether
+  // it was started from Explore or anywhere else.
+  const current = useEngineStore((s) =>
+    s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined,
+  );
+  const currentId = current?.ytTrack?.videoId ?? null;
+
+  const { item, tracks } = opened;
+  const playable = tracks.filter((t) => t.isAvailable).length;
+
+  return (
+    <div className="flex flex-col gap-4 pb-4">
+      <div className="flex items-center gap-4">
+        <Artwork
+          art={{ key: item.id, source: "ytmusic", cover: item.thumbnail }}
+          seed={item.id}
+          label={item.title}
+          className="size-28 shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-lg font-semibold">{item.title}</p>
+          {item.subtitle && (
+            <p className="truncate text-sm text-text-muted">{item.subtitle}</p>
+          )}
+          <p className="mt-0.5 text-xs text-text-faint">
+            {tracks.length} {tracks.length === 1 ? "track" : "tracks"}
+            {playable < tracks.length && ` · ${tracks.length - playable} unavailable`}
+          </p>
+          {playable > 0 && (
+            <Button className="mt-3" variant="primary" onClick={() => playOpened(0)}>
+              <Play className="size-4" aria-hidden="true" />
+              Play all
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {openError ? (
+        <Centered
+          icon={CircleAlert}
+          danger
+          title="Couldn't open this"
+          body={openError}
+        />
+      ) : (
+        <div className="flex flex-col">
+          {tracks.map((t, i) => (
+            <TrackRow
+              key={`${t.videoId}:${i}`}
+              rank={i + 1}
+              title={t.title}
+              artist={t.artist}
+              durationSecs={t.durationSecs}
+              art={{ key: t.videoId, source: "ytmusic", cover: t.thumbnail }}
+              seed={t.album ?? t.title}
+              source="ytmusic"
+              unavailable={!t.isAvailable}
+              playing={currentId === t.videoId}
+              onPlay={() => playOpened(i)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Shelf({ shelf }: { shelf: ExploreShelf }) {
   return (
     <section className="flex flex-col gap-3">
@@ -138,7 +237,7 @@ function Shelf({ shelf }: { shelf: ExploreShelf }) {
 }
 
 function Tile({ item }: { item: ExploreItem }) {
-  const play = useExploreStore((s) => s.play);
+  const open = useExploreStore((s) => s.open);
   const opening = useExploreStore((s) => s.opening);
   const busy = opening === item.id;
   const Icon = item.kind === "album" ? Disc3 : ListMusic;
@@ -147,7 +246,7 @@ function Tile({ item }: { item: ExploreItem }) {
     <button
       type="button"
       disabled={busy}
-      onClick={() => void play(item)}
+      onClick={() => void open(item)}
       title={item.subtitle ? `${item.title} — ${item.subtitle}` : item.title}
       className={cn(
         "group flex w-40 shrink-0 flex-col gap-2 rounded-lg p-2 text-left transition-colors",

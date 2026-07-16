@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
+  CircleAlert,
   Cloud,
   Disc3,
   FolderOpen,
@@ -10,6 +11,7 @@ import {
   Loader2,
   Music2,
   Play,
+  RotateCw,
   Search,
   Smartphone,
   SquarePlay,
@@ -253,13 +255,19 @@ export function MusicLibrary() {
             ? cloud.ready
             : ytmusic.ready;
 
+  // The signed-in account's listing failed. Distinct from "not connected": the
+  // account is fine, the fetch wasn't, so the fix is Retry — not a trip to
+  // Settings to connect something that's already connected.
+  const sourceError = sourceFilter === "ytmusic" ? ytmusic.error : null;
+
   // Phone/Cloud/YouTube Music selected, finished checking, and genuinely not
   // connected → offer to set them up (only *after* the status check, never
   // mid-load).
   const needsConnect =
-    (sourceFilter === "phone" && phone.ready && !phone.connected) ||
-    (sourceFilter === "cloud" && cloud.ready && !cloud.connected) ||
-    (sourceFilter === "ytmusic" && ytmusic.ready && !ytmusic.connected);
+    !sourceError &&
+    ((sourceFilter === "phone" && phone.ready && !phone.connected) ||
+      (sourceFilter === "cloud" && cloud.ready && !cloud.connected) ||
+      (sourceFilter === "ytmusic" && ytmusic.ready && !ytmusic.connected));
 
   // First load still running with nothing to show yet → show a loading state
   // instead of a blank pane or a misleading "not connected" prompt.
@@ -341,6 +349,8 @@ export function MusicLibrary() {
 
       {showLoading ? (
         <LibraryLoading message={loadingMessage} />
+      ) : sourceError ? (
+        <SourceErrorPrompt message={sourceError} onRetry={ytmusic.retry} />
       ) : needsConnect ? (
         <ConnectPrompt
           kind={
@@ -867,6 +877,27 @@ const CONNECT_PROMPT: Record<
     action: "Sign in from Settings",
   },
 };
+
+/** A connected source whose listing failed — says so, and offers the retry that
+ *  actually addresses it. Deliberately not a `ConnectPrompt`: sending someone to
+ *  Settings to connect an account that's already connected is a dead end. */
+function SourceErrorPrompt({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+      <div className="grid size-14 place-items-center rounded-2xl bg-danger/10 ring-1 ring-danger/30">
+        <CircleAlert className="size-7 text-danger" aria-hidden="true" />
+      </div>
+      <div>
+        <p className="text-base font-medium">Couldn't load your YouTube Music playlists</p>
+        <p className="mt-1 max-w-sm text-sm text-text-muted">{message}</p>
+      </div>
+      <Button variant="primary" onClick={onRetry}>
+        <RotateCw className="size-4" aria-hidden="true" />
+        Retry
+      </Button>
+    </div>
+  );
+}
 
 function ConnectPrompt({ kind, onConnect }: { kind: ConnectKind; onConnect: () => void }) {
   const { icon: Icon, title, body, action } = CONNECT_PROMPT[kind];

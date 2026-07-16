@@ -23,13 +23,19 @@ pub mod ytdlp;
 
 use cookies::{CookieFile, YtCookie};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use ytdlp::{ProcessRunner, YtDlpError};
 use ytmapi_rs::auth::BrowserToken;
 use ytmapi_rs::common::{PlaylistID, YoutubeID};
 use ytmapi_rs::parse::PlaylistItem;
+use ytmapi_rs::query::GetLibraryPlaylistsQuery;
 use ytmapi_rs::YtMusic;
+
+/// The library grid inside a `GetLibraryPlaylistsQuery` response.
+const LIBRARY_GRID_ITEMS: &str = "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer\
+    /content/sectionListRenderer/contents/0/gridRenderer/items";
 
 /// How many playlists to fetch tracks for at once. Enough to hide latency on a
 /// large library without hammering the API into rate-limiting us.
@@ -189,13 +195,33 @@ impl YtMusicState {
     }
 
     /// The user's playlists.
+    ///
+    /// Goes through `json_query` + [`pad_short_subtitles`] rather than
+    /// `get_library_playlists`, because that helper's parser reads the track
+    /// count from `/subtitle/runs/2/text` as a *mandatory* field and collects
+    /// with `Result<_>` — so a single playlist whose subtitle is shorter than
+    /// three runs (auto-mixes render just `["YouTube Music"]`) fails the whole
+    /// listing, hiding every playlist the user has. Repairing the JSON keeps
+    /// upstream doing the actual parsing; only that one brittle read is fixed.
+    /// Equivalent in every other respect: `get_library_playlists` is itself just
+    /// `query(GetLibraryPlaylistsQuery)`, one page with no continuation.
     pub async fn playlists(&self) -> Result<Vec<YtPlaylist>, String> {
         let yt = self.client().await?;
         let raw = yt
-            .get_library_playlists()
+            .json_query(GetLibraryPlaylistsQuery)
             .await
             .map_err(|e| format!("Could not load playlists: {e}"))?;
-        Ok(raw.into_iter().map(map_playlist).collect())
+        let mut json: Value = ytmapi_rs::json::from_json(raw)
+            .map_err(|e| format!("Could not read the playlist listing: {e}"))?;
+        pad_short_subtitles(&mut json);
+        let body = serde_json::to_string(&json)
+            .map_err(|e| format!("Could not re-encode the playlist listing: {e}"))?;
+        let parsed = ytmapi_rs::process_json::<GetLibraryPlaylistsQuery, BrowserToken>(
+            body,
+            GetLibraryPlaylistsQuery,
+        )
+        .map_err(|e| format!("Could not load playlists: {e}"))?;
+        Ok(parsed.into_iter().map(map_playlist).collect())
     }
 
     /// One playlist's tracks.
@@ -297,6 +323,47 @@ async fn fetch_tracks(
         .into_iter()
         .filter_map(|item| map_item(item, playlist))
         .collect())
+}
+
+/// Pads every library-grid subtitle out to the three runs upstream's parser
+/// insists on, returning how many needed it.
+///
+/// A normal entry reads `["Bruno", " • ", "134 tracks"]`, but YT Music renders
+/// auto-generated ones (`"Archive Mix"`) as a bare `["YouTube Music"]` — no
+/// count. Upstream takes `/runs/0/text` as the author and `/runs/2/text` as the
+/// count and hard-errors when the latter is missing, so one such playlist blanks
+/// the entire library. Padding with empty runs preserves the author and leaves
+/// the count as `""`, which [`parse_track_count`] reports as `None` — the
+/// "unknown, count the loaded tracks" case [`YtPlaylist::track_count`] already
+/// documents.
+///
+/// Only widens: a subtitle that already has three or more runs is untouched, and
+/// so is one with no runs at all (no author to salvage — upstream can reject it
+/// as it always has).
+fn pad_short_subtitles(json: &mut Value) -> usize {
+    let Some(items) = json
+        .pointer_mut(LIBRARY_GRID_ITEMS)
+        .and_then(Value::as_array_mut)
+    else {
+        return 0;
+    };
+    let mut padded = 0;
+    for item in items.iter_mut() {
+        let Some(runs) = item
+            .pointer_mut("/musicTwoRowItemRenderer/subtitle/runs")
+            .and_then(Value::as_array_mut)
+        else {
+            continue;
+        };
+        if runs.is_empty() || runs.len() >= 3 {
+            continue;
+        }
+        while runs.len() < 3 {
+            runs.push(json!({ "text": "" }));
+        }
+        padded += 1;
+    }
+    padded
 }
 
 fn map_playlist(p: ytmapi_rs::parse::LibraryPlaylist) -> YtPlaylist {
@@ -458,5 +525,114 @@ mod tests {
         ];
         assert_eq!(best_thumbnail(&thumbs), Some("large".to_string()));
         assert_eq!(best_thumbnail(&[]), None);
+    }
+
+    /// A library response whose grid holds one item per entry: `None` is an item
+    /// with no subtitle node at all, `Some(runs)` one with those run texts.
+    fn grid(subtitles: &[Option<Vec<&str>>]) -> Value {
+        let items: Vec<Value> = subtitles
+            .iter()
+            .map(|runs| match runs {
+                None => json!({ "musicTwoRowItemRenderer": {} }),
+                Some(texts) => json!({
+                    "musicTwoRowItemRenderer": {
+                        "subtitle": {
+                            "runs": texts
+                                .iter()
+                                .map(|t| json!({ "text": t }))
+                                .collect::<Vec<_>>(),
+                        }
+                    }
+                }),
+            })
+            .collect();
+        json!({
+            "contents": { "singleColumnBrowseResultsRenderer": { "tabs": [{ "tabRenderer": {
+                "content": { "sectionListRenderer": { "contents": [{ "gridRenderer": {
+                    "items": items
+                }}]}}
+            }}]}}
+        })
+    }
+
+    fn runs_at(json: &Value, i: usize) -> Vec<String> {
+        json.pointer(LIBRARY_GRID_ITEMS).unwrap().as_array().unwrap()[i]
+            .pointer("/musicTwoRowItemRenderer/subtitle/runs")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["text"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    /// The exact shape that used to blank the whole library: YT Music renders an
+    /// auto-mix's subtitle as a lone `["YouTube Music"]`.
+    #[test]
+    fn pads_auto_mix_subtitle_so_the_count_read_resolves() {
+        let mut json = grid(&[Some(vec!["YouTube Music"])]);
+        assert_eq!(pad_short_subtitles(&mut json), 1);
+        // Author (run 0) survives; the count upstream demands is now present and
+        // empty, which reads back as "unknown" rather than failing the listing.
+        assert_eq!(runs_at(&json, 0), ["YouTube Music", "", ""]);
+        assert_eq!(parse_track_count(""), None);
+    }
+
+    #[test]
+    fn leaves_well_formed_subtitles_untouched() {
+        let mut json = grid(&[
+            Some(vec!["Bruno", " • ", "134 tracks"]),
+            Some(vec!["Made for ", "Bruno", " • ", "100 songs"]),
+        ]);
+        assert_eq!(pad_short_subtitles(&mut json), 0);
+        assert_eq!(runs_at(&json, 0), ["Bruno", " • ", "134 tracks"]);
+        assert_eq!(runs_at(&json, 1), ["Made for ", "Bruno", " • ", "100 songs"]);
+    }
+
+    /// Nothing to salvage in either case, so they stay as they are and upstream
+    /// keeps whatever verdict it had on them.
+    #[test]
+    fn leaves_empty_and_absent_subtitles_alone() {
+        let mut json = grid(&[Some(vec![]), None]);
+        assert_eq!(pad_short_subtitles(&mut json), 0);
+        assert!(runs_at(&json, 0).is_empty());
+    }
+
+    #[test]
+    fn counts_only_the_items_it_padded() {
+        let mut json = grid(&[
+            Some(vec!["Auto playlist"]),
+            Some(vec!["Bruno", " • ", "1 track"]),
+            Some(vec!["YouTube Music"]),
+        ]);
+        assert_eq!(pad_short_subtitles(&mut json), 2);
+    }
+
+    /// A response that isn't the library grid must not panic or be mangled.
+    #[test]
+    fn ignores_a_response_without_a_grid() {
+        let mut json = json!({ "contents": {} });
+        assert_eq!(pad_short_subtitles(&mut json), 0);
+        assert_eq!(json, json!({ "contents": {} }));
+    }
+
+    /// The real listing must parse end to end. The fixtures above only prove the
+    /// repair we know about; YT Music can change a subtitle's shape at any time
+    /// and the failure is total (one odd playlist hides the whole library), so
+    /// this is the only check that catches the next one. Needs a signed-in
+    /// session in the OS keychain — sign in through the app first.
+    ///
+    /// Run with `cargo test -p hm-ytmusic -- --ignored`.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_library_listing_parses() {
+        let state = YtMusicState::load();
+        if !state.signed_in() {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
+            return;
+        }
+        let playlists = state.playlists().await.expect("the listing must parse");
+        eprintln!("parsed {} playlists", playlists.len());
+        assert!(!playlists.is_empty(), "a signed-in library should list something");
     }
 }

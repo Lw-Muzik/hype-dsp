@@ -5,6 +5,9 @@ import type { YtMusicPage, YtMusicStatus, YtTrack } from "@/lib/types";
 // the store is imported. Only the YT Music commands matter here; the rest resolve
 // empty so the other sources' `ensure*` can't interfere.
 vi.mock("@/lib/ipc", () => ({
+  // Mirrors the real helper's Error branch; the store only ever hands it a
+  // rejection value.
+  ipcErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   ytmusicStatus: vi.fn(),
   ytmusicAllTracks: vi.fn(),
   cloudAllAudio: vi.fn(),
@@ -229,5 +232,55 @@ describe("ensureYtMusic", () => {
       expect(useMusicLibraryStore.getState().ytmusicLoad).toBe("error"),
     );
     expect(useMusicLibraryStore.getState().ytmusic).toEqual([]);
+  });
+
+  // The account is signed in; only the *listing* failed. Reporting that as
+  // signed-out made the Library show "Not signed in to YouTube Music" and send
+  // the user to a Settings panel that correctly said they already were.
+  it("keeps the account signed in when the listing fails, and records why", async () => {
+    ytmusicStatus.mockResolvedValue(status(true));
+    ytmusicAllTracks.mockRejectedValue(new Error("Could not load playlists: boom"));
+
+    useMusicLibraryStore.getState().ensureYtMusic();
+    await vi.waitFor(() =>
+      expect(useMusicLibraryStore.getState().ytmusicLoad).toBe("error"),
+    );
+    expect(useMusicLibraryStore.getState().ytmusicSignedIn).toBe(true);
+    expect(useMusicLibraryStore.getState().ytmusicError).toBe(
+      "Could not load playlists: boom",
+    );
+  });
+
+  it("reports a signed-out account as signed out, with no error", async () => {
+    ytmusicStatus.mockResolvedValue(status(false));
+
+    useMusicLibraryStore.getState().ensureYtMusic();
+    await vi.waitFor(() =>
+      expect(useMusicLibraryStore.getState().ytmusicLoad).toBe("ready"),
+    );
+    expect(useMusicLibraryStore.getState().ytmusicSignedIn).toBe(false);
+    expect(useMusicLibraryStore.getState().ytmusicError).toBeNull();
+    expect(ytmusicAllTracks).not.toHaveBeenCalled();
+  });
+
+  it("clears a previous error once a retry succeeds", async () => {
+    ytmusicStatus.mockResolvedValue(status(true));
+    ytmusicAllTracks.mockRejectedValue(new Error("boom"));
+    useMusicLibraryStore.getState().ensureYtMusic();
+    await vi.waitFor(() =>
+      expect(useMusicLibraryStore.getState().ytmusicError).toBe("boom"),
+    );
+
+    // What the Retry button does: drop the failed load, then re-run it. Served
+    // fresh (not from cache) so there's no phase-2 background refresh to race.
+    ytmusicAllTracks.mockResolvedValue(page([track()], false));
+    useMusicLibraryStore.getState().invalidateYtMusic();
+    useMusicLibraryStore.getState().ensureYtMusic();
+
+    await vi.waitFor(() =>
+      expect(useMusicLibraryStore.getState().ytmusicLoad).toBe("ready"),
+    );
+    expect(useMusicLibraryStore.getState().ytmusicError).toBeNull();
+    expect(useMusicLibraryStore.getState().ytmusic).toHaveLength(1);
   });
 });

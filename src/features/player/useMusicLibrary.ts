@@ -1,10 +1,15 @@
 import { useEffect, useMemo } from "react";
 import { useLibraryStore } from "@/stores/library";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
-import type { LoadStatus, MusicTrack, SourceState } from "@/stores/musicLibrary";
+import type {
+  LoadStatus,
+  MusicTrack,
+  RecoverableSourceState,
+  SourceState,
+} from "@/stores/musicLibrary";
 import type { ArtSource } from "@/lib/useTrackArtwork";
 
-export type { MusicTrack, SourceState } from "@/stores/musicLibrary";
+export type { MusicTrack, RecoverableSourceState, SourceState } from "@/stores/musicLibrary";
 
 export interface MusicLibrary {
   /** Every source merged (local + phone + cloud + YouTube Music). */
@@ -18,7 +23,7 @@ export interface MusicLibrary {
   library: SourceState;
   phone: SourceState;
   cloud: SourceState;
-  ytmusic: SourceState;
+  ytmusic: RecoverableSourceState;
   /** Force every source to reload (e.g. a manual refresh). */
   reload: () => void;
 }
@@ -83,6 +88,8 @@ export function useMusicLibrary(): MusicLibrary {
   const ytmusic = useMusicLibraryStore((s) => s.ytmusic);
   const ytmusicLoad = useMusicLibraryStore((s) => s.ytmusicLoad);
   const ytmusicSignedIn = useMusicLibraryStore((s) => s.ytmusicSignedIn);
+  const ytmusicError = useMusicLibraryStore((s) => s.ytmusicError);
+  const retryYtMusic = useMusicLibraryStore((s) => s.invalidateYtMusic);
   const ensureLocal = useMusicLibraryStore((s) => s.ensureLocal);
   const ensurePhone = useMusicLibraryStore((s) => s.ensurePhone);
   const ensureCloud = useMusicLibraryStore((s) => s.ensureCloud);
@@ -162,6 +169,8 @@ export function useMusicLibrary(): MusicLibrary {
       ready: isReady(ytmusicLoad),
       count: ytmusic.length,
       total: ytmusic.length,
+      error: ytmusicError,
+      retry: retryYtMusic,
     },
     reload,
   };

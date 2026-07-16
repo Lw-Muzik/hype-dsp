@@ -6,6 +6,7 @@ import {
   cloudTrackTags,
   libraryAvailableCount,
   libraryCount,
+  ipcErrorMessage,
   libraryListPage,
   linkLibrary,
   linkPaired,
@@ -60,6 +61,17 @@ export interface SourceState {
   count: number;
   /** Total tracks expected while loading, for a progress fraction (0 if unknown). */
   total: number;
+}
+
+/** A source that can fail *while connected*, and be retried without reconnecting.
+ *  Kept apart from [`SourceState`] because `connected` and `error` answer
+ *  different questions — a listing that fails says nothing about the account —
+ *  and only YouTube Music reports the two separately today. */
+export interface RecoverableSourceState extends SourceState {
+  /** Why the last load failed; null when it didn't. */
+  error: string | null;
+  /** Discard the failed load and start a fresh one. */
+  retry: () => void;
 }
 
 /** The immediate parent folder name of a file path (for the Folders facet). */
@@ -406,8 +418,13 @@ interface MusicLibraryStore {
   cloudLoad: LoadStatus;
   cloudConnected: boolean;
   ytmusicLoad: LoadStatus;
-  /** Signed in to YouTube Music — the source's equivalent of "connected". */
+  /** Signed in to YouTube Music — the source's equivalent of "connected".
+   *  Tracks the *account*, never the load: a listing that fails leaves this
+   *  alone, so a broken fetch can't masquerade as a signed-out account. */
   ytmusicSignedIn: boolean;
+  /** Why the last load failed, for the Library to show instead of guessing.
+   *  Null unless `ytmusicLoad` is "error". */
+  ytmusicError: string | null;
 
   /** Load a source once. No-ops while loading/ready (local also re-loads when
    *  `version` changes); errors are terminal until an invalidate/reload. */
@@ -466,6 +483,7 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
   cloudConnected: false,
   ytmusicLoad: "idle",
   ytmusicSignedIn: false,
+  ytmusicError: null,
 
   ensureLocal: (version) => {
     const s = get();
@@ -736,13 +754,17 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
       // instead — the same shape as cloud settling on "no accounts".
       const status = await ytmusicStatus();
       if (isStale()) return;
-      set({ ytdlp: status.ytdlp });
+      // The status call is the only authority on the account, so record it here
+      // — before the listing, which can fail while saying nothing about whether
+      // the user is signed in. Settling it later meant a failed listing left
+      // this at its `false` default, which the Library read as "signed out".
+      set({ ytdlp: status.ytdlp, ytmusicSignedIn: status.signedIn });
       if (!status.signedIn) {
         set({
           ytmusic: [],
           ytPlaylists: [],
-          ytmusicSignedIn: false,
           ytmusicLoad: "ready",
+          ytmusicError: null,
         });
         return;
       }
@@ -752,7 +774,7 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
       // playlist over the network. A cold cache fetches once, here.
       const page = await ytmusicAllTracks(false);
       if (isStale()) return;
-      set({ ytmusicSignedIn: true, ytPlaylists: page.playlists });
+      set({ ytPlaylists: page.playlists, ytmusicError: null });
       await mapIncrementally({
         source: page.tracks,
         map: ytTrackToTrack,
@@ -789,9 +811,19 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
       } catch {
         // Keep the cached listing; the next ensure/invalidate retries.
       }
-    })().catch(() => {
+    })().catch((e) => {
       if (isStale()) return;
-      set({ ytmusic: [], ytPlaylists: [], ytmusicSignedIn: false, ytmusicLoad: "error" });
+      // Deliberately does NOT touch `ytmusicSignedIn`: whether the account is
+      // signed in was settled by the status call above, and a failed *listing*
+      // says nothing about it. Conflating the two rendered every load error as
+      // "Not signed in", pointing the user at a Settings panel that correctly
+      // said they already were.
+      set({
+        ytmusic: [],
+        ytPlaylists: [],
+        ytmusicLoad: "error",
+        ytmusicError: ipcErrorMessage(e),
+      });
     });
   },
 
@@ -842,6 +874,7 @@ export const useMusicLibraryStore = create<MusicLibraryStore>((set, get) => ({
       ytmusicSignedIn: false,
       ytmusic: [],
       ytPlaylists: [],
+      ytmusicError: null,
     });
   },
 

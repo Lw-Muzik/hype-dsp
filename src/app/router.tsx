@@ -3,6 +3,7 @@ import { useUiStore } from "@/stores/ui";
 import type { Route } from "@/stores/ui";
 import { EnhancerView } from "@/features/enhancer/EnhancerView";
 import { EqualizerView } from "@/features/equalizer/EqualizerView";
+import { ExploreView } from "@/features/explore/ExploreView";
 import { MixerView } from "@/features/mixer/MixerView";
 import { PlayerView } from "@/features/player/PlayerView";
 import { SettingsView } from "@/features/settings/SettingsView";
@@ -17,6 +18,7 @@ import { VisualsView } from "@/features/visuals/VisualsView";
 const VIEWS: Record<Route, FC> = {
   enhancer: EnhancerView,
   equalizer: EqualizerView,
+  explore: ExploreView,
   mixer: MixerView,
   stems: StemsPanel,
   player: PlayerView,

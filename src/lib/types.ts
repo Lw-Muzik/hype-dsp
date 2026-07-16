@@ -489,6 +489,36 @@ export interface YtMusicStatus {
   ytdlp: YtDlpInfo;
 }
 
+/** A row of Explore categories ("Moods & moments", "Genres", …). */
+export interface ExploreSection {
+  title: string;
+  categories: ExploreCategory[];
+}
+
+export interface ExploreCategory {
+  title: string;
+  /** Opaque token for the category page — pass back to {@link ytmusicExplorePage}. */
+  params: string;
+}
+
+/** One carousel on a category page ("Featured playlists", "Albums", …). */
+export interface ExploreShelf {
+  title: string;
+  items: ExploreItem[];
+}
+
+/** A browsable thing in Explore. Unlike library tracks these are never cached
+ *  or merged into the library — Explore is YouTube's live catalog. */
+export interface ExploreItem {
+  kind: "playlist" | "album";
+  /** Opaque browse id; hand back verbatim to {@link ytmusicExploreTracks}. */
+  id: string;
+  title: string;
+  /** YouTube's own subtitle, joined ("Album • A Pass • 2019"). */
+  subtitle: string | null;
+  thumbnail: string | null;
+}
+
 /** A whole-library listing. `fromCache` mirrors {@link CloudAudioPage}: true
  *  means it was served from the on-disk cache, so refresh it behind the UI. */
 export interface YtMusicPage {

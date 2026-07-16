@@ -17,7 +17,8 @@ use hm_audio::AudioEngine;
 use hm_core::IpcError;
 use hm_link::LinkState;
 use hm_ytmusic::cookies::{self, YtCookie};
-use hm_ytmusic::{YtMusicState, YtMusicStatus, YtPlaylist, YtTrack};
+use hm_ytmusic::explore::{ExploreItem, ExploreShelf};
+use hm_ytmusic::{ExploreSection, YtMusicState, YtMusicStatus, YtPlaylist, YtTrack};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
@@ -278,6 +279,46 @@ pub async fn ytmusic_all_tracks(
         tracks,
         from_cache: false,
     })
+}
+
+/* ---- explore ---- */
+
+/// The mood/genre categories YouTube offers.
+#[tauri::command]
+pub async fn ytmusic_explore_categories(
+    state: State<'_, YtMusicState>,
+) -> Result<Vec<ExploreSection>, IpcError> {
+    state
+        .explore_categories()
+        .await
+        .map_err(|e| IpcError::new("ytmusic", e))
+}
+
+/// One category's shelves of playlists and albums.
+///
+/// Uncached on purpose: Explore is YouTube's live catalog, and being current is
+/// the whole reason to browse it rather than merge it into the library.
+#[tauri::command]
+pub async fn ytmusic_explore_page(
+    state: State<'_, YtMusicState>,
+    params: String,
+) -> Result<Vec<ExploreShelf>, IpcError> {
+    state
+        .explore_page(&params)
+        .await
+        .map_err(|e| IpcError::new("ytmusic", e))
+}
+
+/// The tracks behind one Explore item, ready to queue.
+#[tauri::command]
+pub async fn ytmusic_explore_tracks(
+    state: State<'_, YtMusicState>,
+    item: ExploreItem,
+) -> Result<Vec<YtTrack>, IpcError> {
+    state
+        .explore_tracks(&item)
+        .await
+        .map_err(|e| IpcError::new("ytmusic", e))
 }
 
 /* ---- playback ---- */

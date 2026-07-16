@@ -1,10 +1,11 @@
 import { create } from "zustand";
 import type { AppInfo, LicenseStatus } from "@/lib/types";
 
-/** Top-level navigable views (one window, seven destinations). */
+/** Top-level navigable views (one window, eight destinations). */
 export type Route =
   | "enhancer"
   | "equalizer"
+  | "explore"
   | "mixer"
   | "stems"
   | "player"

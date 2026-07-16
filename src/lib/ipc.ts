@@ -42,9 +42,13 @@ import type {
   TvChannel,
   TvCategory,
   TvCountry,
+  ExploreItem,
+  ExploreSection,
+  ExploreShelf,
   YtDownloadProgress,
   YtMusicPage,
   YtMusicStatus,
+  YtTrack,
   ConvolverState,
   RoomState,
   SaturationState,
@@ -308,6 +312,22 @@ export function ytmusicSignOut(): Promise<void> {
  *  `fromCache: true`); pass `refresh` to re-list and update the cache. */
 export function ytmusicAllTracks(refresh = false): Promise<YtMusicPage> {
   return invoke<YtMusicPage>("ytmusic_all_tracks", { refresh });
+}
+
+/** The mood/genre categories YouTube offers. */
+export function ytmusicExploreCategories(): Promise<ExploreSection[]> {
+  return invoke<ExploreSection[]>("ytmusic_explore_categories");
+}
+
+/** One category's shelves. Never cached — Explore is YouTube's live catalog, so
+ *  each open is a fresh read (that's the point of browsing it). */
+export function ytmusicExplorePage(params: string): Promise<ExploreShelf[]> {
+  return invoke<ExploreShelf[]>("ytmusic_explore_page", { params });
+}
+
+/** The tracks behind one Explore item (playlist or album), ready to queue. */
+export function ytmusicExploreTracks(item: ExploreItem): Promise<YtTrack[]> {
+  return invoke<YtTrack[]>("ytmusic_explore_tracks", { item });
 }
 
 /** Stream one track through the enhancement chain. Passing the known length

@@ -1,5 +1,6 @@
 import {
   AudioLines,
+  Compass,
   Gauge,
   Layers,
   LibraryBig,
@@ -60,6 +61,13 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Layers,
     group: "main",
     tagline: "Split the track into vocals, drums, bass and instruments — then remix.",
+  },
+  {
+    id: "explore",
+    label: "Explore",
+    icon: Compass,
+    group: "main",
+    tagline: "YouTube Music's own playlists and albums, browsed live.",
   },
   {
     id: "stations",

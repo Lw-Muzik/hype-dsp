@@ -19,18 +19,20 @@
 //! resolver already does exactly that.
 
 pub mod cookies;
+pub mod explore;
 pub mod ytdlp;
 
 use cookies::{CookieFile, YtCookie};
+use explore::{ExploreItem, ExploreKind, ExploreShelf};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use ytdlp::{ProcessRunner, YtDlpError};
 use ytmapi_rs::auth::BrowserToken;
-use ytmapi_rs::common::{PlaylistID, YoutubeID};
+use ytmapi_rs::common::{AlbumID, MoodCategoryParams, PlaylistID, YoutubeID};
 use ytmapi_rs::parse::PlaylistItem;
-use ytmapi_rs::query::GetLibraryPlaylistsQuery;
+use ytmapi_rs::query::{GetLibraryPlaylistsQuery, GetMoodPlaylistsQuery};
 use ytmapi_rs::YtMusic;
 
 /// The library grid inside a `GetLibraryPlaylistsQuery` response.
@@ -69,6 +71,23 @@ pub struct YtTrack {
     /// YT Music marks region-blocked / removed tracks. They stay listed (so the
     /// playlist matches what the user sees on youtube) but can't be played.
     pub is_available: bool,
+}
+
+/// A row of Explore categories ("Moods & moments", "Genres", …).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExploreSection {
+    pub title: String,
+    pub categories: Vec<ExploreCategory>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExploreCategory {
+    pub title: String,
+    /// Opaque token identifying the category page; round-trips to the front end
+    /// and back into `MoodCategoryParams`.
+    pub params: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -229,6 +248,104 @@ impl YtMusicState {
         let yt = self.client().await?;
         fetch_tracks(&yt, playlist).await
     }
+
+    /* ---- explore ---- */
+
+    /// The mood/genre categories YouTube offers ("Chill", "African", …).
+    ///
+    /// The one Explore call upstream gets right, so it stays upstream's.
+    pub async fn explore_categories(&self) -> Result<Vec<ExploreSection>, String> {
+        let yt = self.client().await?;
+        let sections = yt
+            .get_mood_categories()
+            .await
+            .map_err(|e| format!("Could not load Explore: {e}"))?;
+        Ok(sections
+            .into_iter()
+            .map(|s| ExploreSection {
+                title: s.section_name,
+                categories: s
+                    .mood_categories
+                    .into_iter()
+                    .map(|c| ExploreCategory {
+                        title: c.title,
+                        params: c.params.get_raw().to_string(),
+                    })
+                    .collect(),
+            })
+            .collect())
+    }
+
+    /// One category's shelves. See [`explore`] for why this parses the page
+    /// itself instead of calling `get_mood_playlists`.
+    pub async fn explore_page(&self, params: &str) -> Result<Vec<ExploreShelf>, String> {
+        let yt = self.client().await?;
+        let raw = yt
+            .json_query(GetMoodPlaylistsQuery::new(MoodCategoryParams::from_raw(
+                params,
+            )))
+            .await
+            .map_err(|e| format!("Could not load that category: {e}"))?;
+        let json: Value = ytmapi_rs::json::from_json(raw)
+            .map_err(|e| format!("Could not read that category: {e}"))?;
+        Ok(explore::parse_mood_page(&json))
+    }
+
+    /// The tracks behind one Explore item, ready to queue.
+    ///
+    /// Nothing is cached: Explore is YouTube's live catalog and its whole value
+    /// is being current, so every open is a fresh read.
+    pub async fn explore_tracks(&self, item: &ExploreItem) -> Result<Vec<YtTrack>, String> {
+        match item.kind {
+            ExploreKind::Playlist => {
+                // `id` is already the VL-prefixed browse id the query wants.
+                let playlist = YtPlaylist {
+                    id: item.id.clone(),
+                    title: item.title.clone(),
+                    author: String::new(),
+                    track_count: None,
+                    thumbnail: item.thumbnail.clone(),
+                };
+                let yt = self.client().await?;
+                fetch_tracks(&yt, &playlist).await
+            }
+            ExploreKind::Album => self.album_tracks(&item.id, &item.title).await,
+        }
+    }
+
+    /// One album's tracks.
+    ///
+    /// `get_album` returns no per-track artwork or artist, so the album's own
+    /// cover and artist stand in for every track — which is what an album *is*,
+    /// and what the queue and Albums facet want anyway.
+    async fn album_tracks(&self, album_id: &str, fallback_title: &str) -> Result<Vec<YtTrack>, String> {
+        let yt = self.client().await?;
+        let album = yt
+            .get_album(AlbumID::from_raw(album_id))
+            .await
+            .map_err(|e| format!("Could not load \"{fallback_title}\": {e}"))?;
+        let artist = join_artists(&album.artists);
+        let cover = best_thumbnail(&album.thumbnails);
+        Ok(album
+            .tracks
+            .into_iter()
+            .map(|t| YtTrack {
+                video_id: t.video_id.get_raw().to_string(),
+                title: t.title,
+                artist: artist.clone(),
+                album: (!album.title.is_empty()).then(|| album.title.clone()),
+                duration_secs: parse_duration(&t.duration),
+                thumbnail: cover.clone(),
+                playlist_id: album_id.to_string(),
+                playlist_title: album.title.clone(),
+                // `get_album` doesn't report per-track availability; a track that
+                // turns out to be blocked fails at resolve time like any other.
+                is_available: true,
+            })
+            .collect())
+    }
+
+    /* ---- library ---- */
 
     /// Every track across every playlist — what the library view lists.
     ///
@@ -622,6 +739,108 @@ mod tests {
     /// this is the only check that catches the next one. Needs a signed-in
     /// session in the OS keychain — sign in through the app first.
     ///
+    /// Every Explore category must yield shelves, and albums must actually be
+    /// reachable. This is the test that earns the hand-written parser: upstream
+    /// managed 19 of 44 categories and zero albums, and nothing but a live sweep
+    /// would have told us. Slow (one request per category) and network-bound, so
+    /// it's `--ignored` like the rest.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_explore_sweeps_every_category() {
+        let state = YtMusicState::load();
+        if !state.signed_in() {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
+            return;
+        }
+        let sections = state.explore_categories().await.expect("categories must load");
+        let total: usize = sections.iter().map(|s| s.categories.len()).sum();
+        assert!(total > 0, "Explore should offer categories");
+
+        let mut empty = Vec::new();
+        let mut albums = 0;
+        let mut playlists = 0;
+        for section in &sections {
+            for cat in &section.categories {
+                let shelves = state
+                    .explore_page(&cat.params)
+                    .await
+                    .expect("a category page must never error");
+                if shelves.is_empty() {
+                    empty.push(cat.title.clone());
+                    continue;
+                }
+                for shelf in &shelves {
+                    for item in &shelf.items {
+                        match item.kind {
+                            ExploreKind::Album => albums += 1,
+                            ExploreKind::Playlist => playlists += 1,
+                        }
+                    }
+                }
+            }
+        }
+        eprintln!(
+            "{total} categories: {playlists} playlists, {albums} albums; {} empty {empty:?}",
+            empty.len()
+        );
+        assert!(
+            empty.is_empty(),
+            "every category should yield at least one shelf, these didn't: {empty:?}"
+        );
+        assert!(albums > 0, "Explore should surface albums — that's the point");
+    }
+
+    /// Opening an item must produce queueable tracks — for both kinds. Uses the
+    /// first album and first playlist Explore actually offers today.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_explore_items_open_into_tracks() {
+        let state = YtMusicState::load();
+        if !state.signed_in() {
+            eprintln!("skipping: no session in the keychain");
+            return;
+        }
+        let sections = state.explore_categories().await.expect("categories");
+        let mut album: Option<ExploreItem> = None;
+        let mut playlist: Option<ExploreItem> = None;
+        'outer: for section in &sections {
+            for cat in &section.categories {
+                let Ok(shelves) = state.explore_page(&cat.params).await else {
+                    continue;
+                };
+                for shelf in shelves {
+                    for item in shelf.items {
+                        match item.kind {
+                            ExploreKind::Album if album.is_none() => album = Some(item),
+                            ExploreKind::Playlist if playlist.is_none() => playlist = Some(item),
+                            _ => {}
+                        }
+                    }
+                }
+                if album.is_some() && playlist.is_some() {
+                    break 'outer;
+                }
+            }
+        }
+
+        let album = album.expect("Explore should offer an album");
+        let tracks = state.explore_tracks(&album).await.expect("album must open");
+        eprintln!("album {:?} -> {} tracks", album.title, tracks.len());
+        assert!(!tracks.is_empty(), "an album should have tracks");
+        assert!(
+            tracks.iter().all(|t| !t.video_id.is_empty()),
+            "every track needs a video id to be playable"
+        );
+
+        let playlist = playlist.expect("Explore should offer a playlist");
+        let tracks = state
+            .explore_tracks(&playlist)
+            .await
+            .expect("playlist must open");
+        eprintln!("playlist {:?} -> {} tracks", playlist.title, tracks.len());
+        assert!(!tracks.is_empty(), "a playlist should have tracks");
+    }
+
     /// Run with `cargo test -p hm-ytmusic -- --ignored`.
     #[tokio::test]
     #[ignore = "requires a signed-in YT Music session in the keychain and network access"]

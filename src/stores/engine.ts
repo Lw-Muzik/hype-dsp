@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  autoeqFetchApply,
   chainPresetApply,
   cloudPlay,
   cloudTrackCover,
@@ -322,6 +323,9 @@ interface EngineStore {
   importVdc: (path: string) => Promise<void>;
   /** Apply a bundled ViPER DDC preset by name. Throws on failure — caller must catch. */
   applyDdc: (name: string) => Promise<void>;
+  /** Fetch a model's AutoEq curve from the bundled index URL and apply it.
+   *  Throws on failure — caller must catch. */
+  applyAutoEq: (url: string) => Promise<void>;
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
   setPlayback: (gapless: boolean, crossfadeSecs: number) => void;
@@ -823,6 +827,16 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
     applyDdc: async (name) => {
       const res = await engineEqApplyDdc(name);
+      set((s) => ({
+        state: {
+          ...s.state,
+          eq: { ...s.state.eq, enabled: true, bands: res.bands, preGain: res.preGain },
+          activePresetId: null,
+        },
+      }));
+    },
+    applyAutoEq: async (url) => {
+      const res = await autoeqFetchApply(url);
       set((s) => ({
         state: {
           ...s.state,

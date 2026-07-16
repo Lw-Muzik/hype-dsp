@@ -52,6 +52,23 @@ pub struct EqImportResult {
     pub pre_gain: f32,
 }
 
+/// Parse an EqualizerAPO GraphicEQ string, map it onto the 31 ISO bands with a
+/// clip-proof preamp, apply it to the engine, and return the resolved values.
+///
+/// Shared by `engine_eq_import_graphic` (pasted curve) and the AutoEQ fetch
+/// command (curve fetched from the bundled index's URL) so both consume the
+/// exact same import pipeline.
+pub fn apply_graphic_curve(
+    engine: &AudioEngine,
+    curve: &str,
+) -> Result<EqImportResult, IpcError> {
+    let points = hm_core::parse_graphic_eq(curve).map_err(|e| IpcError::new("invalid", &e))?;
+    let bands = hm_core::interpolate_to_iso_bands(&points);
+    let pre_gain = hm_core::recommended_preamp(&bands);
+    engine.set_eq(bands, pre_gain, true);
+    Ok(EqImportResult { bands: bands.to_vec(), pre_gain })
+}
+
 /// Parse an EqualizerAPO GraphicEQ string, map it onto the 31 bands with a
 /// clip-proof preamp, apply it, and return the resolved values to the UI.
 #[tauri::command]
@@ -59,12 +76,7 @@ pub fn engine_eq_import_graphic(
     engine: State<'_, AudioEngine>,
     curve: String,
 ) -> Result<EqImportResult, IpcError> {
-    let points = hm_core::parse_graphic_eq(&curve)
-        .map_err(|e| IpcError::new("invalid", &e))?;
-    let bands = hm_core::interpolate_to_iso_bands(&points);
-    let pre_gain = hm_core::recommended_preamp(&bands);
-    engine.set_eq(bands, pre_gain, true);
-    Ok(EqImportResult { bands: bands.to_vec(), pre_gain })
+    apply_graphic_curve(&engine, &curve)
 }
 
 /// Import a ViPER4Android / JamesDSP DDC (`.vdc`) file: read it, evaluate its

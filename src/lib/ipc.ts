@@ -14,6 +14,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AccountStatus,
   AppInfo,
+  AutoEqEntry,
   ChainPreset,
   CloudAccount,
   CloudAudioPage,
@@ -1191,6 +1192,17 @@ export function ddcList(): Promise<string[]> {
 export function engineEqApplyDdc(name: string): Promise<EqImportResult> {
   return invoke<EqImportResult>("engine_eq_apply_ddc", { name });
 }
+
+/** Search the bundled AutoEQ headphone index by model name (instant, offline). */
+export function autoeqSearch(query: string, limit?: number): Promise<AutoEqEntry[]> {
+  return invoke<AutoEqEntry[]>("autoeq_search", { query, limit });
+}
+
+/** Fetch a model's AutoEq curve from the bundled URL and apply it to the EQ. */
+export function autoeqFetchApply(url: string): Promise<EqImportResult> {
+  return invoke<EqImportResult>("autoeq_fetch_apply", { url });
+}
+
 
 /** Open a native file picker for an audio file; returns the chosen path. */
 export async function pickAudioFile(): Promise<string | null> {

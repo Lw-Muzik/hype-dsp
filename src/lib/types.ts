@@ -564,3 +564,13 @@ export interface PhoneTrack {
   folder: string | null;
   hasArt: boolean;
 }
+
+/** One headphone in the bundled AutoEQ index (mirrors `hm_core::AutoEqEntry`). */
+export interface AutoEqEntry {
+  /** Display name, e.g. "Sennheiser HD 600". */
+  name: string;
+  /** Measurement source/rig, e.g. "oratory1990". */
+  source: string;
+  /** Raw GitHub URL of this model's GraphicEQ.txt. */
+  url: string;
+}

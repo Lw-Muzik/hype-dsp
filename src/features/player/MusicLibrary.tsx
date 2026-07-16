@@ -26,7 +26,7 @@ import type { MusicTrack } from "@/features/player/useMusicLibrary";
 import type { ArtSource } from "@/lib/useTrackArtwork";
 import { AlbumDeck } from "@/features/player/AlbumDeck";
 import type { DeckItem } from "@/features/player/AlbumDeck";
-import { TrackRow } from "@/features/player/TrackRow";
+import { TrackRow, TRACK_ROW_H } from "@/features/player/TrackRow";
 import { DownloadAction } from "@/features/ytmusic/DownloadAction";
 import { Artwork } from "@/features/player/Artwork";
 import { VirtualList } from "@/components/VirtualList";
@@ -139,7 +139,7 @@ function matches(t: MusicTrack, q: string): boolean {
   );
 }
 
-const ROW_H = 56;
+const ROW_H = TRACK_ROW_H;
 const GROUP_H = 64;
 // Grid cells: min card width + height reserved for the title/subtitle below art.
 const GRID_MIN_COL = 150;

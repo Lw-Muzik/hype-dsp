@@ -13,7 +13,7 @@ import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
 import { Artwork } from "@/features/player/Artwork";
-import { TrackRow } from "@/features/player/TrackRow";
+import { TrackRow, TRACK_ROW_H } from "@/features/player/TrackRow";
 import { useExploreStore } from "@/stores/explore";
 import { useEngineStore } from "@/stores/engine";
 import { useUiStore } from "@/stores/ui";
@@ -201,19 +201,23 @@ function OpenedItem() {
       ) : (
         <div className="flex flex-col">
           {tracks.map((t, i) => (
-            <TrackRow
-              key={`${t.videoId}:${i}`}
-              rank={i + 1}
-              title={t.title}
-              artist={t.artist}
-              durationSecs={t.durationSecs}
-              art={{ key: t.videoId, source: "ytmusic", cover: t.thumbnail }}
-              seed={t.album ?? t.title}
-              source="ytmusic"
-              unavailable={!t.isAvailable}
-              playing={currentId === t.videoId}
-              onPlay={() => playOpened(i)}
-            />
+            // TrackRow is `h-full` — it takes its height from the row slot the
+            // Library's VirtualList gives it. Without one it collapses and the
+            // artwork spills into the next row, so supply the same height here.
+            <div key={`${t.videoId}:${i}`} style={{ height: TRACK_ROW_H }}>
+              <TrackRow
+                rank={i + 1}
+                title={t.title}
+                artist={t.artist}
+                durationSecs={t.durationSecs}
+                art={{ key: t.videoId, source: "ytmusic", cover: t.thumbnail }}
+                seed={t.album ?? t.title}
+                source="ytmusic"
+                unavailable={!t.isAvailable}
+                playing={currentId === t.videoId}
+                onPlay={() => playOpened(i)}
+              />
+            </div>
           ))}
         </div>
       )}

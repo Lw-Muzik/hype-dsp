@@ -9,6 +9,14 @@ import { cn } from "@/lib/cn";
 /** Which source a row came from, for the corner badge. "local" shows none. */
 export type RowSource = "local" | "phone" | "cloud" | "ytmusic";
 
+/** The height (px) a row expects its slot to be.
+ *
+ *  The row is `h-full`, so it renders correctly only inside a box of a known
+ *  height — the Library's `VirtualList` slot, or an equivalent. Lives here
+ *  rather than at a call site so every caller agrees: dropping the row into an
+ *  auto-height parent collapses it and spills the artwork into its neighbour. */
+export const TRACK_ROW_H = 56;
+
 const BADGE: Record<Exclude<RowSource, "local">, { icon: LucideIcon; title: string }> = {
   phone: { icon: Smartphone, title: "From your phone" },
   cloud: { icon: Cloud, title: "From the cloud" },

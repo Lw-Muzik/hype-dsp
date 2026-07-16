@@ -48,9 +48,14 @@ pub enum YtDlpError {
     /// YouTube rejected the request itself — typically a missing PO token on a
     /// non-Premium account, or expired cookies. Actionable by re-signing-in.
     Blocked(String),
-    /// yt-dlp listed the track's formats and none was AAC/m4a (see
-    /// [`AUDIO_FORMAT`]) — the engine can't decode YouTube's Opus rendition.
-    NoCompatibleFormat,
+    /// The m4a selector ([`AUDIO_FORMAT`]) matched nothing.
+    ///
+    /// Carries what yt-dlp actually said. It used to carry nothing, and its
+    /// message asserted "only Opus" — a cause the code never observes. That
+    /// claim survived three separate investigations of tracks which, checked by
+    /// hand, offered itag 140 the whole time. An error that names a cause it
+    /// cannot see costs more than one that admits ignorance.
+    NoCompatibleFormat(String),
     /// YouTube served **no formats at all**.
     ///
     /// Kept apart from [`Self::NoCompatibleFormat`] because it reads like a codec
@@ -69,10 +74,7 @@ impl std::fmt::Display for YtDlpError {
             Self::NotInstalled => write!(f, "yt-dlp is not installed"),
             Self::Unavailable(m) => write!(f, "track unavailable: {m}"),
             Self::Blocked(m) => write!(f, "YouTube blocked the request: {m}"),
-            Self::NoCompatibleFormat => write!(
-                f,
-                "no AAC/m4a audio available for this track (only Opus, which this player cannot decode)"
-            ),
+            Self::NoCompatibleFormat(m) => write!(f, "couldn't get a playable audio format — {m}"),
             Self::NoFormats(m) => write!(
                 f,
                 "YouTube returned no playable formats for this track — {m}"
@@ -296,7 +298,7 @@ pub fn classify(stderr: &str) -> YtDlpError {
     // first means "formats exist, none of them m4a"; the second means the
     // extraction returned nothing at all, which is not a codec problem.
     if low.contains("requested format is not available") {
-        return YtDlpError::NoCompatibleFormat;
+        return YtDlpError::NoCompatibleFormat(first_error_line(stderr));
     }
     if low.contains("no video formats found") {
         return YtDlpError::NoFormats(first_error_line(stderr));
@@ -386,7 +388,14 @@ fn parse_resolve(stdout: &str) -> Result<StreamTarget, YtDlpError> {
 
     let url = lines[0].to_string();
     if url.is_empty() || url == NA {
-        return Err(YtDlpError::NoCompatibleFormat);
+        // yt-dlp exited cleanly but gave no url. Report the format it *did*
+        // name (also often NA): guessing at the reason is what made this error
+        // untrustworthy, and the ext/format tell whoever reads the toast far
+        // more than an invented explanation would.
+        return Err(YtDlpError::NoCompatibleFormat(format!(
+            "yt-dlp returned no stream url (selector {AUDIO_FORMAT:?}, it reported ext={:?} format={:?})",
+            lines[1], lines[2]
+        )));
     }
     let ext = lines[1].to_string();
     let format_id = lines[2].to_string();
@@ -578,10 +587,17 @@ mod tests {
     #[test]
     fn na_url_means_no_compatible_format() {
         let out = ["NA", "NA", "NA", "NA", "{}"].join("\n");
-        assert_eq!(
-            parse_resolve(&out).unwrap_err(),
-            YtDlpError::NoCompatibleFormat
+        let err = parse_resolve(&out).unwrap_err();
+        assert!(
+            matches!(err, YtDlpError::NoCompatibleFormat(_)),
+            "got {err:?}"
         );
+        // The reader gets the selector we asked with and what yt-dlp answered,
+        // rather than a story about codecs we never checked.
+        let shown = err.to_string();
+        assert!(shown.contains("no stream url"), "got {shown:?}");
+        assert!(shown.contains("bestaudio[ext=m4a]"), "got {shown:?}");
+        assert!(!shown.contains("Opus"), "must not blame the codec: {shown:?}");
     }
 
     #[test]
@@ -621,9 +637,15 @@ mod tests {
 
     #[test]
     fn classifies_missing_format() {
-        assert_eq!(
-            classify("ERROR: [youtube] abc: Requested format is not available"),
-            YtDlpError::NoCompatibleFormat
+        let err = classify("ERROR: [youtube] abc: Requested format is not available");
+        assert!(
+            matches!(err, YtDlpError::NoCompatibleFormat(_)),
+            "got {err:?}"
+        );
+        // yt-dlp's own line reaches the user.
+        assert!(
+            err.to_string().contains("Requested format is not available"),
+            "got {err}"
         );
     }
 

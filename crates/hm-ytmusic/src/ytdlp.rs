@@ -48,8 +48,18 @@ pub enum YtDlpError {
     /// YouTube rejected the request itself — typically a missing PO token on a
     /// non-Premium account, or expired cookies. Actionable by re-signing-in.
     Blocked(String),
-    /// The track offered no m4a rendition (see [`AUDIO_FORMAT`]).
+    /// yt-dlp listed the track's formats and none was AAC/m4a (see
+    /// [`AUDIO_FORMAT`]) — the engine can't decode YouTube's Opus rendition.
     NoCompatibleFormat,
+    /// YouTube served **no formats at all**.
+    ///
+    /// Kept apart from [`Self::NoCompatibleFormat`] because it reads like a codec
+    /// problem and almost never is: it means the extraction itself came back
+    /// empty (a client YouTube refused, a bot check that didn't name itself, a
+    /// PO-token requirement). Reporting it as "only Opus" sent a real
+    /// investigation down the wrong path for hours, so this one carries yt-dlp's
+    /// own words instead of a guess.
+    NoFormats(String),
     Failed(String),
 }
 
@@ -62,6 +72,10 @@ impl std::fmt::Display for YtDlpError {
             Self::NoCompatibleFormat => write!(
                 f,
                 "no AAC/m4a audio available for this track (only Opus, which this player cannot decode)"
+            ),
+            Self::NoFormats(m) => write!(
+                f,
+                "YouTube returned no playable formats for this track — {m}"
             ),
             Self::Failed(m) => write!(f, "yt-dlp failed: {m}"),
         }
@@ -278,8 +292,14 @@ pub fn classify(stderr: &str) -> YtDlpError {
     {
         return YtDlpError::Blocked(first_error_line(stderr));
     }
-    if low.contains("requested format is not available") || low.contains("no video formats found") {
+    // Two very different failures that used to share one (wrong) message: the
+    // first means "formats exist, none of them m4a"; the second means the
+    // extraction returned nothing at all, which is not a codec problem.
+    if low.contains("requested format is not available") {
         return YtDlpError::NoCompatibleFormat;
+    }
+    if low.contains("no video formats found") {
+        return YtDlpError::NoFormats(first_error_line(stderr));
     }
     if low.contains("video unavailable")
         || low.contains("private video")
@@ -605,6 +625,25 @@ mod tests {
             classify("ERROR: [youtube] abc: Requested format is not available"),
             YtDlpError::NoCompatibleFormat
         );
+    }
+
+    /// "No video formats found" is an empty extraction, not a codec problem, and
+    /// must not claim the track is Opus-only. Reporting the two identically cost
+    /// a long misdiagnosis: the track in question had itag 140 all along.
+    #[test]
+    fn an_empty_extraction_is_not_reported_as_opus_only() {
+        let err = classify("ERROR: [youtube] abc: No video formats found!; please report this");
+        assert!(
+            matches!(err, YtDlpError::NoFormats(_)),
+            "expected NoFormats, got {err:?}"
+        );
+        let shown = err.to_string();
+        assert!(
+            !shown.contains("Opus"),
+            "must not blame the codec: {shown:?}"
+        );
+        // yt-dlp's own words survive, so the next report names the real cause.
+        assert!(shown.contains("No video formats found"), "got {shown:?}");
     }
 
     #[test]

@@ -224,7 +224,20 @@ impl YtDlpRunner for ProcessRunner {
         if out.status.success() {
             return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
         }
-        Err(classify(&String::from_utf8_lossy(&out.stderr)))
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        // Print the invocation verbatim, because a failure here is only ever
+        // reproducible if you know exactly what ran. The same command, by hand,
+        // has succeeded while the app's copy failed — and with nothing logged
+        // there was no way to tell whether the app really sends what this code
+        // appears to send. Visible when the app is launched from a terminal.
+        eprintln!(
+            "[hm-ytmusic] yt-dlp exited {}\n  bin:    {}\n  args:   {:?}\n  stderr: {}",
+            out.status,
+            self.bin.display(),
+            args,
+            stderr.trim()
+        );
+        Err(classify(&stderr))
     }
 
     fn run_streaming(

@@ -25,6 +25,7 @@
 //! is skipped, and a page we understand nothing of is *empty*, never an error.
 //! YouTube reshaping one genre must cost that shelf, not Explore.
 
+use crate::nav::{best_thumbnail, join_runs};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -140,30 +141,6 @@ fn classify(browse_id: &str) -> Option<ExploreKind> {
     } else {
         None
     }
-}
-
-fn join_runs(runs: Option<&Value>) -> Option<String> {
-    let joined: String = runs?
-        .as_array()?
-        .iter()
-        .filter_map(|r| r.pointer("/text").and_then(Value::as_str))
-        .collect();
-    let trimmed = joined.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
-}
-
-fn best_thumbnail(thumbs: Option<&Value>) -> Option<String> {
-    thumbs?
-        .as_array()?
-        .iter()
-        .max_by_key(|t| {
-            let w = t.pointer("/width").and_then(Value::as_u64).unwrap_or(0);
-            let h = t.pointer("/height").and_then(Value::as_u64).unwrap_or(0);
-            w * h
-        })?
-        .pointer("/url")
-        .and_then(Value::as_str)
-        .map(str::to_string)
 }
 
 #[cfg(test)]

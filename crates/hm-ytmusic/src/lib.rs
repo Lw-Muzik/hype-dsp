@@ -20,6 +20,8 @@
 
 pub mod cookies;
 pub mod explore;
+mod nav;
+pub mod playlist;
 pub mod ytdlp;
 
 use cookies::{CookieFile, YtCookie};
@@ -31,8 +33,11 @@ use std::sync::{Arc, RwLock};
 use ytdlp::{ProcessRunner, YtDlpError};
 use ytmapi_rs::auth::BrowserToken;
 use ytmapi_rs::common::{AlbumID, MoodCategoryParams, PlaylistID, YoutubeID};
-use ytmapi_rs::parse::PlaylistItem;
-use ytmapi_rs::query::{GetLibraryPlaylistsQuery, GetMoodPlaylistsQuery};
+use ytmapi_rs::parse::{ParseFrom, ProcessedResult};
+use ytmapi_rs::query::{
+    GetLibraryPlaylistsQuery, GetMoodPlaylistsQuery, GetPlaylistTracksQuery, PostMethod, PostQuery,
+    Query,
+};
 use ytmapi_rs::YtMusic;
 
 /// The library grid inside a `GetLibraryPlaylistsQuery` response.
@@ -42,6 +47,11 @@ const LIBRARY_GRID_ITEMS: &str = "/contents/singleColumnBrowseResultsRenderer/ta
 /// How many playlists to fetch tracks for at once. Enough to hide latency on a
 /// large library without hammering the API into rate-limiting us.
 const PLAYLIST_FETCH_CONCURRENCY: usize = 6;
+
+/// Continuation pages to follow before giving up on one playlist. At ~100 rows a
+/// page this is far past any real playlist; it exists only so a token that
+/// points at itself can't loop forever.
+const PLAYLIST_PAGE_LIMIT: usize = 60;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -428,18 +438,106 @@ fn cookie_file(cookies: Option<&[YtCookie]>) -> Result<Option<CookieFile>, Strin
     }
 }
 
+/// One continuation of a playlist listing: the same browse POST as the first
+/// page, plus the token.
+///
+/// Exists because `GetContinuationsQuery` can only be built via
+/// `from_first_result`, which runs the row parser that fails on a channel-less
+/// row — so upstream stops paging exactly the playlists that most need it. This
+/// asks for the next page with a token we found ourselves. The wire format is
+/// upstream's own (`ctoken` + `continuation`, same header and path).
+struct PlaylistContinuation<'a> {
+    base: &'a GetPlaylistTracksQuery<'a>,
+    token: String,
+}
+
+impl PostQuery for PlaylistContinuation<'_> {
+    fn header(&self) -> serde_json::Map<String, Value> {
+        self.base.header()
+    }
+    fn params(&self) -> Vec<(&str, std::borrow::Cow<'_, str>)> {
+        vec![
+            ("ctoken", self.token.as_str().into()),
+            ("continuation", self.token.as_str().into()),
+        ]
+    }
+    fn path(&self) -> &str {
+        self.base.path()
+    }
+}
+
+/// `json_query` hands back the response JSON before parsing, so the typed output
+/// is never constructed — this only exists to satisfy `Query`.
+#[derive(Debug)]
+struct RawPage;
+
+impl ParseFrom<PlaylistContinuation<'_>> for RawPage {
+    fn parse_from(_: ProcessedResult<PlaylistContinuation<'_>>) -> ytmapi_rs::Result<Self> {
+        Ok(RawPage)
+    }
+}
+
+impl<A: ytmapi_rs::auth::AuthToken> Query<A> for PlaylistContinuation<'_> {
+    type Output = RawPage;
+    type Method = PostMethod;
+}
+
+/// Every track in a playlist, following continuations to the end.
+///
+/// Two upstream limits made this the wrong shape twice over, so it takes the raw
+/// pages and reads the rows itself (see [`playlist`]):
+///
+/// * `get_playlist_tracks` returns only the **first page** — ~100 tracks — with
+///   no hint that more exist, so a 389-track playlist silently loaded 100.
+///   `raw_json_stream` follows the continuation tokens.
+/// * Its row parser demands a channel id that collaboration credits don't have,
+///   and fails the whole page over one such row.
+///
+/// A page that can't even be read as JSON ends the walk rather than discarding
+/// what came before: a partial playlist beats none, and dropping it silently is
+/// the truncation bug in a new costume.
 async fn fetch_tracks(
     yt: &YtMusic<BrowserToken>,
     playlist: &YtPlaylist,
 ) -> Result<Vec<YtTrack>, String> {
-    let items = yt
-        .get_playlist_tracks(PlaylistID::from_raw(playlist.id.clone()))
+    let query = GetPlaylistTracksQuery::new(PlaylistID::from_raw(playlist.id.clone()));
+
+    let first = yt
+        .json_query::<GetPlaylistTracksQuery>(&query)
         .await
         .map_err(|e| format!("Could not load \"{}\": {e}", playlist.title))?;
-    Ok(items
-        .into_iter()
-        .filter_map(|item| map_item(item, playlist))
-        .collect())
+    let json: Value = ytmapi_rs::json::from_json(first)
+        .map_err(|e| format!("Could not read \"{}\": {e}", playlist.title))?;
+
+    let mut tracks = playlist::parse_page(&json, playlist);
+    let mut token = playlist::next_page_token(&json);
+
+    // Bounded so a token that keeps pointing at itself can't spin forever; well
+    // clear of any real playlist at ~100 rows a page.
+    for _ in 0..PLAYLIST_PAGE_LIMIT {
+        let Some(next) = token.take() else { break };
+        let cont = PlaylistContinuation {
+            base: &query,
+            token: next,
+        };
+        // A failed continuation keeps the pages already read: a partial playlist
+        // beats none, and dropping it silently is the truncation bug in a new
+        // costume.
+        let Ok(raw) = yt.json_query::<PlaylistContinuation>(&cont).await else {
+            break;
+        };
+        let Ok(page) = ytmapi_rs::json::from_json::<Value>(raw) else {
+            break;
+        };
+        let rows = playlist::parse_page(&page, playlist);
+        // No rows and no token → nothing more is coming.
+        if rows.is_empty() && playlist::next_page_token(&page).is_none() {
+            break;
+        }
+        tracks.extend(rows);
+        token = playlist::next_page_token(&page);
+    }
+    Ok(tracks)
 }
 
 /// Pads every library-grid subtitle out to the three runs upstream's parser
@@ -493,40 +591,6 @@ fn map_playlist(p: ytmapi_rs::parse::LibraryPlaylist) -> YtPlaylist {
     }
 }
 
-/// Maps one playlist entry.
-///
-/// Only songs and videos are music. Episodes (podcasts) and library uploads are
-/// dropped: uploads have no `video_id` to resolve, and podcasts aren't what this
-/// view is for. Matched exhaustively on purpose — if ytmapi-rs grows a variant,
-/// this should fail the build rather than quietly drop tracks.
-fn map_item(item: PlaylistItem, playlist: &YtPlaylist) -> Option<YtTrack> {
-    match item {
-        PlaylistItem::Song(s) => Some(YtTrack {
-            video_id: s.video_id.get_raw().to_string(),
-            title: s.title,
-            artist: join_artists(&s.artists),
-            album: (!s.album.name.is_empty()).then_some(s.album.name),
-            duration_secs: parse_duration(&s.duration),
-            thumbnail: best_thumbnail(&s.thumbnails),
-            playlist_id: playlist.id.clone(),
-            playlist_title: playlist.title.clone(),
-            is_available: s.is_available,
-        }),
-        PlaylistItem::Video(v) => Some(YtTrack {
-            video_id: v.video_id.get_raw().to_string(),
-            title: v.title,
-            artist: (!v.channel_name.is_empty()).then_some(v.channel_name),
-            album: None,
-            duration_secs: parse_duration(&v.duration),
-            thumbnail: best_thumbnail(&v.thumbnails),
-            playlist_id: playlist.id.clone(),
-            playlist_title: playlist.title.clone(),
-            is_available: v.is_available,
-        }),
-        PlaylistItem::Episode(_) | PlaylistItem::UploadSong(_) => None,
-    }
-}
-
 fn join_artists(artists: &[ytmapi_rs::parse::ParsedSongArtist]) -> Option<String> {
     let names: Vec<&str> = artists
         .iter()
@@ -549,7 +613,7 @@ fn best_thumbnail(thumbs: &[ytmapi_rs::common::Thumbnail]) -> Option<String> {
 ///
 /// Returns `None` rather than a wrong number for anything unexpected — a null
 /// duration renders as blank, while a bogus one would corrupt seek bars.
-fn parse_duration(raw: &str) -> Option<f64> {
+pub(crate) fn parse_duration(raw: &str) -> Option<f64> {
     let raw = raw.trim();
     if raw.is_empty() {
         return None;
@@ -839,6 +903,49 @@ mod tests {
             .expect("playlist must open");
         eprintln!("playlist {:?} -> {} tracks", playlist.title, tracks.len());
         assert!(!tracks.is_empty(), "a playlist should have tracks");
+    }
+
+    /// Every playlist must load *in full*, and none may fail.
+    ///
+    /// Guards two bugs that between them hid 60% of a real library while every
+    /// unit test stayed green: `get_playlist_tracks` returns only the first ~100
+    /// rows, and its row parser dies on a credit with no channel link — which
+    /// also stops upstream's pager, so the playlists needing continuations most
+    /// were the ones that never got them. Both are invisible without a real
+    /// account: fixtures can't tell you YouTube stopped at page one.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_playlists_load_completely() {
+        let state = YtMusicState::load();
+        if !state.signed_in() {
+            eprintln!("skipping: no session in the keychain");
+            return;
+        }
+        let playlists = state.playlists().await.expect("playlists must list");
+        assert!(!playlists.is_empty(), "a signed-in library should have playlists");
+
+        let mut total = 0usize;
+        let mut short = Vec::new();
+        for pl in &playlists {
+            let tracks = state
+                .playlist_tracks(pl)
+                .await
+                .unwrap_or_else(|e| panic!("\"{}\" must load: {e}", pl.title));
+            total += tracks.len();
+            // Podcast episodes and uploads are dropped on purpose, so a playlist
+            // may legitimately come in a little under its advertised count; only
+            // a real shortfall (a missed page is ~100) is a failure.
+            if let Some(claimed) = pl.track_count {
+                if tracks.len() + 10 < claimed as usize {
+                    short.push(format!("{} got {} of {claimed}", pl.title, tracks.len()));
+                }
+            }
+        }
+        eprintln!("{} playlists, {total} tracks", playlists.len());
+        assert!(
+            short.is_empty(),
+            "playlists loaded short — pagination or row parsing regressed: {short:?}"
+        );
     }
 
     /// Run with `cargo test -p hm-ytmusic -- --ignored`.

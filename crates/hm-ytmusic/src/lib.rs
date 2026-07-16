@@ -125,6 +125,14 @@ pub struct YtMusicState {
     /// thread) never has to touch the keychain — that can block on a user
     /// prompt, which would stall audio.
     cookies: RwLock<Option<Vec<YtCookie>>>,
+    /// Whether the session is worth trying *first* when resolving a stream.
+    ///
+    /// Starts true and flips to whatever last worked. Where accounts exist that
+    /// YouTube serves no playable format to, every track otherwise paid for a
+    /// doomed yt-dlp spawn before the one that works — seconds, in front of the
+    /// play button. Both attempts always remain available, so a private track
+    /// still resolves; this only decides the order.
+    session_first: std::sync::atomic::AtomicBool,
 }
 
 impl Default for YtMusicState {
@@ -138,6 +146,7 @@ impl YtMusicState {
         Self {
             client: tokio::sync::Mutex::new(None),
             cookies: RwLock::new(None),
+            session_first: std::sync::atomic::AtomicBool::new(true),
         }
     }
 
@@ -188,6 +197,9 @@ impl YtMusicState {
         }
         cookies::save(&live)?;
         *self.cookies.write().unwrap() = Some(live);
+        // A new session earns a fresh chance at going first.
+        self.session_first
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         // Force a rebuild so the next call uses the new session.
         *self.client.lock().await = None;
         // Prove the cookies actually work now, rather than failing later behind
@@ -198,6 +210,8 @@ impl YtMusicState {
     pub async fn sign_out(&self) -> Result<(), String> {
         cookies::clear()?;
         *self.cookies.write().unwrap() = None;
+        self.session_first
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         *self.client.lock().await = None;
         Ok(())
     }
@@ -408,10 +422,23 @@ impl YtMusicState {
     /// "Unavailable" and "Blocked" mean the session is the point, and retrying
     /// those without it would just trade a clear error for a worse one.
     pub fn resolve(&self, video_id: &str) -> Result<ytdlp::StreamTarget, String> {
+        use std::sync::atomic::Ordering;
         let runner = ProcessRunner::detect().ok_or_else(|| YtDlpError::NotInstalled.to_string())?;
         let cookies = self.cookies_snapshot();
         let file = cookie_file(cookies.as_deref())?;
-        resolve_with_fallback(&runner, video_id, file.as_ref().map(CookieFile::path))
+        let resolved = resolve_with_fallback(
+            &runner,
+            video_id,
+            file.as_ref().map(CookieFile::path),
+            self.session_first.load(Ordering::Relaxed),
+        )?;
+        // Remember what actually worked, so the next track leads with it. Both
+        // directions: if the session starts working again, we go back to it.
+        if file.is_some() {
+            self.session_first
+                .store(resolved.used_session, Ordering::Relaxed);
+        }
+        Ok(resolved.target)
     }
 
     /// Downloads a track into `dest_dir`, returning the written path.
@@ -438,33 +465,68 @@ impl YtMusicState {
     }
 }
 
-/// Resolve `video_id`, retrying without the session if the session yields no
-/// playable format.
+/// A resolved stream, plus which attempt produced it.
+#[derive(Debug)]
+struct Resolved {
+    target: ytdlp::StreamTarget,
+    /// True when the session produced it. Lets the caller stop paying for an
+    /// attempt that never works — each one is a process spawn and a network
+    /// round trip (seconds), directly in front of the play button.
+    used_session: bool,
+}
+
+/// Resolve `video_id`, trying the session and an anonymous read in whichever
+/// order is likelier to work first, and falling back to the other.
+///
+/// Both attempts always remain available: `session_first: false` is a hint, not
+/// a decision. A private or Premium track that anonymous can't see still gets
+/// the session — it just isn't first in the queue for it.
 ///
 /// Split out from [`YtMusicState::resolve`] so the *policy* is testable without
-/// a real yt-dlp: which failures retry is the part that matters, and the part
-/// that would quietly rot.
+/// a real yt-dlp: which failures retry, and in which order, is the part that
+/// matters and the part that would quietly rot.
 fn resolve_with_fallback(
     runner: &dyn ytdlp::YtDlpRunner,
     video_id: &str,
     session: Option<&Path>,
-) -> Result<ytdlp::StreamTarget, String> {
-    match ytdlp::resolve(runner, video_id, session) {
-        Ok(t) => Ok(t),
-        // Only a format failure retries. "Unavailable" and "Blocked" mean the
+    session_first: bool,
+) -> Result<Resolved, String> {
+    // Nothing to alternate with.
+    let Some(session) = session else {
+        return ytdlp::resolve(runner, video_id, None)
+            .map(|target| Resolved {
+                target,
+                used_session: false,
+            })
+            .map_err(|e| e.to_string());
+    };
+
+    let (first, second) = if session_first {
+        (Some(session), None)
+    } else {
+        (None, Some(session))
+    };
+
+    match ytdlp::resolve(runner, video_id, first) {
+        Ok(target) => Ok(Resolved {
+            target,
+            used_session: first.is_some(),
+        }),
+        // Only a format failure alternates. "Unavailable" and "Blocked" mean the
         // session is the point — dropping it there would trade a clear error for
         // a worse one.
-        Err(YtDlpError::NoCompatibleFormat(signed_in_said)) if session.is_some() => {
-            eprintln!(
-                "[hm-ytmusic] {video_id}: no playable format while signed in \
-                 ({signed_in_said}) — retrying without the session"
-            );
-            ytdlp::resolve(runner, video_id, None).map_err(|anon| {
-                // Report both attempts: "it failed twice, differently" is a fact
-                // worth having, and one message would hide the half that
-                // actually explains it.
-                format!("{signed_in_said} (also failed without the session: {anon})")
-            })
+        Err(YtDlpError::NoCompatibleFormat(first_said)) => {
+            ytdlp::resolve(runner, video_id, second)
+                .map(|target| Resolved {
+                    target,
+                    used_session: second.is_some(),
+                })
+                .map_err(|other| {
+                    // Both reasons: "it failed twice, differently" is a fact
+                    // worth having, and one message would hide the half that
+                    // actually explains it.
+                    format!("{first_said} (the other attempt also failed: {other})")
+                })
         }
         Err(e) => Err(e.to_string()),
     }
@@ -877,9 +939,10 @@ mod tests {
             anonymous: Ok(ok_stdout()),
             calls: std::sync::Mutex::new(Vec::new()),
         };
-        let got = resolve_with_fallback(&runner, "syc4SzrubKY", Some(session_path()))
+        let got = resolve_with_fallback(&runner, "syc4SzrubKY", Some(session_path()), true)
             .expect("the anonymous retry should succeed");
-        assert_eq!(got.format_id, "140");
+        assert_eq!(got.target.format_id, "140");
+        assert!(!got.used_session, "the anonymous attempt is what worked");
         // Tried with the session first, then without — in that order.
         assert_eq!(*runner.calls.lock().unwrap(), [true, false]);
     }
@@ -893,7 +956,7 @@ mod tests {
             anonymous: Ok(ok_stdout()),
             calls: std::sync::Mutex::new(Vec::new()),
         };
-        let err = resolve_with_fallback(&runner, "vid", Some(session_path())).unwrap_err();
+        let err = resolve_with_fallback(&runner, "vid", Some(session_path()), true).unwrap_err();
         assert!(err.contains("blocked"), "got {err:?}");
         assert_eq!(*runner.calls.lock().unwrap(), [true], "must not retry");
     }
@@ -905,7 +968,7 @@ mod tests {
             anonymous: Ok(ok_stdout()),
             calls: std::sync::Mutex::new(Vec::new()),
         };
-        assert!(resolve_with_fallback(&runner, "vid", Some(session_path())).is_err());
+        assert!(resolve_with_fallback(&runner, "vid", Some(session_path()), true).is_err());
         assert_eq!(*runner.calls.lock().unwrap(), [true], "must not retry");
     }
 
@@ -917,8 +980,41 @@ mod tests {
             anonymous: Err(YtDlpError::NoCompatibleFormat("nope".into())),
             calls: std::sync::Mutex::new(Vec::new()),
         };
-        assert!(resolve_with_fallback(&runner, "vid", None).is_err());
+        assert!(resolve_with_fallback(&runner, "vid", None, true).is_err());
         assert_eq!(*runner.calls.lock().unwrap(), [false]);
+    }
+
+    /// The point of the whole hint: once the session is known not to yield
+    /// formats, don't spend a process spawn and a network round trip on it
+    /// before every single track.
+    #[test]
+    fn a_known_bad_session_is_not_tried_first() {
+        let runner = SessionSensitive {
+            signed_in: Err(YtDlpError::NoCompatibleFormat("no format".into())),
+            anonymous: Ok(ok_stdout()),
+            calls: std::sync::Mutex::new(Vec::new()),
+        };
+        let got = resolve_with_fallback(&runner, "vid", Some(session_path()), false)
+            .expect("anonymous works");
+        assert_eq!(got.target.format_id, "140");
+        // One call, without cookies. No doomed attempt in front of it.
+        assert_eq!(*runner.calls.lock().unwrap(), [false]);
+    }
+
+    /// …but the session is still there for anything anonymous can't see, so a
+    /// private track doesn't become unplayable just because public ones taught
+    /// us to lead with anonymous.
+    #[test]
+    fn a_private_track_still_reaches_the_session_when_anonymous_leads() {
+        let runner = SessionSensitive {
+            signed_in: Ok(ok_stdout()),
+            anonymous: Err(YtDlpError::NoCompatibleFormat("not visible signed out".into())),
+            calls: std::sync::Mutex::new(Vec::new()),
+        };
+        let got = resolve_with_fallback(&runner, "vid", Some(session_path()), false)
+            .expect("the session should still be reached");
+        assert!(got.used_session);
+        assert_eq!(*runner.calls.lock().unwrap(), [false, true]);
     }
 
     /// Both failed: say so, and keep both reasons — the second is usually the
@@ -930,7 +1026,7 @@ mod tests {
             anonymous: Err(YtDlpError::NoCompatibleFormat("anonymous reason".into())),
             calls: std::sync::Mutex::new(Vec::new()),
         };
-        let err = resolve_with_fallback(&runner, "vid", Some(session_path())).unwrap_err();
+        let err = resolve_with_fallback(&runner, "vid", Some(session_path()), true).unwrap_err();
         assert!(err.contains("signed-in reason"), "got {err:?}");
         assert!(err.contains("anonymous reason"), "got {err:?}");
         assert_eq!(*runner.calls.lock().unwrap(), [true, false]);

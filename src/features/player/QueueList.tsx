@@ -43,6 +43,13 @@ function queueArt(item: QueueItem): ArtSource {
       cloudName: item.cloud?.name,
     };
   }
+  if (item.source === "ytmusic") {
+    // The listing hands us the thumbnail URL up front, so it's already on the
+    // item — nothing to resolve, unlike cloud. Without this the row fell to the
+    // local case below, looked for a file path it has never had, and drew the
+    // gradient while the same track showed its art everywhere else.
+    return { key, source: "ytmusic", cover: item.cover ?? null };
+  }
   // Local files read embedded art by path; radio has none (→ gradient).
   return { key, source: "local", path: item.track?.path ?? null };
 }

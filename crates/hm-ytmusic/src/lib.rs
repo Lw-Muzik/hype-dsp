@@ -81,6 +81,15 @@ pub struct YtTrack {
     /// YT Music marks region-blocked / removed tracks. They stay listed (so the
     /// playlist matches what the user sees on youtube) but can't be played.
     pub is_available: bool,
+    /// Whether there's real footage to watch.
+    ///
+    /// A song (`MUSIC_VIDEO_TYPE_ATV`) is an audio entity: YouTube still serves
+    /// "video" renditions for it, but they're a **square still image** — 1080×1080
+    /// at ~95 kbps, i.e. the cover art you already have, re-downloaded. Only
+    /// music videos (OMV/UGC/…) have anything worth showing, so the UI offers the
+    /// video toggle on those alone rather than promising a picture and
+    /// delivering a photograph.
+    pub has_video: bool,
 }
 
 /// A row of Explore categories ("Moods & moments", "Genres", …).
@@ -365,6 +374,11 @@ impl YtMusicState {
                 // `get_album` doesn't report per-track availability; a track that
                 // turns out to be blocked fails at resolve time like any other.
                 is_available: true,
+                // Album tracks are songs — YouTube renders them as a still, so
+                // there's nothing to watch. It also doesn't report a video type
+                // here, and claiming footage we haven't seen would show an
+                // enabled toggle that produces a photograph.
+                has_video: false,
             })
             .collect())
     }
@@ -406,6 +420,47 @@ impl YtMusicState {
     /// from the decode worker, and this only spawns a process.
     pub fn stream_target(&self, video_id: &str) -> Result<(String, Vec<(String, String)>), String> {
         let target = self.resolve(video_id)?;
+        Ok((target.url, target.headers))
+    }
+
+    /// The video-only rendition to show beside the audio, if the track has one.
+    ///
+    /// Mirrors [`Self::stream_target`]'s `(url, headers)` — the headers matter
+    /// as much here: googlevideo checks the User-Agent against the client that
+    /// resolved, which is why this can't be handed to a `<video>` element
+    /// directly and goes through the loopback proxy instead.
+    ///
+    /// Uses the same session ordering as audio, and reports failure as an error
+    /// for the caller to turn into "no video". Nothing here may affect playback:
+    /// the picture is optional, the sound is not.
+    pub fn video_target(&self, video_id: &str) -> Result<(String, Vec<(String, String)>), String> {
+        use std::sync::atomic::Ordering;
+        let runner = ProcessRunner::detect().ok_or_else(|| YtDlpError::NotInstalled.to_string())?;
+        let cookies = self.cookies_snapshot();
+        let file = cookie_file(cookies.as_deref())?;
+        let session = file.as_ref().map(CookieFile::path);
+        let session_first = self.session_first.load(Ordering::Relaxed);
+
+        let target = ytdlp::resolve_video(
+            &runner,
+            video_id,
+            if session_first { session } else { None },
+        )
+        .or_else(|first| {
+            // Same fallback shape as audio: whichever attempt the session hint
+            // didn't lead with is still worth asking.
+            match (first, session) {
+                (YtDlpError::NoCompatibleFormat(_), Some(s)) if !session_first => {
+                    ytdlp::resolve_video(&runner, video_id, Some(s))
+                }
+                (YtDlpError::NoCompatibleFormat(e), Some(_)) => {
+                    let _ = e;
+                    ytdlp::resolve_video(&runner, video_id, None)
+                }
+                (e, _) => Err(e),
+            }
+        })
+        .map_err(|e| e.to_string())?;
         Ok((target.url, target.headers))
     }
 

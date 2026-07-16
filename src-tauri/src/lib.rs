@@ -646,6 +646,7 @@ pub fn run() {
             commands::ytmusic::ytmusic_explore_categories,
             commands::ytmusic::ytmusic_explore_page,
             commands::ytmusic::ytmusic_explore_tracks,
+            commands::ytmusic::ytmusic_video_url,
             commands::ytmusic::ytmusic_play,
             commands::ytmusic::player_play_ytmusic_queue,
             commands::ytmusic::ytmusic_download,

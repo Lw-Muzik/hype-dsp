@@ -1,19 +1,25 @@
 import { useEffect, useState } from "react";
-import { ListMusic, MicVocal, X } from "lucide-react";
+import { ListMusic, MicVocal, Video, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useUiStore } from "@/stores/ui";
+import { useEngineStore } from "@/stores/engine";
 import { QueueList } from "@/features/player/QueueList";
 import { LyricsView } from "@/features/player/LyricsView";
+import { VideoStage } from "@/features/player/VideoStage";
 import { cn } from "@/lib/cn";
 
 const ANIM_MS = 220;
 
 /**
- * The show/hide right sidebar that hosts the play Queue and Lyrics, toggled
- * from the now-playing bar. It lives in the layout (not an overlay), so it
- * animates its width open/closed and the content beside it reflows smoothly.
+ * The show/hide right sidebar that hosts the play Queue, Lyrics and Video,
+ * toggled from the now-playing bar. It lives in the layout (not an overlay), so
+ * it animates its width open/closed and the content beside it reflows smoothly.
  * The panel content stays mounted through the close animation, then unmounts —
  * so it slides out rather than snapping (reduced-motion collapses the timing).
+ *
+ * Video is offered only for a track that has footage, and is a picture only:
+ * the sound stays in the engine's enhancement chain throughout. See
+ * [`VideoStage`].
  */
 export function RightSidebar() {
   const panel = useUiStore((s) => s.rightPanel);
@@ -34,6 +40,20 @@ export function RightSidebar() {
     return () => window.clearTimeout(t);
   }, [panel]);
 
+  // Only a music video has anything to watch: a song is an audio entity YouTube
+  // renders as a square still, so a Video tab there would promise a picture and
+  // hand back the cover art.
+  const current = useEngineStore((s) =>
+    s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined,
+  );
+  const videoId = current?.ytTrack?.hasVideo ? current.ytTrack.videoId : null;
+
+  // Losing the tab under you (skipping to a song) shouldn't leave the panel on a
+  // tab that no longer exists.
+  useEffect(() => {
+    if (!videoId && panel === "video") toggleRight("video");
+  }, [videoId, panel, toggleRight]);
+
   const open = panel !== null;
   const tab = panel ?? rendered;
 
@@ -48,7 +68,7 @@ export function RightSidebar() {
       )}
     >
       <aside
-        aria-label={tab === "lyrics" ? "Lyrics" : "Play queue"}
+        aria-label={tab === "lyrics" ? "Lyrics" : tab === "video" ? "Video" : "Play queue"}
         style={{ width: rightWidth }}
         className={cn(
           "flex h-full flex-col bg-surface-raised transition-opacity duration-200",
@@ -69,6 +89,14 @@ export function RightSidebar() {
               active={tab === "lyrics"}
               onClick={() => tab !== "lyrics" && toggleRight("lyrics")}
             />
+            {videoId && (
+              <Tab
+                icon={Video}
+                label="Video"
+                active={tab === "video"}
+                onClick={() => tab !== "video" && toggleRight("video")}
+              />
+            )}
           </div>
           <button
             type="button"
@@ -80,7 +108,17 @@ export function RightSidebar() {
           </button>
         </div>
 
-        {rendered === "queue" ? <QueueList /> : rendered === "lyrics" ? <LyricsView /> : null}
+        {rendered === "queue" ? (
+          <QueueList />
+        ) : rendered === "lyrics" ? (
+          <LyricsView />
+        ) : rendered === "video" && videoId ? (
+          // Keyed by track: a new video is a new element, not a reused one that
+          // has to be talked out of the previous track's buffer and position.
+          <div className="p-3">
+            <VideoStage key={videoId} videoId={videoId} />
+          </div>
+        ) : null}
       </aside>
     </div>
   );

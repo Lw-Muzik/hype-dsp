@@ -19,6 +19,8 @@ use hm_link::LinkState;
 use hm_ytmusic::cookies::{self, YtCookie};
 use hm_ytmusic::explore::{ExploreItem, ExploreShelf};
 use hm_ytmusic::{ExploreSection, YtMusicState, YtMusicStatus, YtPlaylist, YtTrack};
+
+use crate::tv_proxy::TvProxy;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
@@ -319,6 +321,36 @@ pub async fn ytmusic_explore_tracks(
         .explore_tracks(&item)
         .await
         .map_err(|e| IpcError::new("ytmusic", e))
+}
+
+/* ---- video ---- */
+
+/// A loopback URL for this track's video-only rendition, for a muted `<video>`.
+///
+/// Video-only and muted is what keeps the enhancement chain in the path: the
+/// rendition has no audio track to play, so the element is a picture and nothing
+/// else, while the engine goes on doing the actual work. The proxy exists
+/// because the element can reach neither googlevideo's origin (CSP) nor its
+/// User-Agent requirement.
+///
+/// Resolving costs a yt-dlp spawn, so the front end asks only when the user
+/// turns video on. A failure here is "no video", never a playback error —
+/// nothing about the picture may touch the sound.
+// `(async)`: shells out to yt-dlp and waits on the network.
+#[tauri::command(async)]
+pub fn ytmusic_video_url(
+    state: State<'_, YtMusicState>,
+    proxy: State<'_, TvProxy>,
+    video_id: String,
+) -> Result<String, IpcError> {
+    let (url, headers) = state
+        .video_target(&video_id)
+        .map_err(|e| IpcError::new("ytmusic", e))?;
+    let ua = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+        .map(|(_, v)| v.as_str());
+    Ok(proxy.video_url(&url, ua))
 }
 
 /* ---- playback ---- */

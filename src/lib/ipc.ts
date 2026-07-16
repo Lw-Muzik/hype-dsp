@@ -331,6 +331,17 @@ export function ytmusicExploreTracks(item: ExploreItem): Promise<YtTrack[]> {
   return invoke<YtTrack[]>("ytmusic_explore_tracks", { item });
 }
 
+/** A loopback URL for this track's video-only rendition, for a muted `<video>`.
+ *
+ *  Video-only and muted is what keeps the enhancement chain in the audio path:
+ *  the rendition carries no audio track, so the element can only ever be a
+ *  picture. Costs a yt-dlp resolve, so only ask when video is actually turned
+ *  on. Rejects when there's nothing playable — treat that as "no video", never
+ *  as a playback failure. */
+export function ytmusicVideoUrl(videoId: string): Promise<string> {
+  return invoke<string>("ytmusic_video_url", { videoId });
+}
+
 /** Stream one track through the enhancement chain. Passing the known length
  *  (seconds) makes the seek bar right from the first frame. */
 export function ytmusicPlay(

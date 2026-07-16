@@ -47,6 +47,17 @@ fn is_music(video_type: &str) -> bool {
     )
 }
 
+/// Whether this row has footage, as opposed to a song rendered as a still.
+///
+/// `ATV` is YouTube's marker for an audio entity. It still has "video"
+/// renditions, but they're a square 1080×1080 still at ~95 kbps — the cover art
+/// again. Everything else that reaches here (OMV, UGC, official-source, …) is
+/// real video. An absent type is treated as a song: see [`parse_row`], where the
+/// same default keeps plain songs from being dropped.
+fn has_video(video_type: &str) -> bool {
+    video_type != "MUSIC_VIDEO_TYPE_ATV"
+}
+
 /// Every playable row on one page of a playlist response.
 pub fn parse_page(json: &Value, playlist: &YtPlaylist) -> Vec<YtTrack> {
     let mut rows = Vec::new();
@@ -152,6 +163,7 @@ fn parse_row(row: &Value, playlist: &YtPlaylist) -> Option<YtTrack> {
         playlist_id: playlist.id.clone(),
         playlist_title: playlist.title.clone(),
         is_available,
+        has_video: has_video(video_type),
     })
 }
 
@@ -263,6 +275,45 @@ mod tests {
         assert_eq!(t.playlist_id, "VLPL1");
         assert_eq!(t.playlist_title, "archive");
         assert!(t.is_available);
+    }
+
+    /// Sets the `musicVideoType` on a row.
+    fn with_type(mut row: Value, video_type: &str) -> Value {
+        row["musicResponsiveListItemRenderer"]["overlay"] = json!({
+            "musicItemThumbnailOverlayRenderer": { "content": { "musicPlayButtonRenderer": {
+                "playNavigationEndpoint": { "watchEndpointMusicSupportedConfigs": {
+                    "watchEndpointMusicConfig": { "musicVideoType": video_type } } } } } }
+        });
+        row
+    }
+
+    /// Drives whether the player offers a video toggle. A song's "video" is a
+    /// square still — the cover art again — so promising footage there would
+    /// deliver a photograph.
+    #[test]
+    fn only_real_videos_report_having_video() {
+        let json = first_page(vec![
+            with_type(row("A song", "v1", "Artist", None), "MUSIC_VIDEO_TYPE_ATV"),
+            with_type(row("A music video", "v2", "Artist", None), "MUSIC_VIDEO_TYPE_OMV"),
+            with_type(row("A user video", "v3", "Artist", None), "MUSIC_VIDEO_TYPE_UGC"),
+        ]);
+        let tracks = parse_page(&json, &playlist());
+        assert_eq!(
+            tracks
+                .iter()
+                .map(|t| (t.title.as_str(), t.has_video))
+                .collect::<Vec<_>>(),
+            [("A song", false), ("A music video", true), ("A user video", true)]
+        );
+    }
+
+    /// No type at all is treated as a song — the same default `parse_row` uses to
+    /// avoid dropping plain songs. Claiming footage we haven't seen would show a
+    /// toggle that resolves to a still.
+    #[test]
+    fn a_row_without_a_video_type_reports_no_video() {
+        let tracks = parse_page(&first_page(vec![row("Plain", "v1", "A", None)]), &playlist());
+        assert!(!tracks[0].has_video);
     }
 
     #[test]

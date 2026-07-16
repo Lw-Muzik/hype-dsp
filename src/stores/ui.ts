@@ -13,6 +13,11 @@ export type Route =
   | "visuals"
   | "settings";
 
+/** The right sidebar's tabs. "video" only appears for a track that has footage
+ *  — a song's "video" is a square still, so offering it would promise a picture
+ *  and deliver the cover art. */
+export type RightPanel = "queue" | "lyrics" | "video";
+
 /** Drag-resize bounds (px) for each sidebar: clamp + reset target. */
 export const SIDEBAR_LIMITS = {
   left: { min: 200, max: 460, default: 240 },
@@ -69,9 +74,9 @@ interface UiState {
   setResizing: (resizing: boolean) => void;
 
   /** The right sidebar's active tab, or null when hidden. */
-  rightPanel: "queue" | "lyrics" | null;
+  rightPanel: RightPanel | null;
   /** Open `tab` in the right sidebar, or close it if that tab is already open. */
-  toggleRight: (tab: "queue" | "lyrics") => void;
+  toggleRight: (tab: RightPanel) => void;
   closeRight: () => void;
 
   /** App metadata, loaded once from the backend on startup. */

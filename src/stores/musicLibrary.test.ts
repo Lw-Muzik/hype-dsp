@@ -37,6 +37,7 @@ const track = (over: Partial<YtTrack> = {}): YtTrack => ({
   playlistId: "pl1",
   playlistTitle: "Liked Music",
   isAvailable: true,
+  hasVideo: false,
   ...over,
 });
 

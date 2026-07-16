@@ -30,6 +30,21 @@ pub struct TvProxy {
 }
 
 impl TvProxy {
+    /// The proxied URL for a progressive media file (a YouTube Music video-only
+    /// rendition), seekable via forwarded `Range`.
+    ///
+    /// The `<video>` element can't reach googlevideo itself: the CSP forbids the
+    /// origin, and the CDN wants the User-Agent of the client that resolved the
+    /// URL — which no element can set. Same laundering as TV, different shape of
+    /// body.
+    pub fn video_url(&self, upstream: &str, user_agent: Option<&str>) -> String {
+        let mut url = format!("http://127.0.0.1:{}/video?u={}", self.port, enc(upstream));
+        if let Some(ua) = user_agent.filter(|s| !s.is_empty()) {
+            url.push_str(&format!("&ua={}", enc(ua)));
+        }
+        url
+    }
+
     /// The proxied playback URL for a stream + its optional headers. hls.js /
     /// `<video>` load this instead of the raw stream.
     pub fn stream_url(&self, upstream: &str, user_agent: Option<&str>, referrer: Option<&str>) -> String {
@@ -90,8 +105,85 @@ fn handle(client: &reqwest::blocking::Client, port: u16, request: tiny_http::Req
     match path {
         "/hls" => serve_playlist(client, port, upstream, ua, referer, request),
         "/seg" => serve_segment(client, upstream, ua, referer, request),
+        "/video" => serve_video(client, upstream, ua, request),
         _ => respond(request, 404, "text/plain", b"not found".to_vec(), None),
     }
+}
+
+/// Stream a progressive media file, forwarding the client's `Range`.
+///
+/// Separate from [`serve_segment`] because their shapes differ where it counts.
+/// A segment is a few hundred KB read whole; a music video is tens of MB the
+/// `<video>` element expects to seek within. `serve_segment` buffers the entire
+/// body into a `Vec` and never forwards `Range`, which for a video means the
+/// first frame waits on the last byte and the scrub bar does nothing.
+///
+/// Here the body is piped straight through and `Range` is passed both ways, so
+/// the element gets its `206` and can seek. Everything else is [`serve_segment`]'s
+/// reason for existing, unchanged: googlevideo needs the User-Agent of the client
+/// that resolved the URL, and the CSP only lets the webview load from loopback.
+fn serve_video(
+    client: &reqwest::blocking::Client,
+    upstream: &str,
+    ua: Option<&str>,
+    request: tiny_http::Request,
+) {
+    let range = request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Range"))
+        .map(|h| h.value.as_str().to_string());
+
+    let mut req = client.get(upstream);
+    if let Some(ua) = ua {
+        req = req.header(reqwest::header::USER_AGENT, ua);
+    }
+    if let Some(r) = &range {
+        req = req.header(reqwest::header::RANGE, r.as_str());
+    }
+
+    let Ok(resp) = req.send() else {
+        respond(request, 502, "text/plain", b"upstream fetch failed".to_vec(), None);
+        return;
+    };
+    let status = resp.status().as_u16();
+    // Carry the headers a seekable element needs; without Content-Range a 206 is
+    // meaningless to it.
+    let pick = |name: reqwest::header::HeaderName| {
+        resp.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+    };
+    let content_type =
+        pick(reqwest::header::CONTENT_TYPE).unwrap_or_else(|| "video/mp4".to_string());
+    let content_range = pick(reqwest::header::CONTENT_RANGE);
+    let len = resp.content_length();
+
+    let mut response = Response::new(
+        StatusCode(status),
+        Vec::new(),
+        resp,
+        len.map(|n| n as usize),
+        None,
+    );
+    for (name, value) in [
+        ("Content-Type", content_type.as_str()),
+        ("Access-Control-Allow-Origin", "*"),
+        // Lets the element discover it can seek at all.
+        ("Accept-Ranges", "bytes"),
+        ("Cache-Control", "no-store"),
+    ] {
+        if let Ok(h) = Header::from_bytes(name.as_bytes(), value.as_bytes()) {
+            response.add_header(h);
+        }
+    }
+    if let Some(cr) = content_range.as_deref() {
+        if let Ok(h) = Header::from_bytes(b"Content-Range".as_ref(), cr.as_bytes()) {
+            response.add_header(h);
+        }
+    }
+    let _ = request.respond(response);
 }
 
 /// Fetch an M3U8 and rewrite every URI (segments, keys, child playlists) to

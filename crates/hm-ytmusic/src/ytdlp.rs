@@ -25,6 +25,24 @@ use std::process::{Command, Stdio};
 /// else. A clear failure beats a track that spins with no sound.
 const AUDIO_FORMAT: &str = "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]";
 
+/// Video-only rendition for the picture beside DSP-chain audio.
+///
+/// Two pins, both load-bearing:
+///
+/// * **`vcodec^=avc1`.** Plain `bestvideo[ext=mp4]` prefers `av01` — YouTube
+///   offers it at every rung — and WKWebView decodes AV1 on almost no Mac. It
+///   would show a blank frame and report nothing, which is the Opus trap in
+///   [`AUDIO_FORMAT`] wearing a different hat: the "best" format is the one the
+///   player can't play, and it fails silently.
+/// * **`height<=720`.** 1080p is ~56 MiB for a 3-minute video against ~15 MiB at
+///   720p, and this streams *alongside* the audio, not instead of it.
+///
+/// Video-only on purpose: the element is muted and only ever a picture, so a
+/// rendition with no audio track makes bypassing the enhancement chain
+/// impossible rather than merely discouraged.
+const VIDEO_FORMAT: &str =
+    "bestvideo[ext=mp4][vcodec^=avc1][height<=720]/bestvideo[ext=mp4][vcodec^=avc1]";
+
 /// Fields we ask `--print` for, in order. Each yields one stdout line.
 const PRINT_FIELDS: &[&str] = &[
     "%(url)s",
@@ -378,6 +396,28 @@ pub fn resolve(
     let mut args = base_args(cookies);
     args.push("-f".to_string());
     args.push(AUDIO_FORMAT.to_string());
+    for field in PRINT_FIELDS {
+        args.push("--print".to_string());
+        args.push((*field).to_string());
+    }
+    args.push(watch_url(video_id));
+
+    parse_resolve(&runner.run(&args)?)
+}
+
+/// Resolves `video_id` to its video-only rendition ([`VIDEO_FORMAT`]).
+///
+/// Deliberately a sibling of [`resolve`] rather than a flag on it: the audio
+/// path is what playback depends on, and nothing about the picture may reach
+/// into it. Callers treat a failure here as "no video", never as a play error.
+pub fn resolve_video(
+    runner: &dyn YtDlpRunner,
+    video_id: &str,
+    cookies: Option<&Path>,
+) -> Result<StreamTarget, YtDlpError> {
+    let mut args = base_args(cookies);
+    args.push("-f".to_string());
+    args.push(VIDEO_FORMAT.to_string());
     for field in PRINT_FIELDS {
         args.push("--print".to_string());
         args.push((*field).to_string());
@@ -751,5 +791,31 @@ mod tests {
         assert!(AUDIO_FORMAT.contains("ext=m4a"));
         assert!(!AUDIO_FORMAT.contains("opus"));
         assert!(!AUDIO_FORMAT.contains("webm"));
+    }
+
+    /// The same constraint one layer up: the webview decodes H.264 everywhere
+    /// and AV1 almost nowhere, and YouTube offers av01 at every rung — so an
+    /// unpinned `bestvideo` selects a format that renders a blank frame and says
+    /// nothing about it.
+    #[test]
+    fn video_selector_never_accepts_av1() {
+        assert!(VIDEO_FORMAT.contains("vcodec^=avc1"));
+        assert!(!VIDEO_FORMAT.contains("av01"));
+        // Every alternative in the `/`-separated ladder must carry the pin —
+        // a fallback without it would quietly reintroduce AV1.
+        for alt in VIDEO_FORMAT.split('/') {
+            assert!(alt.contains("vcodec^=avc1"), "unpinned alternative: {alt}");
+            assert!(alt.contains("ext=mp4"), "non-mp4 alternative: {alt}");
+        }
+    }
+
+    /// Muted-picture-only is the mechanism that keeps audio in the DSP chain.
+    /// A rendition with an audio track would make bypassing it possible.
+    #[test]
+    fn video_selector_asks_only_for_video() {
+        assert!(VIDEO_FORMAT.starts_with("bestvideo"));
+        for alt in VIDEO_FORMAT.split('/') {
+            assert!(alt.starts_with("bestvideo"), "not video-only: {alt}");
+        }
     }
 }

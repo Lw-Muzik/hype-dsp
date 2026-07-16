@@ -472,6 +472,10 @@ export interface YtTrack {
   /** Region-blocked / removed tracks stay listed (the playlist matches what
    *  the user sees on YouTube) but can't be played. */
   isAvailable: boolean;
+  /** Whether there's real footage to watch. A song is an audio entity — YouTube
+   *  renders it as a square still (the cover art again), so the player offers
+   *  video only where there's something to see. */
+  hasVideo: boolean;
 }
 
 /** Whether yt-dlp — which resolves every stream and download — is installed.

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  autoeqFetchApply,
   chainPresetApply,
   cloudPlay,
   cloudTrackCover,
@@ -318,10 +319,14 @@ interface EngineStore {
   loadConvolverIr: (path: string) => Promise<void>;
   /** Import an EqualizerAPO GraphicEQ curve. Throws on IPC failure — caller must catch. */
   importGraphicEq: (curve: string) => Promise<void>;
+<<<<<<< HEAD
   /** Import a ViPER/JamesDSP DDC (.vdc) file by path. Throws on failure — caller must catch. */
   importVdc: (path: string) => Promise<void>;
   /** Apply a bundled ViPER DDC preset by name. Throws on failure — caller must catch. */
   applyDdc: (name: string) => Promise<void>;
+=======
+  applyAutoEq: (url: string) => Promise<void>;
+>>>>>>> feat/autoeq-fetch
   applyProfile: (profile: HeadphoneProfile) => void;
   clearProfile: () => void;
   setPlayback: (gapless: boolean, crossfadeSecs: number) => void;
@@ -811,6 +816,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         },
       }));
     },
+<<<<<<< HEAD
     importVdc: async (path) => {
       const res = await engineEqImportVdc(path);
       set((s) => ({
@@ -823,6 +829,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
     applyDdc: async (name) => {
       const res = await engineEqApplyDdc(name);
+=======
+    applyAutoEq: async (url) => {
+      const res = await autoeqFetchApply(url);
+>>>>>>> feat/autoeq-fetch
       set((s) => ({
         state: {
           ...s.state,

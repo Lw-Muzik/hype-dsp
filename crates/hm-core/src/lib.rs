@@ -10,6 +10,7 @@
 //! TypeScript interface in `src/lib/types.ts`. When a type changes on one side,
 //! it must change on the other — they are a single contract expressed twice.
 
+pub mod autoeq_db;
 pub mod chain_presets;
 pub mod ddc_library;
 pub mod error;
@@ -22,6 +23,7 @@ pub mod store;
 pub mod types;
 pub mod vdc_import;
 
+pub use autoeq_db::AutoEqEntry;
 pub use chain_presets::{ChainPreset, ChainPresetStore};
 pub use error::{HmError, IpcError};
 pub use graphic_eq_import::{interpolate_to_iso_bands, parse_graphic_eq, recommended_preamp};

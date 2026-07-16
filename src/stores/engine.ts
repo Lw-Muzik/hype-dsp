@@ -223,9 +223,23 @@ function extFromName(name: string): string | undefined {
   return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toLowerCase() : undefined;
 }
 
-/** Now-playing card metadata derived from a queue item (before decode adds art). */
-function itemMeta(item: QueueItem): TrackMeta {
-  return { title: item.title, artist: item.artist, album: item.album, cover: null };
+/** The now-playing card's view of a queue item, before the engine has decoded
+ *  anything from the file itself.
+ *
+ *  `cover` carries the item's own art when it has any. YT Music hands us a
+ *  thumbnail with the listing, and hardcoding null here meant the card waited
+ *  forever for art the engine could never supply: googlevideo streams a bare
+ *  DASH audio track with no embedded tags, so the sidebar sat on its gradient
+ *  while the very same cover showed in every list. Cloud items benefit too — a
+ *  preloaded cover shows immediately and saves the lazy fetch. Local files carry
+ *  none here and still get theirs decoded, exactly as before. */
+export function itemMeta(item: QueueItem): TrackMeta {
+  return {
+    title: item.title,
+    artist: item.artist,
+    album: item.album,
+    cover: item.cover ?? null,
+  };
 }
 
 /* ----------------------------------------------------------------- play order */

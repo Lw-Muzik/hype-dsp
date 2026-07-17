@@ -11,6 +11,7 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  Video,
   Volume2,
 } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
@@ -114,6 +115,12 @@ export function NowPlayingBar() {
   const shuffle = useEngineStore((s) => s.shuffle);
   const toggleRight = useUiStore((s) => s.toggleRight);
   const rightPanel = useUiStore((s) => s.rightPanel);
+  // Selects a primitive, not the track: the bar re-renders on every progress
+  // tick and an object identity here would re-render on all of them.
+  const hasVideo = useEngineStore((s) => {
+    const c = s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined;
+    return c?.ytTrack?.hasVideo === true;
+  });
   const togglePause = useEngineStore((s) => s.togglePause);
   const next = useEngineStore((s) => s.next);
   const prev = useEngineStore((s) => s.prev);
@@ -255,6 +262,22 @@ export function NowPlayingBar() {
             <Ear className="size-4" aria-hidden="true" />
           )}
         </button>
+        {/* Only for a track with real footage, and only here — the sidebar's own
+            Video tab is invisible until the sidebar is already open on some
+            other tab, so watching a video meant finding a control you had no
+            reason to think existed. */}
+        {hasVideo && (
+          <button
+            type="button"
+            aria-label="Watch video"
+            aria-pressed={rightPanel === "video"}
+            title="Watch video"
+            onClick={() => toggleRight("video")}
+            className={cn(iconBtn, rightPanel === "video" && "text-accent hover:text-accent")}
+          >
+            <Video className="size-4" aria-hidden="true" />
+          </button>
+        )}
         <button
           type="button"
           aria-label="Show lyrics"

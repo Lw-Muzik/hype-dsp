@@ -1,0 +1,678 @@
+{
+ "contents": {
+  "twoColumnBrowseResultsRenderer": {
+   "secondaryContents": {
+    "sectionListRenderer": {
+     "contents": [
+      {
+       "musicPlaylistShelfRenderer": {
+        "contents": [
+         {
+          "musicResponsiveListItemRenderer": {
+           "playlistItemData": {
+            "playlistSetVideoId": "780605BC69C6C250",
+            "videoId": "0cJtvJRo9FM",
+            "voteSortValue": 1783511404
+           },
+           "flexColumns": [
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "text": {
+               "runs": [
+                {
+                 "navigationEndpoint": {
+                  "clickTrackingParams": "CIQPEMn0AhgAIhMI16WOy9nZlQMV0BHxBR2UyRgSygEEvNIdtg==",
+                  "watchEndpoint": {
+                   "loggingContext": {
+                    "vssLoggingContext": {
+                     "serializedContextData": "Gg1QTFZGQnpKdzNjM29V"
+                    }
+                   },
+                   "playerParams": "iAQB8AUBsAgC",
+                   "playlistId": "PLVFBzJw3c3oU",
+                   "videoId": "0cJtvJRo9FM",
+                   "watchEndpointMusicSupportedConfigs": {
+                    "watchEndpointMusicConfig": {
+                     "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+                    }
+                   }
+                  }
+                 },
+                 "text": "Fly N Ghetto"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "text": {
+               "runs": [
+                {
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                   },
+                   "browseId": "UCu1ghdpGCwdXk-oeL4q-S_Q"
+                  },
+                  "clickTrackingParams": "CIQPEMn0AhgAIhMI16WOy9nZlQMV0BHxBR2UyRgSygEEvNIdtg=="
+                 },
+                 "text": "Ayo & Teo"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_MEDIUM",
+              "text": {
+               "runs": [
+                {
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                    }
+                   },
+                   "browseId": "MPREb_gggzASCVFVP"
+                  },
+                  "clickTrackingParams": "CIQPEMn0AhgAIhMI16WOy9nZlQMV0BHxBR2UyRgSygEEvNIdtg=="
+                 },
+                 "text": "Fly N Ghetto"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "fixedColumns": [
+            {
+             "musicResponsiveListItemFixedColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "size": "MUSIC_RESPONSIVE_LIST_ITEM_FIXED_COLUMN_SIZE_SMALL",
+              "text": {
+               "accessibility": {
+                "accessibilityData": {
+                 "label": "2 minutes, 29 seconds"
+                }
+               },
+               "runs": [
+                {
+                 "text": "2:29"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "thumbnail": {
+            "musicThumbnailRenderer": {
+             "thumbnail": {
+              "thumbnails": [
+               {
+                "height": 60,
+                "url": "https://yt3.googleusercontent.com/hROLJjjPPPTU-8vqP07ldL36o1OExp9TKGEeFwPNHyQyM_poDRruvagokjLhYRtFxjtuLwjq12KGNcso=w60-h60-l90-rj",
+                "width": 60
+               },
+               {
+                "height": 120,
+                "url": "https://yt3.googleusercontent.com/hROLJjjPPPTU-8vqP07ldL36o1OExp9TKGEeFwPNHyQyM_poDRruvagokjLhYRtFxjtuLwjq12KGNcso=w120-h120-l90-rj",
+                "width": 120
+               }
+              ]
+             },
+             "thumbnailCrop": "MUSIC_THUMBNAIL_CROP_UNSPECIFIED",
+             "thumbnailScale": "MUSIC_THUMBNAIL_SCALE_ASPECT_FIT",
+             "trackingParams": "CJcPEIS_AiITCNeljsvZ2ZUDFdAR8QUdlMkYEg=="
+            }
+           },
+           "overlay": {
+            "musicItemThumbnailOverlayRenderer": {
+             "background": {
+              "verticalGradient": {
+               "gradientLayerColors": [
+                "3422552064",
+                "3422552064"
+               ]
+              }
+             },
+             "content": {
+              "musicPlayButtonRenderer": {
+               "accessibilityPauseData": {
+                "accessibilityData": {
+                 "label": "Pause Fly N Ghetto - Ayo & Teo - 2 minutes, 29 seconds"
+                }
+               },
+               "accessibilityPlayData": {
+                "accessibilityData": {
+                 "label": "Play Fly N Ghetto - Ayo & Teo - 2 minutes, 29 seconds"
+                }
+               },
+               "activeBackgroundColor": 0,
+               "activeScaleFactor": 1,
+               "backgroundColor": 0,
+               "buttonSize": "MUSIC_PLAY_BUTTON_SIZE_SMALL",
+               "iconColor": 4294967295,
+               "iconLoadingColor": 0,
+               "loadingIndicatorColor": 14745645,
+               "pauseIcon": {
+                "iconType": "PAUSE"
+               },
+               "playIcon": {
+                "iconType": "PLAY_ARROW"
+               },
+               "playNavigationEndpoint": {
+                "clickTrackingParams": "CJYPEMjeAiITCNeljsvZ2ZUDFdAR8QUdlMkYEsoBBLzSHbY=",
+                "watchEndpoint": {
+                 "loggingContext": {
+                  "vssLoggingContext": {
+                   "serializedContextData": "Gg1QTFZGQnpKdzNjM29V"
+                  }
+                 },
+                 "playerParams": "iAQB8AUBygYQNzgwNjA1QkM2OUM2QzI1MLAIAg%3D%3D",
+                 "playlistId": "PLVFBzJw3c3oU",
+                 "playlistSetVideoId": "780605BC69C6C250",
+                 "videoId": "0cJtvJRo9FM",
+                 "watchEndpointMusicSupportedConfigs": {
+                  "watchEndpointMusicConfig": {
+                   "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+                  }
+                 }
+                }
+               },
+               "playingIcon": {
+                "iconType": "VOLUME_UP"
+               },
+               "rippleTarget": "MUSIC_PLAY_BUTTON_RIPPLE_TARGET_SELF",
+               "trackingParams": "CJYPEMjeAiITCNeljsvZ2ZUDFdAR8QUdlMkYEg=="
+              }
+             },
+             "contentPosition": "MUSIC_ITEM_THUMBNAIL_OVERLAY_CONTENT_POSITION_CENTERED",
+             "displayStyle": "MUSIC_ITEM_THUMBNAIL_OVERLAY_DISPLAY_STYLE_PERSISTENT"
+            }
+           }
+          }
+         },
+         {
+          "musicResponsiveListItemRenderer": {
+           "playlistItemData": {
+            "playlistSetVideoId": "43106E8EA428AF88",
+            "videoId": "IIG4D_Vz5WA",
+            "voteSortValue": 1783511404
+           },
+           "flexColumns": [
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "text": {
+               "runs": [
+                {
+                 "text": "Kigwa Leero"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "text": {
+               "runs": [
+                {
+                 "text": "Slick Stuart & Dj Roja"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_MEDIUM",
+              "text": {
+               "runs": [
+                {
+                 "text": "Very Wellooo"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "fixedColumns": [
+            {
+             "musicResponsiveListItemFixedColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "size": "MUSIC_RESPONSIVE_LIST_ITEM_FIXED_COLUMN_SIZE_SMALL",
+              "text": {
+               "accessibility": {
+                "accessibilityData": {
+                 "label": "3 minutes, 4 seconds"
+                }
+               },
+               "runs": [
+                {
+                 "text": "3:04"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "thumbnail": {
+            "musicThumbnailRenderer": {
+             "thumbnail": {
+              "thumbnails": [
+               {
+                "height": 60,
+                "url": "https://yt3.googleusercontent.com/C4timpEim6OlRb4AKJ7Lhl_wBQ47NRqXQ2toeALKT_eB2HQr7tdfuEXuBlIGjjNiZa5rSXw-RVmELQPNLw=w60-h60-l90-rj",
+                "width": 60
+               },
+               {
+                "height": 120,
+                "url": "https://yt3.googleusercontent.com/C4timpEim6OlRb4AKJ7Lhl_wBQ47NRqXQ2toeALKT_eB2HQr7tdfuEXuBlIGjjNiZa5rSXw-RVmELQPNLw=w120-h120-l90-rj",
+                "width": 120
+               }
+              ]
+             },
+             "thumbnailCrop": "MUSIC_THUMBNAIL_CROP_UNSPECIFIED",
+             "thumbnailScale": "MUSIC_THUMBNAIL_SCALE_ASPECT_FIT",
+             "trackingParams": "CP0JEIS_AiITCNeljsvZ2ZUDFdAR8QUdlMkYEg=="
+            }
+           },
+           "overlay": {
+            "musicItemThumbnailOverlayRenderer": {
+             "background": {
+              "verticalGradient": {
+               "gradientLayerColors": [
+                "3422552064",
+                "3422552064"
+               ]
+              }
+             },
+             "content": {
+              "musicPlayButtonRenderer": {
+               "activeBackgroundColor": 0,
+               "activeScaleFactor": 1,
+               "backgroundColor": 0,
+               "buttonSize": "MUSIC_PLAY_BUTTON_SIZE_SMALL",
+               "iconColor": 4294967295,
+               "iconLoadingColor": 0,
+               "loadingIndicatorColor": 14745645,
+               "pauseIcon": {
+                "iconType": "PAUSE"
+               },
+               "playIcon": {
+                "iconType": "PLAY_ARROW"
+               },
+               "playingIcon": {
+                "iconType": "VOLUME_UP"
+               },
+               "rippleTarget": "MUSIC_PLAY_BUTTON_RIPPLE_TARGET_SELF",
+               "trackingParams": "CPwJEMjeAiITCNeljsvZ2ZUDFdAR8QUdlMkYEg=="
+              }
+             },
+             "contentPosition": "MUSIC_ITEM_THUMBNAIL_OVERLAY_CONTENT_POSITION_CENTERED",
+             "displayStyle": "MUSIC_ITEM_THUMBNAIL_OVERLAY_DISPLAY_STYLE_PERSISTENT"
+            }
+           },
+           "musicItemRendererDisplayPolicy": "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT"
+          }
+         },
+         {
+          "musicResponsiveListItemRenderer": {
+           "playlistItemData": {
+            "playlistSetVideoId": "1F1574824B1CED7A",
+            "videoId": "KV2tVYwcGxY",
+            "voteSortValue": 1783511404
+           },
+           "flexColumns": [
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "text": {
+               "runs": [
+                {
+                 "navigationEndpoint": {
+                  "clickTrackingParams": "CJQIEMn0AhguIhMI16WOy9nZlQMV0BHxBR2UyRgSygEEvNIdtg==",
+                  "watchEndpoint": {
+                   "loggingContext": {
+                    "vssLoggingContext": {
+                     "serializedContextData": "Gg1QTFZGQnpKdzNjM29V"
+                    }
+                   },
+                   "playerParams": "iAQB8AUBsAgC",
+                   "playlistId": "PLVFBzJw3c3oU",
+                   "videoId": "KV2tVYwcGxY",
+                   "watchEndpointMusicSupportedConfigs": {
+                    "watchEndpointMusicConfig": {
+                     "musicVideoType": "MUSIC_VIDEO_TYPE_UGC"
+                    }
+                   }
+                  }
+                 },
+                 "text": "Tyga - Gucci Snake Feat. Desiigner (Audio)"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "text": {
+               "runs": [
+                {
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_USER_CHANNEL"
+                    }
+                   },
+                   "browseId": "UCWfulppPTM4Ol6pNCELYhVQ"
+                  },
+                  "clickTrackingParams": "CJQIEMn0AhguIhMI16WOy9nZlQMV0BHxBR2UyRgSygEEvNIdtg=="
+                 },
+                 "text": "What's Hip Hop Next?"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_MEDIUM",
+              "text": {}
+             }
+            }
+           ],
+           "fixedColumns": [
+            {
+             "musicResponsiveListItemFixedColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "size": "MUSIC_RESPONSIVE_LIST_ITEM_FIXED_COLUMN_SIZE_SMALL",
+              "text": {
+               "accessibility": {
+                "accessibilityData": {
+                 "label": "5 minutes, 21 seconds"
+                }
+               },
+               "runs": [
+                {
+                 "text": "5:21"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "thumbnail": {
+            "musicThumbnailRenderer": {
+             "thumbnail": {
+              "thumbnails": [
+               {
+                "height": 225,
+                "url": "https://i.ytimg.com/vi/KV2tVYwcGxY/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3m_bajb2x5C6F9cdlxDtdwJEr5SCQ",
+                "width": 400
+               }
+              ]
+             },
+             "thumbnailCrop": "MUSIC_THUMBNAIL_CROP_UNSPECIFIED",
+             "thumbnailScale": "MUSIC_THUMBNAIL_SCALE_ASPECT_FIT",
+             "trackingParams": "CKIIEIS_AiITCNeljsvZ2ZUDFdAR8QUdlMkYEg=="
+            }
+           },
+           "overlay": {
+            "musicItemThumbnailOverlayRenderer": {
+             "background": {
+              "verticalGradient": {
+               "gradientLayerColors": [
+                "3422552064",
+                "3422552064"
+               ]
+              }
+             },
+             "content": {
+              "musicPlayButtonRenderer": {
+               "accessibilityPauseData": {
+                "accessibilityData": {
+                 "label": "Pause Tyga - Gucci Snake Feat. Desiigner (Audio) - What's Hip Hop Next? - 5 minutes, 21 seconds"
+                }
+               },
+               "accessibilityPlayData": {
+                "accessibilityData": {
+                 "label": "Play Tyga - Gucci Snake Feat. Desiigner (Audio) - What's Hip Hop Next? - 5 minutes, 21 seconds"
+                }
+               },
+               "activeBackgroundColor": 0,
+               "activeScaleFactor": 1,
+               "backgroundColor": 0,
+               "buttonSize": "MUSIC_PLAY_BUTTON_SIZE_SMALL",
+               "iconColor": 4294967295,
+               "iconLoadingColor": 0,
+               "loadingIndicatorColor": 14745645,
+               "pauseIcon": {
+                "iconType": "PAUSE"
+               },
+               "playIcon": {
+                "iconType": "PLAY_ARROW"
+               },
+               "playNavigationEndpoint": {
+                "clickTrackingParams": "CKEIEMjeAiITCNeljsvZ2ZUDFdAR8QUdlMkYEsoBBLzSHbY=",
+                "watchEndpoint": {
+                 "loggingContext": {
+                  "vssLoggingContext": {
+                   "serializedContextData": "Gg1QTFZGQnpKdzNjM29V"
+                  }
+                 },
+                 "playerParams": "iAQB8AUBygYQMUYxNTc0ODI0QjFDRUQ3QbAIAg%3D%3D",
+                 "playlistId": "PLVFBzJw3c3oU",
+                 "playlistSetVideoId": "1F1574824B1CED7A",
+                 "videoId": "KV2tVYwcGxY",
+                 "watchEndpointMusicSupportedConfigs": {
+                  "watchEndpointMusicConfig": {
+                   "musicVideoType": "MUSIC_VIDEO_TYPE_UGC"
+                  }
+                 }
+                }
+               },
+               "playingIcon": {
+                "iconType": "VOLUME_UP"
+               },
+               "rippleTarget": "MUSIC_PLAY_BUTTON_RIPPLE_TARGET_SELF",
+               "trackingParams": "CKEIEMjeAiITCNeljsvZ2ZUDFdAR8QUdlMkYEg=="
+              }
+             },
+             "contentPosition": "MUSIC_ITEM_THUMBNAIL_OVERLAY_CONTENT_POSITION_CENTERED",
+             "displayStyle": "MUSIC_ITEM_THUMBNAIL_OVERLAY_DISPLAY_STYLE_PERSISTENT"
+            }
+           }
+          }
+         },
+         {
+          "musicResponsiveListItemRenderer": {
+           "playlistItemData": {
+            "playlistSetVideoId": "4CBDD317705953F4",
+            "videoId": "ZHDlbowCyCE",
+            "voteSortValue": 1783511404
+           },
+           "flexColumns": [
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "text": {
+               "runs": [
+                {
+                 "navigationEndpoint": {
+                  "clickTrackingParams": "CPwGEMn0Ahg2IhMI16WOy9nZlQMV0BHxBR2UyRgSygEEvNIdtg==",
+                  "watchEndpoint": {
+                   "loggingContext": {
+                    "vssLoggingContext": {
+                     "serializedContextData": "Gg1QTFZGQnpKdzNjM29V"
+                    }
+                   },
+                   "playerParams": "iAQB8AUBsAgC",
+                   "playlistId": "PLVFBzJw3c3oU",
+                   "videoId": "ZHDlbowCyCE",
+                   "watchEndpointMusicSupportedConfigs": {
+                    "watchEndpointMusicConfig": {
+                     "musicVideoType": "MUSIC_VIDEO_TYPE_OMV"
+                    }
+                   }
+                  }
+                 },
+                 "text": "Insomnia (Audio)"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "text": {
+               "runs": [
+                {
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                   },
+                   "browseId": "UCIpP8df8didoERprBbdZoWA"
+                  },
+                  "clickTrackingParams": "CPwGEMn0Ahg2IhMI16WOy9nZlQMV0BHxBR2UyRgSygEEvNIdtg=="
+                 },
+                 "text": "Takeoff"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_MEDIUM",
+              "text": {}
+             }
+            }
+           ],
+           "fixedColumns": [
+            {
+             "musicResponsiveListItemFixedColumnRenderer": {
+              "displayPriority": "MUSIC_RESPONSIVE_LIST_ITEM_COLUMN_DISPLAY_PRIORITY_HIGH",
+              "size": "MUSIC_RESPONSIVE_LIST_ITEM_FIXED_COLUMN_SIZE_SMALL",
+              "text": {
+               "accessibility": {
+                "accessibilityData": {
+                 "label": "2 minutes, 46 seconds"
+                }
+               },
+               "runs": [
+                {
+                 "text": "2:46"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "thumbnail": {
+            "musicThumbnailRenderer": {
+             "thumbnail": {
+              "thumbnails": [
+               {
+                "height": 225,
+                "url": "https://i.ytimg.com/vi/ZHDlbowCyCE/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3l80t9eyTZWOo3p_DatIJIemd80wA",
+                "width": 400
+               }
+              ]
+             },
+             "thumbnailCrop": "MUSIC_THUMBNAIL_CROP_UNSPECIFIED",
+             "thumbnailScale": "MUSIC_THUMBNAIL_SCALE_ASPECT_FIT",
+             "trackingParams": "CIsHEIS_AiITCNeljsvZ2ZUDFdAR8QUdlMkYEg=="
+            }
+           },
+           "overlay": {
+            "musicItemThumbnailOverlayRenderer": {
+             "background": {
+              "verticalGradient": {
+               "gradientLayerColors": [
+                "3422552064",
+                "3422552064"
+               ]
+              }
+             },
+             "content": {
+              "musicPlayButtonRenderer": {
+               "accessibilityPauseData": {
+                "accessibilityData": {
+                 "label": "Pause Insomnia (Audio) - Takeoff - 2 minutes, 46 seconds"
+                }
+               },
+               "accessibilityPlayData": {
+                "accessibilityData": {
+                 "label": "Play Insomnia (Audio) - Takeoff - 2 minutes, 46 seconds"
+                }
+               },
+               "activeBackgroundColor": 0,
+               "activeScaleFactor": 1,
+               "backgroundColor": 0,
+               "buttonSize": "MUSIC_PLAY_BUTTON_SIZE_SMALL",
+               "iconColor": 4294967295,
+               "iconLoadingColor": 0,
+               "loadingIndicatorColor": 14745645,
+               "pauseIcon": {
+                "iconType": "PAUSE"
+               },
+               "playIcon": {
+                "iconType": "PLAY_ARROW"
+               },
+               "playNavigationEndpoint": {
+                "clickTrackingParams": "CIoHEMjeAiITCNeljsvZ2ZUDFdAR8QUdlMkYEsoBBLzSHbY=",
+                "watchEndpoint": {
+                 "loggingContext": {
+                  "vssLoggingContext": {
+                   "serializedContextData": "Gg1QTFZGQnpKdzNjM29V"
+                  }
+                 },
+                 "playerParams": "iAQB8AUBygYQNENCREQzMTc3MDU5NTNGNLAIAg%3D%3D",
+                 "playlistId": "PLVFBzJw3c3oU",
+                 "playlistSetVideoId": "4CBDD317705953F4",
+                 "videoId": "ZHDlbowCyCE",
+                 "watchEndpointMusicSupportedConfigs": {
+                  "watchEndpointMusicConfig": {
+                   "musicVideoType": "MUSIC_VIDEO_TYPE_OMV"
+                  }
+                 }
+                }
+               },
+               "playingIcon": {
+                "iconType": "VOLUME_UP"
+               },
+               "rippleTarget": "MUSIC_PLAY_BUTTON_RIPPLE_TARGET_SELF",
+               "trackingParams": "CIoHEMjeAiITCNeljsvZ2ZUDFdAR8QUdlMkYEg=="
+              }
+             },
+             "contentPosition": "MUSIC_ITEM_THUMBNAIL_OVERLAY_CONTENT_POSITION_CENTERED",
+             "displayStyle": "MUSIC_ITEM_THUMBNAIL_OVERLAY_DISPLAY_STYLE_PERSISTENT"
+            }
+           }
+          }
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}

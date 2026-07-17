@@ -40,10 +40,25 @@ const GREY_OUT: &str = "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT";
 /// this library is for. Everything else (songs, and the various video flavours)
 /// is music. Mirrors the old `map_item` match, which upstream's typed enum used
 /// to make for us.
-fn is_music(video_type: &str) -> bool {
+/// Where a row states what kind of thing it is.
+///
+/// Assembled from the same three parts upstream concatenates (`PLAY_BUTTON` +
+/// `/playNavigationEndpoint` + `NAVIGATION_VIDEO_TYPE`) rather than written out
+/// as one literal. The literal that was here had **`/watchEndpoint` missing** —
+/// the first segment of upstream's third constant, lost when the pieces were
+/// inlined by hand. Measured against a real response: the old path matched
+/// 0/100 rows, this one matches 98/100. Keeping the seams visible is what makes
+/// a dropped segment legible instead of invisible.
+const VIDEO_TYPE_PATH: &str = concat!(
+    "/overlay/musicItemThumbnailOverlayRenderer/content/musicPlayButtonRenderer",
+    "/playNavigationEndpoint",
+    "/watchEndpoint/watchEndpointMusicSupportedConfigs/watchEndpointMusicConfig/musicVideoType",
+);
+
+fn is_music(video_type: Option<&str>) -> bool {
     !matches!(
         video_type,
-        "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" | "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
+        Some("MUSIC_VIDEO_TYPE_PODCAST_EPISODE") | Some("MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK")
     )
 }
 
@@ -52,10 +67,17 @@ fn is_music(video_type: &str) -> bool {
 /// `ATV` is YouTube's marker for an audio entity. It still has "video"
 /// renditions, but they're a square 1080×1080 still at ~95 kbps — the cover art
 /// again. Everything else that reaches here (OMV, UGC, official-source, …) is
-/// real video. An absent type is treated as a song: see [`parse_row`], where the
-/// same default keeps plain songs from being dropped.
-fn has_video(video_type: &str) -> bool {
-    video_type != "MUSIC_VIDEO_TYPE_ATV"
+/// real video.
+///
+/// `None` means the row didn't carry a type, which is *not* the same as being a
+/// song — so it earns `false` (offer no Video tab we might not be able to fill)
+/// while [`is_music`] independently answers `true` (keep the row). Two questions
+/// with two different safe answers is the reason this is an `Option` and not a
+/// defaulted `&str`: collapsing them behind one `unwrap_or("…ATV")` is what hid
+/// a broken pointer for an entire release — every row reported "song, no video",
+/// and neither the tab nor the podcast filter ever fired.
+fn has_video(video_type: Option<&str>) -> bool {
+    matches!(video_type, Some(t) if t != "MUSIC_VIDEO_TYPE_ATV")
 }
 
 /// Every playable row on one page of a playlist response.
@@ -129,16 +151,7 @@ fn parse_row(row: &Value, playlist: &YtPlaylist) -> Option<YtTrack> {
         return None;
     }
 
-    let video_type = row
-        .pointer(
-            "/overlay/musicItemThumbnailOverlayRenderer/content/musicPlayButtonRenderer\
-             /playNavigationEndpoint/watchEndpointMusicSupportedConfigs\
-             /watchEndpointMusicConfig/musicVideoType",
-        )
-        .and_then(Value::as_str)
-        // An absent type is the common case for plain songs; don't drop the row
-        // over metadata we only use to exclude podcasts and uploads.
-        .unwrap_or("MUSIC_VIDEO_TYPE_ATV");
+    let video_type = row.pointer(VIDEO_TYPE_PATH).and_then(Value::as_str);
     if !is_music(video_type) {
         return None;
     }
@@ -278,11 +291,18 @@ mod tests {
     }
 
     /// Sets the `musicVideoType` on a row.
+    /// Spelled out by hand on purpose — building it from [`VIDEO_TYPE_PATH`]
+    /// would make this agree with the parser by construction and assert nothing.
+    /// It is an independent restatement of the shape, checked against a captured
+    /// response by `real_rows_from_a_captured_response_report_their_video_type`.
+    ///
+    /// The `watchEndpoint` level below is the one the old parser omitted.
     fn with_type(mut row: Value, video_type: &str) -> Value {
         row["musicResponsiveListItemRenderer"]["overlay"] = json!({
             "musicItemThumbnailOverlayRenderer": { "content": { "musicPlayButtonRenderer": {
-                "playNavigationEndpoint": { "watchEndpointMusicSupportedConfigs": {
-                    "watchEndpointMusicConfig": { "musicVideoType": video_type } } } } } }
+                "playNavigationEndpoint": { "watchEndpoint": {
+                    "watchEndpointMusicSupportedConfigs": {
+                        "watchEndpointMusicConfig": { "musicVideoType": video_type } } } } } } }
         });
         row
     }
@@ -307,29 +327,61 @@ mod tests {
         );
     }
 
-    /// No type at all is treated as a song — the same default `parse_row` uses to
-    /// avoid dropping plain songs. Claiming footage we haven't seen would show a
-    /// toggle that resolves to a still.
+    /// No type at all reports no video — claiming footage we haven't seen would
+    /// show a toggle that resolves to a still. Note this row is still *kept*:
+    /// `is_music` reads the same `None` and answers the opposite way.
     #[test]
     fn a_row_without_a_video_type_reports_no_video() {
         let tracks = parse_page(&first_page(vec![row("Plain", "v1", "A", None)]), &playlist());
+        assert_eq!(tracks.len(), 1, "an unknown type must not drop the row");
         assert!(!tracks[0].has_video);
+    }
+
+    /// The test the old suite was missing, and the reason it shipped broken.
+    ///
+    /// Every hand-built `json!` fixture here is written from the same belief as
+    /// the parser, so when that belief was wrong — a `/watchEndpoint` dropped
+    /// from the pointer — fixture and parser were wrong *together* and agreed.
+    /// The suite was green while `has_video` was false for all 1192 tracks in
+    /// the user's library, including 148 titled "(Official Music Video)".
+    ///
+    /// These four rows are real, captured from a live playlist response, trimmed
+    /// to the subtrees the parser reads but otherwise untouched. They cannot
+    /// share a mistake with us because YouTube wrote them.
+    #[test]
+    fn real_rows_from_a_captured_response_report_their_video_type() {
+        let json: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/playlist_rows.json")).unwrap();
+        let tracks = parse_page(&json, &playlist());
+
+        let seen: Vec<(&str, bool)> = tracks
+            .iter()
+            .map(|t| (t.title.as_str(), t.has_video))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("Fly N Ghetto", false),                                  // ATV — a still
+                ("Kigwa Leero", false),                                   // no type at all
+                ("Tyga - Gucci Snake Feat. Desiigner (Audio)", true),     // UGC
+                ("Insomnia (Audio)", true),                               // OMV
+            ],
+            "captured rows must report the video type YouTube actually sent"
+        );
+        assert!(
+            tracks.iter().any(|t| t.has_video),
+            "a response containing real videos must yield at least one — \
+             an all-false result is the signature of a pointer that never matches"
+        );
     }
 
     #[test]
     fn drops_podcasts_and_uploads_but_keeps_videos() {
-        let mut episode = row("An episode", "e1", "A show", None);
-        episode["musicResponsiveListItemRenderer"]["overlay"] = json!({
-            "musicItemThumbnailOverlayRenderer": { "content": { "musicPlayButtonRenderer": {
-                "playNavigationEndpoint": { "watchEndpointMusicSupportedConfigs": {
-                    "watchEndpointMusicConfig": { "musicVideoType": "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" } } } } } }
-        });
-        let mut video = row("A music video", "m1", "An artist", None);
-        video["musicResponsiveListItemRenderer"]["overlay"] = json!({
-            "musicItemThumbnailOverlayRenderer": { "content": { "musicPlayButtonRenderer": {
-                "playNavigationEndpoint": { "watchEndpointMusicSupportedConfigs": {
-                    "watchEndpointMusicConfig": { "musicVideoType": "MUSIC_VIDEO_TYPE_OMV" } } } } } }
-        });
+        let episode = with_type(
+            row("An episode", "e1", "A show", None),
+            "MUSIC_VIDEO_TYPE_PODCAST_EPISODE",
+        );
+        let video = with_type(row("A music video", "m1", "An artist", None), "MUSIC_VIDEO_TYPE_OMV");
         let json = first_page(vec![episode, video]);
         let tracks = parse_page(&json, &playlist());
         assert_eq!(

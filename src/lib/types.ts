@@ -505,22 +505,36 @@ export interface ExploreCategory {
   params: string;
 }
 
-/** One carousel on a category page ("Featured playlists", "Albums", …). */
+/** One shelf on a category, search or artist page ("Songs", "Albums", …). */
 export interface ExploreShelf {
   title: string;
   items: ExploreItem[];
 }
 
-/** A browsable thing in Explore. Unlike library tracks these are never cached
- *  or merged into the library — Explore is YouTube's live catalog. */
+/** What an {@link ExploreItem} is. Cards name a page to open; `song`/`video`
+ *  name something to play. */
+export type ExploreKind = "playlist" | "album" | "artist" | "song" | "video";
+
+/** A thing in Explore — browsable or playable. Unlike library tracks these are
+ *  never cached or merged into the library: Explore is YouTube's live catalog. */
 export interface ExploreItem {
-  kind: "playlist" | "album";
-  /** Opaque browse id; hand back verbatim to {@link ytmusicExploreTracks}. */
+  kind: ExploreKind;
+  /** Opaque id, read according to `kind`; hand back verbatim to
+   *  {@link ytmusicExploreTracks}. */
   id: string;
   title: string;
   /** YouTube's own subtitle, joined ("Album • A Pass • 2019"). */
   subtitle: string | null;
   thumbnail: string | null;
+  /** The credited artist, from the runs that link to an artist page. Null where
+   *  the row credits someone it doesn't link. */
+  artist?: string | null;
+  album?: string | null;
+  /** Only for rows that state a running time — a genre page's songs state a view
+   *  count instead, and this stays null rather than borrowing that number. */
+  durationSecs?: number | null;
+  /** Whether there's real footage, on the same terms as {@link YtTrack}. */
+  hasVideo?: boolean;
 }
 
 /** A whole-library listing. `fromCache` mirrors {@link CloudAudioPage}: true

@@ -1,9 +1,12 @@
 import { create } from "zustand";
 import {
   ipcErrorMessage,
+  ytmusicArtistPage,
   ytmusicExploreCategories,
   ytmusicExplorePage,
   ytmusicExploreTracks,
+  ytmusicSearch,
+  ytmusicSearchSuggestions,
   ytmusicStatus,
 } from "@/lib/ipc";
 import type {
@@ -29,6 +32,13 @@ import { ytmusicItem, useEngineStore } from "@/stores/engine";
 
 /** Only one category page is ever in flight; a newer click cancels an older. */
 let pageGen = 0;
+/** Likewise for searches — typing outruns the network, and an older answer
+ *  arriving late must not overwrite a newer one. */
+let searchGen = 0;
+
+/** The filters YouTube offers, in the order it offers them. */
+export const SEARCH_FILTERS = ["top", "songs", "videos", "albums", "artists", "playlists"] as const;
+export type SearchFilter = (typeof SEARCH_FILTERS)[number];
 
 interface ExploreStore {
   /** Explore needs a session. Settled by the status call, never inferred from a
@@ -54,18 +64,41 @@ interface ExploreStore {
   opened: { item: ExploreItem; tracks: YtTrack[] } | null;
   openError: string | null;
 
+  /** The artist being viewed, and their shelves. An artist isn't a track list —
+   *  it's a page of them — so it can't ride `opened`. */
+  artist: { item: ExploreItem; shelves: ExploreShelf[] } | null;
+
+  /** The query as typed. Empty = not searching, which is what decides the
+   *  screen: a search is a different view of the catalog, not a filter of the
+   *  one you're on. */
+  query: string;
+  filter: SearchFilter;
+  results: ExploreShelf[];
+  searchLoad: LoadStatus;
+  searchError: string | null;
+  suggestions: string[];
+
   /** Load the category list once. No-op unless idle (retry via `retry`). */
   ensureCategories: () => void;
   /** Open a category and fetch its shelves. */
   select: (category: ExploreCategory) => void;
   /** Back to the category picker. */
   clear: () => void;
-  /** Fetch an item's tracks and show them. */
+  /** Open an item: a song plays, an artist opens their page, anything else
+   *  lists its tracks. */
   open: (item: ExploreItem) => Promise<void>;
   /** Back to the shelves from an opened item. */
   close: () => void;
   /** Play the opened item's tracks from `index`. */
   playOpened: (index: number) => void;
+  /** Run a search. Empty query clears back to browsing. */
+  search: (query: string, filter?: SearchFilter) => void;
+  /** Re-run the current query under a different filter. */
+  setFilter: (filter: SearchFilter) => void;
+  /** Ask YouTube to complete a partial query. */
+  suggest: (query: string) => void;
+  /** Abandon the search and go back to browsing. */
+  clearSearch: () => void;
   /** Re-run whichever load failed. */
   retry: () => void;
 }
@@ -79,9 +112,16 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
   shelves: [],
   opened: null,
   openError: null,
+  artist: null,
   pageLoad: "idle",
   pageError: null,
   opening: null,
+  query: "",
+  filter: "top",
+  results: [],
+  searchLoad: "idle",
+  searchError: null,
+  suggestions: [],
 
   ensureCategories: () => {
     if (get().sectionsLoad !== "idle") return;
@@ -135,6 +175,7 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
       pageLoad: "idle",
       pageError: null,
       opened: null,
+      artist: null,
       openError: null,
     });
   },
@@ -143,19 +184,121 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
     // Opening is a network read; mark the tile so a slow album doesn't look dead.
     set({ opening: item.id, openError: null });
     try {
+      if (item.kind === "artist") {
+        set({ artist: { item, shelves: await ytmusicArtistPage(item.id) } });
+        return;
+      }
       const tracks = await ytmusicExploreTracks(item);
+      // A song is not a list of one. Listing it would make the user click twice
+      // to do the only thing a song row is for — the "don't play a hundred
+      // tracks unasked" rule is about a hundred tracks, not about this.
+      if (item.kind === "song" || item.kind === "video") {
+        const playable = tracks.filter((t) => t.isAvailable);
+        if (playable.length === 0) {
+          set({ openError: `"${item.title}" can't be played.` });
+          return;
+        }
+        useEngineStore.getState().playQueueItems(playable.map(ytmusicItem), 0);
+        return;
+      }
       set({
         opened: { item, tracks },
         openError: tracks.length === 0 ? `"${item.title}" has no playable tracks.` : null,
       });
     } catch (e) {
-      set({ opened: { item, tracks: [] }, openError: ipcErrorMessage(e) });
+      if (item.kind === "song" || item.kind === "video" || item.kind === "artist") {
+        set({ openError: ipcErrorMessage(e) });
+      } else {
+        set({ opened: { item, tracks: [] }, openError: ipcErrorMessage(e) });
+      }
     } finally {
       set({ opening: null });
     }
   },
 
-  close: () => set({ opened: null, openError: null }),
+  close: () => {
+    // One step, innermost first: a track list opened from an artist's page goes
+    // back to that page, not past it to wherever the artist was found.
+    if (get().opened) {
+      set({ opened: null, openError: null });
+      return;
+    }
+    set({ artist: null, openError: null });
+  },
+
+  search: (query, filter) => {
+    const q = query.trim();
+    const next = filter ?? get().filter;
+    if (!q) {
+      get().clearSearch();
+      return;
+    }
+    const gen = ++searchGen;
+    const isStale = () => gen !== searchGen;
+    // A search replaces whatever was being browsed: leaving a category open
+    // underneath would make Back ambiguous about what it's going back to.
+    set({
+      query: q,
+      filter: next,
+      results: [],
+      searchLoad: "loading",
+      searchError: null,
+      selected: null,
+      shelves: [],
+      opened: null,
+      artist: null,
+      openError: null,
+      suggestions: [],
+    });
+    ytmusicSearch(q, next)
+      .then((results) => {
+        if (isStale()) return;
+        set({ results, searchLoad: "ready" });
+      })
+      .catch((e) => {
+        if (isStale()) return;
+        set({ results: [], searchLoad: "error", searchError: ipcErrorMessage(e) });
+      });
+  },
+
+  setFilter: (filter) => {
+    const { query } = get();
+    if (!query) {
+      set({ filter });
+      return;
+    }
+    get().search(query, filter);
+  },
+
+  suggest: (query) => {
+    const q = query.trim();
+    if (!q) {
+      set({ suggestions: [] });
+      return;
+    }
+    const gen = searchGen;
+    ytmusicSearchSuggestions(q)
+      .then((suggestions) => {
+        // Anything that happened since — a search, a keystroke — outranks this.
+        if (gen !== searchGen || get().query) return;
+        set({ suggestions });
+      })
+      .catch(() => set({ suggestions: [] }));
+  },
+
+  clearSearch: () => {
+    searchGen++; // abandon any in-flight search
+    set({
+      query: "",
+      results: [],
+      searchLoad: "idle",
+      searchError: null,
+      suggestions: [],
+      opened: null,
+      artist: null,
+      openError: null,
+    });
+  },
 
   playOpened: (index) => {
     const opened = get().opened;
@@ -174,7 +317,11 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
   },
 
   retry: () => {
-    const { selected, sectionsLoad } = get();
+    const { selected, sectionsLoad, query, searchLoad } = get();
+    if (searchLoad === "error" && query) {
+      get().search(query);
+      return;
+    }
     if (sectionsLoad === "error") {
       set({ sectionsLoad: "idle" });
       get().ensureCategories();

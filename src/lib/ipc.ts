@@ -326,9 +326,33 @@ export function ytmusicExplorePage(params: string): Promise<ExploreShelf[]> {
   return invoke<ExploreShelf[]>("ytmusic_explore_page", { params });
 }
 
-/** The tracks behind one Explore item (playlist or album), ready to queue. */
+/** The tracks behind one Explore item, ready to queue. A song or video answers
+ *  with itself — it already knows everything a queue item needs. */
 export function ytmusicExploreTracks(item: ExploreItem): Promise<YtTrack[]> {
   return invoke<YtTrack[]>("ytmusic_explore_tracks", { item });
+}
+
+/** Search YouTube Music's catalog. `filter` is one of
+ *  `top | songs | videos | albums | artists | playlists`.
+ *
+ *  Answers in the same shape a category page does, so results render through the
+ *  same shelves. Never cached: a search is a question about right now. */
+export function ytmusicSearch(query: string, filter: string): Promise<ExploreShelf[]> {
+  return invoke<ExploreShelf[]>("ytmusic_search", { query, filter });
+}
+
+/** YouTube's own completions for a partial query.
+ *
+ *  Fired per keystroke, so it answers with an empty list rather than rejecting:
+ *  a failed suggestion is not worth a word on screen, and the search itself will
+ *  report anything that actually matters. */
+export function ytmusicSearchSuggestions(query: string): Promise<string[]> {
+  return invoke<string[]>("ytmusic_search_suggestions", { query });
+}
+
+/** An artist's page: top songs, albums, singles, videos, playlists. */
+export function ytmusicArtistPage(browseId: string): Promise<ExploreShelf[]> {
+  return invoke<ExploreShelf[]>("ytmusic_artist_page", { browseId });
 }
 
 /** A loopback URL for this track's video-only rendition, for a muted `<video>`.

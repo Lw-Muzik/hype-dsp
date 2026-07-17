@@ -13,30 +13,45 @@
 //! [`YtMusicState::stream_target`] deliberately mirrors `CloudState::stream_target`'s
 //! `(url, headers)` signature. That's what lets YT Music reuse the whole existing
 //! streaming stack — Range seeking, resume-on-drop, the gapless queue — instead
-//! of growing a second one. Like Dropbox's temporary links, these URLs are
-//! short-lived (they carry `expire=` and are pinned to the resolving IP), so
-//! callers must re-resolve per attempt rather than cache them. The engine's
-//! resolver already does exactly that.
+//! of growing a second one.
+//!
+//! Unlike Dropbox's temporary links, these are **not** short-lived: googlevideo
+//! stamps `expire=` about six hours out, so the url outlives the track by a wide
+//! margin and is cached until then. Resolving is a yt-dlp process start — an
+//! interpreter and every extractor loaded before the network is touched, ~5s —
+//! and doing it per play, or per retry, put all of that in the gap between two
+//! tracks.
+//!
+//! What they *are* is pinned to the resolving IP, and nothing in the url says so.
+//! A link can therefore die well before its stated deadline, which is why the
+//! cache can only be trusted until someone reports otherwise: the resolver
+//! contract carries `fresh` for exactly that, and only a retry sets it.
 
 pub mod cookies;
 pub mod explore;
 mod nav;
 pub mod playlist;
+pub mod search;
 pub mod ytdlp;
 
 use cookies::{CookieFile, YtCookie};
 use explore::{ExploreItem, ExploreKind, ExploreShelf};
+use search::SearchFilter;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use ytdlp::{ProcessRunner, YtDlpError};
 use ytmapi_rs::auth::BrowserToken;
-use ytmapi_rs::common::{AlbumID, MoodCategoryParams, PlaylistID, YoutubeID};
+use ytmapi_rs::common::{AlbumID, ArtistChannelID, MoodCategoryParams, PlaylistID, YoutubeID};
 use ytmapi_rs::parse::{ParseFrom, ProcessedResult};
+use ytmapi_rs::query::search::{
+    AlbumsFilter, ArtistsFilter, BasicSearch, PlaylistsFilter, SearchQuery, SongsFilter,
+    VideosFilter,
+};
 use ytmapi_rs::query::{
-    GetLibraryPlaylistsQuery, GetMoodPlaylistsQuery, GetPlaylistTracksQuery, PostMethod, PostQuery,
-    Query,
+    GetArtistQuery, GetLibraryPlaylistsQuery, GetMoodPlaylistsQuery, GetPlaylistTracksQuery,
+    GetSearchSuggestionsQuery, PostMethod, PostQuery, Query,
 };
 use ytmapi_rs::YtMusic;
 
@@ -365,7 +380,98 @@ impl YtMusicState {
             .map_err(|e| format!("Could not load that category: {e}"))?;
         let json: Value = ytmapi_rs::json::from_json(raw)
             .map_err(|e| format!("Could not read that category: {e}"))?;
-        Ok(explore::parse_mood_page(&json))
+        Ok(explore::parse_page(&json))
+    }
+
+    /* ---- search ---- */
+
+    /// Searching YouTube's catalog, one filter at a time.
+    ///
+    /// Every filter is its own request — that's how YT Music's own search works,
+    /// and the unfiltered query answers with a different, shallower set (a top
+    /// result and a handful of each kind) rather than with everything.
+    ///
+    /// See [`search`] for why the typed `search_songs`/`search_albums` helpers
+    /// are unused: each collects with `Result<_>` over rows whose play count and
+    /// byline it treats as mandatory, so one odd result returns none.
+    pub async fn search(&self, query: &str, filter: &str) -> Result<Vec<ExploreShelf>, String> {
+        let query = query.trim();
+        // Nothing typed is not an error, and asking YouTube about "" would earn
+        // a page of results for nothing.
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let yt = self.client().await?;
+        // Each arm builds a differently-typed query, so the JSON is fetched
+        // inside the match and read once outside it.
+        let raw = match SearchFilter::parse(filter) {
+            SearchFilter::Top => yt.json_query(SearchQuery::<BasicSearch>::from(query)).await,
+            SearchFilter::Songs => {
+                yt.json_query(SearchQuery::new_filtered(query, SongsFilter))
+                    .await
+            }
+            SearchFilter::Videos => {
+                yt.json_query(SearchQuery::new_filtered(query, VideosFilter))
+                    .await
+            }
+            SearchFilter::Albums => {
+                yt.json_query(SearchQuery::new_filtered(query, AlbumsFilter))
+                    .await
+            }
+            SearchFilter::Artists => {
+                yt.json_query(SearchQuery::new_filtered(query, ArtistsFilter))
+                    .await
+            }
+            SearchFilter::Playlists => {
+                yt.json_query(SearchQuery::new_filtered(query, PlaylistsFilter))
+                    .await
+            }
+        }
+        .map_err(|e| format!("Could not search for \"{query}\": {e}"))?;
+        let json: Value = ytmapi_rs::json::from_json(raw)
+            .map_err(|e| format!("Could not read the results for \"{query}\": {e}"))?;
+        Ok(search::parse_search_page(&json))
+    }
+
+    /// What YouTube would complete a half-typed query with.
+    ///
+    /// A failure is an empty list, not an error: this fires on every keystroke,
+    /// and a type-ahead that can raise an error dialog is worse than one that
+    /// occasionally offers nothing.
+    pub async fn search_suggestions(&self, query: &str) -> Vec<String> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let Ok(yt) = self.client().await else {
+            return Vec::new();
+        };
+        let Ok(raw) = yt.json_query(GetSearchSuggestionsQuery::new(query)).await else {
+            return Vec::new();
+        };
+        match ytmapi_rs::json::from_json::<Value>(raw) {
+            Ok(json) => search::parse_suggestions(&json),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// An artist's page — top songs, albums, singles, videos and the rest.
+    ///
+    /// Returns the shelves as YouTube ordered them, so the view renders what YT
+    /// Music renders rather than a re-grouping of it.
+    ///
+    /// `get_artist` exists upstream and is avoided for the usual reason: it
+    /// insists on a fixed set of sections and fails the page when one is absent,
+    /// and an artist with no albums is an ordinary artist.
+    pub async fn artist_page(&self, browse_id: &str) -> Result<Vec<ExploreShelf>, String> {
+        let yt = self.client().await?;
+        let raw = yt
+            .json_query(GetArtistQuery::new(ArtistChannelID::from_raw(browse_id)))
+            .await
+            .map_err(|e| format!("Could not load that artist: {e}"))?;
+        let json: Value = ytmapi_rs::json::from_json(raw)
+            .map_err(|e| format!("Could not read that artist: {e}"))?;
+        Ok(explore::parse_page(&json))
     }
 
     /// The tracks behind one Explore item, ready to queue.
@@ -387,7 +493,39 @@ impl YtMusicState {
                 fetch_tracks(&yt, &playlist).await
             }
             ExploreKind::Album => self.album_tracks(&item.id, &item.title).await,
+            // A row already said everything a track needs, so playing one costs
+            // no request at all — the id it carries is the video id.
+            ExploreKind::Song | ExploreKind::Video => Ok(vec![track_of(item)]),
+            // An artist isn't a track list; its top songs are the closest thing
+            // to one, and they're what YouTube's own play button uses.
+            ExploreKind::Artist => self.artist_tracks(item).await,
         }
+    }
+
+    /// An artist's playable rows, in the order their page lists them.
+    ///
+    /// Only the rows: the carousels on an artist page are albums and singles to
+    /// *open*, not tracks, and opening each to flatten it would be dozens of
+    /// requests for a play button.
+    ///
+    /// An artist whose page holds no rows at all is an empty queue rather than
+    /// an error — there is nothing wrong with the page, it simply has no songs
+    /// listed, and a failure here would read as "this artist is broken".
+    async fn artist_tracks(&self, item: &ExploreItem) -> Result<Vec<YtTrack>, String> {
+        let shelves = self.artist_page(&item.id).await?;
+        Ok(shelves
+            .iter()
+            .flat_map(|shelf| &shelf.items)
+            .filter(|i| matches!(i.kind, ExploreKind::Song | ExploreKind::Video))
+            .map(|song| YtTrack {
+                // The artist's own name stands in where a row didn't link a
+                // credit: on their page, an unlinked credit is them.
+                artist: song.artist.clone().or_else(|| Some(item.title.clone())),
+                playlist_id: item.id.clone(),
+                playlist_title: item.title.clone(),
+                ..track_of(song)
+            })
+            .collect())
     }
 
     /// One album's tracks.
@@ -851,6 +989,35 @@ fn pad_short_subtitles(json: &mut Value) -> usize {
     padded
 }
 
+/// The track a song or video row already describes.
+///
+/// Costs no request: the row states the title, credit, album, running time and
+/// video type, which is everything [`YtTrack`] holds. Resolving it to a stream
+/// happens later and identically to any other track.
+///
+/// Callers must only hand this a [`ExploreKind::Song`] or [`ExploreKind::Video`]
+/// item — for any other kind `id` is a browse id, and the result would be a
+/// track whose video id opens nothing.
+fn track_of(item: &ExploreItem) -> YtTrack {
+    YtTrack {
+        video_id: item.id.clone(),
+        title: item.title.clone(),
+        artist: item.artist.clone(),
+        album: item.album.clone(),
+        duration_secs: item.duration_secs,
+        thumbnail: item.thumbnail.clone(),
+        // A result stands on its own rather than in a playlist. The title is
+        // what the library's Folders facet grades it under, and "Songs" or
+        // "Videos" is the honest answer to which folder a search result is in.
+        playlist_id: item.id.clone(),
+        playlist_title: item.title.clone(),
+        // Search lists nothing it won't serve; a track that turns out to be
+        // blocked fails at resolve time like any other.
+        is_available: true,
+        has_video: item.has_video,
+    }
+}
+
 fn map_playlist(p: ytmapi_rs::parse::LibraryPlaylist) -> YtPlaylist {
     YtPlaylist {
         id: p.playlist_id.get_raw().to_string(),
@@ -906,6 +1073,37 @@ fn parse_track_count(raw: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The signed-in session, read once for the whole suite.
+    ///
+    /// [`YtMusicState::load`] downgrades an unreadable keychain to "signed out",
+    /// which is right for the app — it should start regardless — but ruinous
+    /// here: every live test below reads "signed out" as "nothing to prove" and
+    /// returns green. Measured under `cargo test`'s default parallelism, tests
+    /// that pass on their own report "skipping" when run together, so the
+    /// keychain does sometimes decline a concurrent read. A suite that reports
+    /// success when it in fact ran nothing is worse than no suite.
+    ///
+    /// So: one read for the binary rather than one per test, and an *error* is
+    /// fatal while a genuine absence still skips. "No session" is a reason not
+    /// to run; "the keychain wouldn't answer" is a reason not to believe the
+    /// result, and the two must not look alike.
+    fn live_state() -> Option<&'static YtMusicState> {
+        static STATE: std::sync::OnceLock<Option<YtMusicState>> = std::sync::OnceLock::new();
+        STATE
+            .get_or_init(|| match cookies::load() {
+                Err(e) => panic!(
+                    "the keychain would not answer, so no live test here can be \
+                     trusted either way: {e}"
+                ),
+                Ok(None) => None,
+                Ok(Some(_)) => {
+                    let state = YtMusicState::load();
+                    state.signed_in().then_some(state)
+                }
+            })
+            .as_ref()
+    }
 
     fn target(expires_at: Option<u64>) -> ytdlp::StreamTarget {
         ytdlp::StreamTarget {
@@ -1357,47 +1555,118 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
     async fn live_explore_sweeps_every_category() {
-        let state = YtMusicState::load();
-        if !state.signed_in() {
+        let Some(state) = live_state() else {
             eprintln!("skipping: no session in the keychain — sign in through the app first");
             return;
-        }
+        };
         let sections = state.explore_categories().await.expect("categories must load");
         let total: usize = sections.iter().map(|s| s.categories.len()).sum();
         assert!(total > 0, "Explore should offer categories");
 
         let mut empty = Vec::new();
-        let mut albums = 0;
-        let mut playlists = 0;
+        let mut seen = KindTally::default();
+        // Genre pages lead with a Songs shelf and carry a Music videos one;
+        // neither is a browsable card, so both are the shelves most easily lost.
+        let mut with_songs = 0;
+        let mut with_videos = 0;
         for section in &sections {
             for cat in &section.categories {
-                let shelves = state
-                    .explore_page(&cat.params)
-                    .await
-                    .expect("a category page must never error");
+                let shelves = explore_page_insisting(state, &cat.params, &cat.title).await;
                 if shelves.is_empty() {
                     empty.push(cat.title.clone());
                     continue;
                 }
+                let mut songs_here = 0;
+                let mut videos_here = 0;
                 for shelf in &shelves {
                     for item in &shelf.items {
+                        seen.count(item.kind);
                         match item.kind {
-                            ExploreKind::Album => albums += 1,
-                            ExploreKind::Playlist => playlists += 1,
+                            ExploreKind::Song => songs_here += 1,
+                            ExploreKind::Video => videos_here += 1,
+                            _ => {}
                         }
                     }
                 }
+                with_songs += usize::from(songs_here > 0);
+                with_videos += usize::from(videos_here > 0);
             }
         }
         eprintln!(
-            "{total} categories: {playlists} playlists, {albums} albums; {} empty {empty:?}",
+            "{total} categories: {seen:?}; {with_songs} with songs, \
+             {with_videos} with videos; {} empty {empty:?}",
             empty.len()
         );
         assert!(
             empty.is_empty(),
             "every category should yield at least one shelf, these didn't: {empty:?}"
         );
-        assert!(albums > 0, "Explore should surface albums — that's the point");
+        assert!(
+            seen.albums > 0,
+            "Explore should surface albums — that's the point"
+        );
+        // The Songs shelf is a carousel of list rows rather than of cards, and a
+        // reader that only knows cards drops all ~50 of them without a trace.
+        assert!(
+            with_songs > 0,
+            "genre pages lead with a Songs shelf; none was read"
+        );
+        assert!(
+            with_videos > 0,
+            "genre pages carry a Music videos shelf; none was read"
+        );
+    }
+
+    /// One category page, asked for twice before being believed.
+    ///
+    /// The sweep is 44 requests and shares an account with every other live test
+    /// beside it; under that load YouTube sometimes cuts a response short
+    /// ("error decoding response body"). That is a fact about the network, not
+    /// about the parser, and failing the sweep for it would report a bug that
+    /// isn't there — while never failing would hide a real outage. Asking again
+    /// separates the two: once is noise, twice is an answer.
+    async fn explore_page_insisting(
+        state: &YtMusicState,
+        params: &str,
+        title: &str,
+    ) -> Vec<ExploreShelf> {
+        match state.explore_page(params).await {
+            Ok(shelves) => shelves,
+            Err(first) => {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                state
+                    .explore_page(params)
+                    .await
+                    .unwrap_or_else(|second| panic!("\"{title}\" failed twice: {first}; {second}"))
+            }
+        }
+    }
+
+    /// Every kind an Explore or search page can offer, counted.
+    #[derive(Default, Debug)]
+    struct KindTally {
+        playlists: usize,
+        albums: usize,
+        artists: usize,
+        songs: usize,
+        videos: usize,
+    }
+
+    impl KindTally {
+        fn count(&mut self, kind: ExploreKind) {
+            let slot = match kind {
+                ExploreKind::Playlist => &mut self.playlists,
+                ExploreKind::Album => &mut self.albums,
+                ExploreKind::Artist => &mut self.artists,
+                ExploreKind::Song => &mut self.songs,
+                ExploreKind::Video => &mut self.videos,
+            };
+            *slot += 1;
+        }
+
+        fn total(&self) -> usize {
+            self.playlists + self.albums + self.artists + self.songs + self.videos
+        }
     }
 
     /// Opening an item must produce queueable tracks — for both kinds. Uses the
@@ -1405,11 +1674,10 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
     async fn live_explore_items_open_into_tracks() {
-        let state = YtMusicState::load();
-        if !state.signed_in() {
-            eprintln!("skipping: no session in the keychain");
+        let Some(state) = live_state() else {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
             return;
-        }
+        };
         let sections = state.explore_categories().await.expect("categories");
         let mut album: Option<ExploreItem> = None;
         let mut playlist: Option<ExploreItem> = None;
@@ -1462,11 +1730,10 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
     async fn live_playlists_load_completely() {
-        let state = YtMusicState::load();
-        if !state.signed_in() {
-            eprintln!("skipping: no session in the keychain");
+        let Some(state) = live_state() else {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
             return;
-        }
+        };
         let playlists = state.playlists().await.expect("playlists must list");
         assert!(!playlists.is_empty(), "a signed-in library should have playlists");
 
@@ -1494,15 +1761,249 @@ mod tests {
         );
     }
 
+    /* ---- search, live ---- */
+
+    /// A query every filter has real answers for.
+    const LIVE_QUERY: &str = "burna boy";
+
+    /// Each filter must return results, and of the kind it was asked for.
+    ///
+    /// Unit tests cannot catch what this catches: upstream's own parsers pass
+    /// their tests and still return nothing, because the fixtures were written
+    /// from the same belief as the parser. Only YouTube can say what YouTube
+    /// sends.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_search_answers_every_filter() {
+        let Some(state) = live_state() else {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
+            return;
+        };
+        // What each filter must actually produce. "top" is excluded from the
+        // kind check on purpose: it's YouTube's own mix and may hold anything.
+        let expected: &[(&str, Option<ExploreKind>)] = &[
+            ("songs", Some(ExploreKind::Song)),
+            ("videos", Some(ExploreKind::Video)),
+            ("albums", Some(ExploreKind::Album)),
+            ("artists", Some(ExploreKind::Artist)),
+            ("playlists", Some(ExploreKind::Playlist)),
+            ("top", None),
+        ];
+
+        for (filter, want) in expected {
+            let shelves = state
+                .search(LIVE_QUERY, filter)
+                .await
+                .unwrap_or_else(|e| panic!("search({filter:?}) must not error: {e}"));
+            let mut tally = KindTally::default();
+            for shelf in &shelves {
+                for item in &shelf.items {
+                    tally.count(item.kind);
+                }
+            }
+            eprintln!(
+                "{filter:>10}: {} shelves {:?} -> {tally:?}",
+                shelves.len(),
+                shelves.iter().map(|s| s.title.as_str()).collect::<Vec<_>>(),
+            );
+            assert!(
+                tally.total() > 0,
+                "search({filter:?}) returned nothing — an empty result for a query \
+                 this well known is the signature of a parser that matches no rows"
+            );
+            if let Some(want) = want {
+                let got = match want {
+                    ExploreKind::Song => tally.songs,
+                    ExploreKind::Video => tally.videos,
+                    ExploreKind::Album => tally.albums,
+                    ExploreKind::Artist => tally.artists,
+                    ExploreKind::Playlist => tally.playlists,
+                };
+                assert!(got > 0, "search({filter:?}) produced no {want:?}: {tally:?}");
+            }
+            // Whatever the kind, every item must be renderable and openable.
+            for item in shelves.iter().flat_map(|s| &s.items) {
+                assert!(!item.id.is_empty(), "an item with no id opens nothing");
+                assert!(!item.title.is_empty(), "an item with no title renders blank");
+            }
+        }
+    }
+
+    /// A song result must arrive with the detail YT Music shows beside it — the
+    /// credit, the album and the running time — since a row that states them and
+    /// a parser that drops them look identical from the outside.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_search_songs_carry_their_detail() {
+        let Some(state) = live_state() else {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
+            return;
+        };
+        let shelves = state.search(LIVE_QUERY, "songs").await.expect("songs");
+        let songs: Vec<&ExploreItem> = shelves
+            .iter()
+            .flat_map(|s| &s.items)
+            .filter(|i| i.kind == ExploreKind::Song)
+            .collect();
+        assert!(!songs.is_empty(), "there must be songs to inspect");
+
+        let with_artist = songs.iter().filter(|s| s.artist.is_some()).count();
+        let with_album = songs.iter().filter(|s| s.album.is_some()).count();
+        let with_duration = songs.iter().filter(|s| s.duration_secs.is_some()).count();
+        eprintln!(
+            "{} songs: {with_artist} credited, {with_album} with an album, \
+             {with_duration} timed",
+            songs.len()
+        );
+        for s in songs.iter().take(3) {
+            eprintln!(
+                "  {:?} — {:?} / {:?} / {:?}s",
+                s.title, s.artist, s.album, s.duration_secs
+            );
+        }
+        // Not "all": a row may legitimately credit someone unlinkable, or be a
+        // single with no album. A *zero* is the tell — that's a pointer that
+        // never matches, which is how `has_video` shipped false for 1192 tracks.
+        assert!(with_artist > 0, "no song was credited — the artist link is not being read");
+        assert!(with_album > 0, "no song had an album — the album link is not being read");
+        assert!(with_duration > 0, "no song was timed — the duration run is not being read");
+    }
+
+    /// The VL trap, end to end: a playlist found by search must open into tracks.
+    ///
+    /// Measured live, the bare `PL…` id answers HTTP 400 while the `VL`-prefixed
+    /// one returns rows, so this is the assertion that a search result carries an
+    /// id the rest of the app can actually use.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_a_playlist_from_search_opens_into_tracks() {
+        let Some(state) = live_state() else {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
+            return;
+        };
+        let shelves = state.search(LIVE_QUERY, "playlists").await.expect("playlists");
+        let playlist = shelves
+            .iter()
+            .flat_map(|s| &s.items)
+            .find(|i| i.kind == ExploreKind::Playlist)
+            .expect("a playlist result");
+        assert!(
+            playlist.id.starts_with("VL"),
+            "a playlist id must reach the browse query VL-prefixed, got {:?}",
+            playlist.id
+        );
+        let tracks = state
+            .explore_tracks(playlist)
+            .await
+            .unwrap_or_else(|e| panic!("\"{}\" must open: {e}", playlist.title));
+        eprintln!("playlist {:?} -> {} tracks", playlist.title, tracks.len());
+        assert!(!tracks.is_empty(), "a playlist from search should have tracks");
+    }
+
+    /// An artist result must open into a page with songs on it, and those songs
+    /// must be playable without a further request.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_an_artist_from_search_opens_into_a_page_with_tracks() {
+        let Some(state) = live_state() else {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
+            return;
+        };
+        let shelves = state.search(LIVE_QUERY, "artists").await.expect("artists");
+        let artist = shelves
+            .iter()
+            .flat_map(|s| &s.items)
+            .find(|i| i.kind == ExploreKind::Artist)
+            .expect("an artist result")
+            .clone();
+        eprintln!("artist {:?} ({})", artist.title, artist.id);
+
+        let page = state
+            .artist_page(&artist.id)
+            .await
+            .unwrap_or_else(|e| panic!("the artist page must load: {e}"));
+        let mut tally = KindTally::default();
+        for item in page.iter().flat_map(|s| &s.items) {
+            tally.count(item.kind);
+        }
+        eprintln!(
+            "  {} shelves {:?} -> {tally:?}",
+            page.len(),
+            page.iter().map(|s| s.title.as_str()).collect::<Vec<_>>()
+        );
+        assert!(!page.is_empty(), "an artist page should have shelves");
+        assert!(
+            tally.songs > 0,
+            "an artist page leads with a Top songs list shelf; none was read"
+        );
+        assert!(
+            tally.albums > 0,
+            "an artist page carries album carousels; none was read"
+        );
+
+        // And the play button: opening the artist queues their songs.
+        let tracks = state
+            .explore_tracks(&artist)
+            .await
+            .expect("an artist must open into tracks");
+        eprintln!("  play-all -> {} tracks", tracks.len());
+        assert!(!tracks.is_empty(), "an artist should queue their top songs");
+        assert!(
+            tracks.iter().all(|t| !t.video_id.is_empty()),
+            "every queued track needs a video id to be playable"
+        );
+    }
+
+    /// A song result must be playable straight from the row, with no second
+    /// request — the whole reason a row carries what it carries.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_a_song_from_search_opens_into_itself() {
+        let Some(state) = live_state() else {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
+            return;
+        };
+        let shelves = state.search(LIVE_QUERY, "songs").await.expect("songs");
+        let song = shelves
+            .iter()
+            .flat_map(|s| &s.items)
+            .find(|i| i.kind == ExploreKind::Song)
+            .expect("a song result");
+        let tracks = state.explore_tracks(song).await.expect("a song must open");
+        assert_eq!(tracks.len(), 1, "a song is one track");
+        assert_eq!(tracks[0].video_id, song.id);
+        assert_eq!(tracks[0].title, song.title);
+        assert!(!tracks[0].has_video, "a song is an audio entity — no footage");
+        eprintln!("song {:?} -> {:?}", song.title, tracks[0]);
+    }
+
+    /// Suggestions must never raise: this fires per keystroke.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_search_suggestions_complete_a_partial_query() {
+        let Some(state) = live_state() else {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
+            return;
+        };
+        let got = state.search_suggestions("burna").await;
+        eprintln!("suggestions: {got:?}");
+        assert!(!got.is_empty(), "a well-known prefix should suggest something");
+        assert!(
+            got.iter().all(|s| !s.trim().is_empty()),
+            "a blank suggestion is a half-read run"
+        );
+        // Nothing typed asks YouTube nothing.
+        assert!(state.search_suggestions("   ").await.is_empty());
+    }
+
     /// Run with `cargo test -p hm-ytmusic -- --ignored`.
     #[tokio::test]
     #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
     async fn live_library_listing_parses() {
-        let state = YtMusicState::load();
-        if !state.signed_in() {
+        let Some(state) = live_state() else {
             eprintln!("skipping: no session in the keychain — sign in through the app first");
             return;
-        }
+        };
         let playlists = state.playlists().await.expect("the listing must parse");
         eprintln!("parsed {} playlists", playlists.len());
         assert!(!playlists.is_empty(), "a signed-in library should list something");

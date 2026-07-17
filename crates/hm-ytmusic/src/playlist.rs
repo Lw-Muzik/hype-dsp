@@ -49,13 +49,13 @@ const GREY_OUT: &str = "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT";
 /// inlined by hand. Measured against a real response: the old path matched
 /// 0/100 rows, this one matches 98/100. Keeping the seams visible is what makes
 /// a dropped segment legible instead of invisible.
-const VIDEO_TYPE_PATH: &str = concat!(
+pub(crate) const VIDEO_TYPE_PATH: &str = concat!(
     "/overlay/musicItemThumbnailOverlayRenderer/content/musicPlayButtonRenderer",
     "/playNavigationEndpoint",
     "/watchEndpoint/watchEndpointMusicSupportedConfigs/watchEndpointMusicConfig/musicVideoType",
 );
 
-fn is_music(video_type: Option<&str>) -> bool {
+pub(crate) fn is_music(video_type: Option<&str>) -> bool {
     !matches!(
         video_type,
         Some("MUSIC_VIDEO_TYPE_PODCAST_EPISODE") | Some("MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK")
@@ -76,7 +76,7 @@ fn is_music(video_type: Option<&str>) -> bool {
 /// defaulted `&str`: collapsing them behind one `unwrap_or("…ATV")` is what hid
 /// a broken pointer for an entire release — every row reported "song, no video",
 /// and neither the tab nor the podcast filter ever fired.
-fn has_video(video_type: Option<&str>) -> bool {
+pub(crate) fn has_video(video_type: Option<&str>) -> bool {
     matches!(video_type, Some(t) if t != "MUSIC_VIDEO_TYPE_ATV")
 }
 
@@ -133,7 +133,7 @@ fn collect_rows<'a>(v: &'a Value, out: &mut Vec<&'a Value>) {
 }
 
 /// The text of one flexible column ("/flexColumns/N"), runs joined.
-fn flex_text(row: &Value, col: usize) -> Option<String> {
+pub(crate) fn flex_text(row: &Value, col: usize) -> Option<String> {
     join_runs(row.pointer(&format!(
         "/flexColumns/{col}/musicResponsiveListItemFlexColumnRenderer/text/runs"
     )))

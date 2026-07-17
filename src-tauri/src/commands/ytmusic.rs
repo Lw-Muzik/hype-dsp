@@ -3,10 +3,13 @@
 //! Playback deliberately adds no new machinery. `stream_target` yields the same
 //! `(url, headers)` the cloud path does, so YT Music tracks reach the engine
 //! through `play_stream` / `StreamQueueSource` — Range seeking, resume-on-drop
-//! and the gapless queue all included. Like Dropbox's temporary links (and more
-//! so: they carry `expire=` and are pinned to the resolving IP), the URLs are
-//! short-lived, so the queue resolver re-resolves per attempt rather than
-//! resolving the queue up front.
+//! and the gapless queue all included.
+//!
+//! The queue still resolves lazily rather than up front, but for the ordering,
+//! not for freshness: a url is good for hours (see `hm_ytmusic`), and resolving
+//! the whole queue before the first note would put every track's yt-dlp spawn in
+//! front of the play button. The resolver asks for a fresh url only when a retry
+//! says the last one didn't work.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -319,6 +322,50 @@ pub async fn ytmusic_explore_tracks(
 ) -> Result<Vec<YtTrack>, IpcError> {
     state
         .explore_tracks(&item)
+        .await
+        .map_err(|e| IpcError::new("ytmusic", e))
+}
+
+/* ---- search ---- */
+
+/// Searching YouTube's catalog.
+///
+/// `filter` is one of `songs`, `videos`, `albums`, `artists`, `playlists`, or
+/// anything else for YouTube's own mix of all of them. Uncached for the same
+/// reason as Explore: results are only worth having current.
+#[tauri::command]
+pub async fn ytmusic_search(
+    state: State<'_, YtMusicState>,
+    query: String,
+    filter: String,
+) -> Result<Vec<ExploreShelf>, IpcError> {
+    state
+        .search(&query, &filter)
+        .await
+        .map_err(|e| IpcError::new("ytmusic", e))
+}
+
+/// What YouTube would complete a half-typed query with.
+///
+/// Cannot fail: this fires on every keystroke, and a type-ahead that can raise
+/// an error dialog is worse than one that occasionally offers nothing.
+#[tauri::command]
+pub async fn ytmusic_search_suggestions(
+    state: State<'_, YtMusicState>,
+    query: String,
+) -> Result<Vec<String>, IpcError> {
+    Ok(state.search_suggestions(&query).await)
+}
+
+/// An artist's page — top songs, albums, singles and videos, as YouTube ordered
+/// them.
+#[tauri::command]
+pub async fn ytmusic_artist_page(
+    state: State<'_, YtMusicState>,
+    browse_id: String,
+) -> Result<Vec<ExploreShelf>, IpcError> {
+    state
+        .artist_page(&browse_id)
         .await
         .map_err(|e| IpcError::new("ytmusic", e))
 }

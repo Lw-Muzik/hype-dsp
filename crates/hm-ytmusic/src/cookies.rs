@@ -149,21 +149,19 @@ pub fn now_secs() -> i64 {
 
 /* ---- keychain storage ---- */
 
-fn entry() -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, ACCOUNT).map_err(|e| format!("keychain unavailable: {e}"))
+fn entry_at(account: &str) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(SERVICE, account).map_err(|e| format!("keychain unavailable: {e}"))
 }
 
-/// Persists cookies to the OS credential store.
-pub fn save(cookies: &[YtCookie]) -> Result<(), String> {
+fn save_at(account: &str, cookies: &[YtCookie]) -> Result<(), String> {
     let json = serde_json::to_string(cookies).map_err(|e| e.to_string())?;
-    entry()?
+    entry_at(account)?
         .set_password(&json)
         .map_err(|e| format!("could not save credentials: {e}"))
 }
 
-/// Loads cookies, or `None` when nothing is stored (i.e. signed out).
-pub fn load() -> Result<Option<Vec<YtCookie>>, String> {
-    match entry()?.get_password() {
+fn load_at(account: &str) -> Result<Option<Vec<YtCookie>>, String> {
+    match entry_at(account)?.get_password() {
         Ok(json) => serde_json::from_str(&json)
             .map(Some)
             .map_err(|e| format!("stored credentials are corrupt: {e}")),
@@ -172,12 +170,26 @@ pub fn load() -> Result<Option<Vec<YtCookie>>, String> {
     }
 }
 
-/// Removes stored cookies. Succeeds when there was nothing to remove.
-pub fn clear() -> Result<(), String> {
-    match entry()?.delete_credential() {
+fn clear_at(account: &str) -> Result<(), String> {
+    match entry_at(account)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("could not clear credentials: {e}")),
     }
+}
+
+/// Persists cookies to the OS credential store.
+pub fn save(cookies: &[YtCookie]) -> Result<(), String> {
+    save_at(ACCOUNT, cookies)
+}
+
+/// Loads cookies, or `None` when nothing is stored (i.e. signed out).
+pub fn load() -> Result<Option<Vec<YtCookie>>, String> {
+    load_at(ACCOUNT)
+}
+
+/// Removes stored cookies. Succeeds when there was nothing to remove.
+pub fn clear() -> Result<(), String> {
+    clear_at(ACCOUNT)
 }
 
 /* ---- ephemeral cookies.txt for yt-dlp ---- */
@@ -381,24 +393,40 @@ mod tests {
         assert_eq!(names, vec!["SESS", "SID"]);
     }
 
-    /// Exercises the real OS credential store. Ignored by default: it touches
-    /// the user's keychain, and on Linux CI there's usually no Secret Service
-    /// running. Run with `cargo test -p hm-ytmusic -- --ignored` to check the
-    /// platform backend actually works before trusting sign-in to it.
+    /// Exercises the real OS credential store — under its own account, never
+    /// [`ACCOUNT`].
+    ///
+    /// It used to `save()` then `clear()` the real entry, which is the one the
+    /// user signs in to. Running it (as its own doc invited: "run with
+    /// `--ignored` to check the platform backend actually works") overwrote a
+    /// live session with dummy cookies and then deleted it — signing the user
+    /// out, and failing every later live test in the same run for a reason none
+    /// of them could report. A test that verifies the backend has no need of the
+    /// real credential to do it, and no business touching it.
+    ///
+    /// Still `--ignored`: it writes to the OS keychain, and Linux CI usually has
+    /// no Secret Service running.
     #[test]
     #[ignore = "touches the real OS keychain"]
     fn keychain_round_trips() {
+        const TEST_ACCOUNT: &str = "ytmusic-cookies-selftest";
+        assert_ne!(
+            TEST_ACCOUNT, ACCOUNT,
+            "the self-test must not address the account a user's session lives in"
+        );
         let c = vec![cookie("SAPISID", "round-trip-value"), cookie("SID", "y")];
 
-        save(&c).expect("save to keychain");
-        let loaded = load().expect("load from keychain").expect("entry present");
+        save_at(TEST_ACCOUNT, &c).expect("save to keychain");
+        let loaded = load_at(TEST_ACCOUNT)
+            .expect("load from keychain")
+            .expect("entry present");
         assert_eq!(loaded, c);
 
-        clear().expect("clear keychain");
-        assert!(load().expect("load after clear").is_none());
+        clear_at(TEST_ACCOUNT).expect("clear keychain");
+        assert!(load_at(TEST_ACCOUNT).expect("load after clear").is_none());
         // Clearing a missing entry must be a no-op, not an error — sign-out
         // shouldn't fail just because there was nothing stored.
-        clear().expect("clear is idempotent");
+        clear_at(TEST_ACCOUNT).expect("clear is idempotent");
     }
 
     #[test]

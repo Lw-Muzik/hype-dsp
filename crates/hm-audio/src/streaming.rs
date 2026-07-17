@@ -217,6 +217,150 @@ impl<R: std::io::Read> std::io::Read for CountingReader<R> {
     }
 }
 
+/// Opens the resource at an absolute byte offset, yielding a fresh body. The
+/// transport is behind a trait so the resumable reader below can be exercised
+/// without a network.
+trait RangeOpener: Send + Sync {
+    /// Open at `offset`. `Err` marks a transport failure the caller may retry.
+    fn open_at(&self, offset: u64) -> std::io::Result<Box<dyn std::io::Read + Send + Sync>>;
+}
+
+/// [`RangeOpener`] over HTTP: re-issues the original GET — same URL, same
+/// headers — with a `Range` at the requested offset.
+struct HttpRanges {
+    client: reqwest::blocking::Client,
+    url: String,
+    headers: Vec<(String, String)>,
+}
+
+impl RangeOpener for HttpRanges {
+    fn open_at(&self, offset: u64) -> std::io::Result<Box<dyn std::io::Read + Send + Sync>> {
+        match open(&self.client, &self.url, &self.headers, offset) {
+            Some(response) => Ok(Box::new(response)),
+            // `open` also rejects a server that answered a ranged request with
+            // the whole body, which would splice byte 0 onto the middle of the
+            // stream — worse than no resume at all.
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::ConnectionRefused,
+                format!("no ranged body at byte {offset}"),
+            )),
+        }
+    }
+}
+
+/// A body that outlives its connection: a read that fails — or that stops short
+/// of the resource's length — is served by silently re-opening at the byte the
+/// last one stopped on, so the consumer sees one unbroken stream.
+///
+/// This has to sit **beneath** symphonia. A paused track stops draining the
+/// ring; the ring fills, the body stops being read, and the server hangs up on
+/// the idle socket — long before the URL itself expires, which for a signed CDN
+/// link is hours away. Re-opening above the demuxer cannot recover from that: a
+/// container's header exists only at byte 0, so probing a body that starts
+/// mid-file fails outright (an MP4 has no `ftyp`/`moov` there). Splicing the
+/// bytes back together instead means the demuxer and the decoder never learn
+/// there was a tear, and neither is ever reset.
+///
+/// Reads run on the decode thread, never the audio callback, so blocking here to
+/// re-open is safe.
+struct ResumableBody {
+    ranges: Arc<dyn RangeOpener>,
+    /// The open body, or `None` while there is none to read from.
+    body: Option<Box<dyn std::io::Read + Send + Sync>>,
+    /// Absolute offset of the next byte to deliver.
+    offset: u64,
+    /// Full resource length in bytes, or 0 when unknown. Without a length a
+    /// short body is indistinguishable from a complete one and there is no
+    /// offset worth resuming at, so an open-ended stream (radio) is never
+    /// resumed — it just ends, as it always has.
+    content_bytes: u64,
+    /// Consecutive re-opens since the last byte was delivered.
+    retries: u32,
+    /// Cancellation: a re-open in flight gives up when the stream is stopped.
+    shared: Arc<StreamShared>,
+}
+
+impl ResumableBody {
+    /// Wrap an already-open `body` whose first byte is at absolute `start_byte`.
+    /// `content_bytes` is the full resource length, or 0 when unknown.
+    fn new(
+        ranges: Arc<dyn RangeOpener>,
+        body: Box<dyn std::io::Read + Send + Sync>,
+        start_byte: u64,
+        content_bytes: u64,
+        shared: Arc<StreamShared>,
+    ) -> Self {
+        Self {
+            ranges,
+            body: Some(body),
+            offset: start_byte,
+            content_bytes,
+            retries: 0,
+            shared,
+        }
+    }
+
+    /// Whether there is nothing left to deliver — the only circumstance in which
+    /// a body going quiet is the real end of the resource rather than a drop.
+    fn complete(&self) -> bool {
+        self.content_bytes == 0 || self.offset >= self.content_bytes
+    }
+
+    /// Re-open at the current offset so the next read carries on exactly where
+    /// the dead one stopped. Bounded on the same ladder as the initial connect:
+    /// a server that keeps hanging up, or a URL that really has expired, must
+    /// surface a fault instead of spinning.
+    fn reopen(&mut self) -> std::io::Result<()> {
+        self.body = None;
+        loop {
+            if !self.shared.running.load(Ordering::Relaxed) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionAborted,
+                    "stream stopped",
+                ));
+            }
+            if self.retries >= MAX_STALLS {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionAborted,
+                    format!("dropped at byte {} and could not be resumed", self.offset),
+                ));
+            }
+            self.retries += 1;
+            std::thread::sleep(retry_backoff(self.retries));
+            if let Ok(body) = self.ranges.open_at(self.offset) {
+                self.body = Some(body);
+                return Ok(());
+            }
+        }
+    }
+}
+
+impl std::io::Read for ResumableBody {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        loop {
+            let outcome = self.body.as_mut().map(|body| body.read(buf));
+            match outcome {
+                Some(Ok(n)) if n > 0 => {
+                    self.offset += n as u64;
+                    self.retries = 0;
+                    return Ok(n);
+                }
+                // Ran out exactly where the resource does (or where an
+                // open-ended one chose to) → a real end of stream.
+                Some(Ok(_)) if self.complete() => return Ok(0),
+                // An open-ended stream has nothing to splice onto.
+                Some(Err(e)) if self.content_bytes == 0 => return Err(e),
+                // A short body or a broken socket: the connection died, the
+                // resource did not. Ask for the rest of it.
+                _ => self.reopen()?,
+            }
+        }
+    }
+}
+
 impl AudioSource for RadioStreamSource {
     fn start(&mut self, _format: crate::StreamFormat) -> Result<(), AudioError> {
         Ok(())
@@ -340,19 +484,62 @@ impl AudioSource for RadioStreamSource {
 }
 
 /// Why a single connection's decode loop stopped.
+#[derive(Debug, PartialEq, Eq)]
 enum Stop {
     /// Streaming was cancelled (source dropped / stopped).
     Cancelled,
     /// The stream was fully consumed.
     Eof,
+    /// The connection carried nothing decodable: it couldn't be probed, or it
+    /// held no usable audio track.
+    Undecodable,
+    /// The transport or the decoder faulted. The track is *not* over.
+    Fault,
     /// A seek to `device-rate frame` was requested.
     Seek(u64),
+}
+
+/// Classify a symphonia error. Symphonia reports the natural end of a stream as
+/// an unexpected-EOF io error, and that is the *only* error that means the track
+/// is over; everything else is a fault. Blurring the two hands the renderer a
+/// clean end-of-track whenever the network so much as hiccups, and it advances
+/// to the next song mid-play.
+fn stop_for(shared: &StreamShared, err: SymError) -> Stop {
+    match err {
+        SymError::IoError(ref e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Stop::Eof,
+        // Tearing the stream down surfaces as whatever error the reader was in
+        // the middle of; the stop flag is the authority on why.
+        _ if !shared.running.load(Ordering::Relaxed) => Stop::Cancelled,
+        _ => Stop::Fault,
+    }
 }
 
 /// How many no-progress reconnects in a row we tolerate before giving up on a
 /// track (so a server that keeps closing, or a container we can't re-probe
 /// mid-file, ends the track instead of hot-looping).
 const MAX_STALLS: u32 = 3;
+
+/// Backoff before the `attempt`-th consecutive retry, shared by the initial
+/// connect and a mid-stream resume — a flaky/2G link takes a moment to come back.
+fn retry_backoff(attempt: u32) -> Duration {
+    Duration::from_millis(400 * attempt as u64)
+}
+
+/// What a stopped connection contributed: how far the resume offset may advance,
+/// and whether it got anywhere at all.
+///
+/// A connection that yielded nothing decodable contributed nothing, however many
+/// bytes it read — those reads were swallowed by the probe's look-ahead, so
+/// folding them into the offset would skip audio on the next `Range`, and,
+/// worse, would read as progress and keep [`MAX_STALLS`] from ever engaging:
+/// the worker would re-probe its way to the end of the body a look-ahead at a
+/// time and call that a finished track.
+fn connection_progress(stop: &Stop, conn_bytes: u64) -> (u64, bool) {
+    match stop {
+        Stop::Undecodable => (0, false),
+        _ => (conn_bytes, conn_bytes > 0),
+    }
+}
 
 /// What to do after a connection's decode loop stops.
 #[derive(Debug, PartialEq, Eq)]
@@ -396,7 +583,10 @@ fn stream_worker(
         .build()
     {
         Ok(c) => c,
-        Err(_) => return,
+        Err(_) => {
+            shared.finished.store(true, Ordering::Relaxed);
+            return;
+        }
     };
 
     // Extension hint helps symphonia pick a demuxer when content sniffing alone
@@ -407,6 +597,14 @@ fn stream_worker(
         .and_then(|p| p.rsplit('.').next())
         .map(str::to_ascii_lowercase)
         .filter(|e| matches!(e.as_str(), "mp3" | "aac" | "ogg" | "flac" | "m4a" | "mp4" | "wav"));
+
+    // Every body — the first and each transparent resume beneath the decoder —
+    // comes from here, so a re-open replays the caller's headers verbatim.
+    let ranges: Arc<dyn RangeOpener> = Arc::new(HttpRanges {
+        client: client.clone(),
+        url: url.to_string(),
+        headers: headers.to_vec(),
+    });
 
     let mut start_byte = 0u64;
     let mut meta_published = false;
@@ -427,7 +625,7 @@ fn stream_worker(
             // then fall back to the start once, then give up.
             connect_fails += 1;
             if connect_fails <= MAX_STALLS {
-                std::thread::sleep(Duration::from_millis(400 * connect_fails as u64));
+                std::thread::sleep(retry_backoff(connect_fails));
                 continue;
             }
             if start_byte > 0 {
@@ -435,6 +633,10 @@ fn stream_worker(
                 connect_fails = 0;
                 continue;
             }
+            // Out of options. The stream must be marked finished on the way out:
+            // an unfinished stream with a dead worker has `read` reporting
+            // progress forever — silence that never ends and never errors.
+            shared.finished.store(true, Ordering::Relaxed);
             return;
         };
         connect_fails = 0;
@@ -442,7 +644,13 @@ fn stream_worker(
 
         let sink = if meta_published { None } else { meta_sink.clone() };
         let stop = decode_connection(
-            response,
+            ResumableBody::new(
+                ranges.clone(),
+                Box::new(response),
+                start_byte,
+                shared.content_bytes.load(Ordering::Relaxed),
+                shared.clone(),
+            ),
             conn_bytes.clone(),
             device_rate,
             &mut producer,
@@ -454,8 +662,11 @@ fn stream_worker(
             &mut meta_published,
         );
 
-        let progressed = conn_bytes.load(Ordering::Relaxed) > 0;
-        let consumed = start_byte + conn_bytes.load(Ordering::Relaxed);
+        // The counter sits above the resumable body, so it tallies bytes handed
+        // to the decoder across any resumes the body did on its own — i.e. how
+        // far this attempt actually got.
+        let (advanced, progressed) = connection_progress(&stop, conn_bytes.load(Ordering::Relaxed));
+        let consumed = start_byte + advanced;
 
         // Update EWMA download throughput ~once per second.
         meter_bytes += conn_bytes.load(Ordering::Relaxed);
@@ -477,7 +688,10 @@ fn stream_worker(
                 shared.finished.store(false, Ordering::Relaxed);
                 stalls = 0;
             }
-            Stop::Eof => {
+            // The end of the body, a fault the body couldn't splice over, or a
+            // connection that got nowhere: only the byte count can tell a
+            // finished track from one owed another attempt.
+            Stop::Eof | Stop::Fault | Stop::Undecodable => {
                 let total = shared.content_bytes.load(Ordering::Relaxed);
                 match resume_decision(total, consumed, progressed, stalls) {
                     ResumeDecision::Resume { offset, stalls: s } => {
@@ -722,12 +936,16 @@ fn byte_offset(shared: &StreamShared, device_rate: u32, target: u64) -> u64 {
     ((frac * content as f64) as u64).min(content.saturating_sub(1))
 }
 
-/// Probe + decode a single HTTP response, pushing resampled stereo into the
-/// ring. Returns why it stopped. On the initial open (`start_byte == 0`) it also
-/// learns the duration and publishes track metadata.
+/// Probe + decode one body, pushing resampled stereo into the ring. Returns why
+/// it stopped. On the initial open (`start_byte == 0`) it also learns the
+/// duration and publishes track metadata.
+///
+/// The body is probed exactly once, here: [`ResumableBody`] hides a dropped
+/// connection underneath, so nothing below this point ever re-probes or resets
+/// the decoder mid-track.
 #[allow(clippy::too_many_arguments)]
 fn decode_connection(
-    response: reqwest::blocking::Response,
+    body: ResumableBody,
     conn_bytes: Arc<AtomicU64>,
     device_rate: u32,
     producer: &mut Producer<f32>,
@@ -738,7 +956,7 @@ fn decode_connection(
     ext: Option<&str>,
     meta_published: &mut bool,
 ) -> Stop {
-    let counted = CountingReader { inner: response, count: conn_bytes };
+    let counted = CountingReader { inner: body, count: conn_bytes };
     let mss = MediaSourceStream::new(Box::new(ReadOnlySource::new(counted)), Default::default());
     let mut hint = Hint::new();
     if let Some(ext) = ext {
@@ -751,8 +969,10 @@ fn decode_connection(
         FormatOptions::default(),
         MetadataOptions::default(),
     ) else {
-        // Mid-stream probe can fail for container formats; give up this attempt.
-        return Stop::Eof;
+        // A container's header lives at byte 0, so a body starting anywhere else
+        // can't be probed. Whatever the probe read on the way to failing is gone
+        // into its own look-ahead, so this attempt got nowhere.
+        return Stop::Undecodable;
     };
 
     if let Some(sink) = &meta_sink {
@@ -761,11 +981,11 @@ fn decode_connection(
     }
 
     let Some(track) = format.default_track(TrackType::Audio) else {
-        return Stop::Eof;
+        return Stop::Undecodable;
     };
     let track_id = track.id;
     let Some(params) = track.codec_params.as_ref().and_then(|c| c.audio()).cloned() else {
-        return Stop::Eof;
+        return Stop::Undecodable;
     };
     let stream_rate = params.sample_rate.unwrap_or(44_100);
 
@@ -784,7 +1004,7 @@ fn decode_connection(
     let Ok(mut decoder) = symphonia::default::get_codecs()
         .make_audio_decoder(&params, &AudioDecoderOptions::default())
     else {
-        return Stop::Eof;
+        return Stop::Undecodable;
     };
 
     let mut scratch: Vec<f32> = Vec::new();
@@ -800,7 +1020,8 @@ fn decode_connection(
 
         let packet = match format.next_packet() {
             Ok(Some(p)) => p,
-            _ => return Stop::Eof,
+            Ok(None) => return Stop::Eof,
+            Err(e) => return stop_for(shared, e),
         };
         if packet.track_id != track_id {
             continue;
@@ -808,7 +1029,7 @@ fn decode_connection(
         let audio = match decoder.decode(&packet) {
             Ok(a) => a,
             Err(SymError::DecodeError(_)) => continue,
-            Err(_) => return Stop::Eof,
+            Err(e) => return stop_for(shared, e),
         };
         let ch = audio.spec().channels().count().max(1);
         scratch.clear();
@@ -909,10 +1130,228 @@ impl RadioStreamSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
+    use std::io::Read;
+    use std::sync::Mutex;
+
+    /// How one body from [`FakeRanges`] behaves.
+    #[derive(Clone, Copy)]
+    enum Serve {
+        /// Serve `bytes` from the requested offset, then die — with a socket
+        /// error when `err`, otherwise by simply going quiet (a short body).
+        Dies { bytes: usize, err: bool },
+        /// Serve the rest of the resource.
+        Whole,
+        /// Refuse to open at all.
+        Refused,
+    }
+
+    /// An in-memory body that dies on cue, standing in for a dropped socket.
+    struct FakeBody {
+        data: std::io::Cursor<Vec<u8>>,
+        limit: Option<usize>,
+        served: usize,
+        err: bool,
+    }
+
+    impl Read for FakeBody {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let Some(limit) = self.limit else {
+                return self.data.read(buf);
+            };
+            if self.served >= limit {
+                return if self.err {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionReset,
+                        "socket dropped",
+                    ))
+                } else {
+                    Ok(0)
+                };
+            }
+            let room = (limit - self.served).min(buf.len());
+            let n = self.data.read(&mut buf[..room])?;
+            self.served += n;
+            Ok(n)
+        }
+    }
+
+    /// A [`RangeOpener`] serving slices of an in-memory resource. Each open pops
+    /// the next scripted behaviour, so a test spells out exactly which bodies
+    /// drop and where; past the end of the script every body serves in full.
+    struct FakeRanges {
+        data: Vec<u8>,
+        script: Mutex<VecDeque<Serve>>,
+        /// Absolute offsets `open_at` was asked for, in order.
+        opens: Mutex<Vec<u64>>,
+    }
+
+    impl FakeRanges {
+        fn new(len: usize, script: &[Serve]) -> Arc<Self> {
+            // A byte pattern with a long period, so a splice landing at the
+            // wrong offset can't coincidentally match.
+            let data = (0..len).map(|i| (i % 251) as u8).collect();
+            Arc::new(Self {
+                data,
+                script: Mutex::new(script.iter().copied().collect()),
+                opens: Mutex::new(Vec::new()),
+            })
+        }
+        fn opens(&self) -> Vec<u64> {
+            self.opens.lock().unwrap().clone()
+        }
+    }
+
+    impl RangeOpener for FakeRanges {
+        fn open_at(&self, offset: u64) -> std::io::Result<Box<dyn Read + Send + Sync>> {
+            self.opens.lock().unwrap().push(offset);
+            let serve = self.script.lock().unwrap().pop_front().unwrap_or(Serve::Whole);
+            let (limit, err) = match serve {
+                Serve::Refused => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionRefused,
+                        "refused",
+                    ))
+                }
+                Serve::Dies { bytes, err } => (Some(bytes), err),
+                Serve::Whole => (None, false),
+            };
+            Ok(Box::new(FakeBody {
+                data: std::io::Cursor::new(self.data[offset as usize..].to_vec()),
+                limit,
+                served: 0,
+                err,
+            }))
+        }
+    }
+
+    /// Open the first body from `ranges` and wrap it, as the worker does.
+    fn resumable(ranges: Arc<FakeRanges>, content_bytes: u64) -> ResumableBody {
+        let first = ranges.open_at(0).expect("first open");
+        ResumableBody::new(ranges, first, 0, content_bytes, Arc::new(shared(0, content_bytes)))
+    }
+
+    #[test]
+    fn resumable_body_splices_a_dropped_connection_invisibly() {
+        let ranges = FakeRanges::new(8192, &[Serve::Dies { bytes: 3000, err: true }]);
+        let mut body = resumable(ranges.clone(), 8192);
+        let mut got = Vec::new();
+        body.read_to_end(&mut got).expect("resumed past the drop");
+        assert_eq!(got, ranges.data, "delivers exactly what an unbroken read would");
+        assert_eq!(
+            ranges.opens(),
+            vec![0, 3000],
+            "re-requests from the byte the dead connection stopped on"
+        );
+    }
+
+    #[test]
+    fn resumable_body_reranges_at_the_absolute_offset_after_a_premature_eof() {
+        // Two short bodies in a row: the offsets must accumulate absolutely,
+        // not restart per connection.
+        let ranges = FakeRanges::new(8192, &[
+            Serve::Dies { bytes: 1000, err: false },
+            Serve::Dies { bytes: 2500, err: false },
+        ]);
+        let mut body = resumable(ranges.clone(), 8192);
+        let mut got = Vec::new();
+        body.read_to_end(&mut got).expect("resumed past both short bodies");
+        assert_eq!(got, ranges.data);
+        assert_eq!(ranges.opens(), vec![0, 1000, 3500]);
+    }
+
+    #[test]
+    fn resumable_body_errors_rather_than_faking_an_end_when_retries_run_out() {
+        let ranges = FakeRanges::new(8192, &[
+            Serve::Dies { bytes: 500, err: true },
+            Serve::Refused,
+            Serve::Refused,
+            Serve::Refused,
+            Serve::Refused,
+        ]);
+        let mut body = resumable(ranges.clone(), 8192);
+        let mut got = Vec::new();
+        let err = body.read_to_end(&mut got).expect_err("must not report a clean EOF");
+        assert_eq!(err.kind(), std::io::ErrorKind::ConnectionAborted);
+        assert_eq!(got.len(), 500, "keeps what it did deliver");
+        assert_eq!(ranges.opens().len(), 1 + MAX_STALLS as usize, "bounded retries");
+    }
+
+    #[test]
+    fn resumable_body_leaves_an_open_ended_stream_alone() {
+        // Radio: no content length, so a body going quiet *is* the end — there's
+        // nothing to resume and no offset to resume at.
+        let ranges = FakeRanges::new(8192, &[Serve::Dies { bytes: 500, err: false }]);
+        let mut body = resumable(ranges.clone(), 0);
+        let mut got = Vec::new();
+        body.read_to_end(&mut got).expect("a short live body is just the end");
+        assert_eq!(got.len(), 500);
+        assert_eq!(ranges.opens(), vec![0], "never re-opens a live stream");
+    }
+
+    #[test]
+    fn resumable_body_stops_when_the_stream_is_cancelled() {
+        let ranges = FakeRanges::new(8192, &[Serve::Dies { bytes: 100, err: true }, Serve::Refused]);
+        let state = Arc::new(shared(0, 8192));
+        let first = ranges.open_at(0).unwrap();
+        let mut body = ResumableBody::new(ranges.clone(), first, 0, 8192, state.clone());
+        let mut buf = [0u8; 100];
+        body.read_exact(&mut buf).unwrap();
+        state.running.store(false, Ordering::Relaxed);
+        let err = body.read(&mut buf).expect_err("cancellation is not an EOF");
+        assert_eq!(err.kind(), std::io::ErrorKind::ConnectionAborted);
+    }
+
+    #[test]
+    fn end_of_stream_is_an_end_but_a_broken_socket_is_a_fault() {
+        let s = shared(0, 0);
+        // Symphonia signals the natural end of a stream as an unexpected EOF.
+        let eof = SymError::IoError(std::io::Error::from(std::io::ErrorKind::UnexpectedEof));
+        assert_eq!(stop_for(&s, eof), Stop::Eof);
+        // A dropped connection is not the end of the song.
+        let reset = SymError::IoError(std::io::Error::from(std::io::ErrorKind::ConnectionReset));
+        assert_eq!(stop_for(&s, reset), Stop::Fault);
+        assert_eq!(stop_for(&s, SymError::ResetRequired), Stop::Fault);
+        // Once stopped, any error the reader was mid-flight on means cancelled.
+        s.running.store(false, Ordering::Relaxed);
+        let reset = SymError::IoError(std::io::Error::from(std::io::ErrorKind::ConnectionReset));
+        assert_eq!(stop_for(&s, reset), Stop::Cancelled);
+    }
+
+    #[test]
+    fn a_failed_probe_counts_as_no_progress_so_stalls_engage() {
+        // The probe reads a look-ahead before failing, but those bytes are its
+        // own — they must not advance the offset or look like progress.
+        assert_eq!(connection_progress(&Stop::Undecodable, 64 * 1024), (0, false));
+        assert_eq!(connection_progress(&Stop::Fault, 64 * 1024), (64 * 1024, true));
+        assert_eq!(connection_progress(&Stop::Eof, 0), (0, false));
+
+        // Re-probing a body that starts mid-file fails every time, so the worker
+        // must give up rather than creep to the end of the body one look-ahead
+        // at a time (which would read as a finished track and skip the song).
+        let total = 3_449_447u64;
+        let mut consumed = 1_000_000u64;
+        let mut stalls = 0u32;
+        let mut attempts = 0u32;
+        let finished = loop {
+            attempts += 1;
+            assert!(attempts < 100, "probe failures must not loop forever");
+            let (advanced, progressed) = connection_progress(&Stop::Undecodable, 64 * 1024);
+            consumed += advanced;
+            match resume_decision(total, consumed, progressed, stalls) {
+                ResumeDecision::Resume { offset, stalls: s } => {
+                    assert_eq!(offset, 1_000_000, "a failed probe never moves the offset");
+                    stalls = s;
+                }
+                ResumeDecision::Finish => break true,
+            }
+        };
+        assert!(finished);
+        assert_eq!(attempts, MAX_STALLS + 1, "gives up on the ladder, not at the body's end");
+    }
 
     #[test]
     fn counting_reader_counts_bytes_read() {
-        use std::io::Read;
         let count = Arc::new(AtomicU64::new(0));
         let data = vec![1u8, 2, 3, 4, 5, 6, 7];
         let mut r = CountingReader { inner: std::io::Cursor::new(data), count: count.clone() };

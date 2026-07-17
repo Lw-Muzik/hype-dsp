@@ -342,6 +342,19 @@ export function ytmusicVideoUrl(videoId: string): Promise<string> {
   return invoke<string>("ytmusic_video_url", { videoId });
 }
 
+/** Warm the resolved-url cache for a track we expect to play next.
+ *
+ *  Resolving is a yt-dlp process start (~5s) and it used to happen only once the
+ *  previous track had ended, so the whole cost was audible as the gap between
+ *  them. Asked early, it runs under the music instead.
+ *
+ *  Fire-and-forget: the result lands in a cache the play path reads anyway, so a
+ *  rejection here means nothing — the play path will resolve and report properly
+ *  if there's a real problem. Never await it on the critical path. */
+export function ytmusicPrefetch(videoId: string): Promise<void> {
+  return invoke<void>("ytmusic_prefetch", { videoId });
+}
+
 /** Stream one track through the enhancement chain. Passing the known length
  *  (seconds) makes the seek bar right from the first frame. */
 export function ytmusicPlay(

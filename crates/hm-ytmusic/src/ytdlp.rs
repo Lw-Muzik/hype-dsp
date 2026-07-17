@@ -106,9 +106,12 @@ impl std::error::Error for YtDlpError {}
 
 /// A resolved, directly-fetchable audio stream.
 ///
-/// `url` is short-lived and IP-bound (googlevideo stamps `expire=` and `ip=`
-/// into it), so callers must resolve fresh per playback attempt rather than
-/// cache this.
+/// `url` is IP-bound and dated — googlevideo stamps `ip=` and `expire=` into it.
+/// Cacheable, but only against both: [`StreamTarget::expires_at`] carries the
+/// stated deadline, while the address binding has no such marker, so a url can
+/// die early if the network changes underneath it. A caller that holds these
+/// needs a way to drop one that fails before its time, or a transient failure
+/// becomes a permanent one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamTarget {
     pub url: String,
@@ -116,6 +119,28 @@ pub struct StreamTarget {
     pub ext: String,
     pub format_id: String,
     pub abr_kbps: Option<u32>,
+    /// Unix seconds after which the CDN stops honouring `url`, read from its own
+    /// `expire=` parameter. `None` when the url doesn't carry one, which reads as
+    /// "assume nothing" — a caching caller must treat it as immediately stale
+    /// rather than guess a lifetime.
+    ///
+    /// googlevideo issues these ~6 hours out, so the url long outlives the track.
+    pub expires_at: Option<u64>,
+}
+
+/// Reads `expire=` out of a resolved url.
+///
+/// Hand-scanned rather than parsed with a url crate: this is one query parameter
+/// on a url we were just handed, and the whole point is to learn the deadline the
+/// CDN already told us, not to model urls. An unreadable or absent value is
+/// `None` — never a default — because a wrong deadline is worse than no deadline:
+/// too long serves a dead url, too short throws away a good one.
+fn parse_expiry(url: &str) -> Option<u64> {
+    let query = url.split_once('?')?.1;
+    query
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("expire="))
+        .and_then(|v| v.parse().ok())
 }
 
 /// Runs yt-dlp. Behind a trait so resolution and downloads are testable against
@@ -465,6 +490,7 @@ fn parse_resolve(stdout: &str) -> Result<StreamTarget, YtDlpError> {
         .unwrap_or_default();
 
     Ok(StreamTarget {
+        expires_at: parse_expiry(&url),
         url,
         headers,
         ext,
@@ -622,6 +648,37 @@ mod tests {
                 ("User-Agent".to_string(), "Mozilla/5.0".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn reads_the_expiry_the_cdn_stamped_on_the_url() {
+        let t = parse_resolve(&sample_stdout()).unwrap();
+        assert_eq!(t.expires_at, Some(1784124824));
+    }
+
+    /// Shape captured from a live resolve: `expire` is neither first nor last,
+    /// and several later parameters also end in the letters "expire".
+    #[test]
+    fn finds_expire_among_the_real_parameter_soup() {
+        let url = "https://rr2---sn-n585oo54pcgx-xcce.googlevideo.com/videoplayback\
+                   ?ei=zRpaauTIFPjjxN8P&expire=1784311597&ip=102.209.111.95&itag=140\
+                   &mime=audio%2Fmp4&dur=213.089&lmt=1766955925572207&c=ANDROID_VR";
+        assert_eq!(parse_expiry(url), Some(1784311597));
+    }
+
+    /// No deadline is not a long deadline. A caller that caches must be told
+    /// "unknown" so it declines to cache, rather than inventing a lifetime.
+    #[test]
+    fn a_url_without_an_expiry_reports_none() {
+        assert_eq!(parse_expiry("https://example.com/a.m4a"), None);
+        assert_eq!(parse_expiry("https://example.com/a.m4a?itag=140"), None);
+        assert_eq!(parse_expiry("https://example.com/a.m4a?expire=soon"), None);
+    }
+
+    /// `expire=` must match a whole parameter, not a suffix of one.
+    #[test]
+    fn does_not_mistake_a_similarly_named_parameter_for_the_expiry() {
+        assert_eq!(parse_expiry("https://e.com/v?noexpire=123&itag=140"), None);
     }
 
     #[test]

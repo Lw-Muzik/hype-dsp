@@ -355,6 +355,23 @@ pub fn ytmusic_video_url(
 
 /* ---- playback ---- */
 
+/// Resolve a track's url ahead of playing it.
+///
+/// The gap between two tracks *is* the resolve: a yt-dlp process start, a Python
+/// interpreter and extractor import before the network is even touched, ~5s. On
+/// the single-track path that work could only begin once the previous track had
+/// ended, so all of it landed in silence. Asking early moves it under the track
+/// already playing, leaving only the two-second prebuffer to hear.
+///
+/// Best-effort by contract. The answer is a cache entry, not a return value, and
+/// the play path resolves for itself regardless — so a prefetch that fails, or
+/// races the user skipping, costs nothing and must never surface an error.
+// `(async)`: shells out to yt-dlp and waits on the network.
+#[tauri::command(async)]
+pub fn ytmusic_prefetch(state: State<'_, YtMusicState>, video_id: String) {
+    let _ = state.prefetch(&video_id);
+}
+
 /// Resolve a track and play it through the chain.
 // `(async)`: resolving shells out to yt-dlp and waits on the network.
 #[tauri::command(async)]
@@ -399,13 +416,17 @@ pub fn player_play_ytmusic_queue(
     }
     let count = items.len();
     let items = Arc::new(items);
-    let resolver: StreamResolver = Arc::new(move |i: usize| {
+    let resolver: StreamResolver = Arc::new(move |i: usize, fresh: bool| {
         let item = items
             .get(i)
             .ok_or_else(|| "queue index out of range".to_string())?;
-        let (url, headers) = app
-            .state::<YtMusicState>()
-            .stream_target(&item.video_id)?;
+        let state = app.state::<YtMusicState>();
+        // The previous url didn't work, so it must not be answered with again —
+        // it may have been bound to an address we no longer have.
+        if fresh {
+            state.forget(&item.video_id);
+        }
+        let (url, headers) = state.stream_target(&item.video_id)?;
         Ok(StreamTarget {
             url,
             headers,

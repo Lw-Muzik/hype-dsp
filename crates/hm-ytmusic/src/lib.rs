@@ -142,6 +142,48 @@ pub struct YtMusicState {
     /// play button. Both attempts always remain available, so a private track
     /// still resolves; this only decides the order.
     session_first: std::sync::atomic::AtomicBool,
+    /// Resolved stream urls, kept until the CDN's own `expire=` says not to.
+    ///
+    /// A resolve is a yt-dlp process start — a Python interpreter and extractor
+    /// import before a single byte moves — and measures ~5s. That cost landed
+    /// between two tracks, where it *is* the gap the listener hears. The urls are
+    /// good for ~6 hours, so paying it more than once a track is pure waste.
+    ///
+    /// Keyed by video id. Bounded by pruning the already-expired on write: an
+    /// entry is only useful while live, so what makes one stale is also what
+    /// makes it collectable and no separate eviction policy is needed.
+    resolved: RwLock<std::collections::HashMap<String, ytdlp::StreamTarget>>,
+    /// Where yt-dlp lives, once found.
+    ///
+    /// `detect()` stats every entry on `PATH` and ran on every resolve. Only a
+    /// hit is remembered: a miss has to stay cheap to retry, or installing
+    /// yt-dlp wouldn't take effect until a restart.
+    yt_dlp_bin: RwLock<Option<PathBuf>>,
+}
+
+/// How much of a resolved url's life to leave unused.
+///
+/// The url must outlive not just the click but the whole track played through it
+/// — a reconnection near the end still re-opens with the original url. Tracks run
+/// long (a mix can pass an hour), so this is generous: against a ~6 hour lifetime
+/// it costs little, and a url dying mid-playback costs a lot.
+const EXPIRY_MARGIN_SECS: u64 = 90 * 60;
+
+/// Seconds since the epoch, or `None` if the clock is before it.
+fn now_secs() -> Option<u64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
+}
+
+/// Whether `target` will still be honoured long enough to play a track through.
+fn is_fresh(target: &ytdlp::StreamTarget, now: u64) -> bool {
+    // No stated deadline means we don't know one; a guessed lifetime is how a
+    // cache starts serving dead urls.
+    target
+        .expires_at
+        .is_some_and(|exp| exp.saturating_sub(now) > EXPIRY_MARGIN_SECS)
 }
 
 impl Default for YtMusicState {
@@ -156,6 +198,8 @@ impl YtMusicState {
             client: tokio::sync::Mutex::new(None),
             cookies: RwLock::new(None),
             session_first: std::sync::atomic::AtomicBool::new(true),
+            resolved: RwLock::new(std::collections::HashMap::new()),
+            yt_dlp_bin: RwLock::new(None),
         }
     }
 
@@ -414,6 +458,70 @@ impl YtMusicState {
         Ok((playlists, tracks))
     }
 
+    /// yt-dlp, found once and remembered.
+    fn runner(&self) -> Result<ProcessRunner, String> {
+        if let Some(bin) = self.yt_dlp_bin.read().ok().and_then(|g| g.clone()) {
+            // A binary that moved or was uninstalled between tracks re-detects
+            // below rather than failing on a stale path.
+            if bin.is_file() {
+                return Ok(ProcessRunner::new(bin));
+            }
+        }
+        let runner = ProcessRunner::detect().ok_or_else(|| YtDlpError::NotInstalled.to_string())?;
+        if let Ok(mut slot) = self.yt_dlp_bin.write() {
+            *slot = Some(runner.bin().to_path_buf());
+        }
+        Ok(runner)
+    }
+
+    /// A still-valid url for `video_id`, if we already paid to resolve one.
+    fn cached_target(&self, video_id: &str) -> Option<ytdlp::StreamTarget> {
+        let now = now_secs()?;
+        let cache = self.resolved.read().ok()?;
+        cache.get(video_id).filter(|t| is_fresh(t, now)).cloned()
+    }
+
+    /// Files a resolved url under its video id, and drops whatever has expired.
+    fn remember_target(&self, video_id: &str, target: &ytdlp::StreamTarget) {
+        // Nothing to reason about without a deadline, and a url we can't date is
+        // one we can't safely re-serve.
+        if target.expires_at.is_none() {
+            return;
+        }
+        let Some(now) = now_secs() else { return };
+        let Ok(mut cache) = self.resolved.write() else {
+            return;
+        };
+        cache.retain(|_, t| is_fresh(t, now));
+        cache.insert(video_id.to_string(), target.clone());
+    }
+
+    /// Resolves ahead of time, so the next track's url is ready before it plays.
+    ///
+    /// Same work as [`Self::resolve`] and deliberately no different: it fills the
+    /// same cache the play path reads, which is what keeps this an optimisation
+    /// rather than a second way to start playback. Errors are the caller's to
+    /// ignore — a failed prefetch must cost nothing, because the play path will
+    /// resolve again and report the failure properly if it's real.
+    pub fn prefetch(&self, video_id: &str) -> Result<(), String> {
+        if self.cached_target(video_id).is_some() {
+            return Ok(());
+        }
+        self.resolve(video_id).map(|_| ())
+    }
+
+    /// Forgets any cached url for `video_id`.
+    ///
+    /// For the caller that just found one didn't work: a url can die before its
+    /// stated expiry (an IP change invalidates it — they're bound to the address
+    /// that resolved them), and re-serving it from cache would make that
+    /// failure permanent instead of transient.
+    pub fn forget(&self, video_id: &str) {
+        if let Ok(mut cache) = self.resolved.write() {
+            cache.remove(video_id);
+        }
+    }
+
     /// Resolves a track to a directly-playable `(url, headers)`.
     ///
     /// Sync on purpose: the engine's `StreamResolver` is a sync closure invoked
@@ -435,7 +543,7 @@ impl YtMusicState {
     /// the picture is optional, the sound is not.
     pub fn video_target(&self, video_id: &str) -> Result<(String, Vec<(String, String)>), String> {
         use std::sync::atomic::Ordering;
-        let runner = ProcessRunner::detect().ok_or_else(|| YtDlpError::NotInstalled.to_string())?;
+        let runner = self.runner()?;
         let cookies = self.cookies_snapshot();
         let file = cookie_file(cookies.as_deref())?;
         let session = file.as_ref().map(CookieFile::path);
@@ -478,7 +586,10 @@ impl YtMusicState {
     /// those without it would just trade a clear error for a worse one.
     pub fn resolve(&self, video_id: &str) -> Result<ytdlp::StreamTarget, String> {
         use std::sync::atomic::Ordering;
-        let runner = ProcessRunner::detect().ok_or_else(|| YtDlpError::NotInstalled.to_string())?;
+        if let Some(hit) = self.cached_target(video_id) {
+            return Ok(hit);
+        }
+        let runner = self.runner()?;
         let cookies = self.cookies_snapshot();
         let file = cookie_file(cookies.as_deref())?;
         let resolved = resolve_with_fallback(
@@ -487,6 +598,7 @@ impl YtMusicState {
             file.as_ref().map(CookieFile::path),
             self.session_first.load(Ordering::Relaxed),
         )?;
+        self.remember_target(video_id, &resolved.target);
         // Remember what actually worked, so the next track leads with it. Both
         // directions: if the session starts working again, we go back to it.
         if file.is_some() {
@@ -794,6 +906,142 @@ fn parse_track_count(raw: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn target(expires_at: Option<u64>) -> ytdlp::StreamTarget {
+        ytdlp::StreamTarget {
+            url: "https://rr2---sn-abc.googlevideo.com/videoplayback?itag=140".into(),
+            headers: vec![("User-Agent".into(), "Mozilla/5.0".into())],
+            ext: "m4a".into(),
+            format_id: "140".into(),
+            abr_kbps: Some(130),
+            expires_at,
+        }
+    }
+
+    const NOW: u64 = 1_784_290_000;
+
+    #[test]
+    fn a_url_with_hours_left_is_fresh() {
+        // googlevideo issues these ~6h out.
+        assert!(is_fresh(&target(Some(NOW + 6 * 3600)), NOW));
+    }
+
+    #[test]
+    fn a_url_inside_the_margin_is_not_fresh() {
+        // Still valid, but not for long enough to play a track through.
+        assert!(!is_fresh(&target(Some(NOW + 60)), NOW));
+        assert!(!is_fresh(&target(Some(NOW + EXPIRY_MARGIN_SECS)), NOW));
+    }
+
+    #[test]
+    fn an_expired_url_is_not_fresh() {
+        assert!(!is_fresh(&target(Some(NOW - 1)), NOW));
+        // Already past: must not wrap into a huge remaining lifetime.
+        assert!(!is_fresh(&target(Some(1)), NOW));
+    }
+
+    /// A url we can't date can't be re-served: a guessed lifetime is how a cache
+    /// starts handing out dead links.
+    #[test]
+    fn a_url_without_a_stated_expiry_is_never_fresh() {
+        assert!(!is_fresh(&target(None), NOW));
+    }
+
+    #[test]
+    fn a_remembered_url_comes_back() {
+        let state = YtMusicState::new();
+        state.remember_target("vid1", &target(Some(now_secs().unwrap() + 6 * 3600)));
+        assert_eq!(state.cached_target("vid1").map(|t| t.format_id), Some("140".into()));
+        assert!(state.cached_target("other").is_none());
+    }
+
+    #[test]
+    fn an_undatable_url_is_not_remembered() {
+        let state = YtMusicState::new();
+        state.remember_target("vid1", &target(None));
+        assert!(state.cached_target("vid1").is_none());
+    }
+
+    #[test]
+    fn a_url_that_is_already_stale_is_not_served() {
+        let state = YtMusicState::new();
+        state.remember_target("vid1", &target(Some(now_secs().unwrap() + 30)));
+        assert!(state.cached_target("vid1").is_none());
+    }
+
+    /// A link can die before its stated deadline — googlevideo binds each to the
+    /// address that resolved it, and the url says nothing about that. Whoever
+    /// finds one broken has to be able to drop it, or the cache would replay it
+    /// on every retry and make a transient failure permanent.
+    #[test]
+    fn a_url_can_be_forgotten_before_it_expires() {
+        let state = YtMusicState::new();
+        state.remember_target("vid1", &target(Some(now_secs().unwrap() + 6 * 3600)));
+        assert!(state.cached_target("vid1").is_some());
+        state.forget("vid1");
+        assert!(state.cached_target("vid1").is_none());
+    }
+
+    /// Entries are only useful while live, so what makes one stale also makes it
+    /// collectable — that's the whole eviction policy.
+    #[test]
+    fn writing_drops_whatever_has_expired() {
+        let state = YtMusicState::new();
+        let now = now_secs().unwrap();
+        {
+            let mut c = state.resolved.write().unwrap();
+            c.insert("dead".into(), target(Some(now - 10)));
+        }
+        state.remember_target("live", &target(Some(now + 6 * 3600)));
+        let cache = state.resolved.read().unwrap();
+        assert!(!cache.contains_key("dead"), "an expired entry must not survive a write");
+        assert!(cache.contains_key("live"));
+    }
+
+    /// The gap between two tracks, measured.
+    ///
+    /// A cold resolve is a yt-dlp process start — Python up, extractors imported,
+    /// then the network — and lands around five seconds. That is the whole reason
+    /// this cache exists, and the only honest way to know it works is to time
+    /// both halves against the real binary.
+    #[test]
+    #[ignore = "requires yt-dlp on PATH and network access"]
+    fn a_second_resolve_costs_nothing() {
+        const ID: &str = "dQw4w9WgXcQ";
+        let state = YtMusicState::new();
+
+        let t0 = std::time::Instant::now();
+        let Ok(cold_target) = state.resolve(ID) else {
+            eprintln!("skipping: yt-dlp could not resolve (no binary, or no network)");
+            return;
+        };
+        let cold = t0.elapsed();
+
+        let t1 = std::time::Instant::now();
+        let warm_target = state.resolve(ID).expect("a cached resolve cannot fail");
+        let warm = t1.elapsed();
+
+        eprintln!("cold {cold:?}, warm {warm:?}");
+        assert_eq!(warm_target.url, cold_target.url, "the cache must answer with what it stored");
+        assert!(
+            warm < std::time::Duration::from_millis(50),
+            "a warm resolve must not spawn a process: took {warm:?}"
+        );
+        assert!(
+            cold_target.expires_at.is_some(),
+            "googlevideo stamps expire= on every url; without it nothing is cacheable"
+        );
+
+        // Dropping it puts the cost back — proof the speed came from the cache
+        // and not from yt-dlp having warmed up.
+        state.forget(ID);
+        let t2 = std::time::Instant::now();
+        let _ = state.resolve(ID);
+        assert!(
+            t2.elapsed() > warm * 10,
+            "forgetting must actually force a re-resolve"
+        );
+    }
 
     #[test]
     fn parses_mm_ss() {

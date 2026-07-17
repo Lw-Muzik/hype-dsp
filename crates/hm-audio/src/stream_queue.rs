@@ -45,7 +45,15 @@ pub struct StreamTarget {
 /// Resolves the [`StreamTarget`] for absolute queue position `i`, lazily. An
 /// `Err` (or a later decode failure) turns that track into a silent skip rather
 /// than stopping the queue.
-pub type StreamResolver = Arc<dyn Fn(usize) -> Result<StreamTarget, String> + Send + Sync>;
+///
+/// `fresh` says the last target for `i` didn't work, so a resolver holding one
+/// must not hand back the same answer. Providers whose links are dated can cache
+/// them, but a link may still die before its stated deadline — googlevideo binds
+/// each to the address that resolved it, and nothing in the url marks that. Only
+/// the caller learns it failed, so only the caller can say so; without this a
+/// cache would replay a dead link across every attempt and make one transient
+/// failure permanent.
+pub type StreamResolver = Arc<dyn Fn(usize, bool) -> Result<StreamTarget, String> + Send + Sync>;
 
 /// `(absolute index, decoded interleaved stereo, metadata)` from the worker.
 type DecodedTrack = (usize, Vec<f32>, TrackMeta);
@@ -277,17 +285,20 @@ impl StreamQueueSource {
                                 return;
                             }
                             let idx = next;
-                            // Resolve fresh on every attempt (cloud links are
-                            // short-lived) and retry transient failures on a new
-                            // connection, so a dropped link — e.g. the first fetch
-                            // after the stream sat paused, or a phone that closed
-                            // its keep-alive — doesn't turn a good track into a
-                            // permanent silent skip.
+                            // Retry transient failures on a new connection, so a
+                            // dropped link — e.g. the first fetch after the stream
+                            // sat paused, or a phone that closed its keep-alive —
+                            // doesn't turn a good track into a permanent silent
+                            // skip. Only a retry demands a fresh link: asking for
+                            // one on the first attempt would make every provider
+                            // that can cache pay to resolve anyway, and for YT
+                            // Music resolving is a yt-dlp process start measured
+                            // in seconds — the gap between two tracks.
                             let track = load_with_retry(
                                 idx,
                                 &running,
                                 Duration::from_millis(120),
-                                |_| match resolver(idx) {
+                                |n| match resolver(idx, n > 1) {
                                     Err(_) => {
                                         if let Ok(c) = new_client() {
                                             client = c;

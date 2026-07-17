@@ -38,11 +38,18 @@ import {
   playerStop,
   profileClear,
   ytmusicPlay,
+  ytmusicPrefetch,
 } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
 import { BAND_COUNT } from "@/lib/types";
-import { classify, chooseStreamMode, loadNetworkMode, saveNetworkMode } from "./networkMode";
-import type { NetworkMode } from "./networkMode";
+import {
+  observe,
+  effectiveMode,
+  chooseStreamMode,
+  loadNetworkMode,
+  saveNetworkMode,
+} from "./networkMode";
+import type { NetworkState } from "./networkMode";
 import type {
   CloudEntry,
   CloudTrackMeta,
@@ -401,7 +408,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
   // Persisted across queues and restarts so a proven-slow link stays on the
   // single-track path and a proven-fast one keeps crossfading; an unmeasured
   // link starts "unknown", which chooseStreamMode treats optimistically.
-  let networkMode: NetworkMode = loadNetworkMode();
+  // Read through `effectiveMode` at each decision, never cached as a verdict:
+  // a "constrained" that is only aged at startup can never expire within the
+  // session it is punishing.
+  let networkState: NetworkState = loadNetworkMode();
   let lastRebuffer = 0;
 
   const pushEq = (eq: EngineState["eq"]) => {
@@ -472,7 +482,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
 
     const streamMode =
       item.source === "cloud" || item.source === "phone" || item.source === "ytmusic"
-        ? chooseStreamMode(item.source, dataSaver, networkMode)
+        ? chooseStreamMode(item.source, dataSaver, effectiveMode(networkState, Date.now()))
         : "progressive";
     const useEngineQueue = item.source === "local" && allLocal && wantQueue;
     const useCloudQueue =
@@ -530,6 +540,14 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           void playerPlayYtmusicQueue(items, pos).catch(onError);
         } else {
           void ytmusicPlay(item.ytTrack!.videoId, item.durationSecs).catch(onError);
+          // Resolve the next track while this one plays. Without it the whole
+          // ~5s yt-dlp resolve happens after the current track ends, because
+          // that's the first moment anything asks for the next url — and every
+          // second of it is silence. The gapless queue has its own lookahead;
+          // this path had none.
+          const nextPos = stepOrder(pos, order.length, repeat, 1);
+          const next = nextPos === null ? undefined : queue[order[nextPos]!];
+          if (next?.ytTrack) void ytmusicPrefetch(next.ytTrack.videoId).catch(() => {});
         }
         break;
       case "radio":
@@ -911,9 +929,13 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     applyProgress: (p) => {
       const delta = Math.max(0, p.rebufferCount - lastRebuffer);
       lastRebuffer = p.rebufferCount;
-      const prevMode = networkMode;
-      networkMode = classify(networkMode, { downloadBps: p.downloadBps, rebufferDelta: delta });
-      if (networkMode !== prevMode) saveNetworkMode(networkMode);
+      const prevMode = networkState.mode;
+      networkState = observe(
+        networkState,
+        { downloadBps: p.downloadBps, rebufferDelta: delta },
+        Date.now(),
+      );
+      if (networkState.mode !== prevMode) saveNetworkMode(networkState);
       set((s) => ({
         positionSecs: p.positionSecs,
         // Keep a known (item-provided) duration until the backend learns one,

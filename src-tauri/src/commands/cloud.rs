@@ -250,7 +250,9 @@ pub fn player_play_cloud_queue(
     }
     let count = items.len();
     let items = Arc::new(items);
-    let resolver: StreamResolver = Arc::new(move |i: usize| {
+    // `fresh` is nothing to honour here: every call already mints a new temp
+    // link, so each answer is a fresh one whether or not it was asked for.
+    let resolver: StreamResolver = Arc::new(move |i: usize, _fresh: bool| {
         let item = items.get(i).ok_or_else(|| "queue index out of range".to_string())?;
         let (url, headers) = app
             .state::<CloudState>()

@@ -359,7 +359,9 @@ pub fn link_play_queue(
     let count = items.len();
     let items = Arc::new(items);
     let device_id = Arc::new(device_id);
-    let resolver: StreamResolver = Arc::new(move |i: usize| {
+    // `fresh` is nothing to honour here: the url is derived per call from the
+    // paired device's address and token, never held.
+    let resolver: StreamResolver = Arc::new(move |i: usize, _fresh: bool| {
         let item = items.get(i).ok_or_else(|| "queue index out of range".to_string())?;
         let (url, headers) =
             app.state::<LinkState>()

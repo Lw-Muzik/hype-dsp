@@ -652,11 +652,14 @@ mod tests {
             .iter()
             .find(|l| l.to_ascii_lowercase().starts_with("range:"))
             .unwrap_or_else(|| panic!("no Range header was sent; got {lines:#?}"));
-        assert_eq!(range.to_ascii_lowercase(), "range: bytes=0-");
+        assert!(
+            range.eq_ignore_ascii_case("range: bytes=0-"),
+            "asked for the wrong range: {range}"
+        );
         assert!(
             lines
                 .iter()
-                .any(|l| l.to_ascii_lowercase() == "user-agent: hm-test"),
+                .any(|l| l.eq_ignore_ascii_case("user-agent: hm-test")),
             "the resolver's headers must still go out — the CDN checks the agent; got {lines:#?}"
         );
     }

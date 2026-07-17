@@ -141,6 +141,20 @@ fn fetch_once(client: &reqwest::blocking::Client, target: &StreamTarget) -> Fetc
     for (k, v) in &target.headers {
         req = req.header(k.as_str(), v.as_str());
     }
+    // Ask for the whole thing *as a range*.
+    //
+    // googlevideo serves a plain GET at roughly the track's own bitrate — it is
+    // pacing a player it assumes is listening in real time. Measured on one
+    // 3.4 MB track: 106s for the plain GET, 0.56s for the identical request
+    // carrying this header. Nothing else differs, and `bytes=0-` asks for no
+    // less than the whole body; the header alone is what opts out of the pacing.
+    //
+    // It matters most here of anywhere. This path downloads a track *before* it
+    // can play a note of it, so the throttle wasn't costing throughput, it was
+    // costing the whole wait — and a lookahead that takes a track's own duration
+    // to arrive can never be ready early, which is exactly what a crossfade
+    // needs it to be.
+    req = req.header(reqwest::header::RANGE, "bytes=0-");
     match req.send() {
         Ok(mut resp) => {
             let status = resp.status();
@@ -576,6 +590,75 @@ mod tests {
             current_index: None,
             _worker: None,
         }
+    }
+
+    /// The header that decides whether a track arrives in half a second or a
+    /// hundred.
+    ///
+    /// googlevideo paces a plain GET to about the bitrate of what's being asked
+    /// for — reasonable for a player listening in real time, ruinous for a path
+    /// that must hold the whole track before it plays any of it. The same
+    /// request carrying a range served the same 3.4 MB body 190× faster. Nothing
+    /// in a response distinguishes the two cases, so only asking the wire can
+    /// tell us the header is really going out.
+    #[test]
+    fn a_fetch_asks_for_the_body_as_a_range() {
+        use std::io::{BufRead, BufWriter, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+
+        let server_seen = seen.clone();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept");
+            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                if line == "\r\n" || line == "\n" {
+                    break;
+                }
+                server_seen.lock().unwrap().push(line.trim_end().to_string());
+            }
+            let body = b"not audio, but bytes";
+            let mut w = BufWriter::new(stream);
+            let _ = write!(
+                w,
+                "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-19/20\r\n\
+                 Content-Length: {}\r\n\r\n",
+                body.len()
+            );
+            let _ = w.write_all(body);
+            let _ = w.flush();
+        });
+
+        let client = reqwest::blocking::Client::builder().build().unwrap();
+        let target = StreamTarget {
+            url: format!("http://{addr}/track"),
+            headers: vec![("User-Agent".into(), "hm-test".into())],
+            ext: Some("m4a".into()),
+        };
+        // The body is nonsense, so this can only get as far as spooling it —
+        // which is all this test is about. Decoding is someone else's test.
+        let _ = fetch_once(&client, &target);
+        server.join().expect("server thread");
+
+        let lines = seen.lock().unwrap().clone();
+        let range = lines
+            .iter()
+            .find(|l| l.to_ascii_lowercase().starts_with("range:"))
+            .unwrap_or_else(|| panic!("no Range header was sent; got {lines:#?}"));
+        assert_eq!(range.to_ascii_lowercase(), "range: bytes=0-");
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.to_ascii_lowercase() == "user-agent: hm-test"),
+            "the resolver's headers must still go out — the CDN checks the agent; got {lines:#?}"
+        );
     }
 
     #[test]

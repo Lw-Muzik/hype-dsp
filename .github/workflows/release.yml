@@ -104,14 +104,47 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Updater signing. Without these the build still succeeds but the
+          # updater artifacts are UNSIGNED, and an unsigned update is rejected on
+          # every user's machine — so the verify step below fails the release if
+          # the manifest turns up unsigned, rather than shipping a dead updater.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          # On a tag push: create/append a draft release named after the tag.
+          # On a tag push: create/append a release named after the tag. It is
+          # published, NOT draft — the updater cannot see a draft release, so a
+          # draft would silently ship no updates at all. `latest.json` is
+          # generated and uploaded by tauri-action (uploadUpdaterJson defaults
+          # true), and `/releases/latest/download/latest.json` — the first
+          # endpoint in tauri.conf.json — only resolves to a published release.
           # On manual runs: tagName is empty, so no release is created.
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: "HypeMuzik ${{ github.ref_name }}"
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      # A signing-key mismatch is only a build-time WARNING in the Tauri bundler,
+      # never an error — a wrong or absent key produces artifacts that fail on
+      # every user machine while CI stays green. This makes it a hard failure.
+      # `tauri-action` echoes the bundler's stderr, so the warning, if present,
+      # is in this job's log; we re-run the check against the produced manifest.
+      - name: Verify updater artifacts are signed
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Every updater bundle drops a `.sig` next to it. No .sig ⇒ the updater
+          # artifact was built unsigned (missing key, or --no-sign), which the
+          # bundler only warns about.
+          sigs="$(find target -path '*/bundle/*' -name '*.sig' 2>/dev/null | wc -l | tr -d ' ')"
+          if [ "$sigs" = "0" ]; then
+            echo "::error::No .sig files found — updater artifacts are unsigned. \
+          Set TAURI_SIGNING_PRIVATE_KEY / _PASSWORD as repo secrets. An unsigned \
+          update is rejected on every user's machine."
+            exit 1
+          fi
+          echo "Found $sigs signed updater artifact(s)."
 
       - name: Upload installers as workflow artifacts
         uses: actions/upload-artifact@v4
@@ -181,5 +214,85 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          draft: true
+          # NOT draft. The build job publishes this release so the updater can
+          # see it; re-attaching as a draft would flip it back and silently break
+          # updates. `softprops/action-gh-release` leaves a published release
+          # published when draft is false.
+          draft: false
           files: ${{ steps.snap.outputs.snap }}
+
+  # The updater's manifest must carry a key for every platform we ship, or that
+  # platform's users are told "no update available" forever. A universal macOS
+  # build in particular needs BOTH darwin-aarch64 and darwin-x86_64 — there is
+  # no darwin-universal key. This is the check that catches a manifest that built
+  # fine but is missing a platform.
+  verify-manifest:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Fetch the published manifest
+        run: |
+          set -euo pipefail
+          # The release is published by now; pull the manifest the updater will.
+          url="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/latest.json"
+          echo "Fetching $url"
+          for attempt in 1 2 3 4 5; do
+            if curl -fsSL "$url" -o latest.json; then break; fi
+            echo "attempt $attempt failed; the release asset may still be propagating"
+            sleep 15
+          done
+          test -s latest.json || { echo "::error::could not fetch latest.json"; exit 1; }
+          cat latest.json
+
+      - name: Assert every shipped platform is present
+        run: |
+          set -euo pipefail
+          required="darwin-aarch64 darwin-x86_64 windows-x86_64 linux-x86_64"
+          missing=""
+          for key in $required; do
+            if ! jq -e --arg k "$key" '.platforms[$k].signature // empty | length > 0' latest.json >/dev/null; then
+              missing="$missing $key"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::latest.json is missing signed entries for:$missing"
+            echo "A missing platform means those users never see updates."
+            exit 1
+          fi
+          echo "All required platforms present and signed."
+
+  # Mirror the release to CrabNebula, the CDN fallback (the second updater
+  # endpoint). Skipped cleanly when its secrets are absent — updates still work
+  # entirely through GitHub, which is the primary endpoint and the durable
+  # archive. This runs only once the manifest has been verified.
+  publish-crabnebula:
+    needs: verify-manifest
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    steps:
+      # The secret guard is inside the shell, not in an `if:` expression: the
+      # `secrets` context is not available in workflow `if:` conditionals, so an
+      # `if: secrets.CN_API_KEY != ''` silently evaluates to false and the step
+      # never runs even when the secret is set. Reading it into an env and
+      # testing it here is the pattern that actually works.
+      - name: Publish to CrabNebula (skipped if not configured)
+        shell: bash
+        env:
+          CN_API_KEY: ${{ secrets.CN_API_KEY }}
+          CN_APP_SLUG: ${{ secrets.CN_APP_SLUG }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CN_API_KEY:-}" ] || [ -z "${CN_APP_SLUG:-}" ]; then
+            echo "CN_API_KEY / CN_APP_SLUG not set — skipping the CDN mirror. Updates work via GitHub."
+            exit 0
+          fi
+          # `cn` pulls the assets straight from the GitHub Release we just
+          # published, so there is nothing to re-upload here.
+          curl -fsSL https://cdn.crabnebula.app/cn/latest/cn-linux-x86_64 -o cn
+          chmod +x cn
+          ./cn release draft "$CN_APP_SLUG" "${VERSION#v}" --framework tauri
+          ./cn release upload "$CN_APP_SLUG" "${VERSION#v}" \
+            --github-release "${{ github.repository }}@${VERSION}"
+          ./cn release publish "$CN_APP_SLUG" "${VERSION#v}"

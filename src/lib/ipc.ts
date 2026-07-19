@@ -1147,6 +1147,12 @@ export function tvSearch(query: string): Promise<TvChannel[]> {
   return invoke<TvChannel[]>("tv_search", { query });
 }
 
+/** Probe a batch of channels; resolves to the ids whose stream is reachable now.
+ *  Verdicts are cached (1h) backend-side, so re-checking a list is cheap. */
+export function tvCheckAlive(channels: TvChannel[]): Promise<string[]> {
+  return invoke<string[]>("tv_check_alive", { channels });
+}
+
 /** Every channel for a country (ISO 3166-1 alpha-2 code). */
 export function tvByCountry(code: string): Promise<TvChannel[]> {
   return invoke<TvChannel[]>("tv_by_country", { code });

@@ -12,12 +12,20 @@ import {
   tvFavoriteRemove,
   tvFavoritesList,
   tvSearch,
+  tvCheckAlive,
 } from "@/lib/ipc";
 import type { TvCategory, TvChannel, TvCountry } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { TvPlayer } from "./TvPlayer";
+import { channelHealth, filterChannels, rankByHealth, type Health } from "./tvList";
 
 type Mode = "browse" | "country" | "category" | "favorites";
+
+/** How many channels of a list to health-probe. A list can hold hundreds; the
+ *  top of it is what a viewer actually scans, so probe that many and let the
+ *  filter narrow the rest. Bounds the cost to N requests per list open, cached
+ *  an hour backend-side. */
+const PROBE_CAP = 150;
 
 /** ISO alpha-2 code → flag emoji (regional indicator symbols). */
 function flag(code: string): string {
@@ -49,6 +57,39 @@ export function TvPanel({ active }: { active: boolean }) {
   const [list, setList] = useState<TvChannel[]>([]); // country/category results
   const [watching, setWatching] = useState<TvChannel | null>(null);
 
+  // In-list filter (search WITHIN a loaded country/category/favorites list),
+  // distinct from the global catalog search in browse mode.
+  const [listFilter, setListFilter] = useState("");
+
+  // Stream-health verdicts for the current list: which ids were probed, and
+  // which came back alive. Dead = probed but not alive; the rest are unknown.
+  const [probedIds, setProbedIds] = useState<Set<string>>(new Set());
+  const [aliveIds, setAliveIds] = useState<Set<string>>(new Set());
+  const [checking, setChecking] = useState(false);
+  const healthRunRef = useRef(0);
+
+  // Probe a freshly-loaded list and record the verdicts. Guarded by a run id so
+  // a slow probe for a list the user already navigated away from can't overwrite
+  // the current one's results.
+  const runHealthCheck = useCallback((channels: TvChannel[]) => {
+    setProbedIds(new Set());
+    setAliveIds(new Set());
+    const slice = channels.slice(0, PROBE_CAP);
+    if (slice.length === 0) return;
+    const run = ++healthRunRef.current;
+    setChecking(true);
+    tvCheckAlive(slice)
+      .then((ids) => {
+        if (healthRunRef.current !== run) return;
+        setProbedIds(new Set(slice.map((c) => c.id)));
+        setAliveIds(new Set(ids));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (healthRunRef.current === run) setChecking(false);
+      });
+  }, []);
+
   const loadedRef = useRef(false);
   const favIds = useMemo(() => new Set(favorites.map((f) => f.id)), [favorites]);
 
@@ -79,9 +120,13 @@ export function TvPanel({ active }: { active: boolean }) {
   const openCountry = (c: TvCountry) => {
     setCountry(c);
     setList([]);
+    setListFilter("");
     setLoading(true);
     tvByCountry(c.code)
-      .then(setList)
+      .then((chs) => {
+        setList(chs);
+        runHealthCheck(chs);
+      })
       .catch(() => setList([]))
       .finally(() => setLoading(false));
   };
@@ -89,9 +134,13 @@ export function TvPanel({ active }: { active: boolean }) {
   const openCategory = (c: TvCategory) => {
     setCategory(c);
     setList([]);
+    setListFilter("");
     setLoading(true);
     tvByCategory(c.id)
-      .then(setList)
+      .then((chs) => {
+        setList(chs);
+        runHealthCheck(chs);
+      })
       .catch(() => setList([]))
       .finally(() => setLoading(false));
   };
@@ -106,8 +155,27 @@ export function TvPanel({ active }: { active: boolean }) {
     return q ? countries.filter((c) => c.name.toLowerCase().includes(q)) : countries;
   }, [countries, countryQuery]);
 
-  const channels =
+  const baseChannels =
     mode === "favorites" ? favorites : mode === "browse" ? results : list;
+
+  // Health ordering + dimming applies to the browsed country/category lists —
+  // the ones that mix live and dead. Browse (its own search) and favorites (the
+  // user's own picks) are shown as-is.
+  const healthed = mode === "country" || mode === "category";
+
+  // In-list filter applies to every list except browse, which has the global
+  // search box instead.
+  const channels = useMemo(() => {
+    const filtered =
+      mode === "browse" ? baseChannels : filterChannels(baseChannels, listFilter);
+    return healthed ? rankByHealth(filtered, probedIds, aliveIds) : filtered;
+  }, [mode, baseChannels, listFilter, healthed, probedIds, aliveIds]);
+
+  const healthOf = useCallback(
+    (c: TvChannel): Health =>
+      healthed ? channelHealth(c.id, probedIds, aliveIds) : "unknown",
+    [healthed, probedIds, aliveIds],
+  );
 
   const channelProps = {
     watchingId: watching?.id ?? null,
@@ -115,6 +183,7 @@ export function TvPanel({ active }: { active: boolean }) {
     layout,
     onPlay: setWatching,
     onToggleFavorite: toggleFavorite,
+    healthOf,
   };
 
   return (
@@ -191,6 +260,26 @@ export function TvPanel({ active }: { active: boolean }) {
 
         {mode === "category" && category && (
           <BackButton onClick={() => setCategory(null)}>{category.name}</BackButton>
+        )}
+
+        {/* Filter WITHIN a loaded list (country/category/favorites). The global
+            catalog search in browse mode is a separate, backend-backed box. */}
+        {((mode === "country" && country) ||
+          (mode === "category" && category) ||
+          mode === "favorites") && (
+          <div className="flex flex-1 items-center gap-2 rounded-control border border-border bg-surface px-3 transition-colors focus-within:border-accent">
+            <Search className="size-4 text-text-faint" aria-hidden="true" />
+            <input
+              value={listFilter}
+              onChange={(e) => setListFilter(e.target.value)}
+              placeholder="Filter these channels…"
+              aria-label="Filter channels in this list"
+              className="w-full bg-transparent py-2 text-sm placeholder:text-text-faint"
+            />
+            {checking && (
+              <span className="shrink-0 text-xs text-text-faint">Checking…</span>
+            )}
+          </div>
         )}
 
         <div className="ml-auto">
@@ -279,6 +368,8 @@ type ChannelProps = {
   favIds: Set<string>;
   onPlay: (c: TvChannel) => void;
   onToggleFavorite: (c: TvChannel) => void;
+  /** Probe verdict per channel, for dimming the dead ones. */
+  healthOf: (c: TvChannel) => Health;
 };
 
 function ChannelCollection(props: ChannelProps) {
@@ -298,12 +389,13 @@ function subtitleOf(c: TvChannel): string {
   return [c.group, c.country, c.quality].filter(Boolean).join(" · ") || "TV channel";
 }
 
-function ChannelList({ channels, watchingId, favIds, onPlay, onToggleFavorite }: ChannelProps) {
+function ChannelList({ channels, watchingId, favIds, onPlay, onToggleFavorite, healthOf }: ChannelProps) {
   return (
     <ul className="divide-y divide-border/60">
       {channels.map((c) => {
         const isPlaying = watchingId === c.id;
         const isFav = favIds.has(c.id);
+        const dead = healthOf(c) === "dead";
         return (
           <li key={c.id}>
             <div
@@ -311,6 +403,9 @@ function ChannelList({ channels, watchingId, favIds, onPlay, onToggleFavorite }:
               className={cn(
                 "flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-overlay",
                 isPlaying && "bg-accent-muted/40",
+                // Dead channels stay clickable (a probe can be wrong, and the
+                // player will say so), just dimmed and sunk to the bottom.
+                dead && "opacity-45",
               )}
             >
               <ChannelLogo src={c.logo} className="size-10" />
@@ -318,7 +413,9 @@ function ChannelList({ channels, watchingId, favIds, onPlay, onToggleFavorite }:
                 <p className={cn("truncate text-sm font-medium", isPlaying && "text-accent-strong")}>
                   {c.name}
                 </p>
-                <p className="truncate text-xs text-text-muted">{subtitleOf(c)}</p>
+                <p className="truncate text-xs text-text-muted">
+                  {dead ? "Unavailable" : subtitleOf(c)}
+                </p>
               </div>
               <FavButton isFav={isFav} onClick={() => onToggleFavorite(c)} />
             </div>
@@ -329,12 +426,13 @@ function ChannelList({ channels, watchingId, favIds, onPlay, onToggleFavorite }:
   );
 }
 
-function ChannelGrid({ channels, watchingId, favIds, onPlay, onToggleFavorite }: ChannelProps) {
+function ChannelGrid({ channels, watchingId, favIds, onPlay, onToggleFavorite, healthOf }: ChannelProps) {
   return (
     <ul className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4">
       {channels.map((c) => {
         const isPlaying = watchingId === c.id;
         const isFav = favIds.has(c.id);
+        const dead = healthOf(c) === "dead";
         return (
           <li key={c.id}>
             <div
@@ -342,6 +440,7 @@ function ChannelGrid({ channels, watchingId, favIds, onPlay, onToggleFavorite }:
               className={cn(
                 "group relative flex cursor-pointer flex-col gap-2 rounded-card border border-border bg-surface p-3 transition-colors hover:bg-surface-overlay",
                 isPlaying && "border-accent bg-accent-muted/30",
+                dead && "opacity-45",
               )}
             >
               <div className="grid aspect-video w-full place-items-center overflow-hidden rounded-control bg-surface-overlay">
@@ -351,7 +450,9 @@ function ChannelGrid({ channels, watchingId, favIds, onPlay, onToggleFavorite }:
                 <p className={cn("truncate text-sm font-medium", isPlaying && "text-accent-strong")}>
                   {c.name}
                 </p>
-                <p className="truncate text-xs text-text-muted">{subtitleOf(c)}</p>
+                <p className="truncate text-xs text-text-muted">
+                  {dead ? "Unavailable" : subtitleOf(c)}
+                </p>
               </div>
               <div className="absolute right-2 top-2">
                 <FavButton

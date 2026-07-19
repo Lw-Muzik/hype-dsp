@@ -13,6 +13,7 @@ mod commands;
 mod control;
 mod media;
 mod tv_proxy;
+mod updater;
 mod ytmusic;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -215,6 +216,17 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        // Auto-update. The plugin only supplies the machinery; *when* anything
+        // happens is decided in `updater.rs` — checked on a cadence, downloaded
+        // in the background, and installed at quit, which is the one moment the
+        // audio tap is already torn down.
+        //
+        // Note the plugin wires its own `on_before_exit` to Tauri's
+        // `cleanup_before_exit`; that hook lives on `UpdaterBuilder`, not here.
+        // Our teardown runs explicitly before `install`, so it does not depend
+        // on that.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // Replace the default File/Edit/View/Window/Help menu with just the
         // standard app menu (About/Quit), so ⌘Q still works on macOS.
         .menu(|handle| {
@@ -243,6 +255,7 @@ pub fn run() {
             }
         })
         .manage(engine)
+        .manage(updater::UpdaterState::default())
         .manage(commands::open_with::PendingOpen::default())
         .setup(move |app| {
             // Audio files passed on the command line (Windows/Linux cold launch,
@@ -537,6 +550,11 @@ pub fn run() {
                         engine.set_state(state);
                     }
                 }
+// Background update checks. Deliberately after the state restore so
+                // the first check can never race the settings the user is about
+                // to see, and delayed further inside `spawn_cadence`.
+                updater::spawn_cadence(app.handle().clone());
+
                 let snapshot = engine.state_handle();
                 std::thread::Builder::new()
                     .name("hm-autosave".into())
@@ -610,6 +628,9 @@ pub fn run() {
             commands::engine::engine_set_convolver,
             commands::engine::engine_set_compander,
             commands::engine::engine_set_saturation,
+            updater::updater_status,
+            updater::updater_check_now,
+            updater::updater_restart_now,
             commands::engine::engine_script_compile,
             commands::engine::engine_set_script,
             commands::engine::engine_set_output,
@@ -762,6 +783,13 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building the HypeMuzik application")
         .run(|_app, _event| {
+            // Install a staged update on the way out. This is the ⌘Q / quit
+            // path — window close only hides this app, so it is genuinely the
+            // moment nothing is playing and the tap is already going away.
+            if let tauri::RunEvent::ExitRequested { .. } = &_event {
+                updater::install_on_exit(_app);
+            }
+
             // macOS delivers file-manager opens (and "Open With") as an Apple
             // "open documents" event, both at cold launch and while running —
             // never as argv. Buffer the audio paths for the UI to drain on init

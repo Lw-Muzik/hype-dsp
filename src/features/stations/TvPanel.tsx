@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { ChevronLeft, Search, Star, Tv } from "lucide-react";
 import { Button } from "@/components/Button";
 import { LayoutToggle, type LayoutMode } from "@/components/LayoutToggle";
+import { VirtualList } from "@/components/VirtualList";
+import { VirtualGrid } from "@/components/VirtualGrid";
 import {
   tvByCategory,
   tvByCountry,
@@ -91,6 +93,8 @@ export function TvPanel({ active }: { active: boolean }) {
   }, []);
 
   const loadedRef = useRef(false);
+  // The scroll container the channel list virtualizes against.
+  const scrollRef = useRef<HTMLDivElement>(null);
   const favIds = useMemo(() => new Set(favorites.map((f) => f.id)), [favorites]);
 
   const refreshFavorites = useCallback(() => {
@@ -184,6 +188,7 @@ export function TvPanel({ active }: { active: boolean }) {
     onPlay: setWatching,
     onToggleFavorite: toggleFavorite,
     healthOf,
+    scrollRef,
   };
 
   return (
@@ -287,7 +292,10 @@ export function TvPanel({ active }: { active: boolean }) {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-card border border-border bg-surface-raised">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto rounded-card border border-border bg-surface-raised"
+      >
         {mode === "country" && !country ? (
           <PickGrid items={filteredCountries.map((c) => ({ key: c.code, label: c.name, badge: flag(c.code) }))} onPick={(k) => openCountry(filteredCountries.find((c) => c.code === k)!)} empty="Loading countries…" />
         ) : mode === "category" && !category ? (
@@ -370,7 +378,16 @@ type ChannelProps = {
   onToggleFavorite: (c: TvChannel) => void;
   /** Probe verdict per channel, for dimming the dead ones. */
   healthOf: (c: TvChannel) => Health;
+  /** The scroll container the list/grid virtualizes against. */
+  scrollRef: RefObject<HTMLDivElement | null>;
 };
+
+// A country or category list runs to hundreds — a big one to ~1,500 — channels.
+// Rendered whole, that many rows (each with an image) is what janks and flickers
+// on scroll, so the list and grid are windowed, exactly like the music library.
+const TV_ROW_H = 64;
+const TV_GRID_MIN = 150;
+const TV_GRID_TEXT = 52;
 
 function ChannelCollection(props: ChannelProps) {
   const { channels, loading, emptyLabel, layout } = props;
@@ -389,83 +406,82 @@ function subtitleOf(c: TvChannel): string {
   return [c.group, c.country, c.quality].filter(Boolean).join(" · ") || "TV channel";
 }
 
-function ChannelList({ channels, watchingId, favIds, onPlay, onToggleFavorite, healthOf }: ChannelProps) {
+function ChannelList({ channels, watchingId, favIds, onPlay, onToggleFavorite, healthOf, scrollRef }: ChannelProps) {
   return (
-    <ul className="divide-y divide-border/60">
-      {channels.map((c) => {
-        const isPlaying = watchingId === c.id;
-        const isFav = favIds.has(c.id);
-        const dead = healthOf(c) === "dead";
-        return (
-          <li key={c.id}>
-            <div
-              onClick={() => onPlay(c)}
-              className={cn(
-                "flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-overlay",
-                isPlaying && "bg-accent-muted/40",
-                // Dead channels stay clickable (a probe can be wrong, and the
-                // player will say so), just dimmed and sunk to the bottom.
-                dead && "opacity-45",
-              )}
-            >
-              <ChannelLogo src={c.logo} className="size-10" />
-              <div className="min-w-0 flex-1">
-                <p className={cn("truncate text-sm font-medium", isPlaying && "text-accent-strong")}>
-                  {c.name}
-                </p>
-                <p className="truncate text-xs text-text-muted">
-                  {dead ? "Unavailable" : subtitleOf(c)}
-                </p>
-              </div>
-              <FavButton isFav={isFav} onClick={() => onToggleFavorite(c)} />
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+    <VirtualList
+      items={channels}
+      rowHeight={TV_ROW_H}
+      scrollRef={scrollRef}
+      ariaLabel="TV channels"
+      getKey={(c) => c.id}
+      renderRow={(c) => (
+        <div
+          onClick={() => onPlay(c)}
+          className={cn(
+            "flex h-full cursor-pointer items-center gap-3 border-b border-border/60 px-4 transition-colors hover:bg-surface-overlay",
+            watchingId === c.id && "bg-accent-muted/40",
+            // Dead channels stay clickable (a probe can be wrong, and the player
+            // will say so), just dimmed and sunk to the bottom.
+            healthOf(c) === "dead" && "opacity-45",
+          )}
+        >
+          <ChannelLogo src={c.logo} className="size-10" />
+          <div className="min-w-0 flex-1">
+            <p className={cn("truncate text-sm font-medium", watchingId === c.id && "text-accent-strong")}>
+              {c.name}
+            </p>
+            <p className="truncate text-xs text-text-muted">
+              {healthOf(c) === "dead" ? "Unavailable" : subtitleOf(c)}
+            </p>
+          </div>
+          <FavButton isFav={favIds.has(c.id)} onClick={() => onToggleFavorite(c)} />
+        </div>
+      )}
+    />
   );
 }
 
-function ChannelGrid({ channels, watchingId, favIds, onPlay, onToggleFavorite, healthOf }: ChannelProps) {
+function ChannelGrid({ channels, watchingId, favIds, onPlay, onToggleFavorite, healthOf, scrollRef }: ChannelProps) {
   return (
-    <ul className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4">
-      {channels.map((c) => {
-        const isPlaying = watchingId === c.id;
-        const isFav = favIds.has(c.id);
-        const dead = healthOf(c) === "dead";
-        return (
-          <li key={c.id}>
-            <div
-              onClick={() => onPlay(c)}
-              className={cn(
-                "group relative flex cursor-pointer flex-col gap-2 rounded-card border border-border bg-surface p-3 transition-colors hover:bg-surface-overlay",
-                isPlaying && "border-accent bg-accent-muted/30",
-                dead && "opacity-45",
-              )}
-            >
-              <div className="grid aspect-video w-full place-items-center overflow-hidden rounded-control bg-surface-overlay">
-                <ChannelLogo src={c.logo} className="size-14" contain />
-              </div>
-              <div className="min-w-0">
-                <p className={cn("truncate text-sm font-medium", isPlaying && "text-accent-strong")}>
-                  {c.name}
-                </p>
-                <p className="truncate text-xs text-text-muted">
-                  {dead ? "Unavailable" : subtitleOf(c)}
-                </p>
-              </div>
-              <div className="absolute right-2 top-2">
-                <FavButton
-                  isFav={isFav}
-                  onClick={() => onToggleFavorite(c)}
-                  className="bg-black/30 backdrop-blur"
-                />
-              </div>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+    <VirtualGrid
+      items={channels}
+      minColWidth={TV_GRID_MIN}
+      textHeight={TV_GRID_TEXT}
+      scrollRef={scrollRef}
+      ariaLabel="TV channels"
+      getKey={(c) => c.id}
+      renderCell={(c) => (
+        <div
+          onClick={() => onPlay(c)}
+          className={cn(
+            "group relative flex h-full cursor-pointer flex-col gap-2 rounded-card border border-border bg-surface p-3 transition-colors hover:bg-surface-overlay",
+            watchingId === c.id && "border-accent bg-accent-muted/30",
+            healthOf(c) === "dead" && "opacity-45",
+          )}
+        >
+          {/* Square tile, not 16:9 — a channel logo suits a square, and it's what
+              lets the grid window against a fixed cell height. */}
+          <div className="grid aspect-square w-full flex-1 place-items-center overflow-hidden rounded-control bg-surface-overlay">
+            <ChannelLogo src={c.logo} className="size-14" contain />
+          </div>
+          <div className="min-w-0">
+            <p className={cn("truncate text-sm font-medium", watchingId === c.id && "text-accent-strong")}>
+              {c.name}
+            </p>
+            <p className="truncate text-xs text-text-muted">
+              {healthOf(c) === "dead" ? "Unavailable" : subtitleOf(c)}
+            </p>
+          </div>
+          <div className="absolute right-2 top-2">
+            <FavButton
+              isFav={favIds.has(c.id)}
+              onClick={() => onToggleFavorite(c)}
+              className="bg-black/30 backdrop-blur"
+            />
+          </div>
+        </div>
+      )}
+    />
   );
 }
 

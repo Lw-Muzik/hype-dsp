@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   CircleAlert,
@@ -150,7 +149,17 @@ export function VideoStage({ videoId }: { videoId: string }) {
     );
   }
 
-  const stage = (
+  // Fullscreen is a CSS change on this same element, never a move in the DOM.
+  // An earlier version portalled the stage to `document.body` on fullscreen,
+  // which **remounted the `<video>`** — a fresh element that re-fetched and
+  // re-buffered the stream each toggle, so entering fullscreen stalled on a
+  // reload. The portal was there to escape a containing-block trap, but this
+  // component's ancestors (the app shell, the right sidebar) carry no
+  // `transform`/`filter`/`will-change`, so a plain `fixed inset-0` already
+  // escapes to the viewport. Keeping the element in place means fullscreen is
+  // instant: the picture is already decoded and playing, it just fills the
+  // screen.
+  return (
     <Stage fullscreen={fullscreen}>
       <video
         ref={ref}
@@ -170,21 +179,6 @@ export function VideoStage({ videoId }: { videoId: string }) {
       <VideoControls fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} />
     </Stage>
   );
-
-  // Fullscreen renders the stage in a portal to `document.body` at `fixed
-  // inset-0`. Not a plain `fixed` inline, because this component lives inside the
-  // right sidebar, whose ancestors create containing blocks (an animated width,
-  // stacking contexts) that a fixed element gets trapped inside — the picture
-  // would go missing while the audio played on. The portal escapes all of them,
-  // the same fix the TV player uses. The `<video>` remounts on the switch and
-  // reloads briefly; it's muted and re-synced to the engine, so the sound never
-  // notices.
-  return fullscreen
-    ? createPortal(
-        <div className="fixed inset-0 z-[100] bg-black">{stage}</div>,
-        document.body,
-      )
-    : stage;
 }
 
 /**
@@ -309,13 +303,15 @@ function Stage({
   return (
     <div
       className={cn(
-        "group/stage relative grid w-full place-items-center overflow-hidden bg-black",
-        // Fullscreen fills its portal (which is the whole screen), so drop the
-        // 16:9 box and card chrome — a fixed ratio would letterbox black bars
-        // inside a black stage.
+        "group/stage grid w-full place-items-center overflow-hidden bg-black",
+        // Fullscreen breaks this element out of the sidebar to cover the
+        // viewport — `fixed inset-0`, not a portal. No ancestor is a containing
+        // block (no transform/filter in the chain), so fixed escapes cleanly,
+        // and staying in place is what keeps the picture from reloading. Drop
+        // the 16:9 box and card chrome, which would letterbox inside the screen.
         fullscreen
-          ? "h-full"
-          : "aspect-video rounded-card ring-1 ring-border",
+          ? "fixed inset-0 z-[100]"
+          : "relative aspect-video rounded-card ring-1 ring-border",
       )}
     >
       {children}

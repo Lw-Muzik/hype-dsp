@@ -45,7 +45,6 @@ import {
   ytmusicVideoPrefetch,
 } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
-import { useUiStore } from "@/stores/ui";
 import { BAND_COUNT } from "@/lib/types";
 import {
   observe,
@@ -551,11 +550,15 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         break;
       case "ytmusic":
         // Warm this track's *video* url the moment it starts, so switching to
-        // the Video tab is instant instead of a ~5s yt-dlp spawn on the click.
-        // Only once the user has actually opened the video panel this session —
-        // otherwise it's a spawn per track for people who never watch. Covers
-        // both the queue and single-track paths below.
-        if (item.ytTrack!.hasVideo && useUiStore.getState().videoWatched) {
+        // the Video tab is instant — including the first video of a session —
+        // rather than a ~5s yt-dlp spawn on the click. It's a background resolve
+        // per video-capable track; tracks run minutes, so the extra call is
+        // occasional, never on the audio's critical path, and fire-and-forget.
+        // (The zero-waste version — grab the video url in the same yt-dlp call
+        // that resolves the audio — would halve the resolves but has to modify
+        // the audio hot path, so it's deliberately left for when that path can
+        // be exercised end to end.) Covers both the queue and single-track paths.
+        if (item.ytTrack!.hasVideo) {
           void ytmusicVideoPrefetch(item.ytTrack!.videoId).catch(() => {});
         }
         if (useYtMusicQueue) {

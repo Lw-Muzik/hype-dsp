@@ -11,7 +11,6 @@ import {
   SkipForward,
 } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
-import { useUiStore } from "@/stores/ui";
 import { ipcErrorMessage, ytmusicVideoUrl } from "@/lib/ipc";
 import { syncAction } from "@/features/player/videoSync";
 import { SeekBar } from "@/features/player/SeekBar";
@@ -40,11 +39,6 @@ export function VideoStage({ videoId }: { videoId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
 
-  // This mounting IS the user watching video — record it so the engine starts
-  // warming later tracks' video urls in the background (see its ytmusic path).
-  useEffect(() => {
-    useUiStore.getState().markVideoWatched();
-  }, []);
   // The live fullscreen value for the unmount cleanup, which otherwise closes
   // over the initial `false` and would leave the OS window stuck fullscreen.
   const fullscreenRef = useRef(false);
@@ -81,10 +75,11 @@ export function VideoStage({ videoId }: { videoId: string }) {
     };
   }, []);
 
-  // Resolve on demand: this costs a yt-dlp spawn on a cold cache, so it happens
-  // when video is switched on, not for every track that might have one. The
-  // backend caches the result for the url's lifetime, so re-opening this tab or
-  // re-mounting the element is free.
+  // Resolve the url for the picture. Usually a cache hit now — the engine
+  // prefetches every video-capable track's url the moment it starts playing, so
+  // by the time this mounts the resolve is already warm and the picture appears
+  // at once. Cold only if the video tab is opened within the ~5s prefetch, or
+  // the prefetch failed; either way this pays the yt-dlp spawn itself.
   useEffect(() => {
     let cancelled = false;
     setUrl(null);

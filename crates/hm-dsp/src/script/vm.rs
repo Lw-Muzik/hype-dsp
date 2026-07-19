@@ -375,6 +375,28 @@ pub fn run_init(prog: &Program, regs: &mut [f32], budget: u32) {
 ///
 /// `regs` must be pre-sized to at least `prog.num_regs`.
 pub fn run_sample(prog: &Program, regs: &mut [f32], spl: &mut [f32; 2], budget: u32) {
+    let mut remaining = budget;
+    run_sample_within(prog, regs, spl, &mut remaining);
+}
+
+/// [`run_sample`], but spending from a budget the caller keeps across frames.
+///
+/// The chain stage runs a whole block per callback and needs the *block* bounded,
+/// not each frame independently: a per-frame allowance can be overrun on every
+/// single frame, and an overrun frame is not silent — `execute` stops where it
+/// is and this still writes the registers back, so the script emits half its own
+/// output, consistently, forever. Sharing one budget makes exhaustion terminal
+/// for the rest of that block instead, and a frame that finds it already spent
+/// writes back exactly what it read: identity, which is the honest thing for a
+/// script that has been cut off.
+///
+/// `regs` must be pre-sized to at least `prog.num_regs`.
+pub fn run_sample_within(
+    prog: &Program,
+    regs: &mut [f32],
+    spl: &mut [f32; 2],
+    budget: &mut u32,
+) {
     // Write input samples into the register file.
     if let Some(r) = regs.get_mut(prog.spl0_reg as usize) {
         *r = spl[0];
@@ -384,8 +406,7 @@ pub fn run_sample(prog: &Program, regs: &mut [f32], spl: &mut [f32; 2], budget: 
     }
 
     // Execute the @sample ops.
-    let mut remaining = budget;
-    execute(&prog.sample, regs, &mut remaining);
+    execute(&prog.sample, regs, budget);
 
     // Read output samples back, guarding against non-finite values.
     spl[0] = regs

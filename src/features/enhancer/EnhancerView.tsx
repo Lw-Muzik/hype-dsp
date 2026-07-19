@@ -32,6 +32,7 @@ import { RoomCard } from "./RoomCard";
 import { ConvolverCard } from "./ConvolverCard";
 import { CompanderCard } from "./CompanderCard";
 import { SaturationCard } from "./SaturationCard";
+import { ScriptCard } from "./ScriptCard";
 import { PresetsCard } from "./PresetsCard";
 
 export function EnhancerView() {
@@ -318,6 +319,10 @@ export function EnhancerView() {
 
         {/* Tube saturation */}
         <SaturationCard />
+
+        {/* LiveProg — runs where it sits in the chain: after saturation, before
+            the makeup gain and limiter. */}
+        <ScriptCard />
 
         {/* Headphone correction */}
         <Card title="Headphone correction" icon={Headphones}>

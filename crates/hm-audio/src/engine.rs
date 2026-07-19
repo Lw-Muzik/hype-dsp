@@ -30,7 +30,8 @@ use hm_core::{
     MeterFrame, OutputState, ParametricBand, RoomState, SaturationState, SpatialMode,
     SpatializerState, Surround3DState, SurroundSpeakers, TrackMeta,
 };
-use hm_dsp::{empty_ir_slot, CompanderMeter, IrSlot, PreparedIr, ProcessChain};
+use hm_dsp::{empty_ir_slot, empty_script_slot, ChainSlots, CompanderMeter, IrSlot, PreparedIr,
+    ProcessChain, ScriptSlot};
 
 use crate::ir_loader::load_ir_samples;
 
@@ -452,8 +453,7 @@ impl Renderer {
         mut source: Box<dyn AudioSource>,
         sample_rate: f32,
         channels: usize,
-        ir_slot: IrSlot,
-        gr_meter: std::sync::Arc<CompanderMeter>,
+        slots: ChainSlots,
     ) -> Self {
         // Tell the source the real output format so rate-dependent sources (e.g.
         // the system tap) can configure their resampler. Errors are non-fatal.
@@ -462,7 +462,7 @@ impl Renderer {
             channels: channels as u16,
         });
         Self {
-            chain: ProcessChain::standard_with_ir(sample_rate, channels, ir_slot, gr_meter),
+            chain: ProcessChain::standard_with_slots(sample_rate, channels, slots),
             source,
             analyzer: Analyzer::new(sample_rate),
         }
@@ -590,6 +590,9 @@ pub struct AudioEngine {
     /// Lock-free per-band GR meter shared with the active Compander; written on
     /// the audio thread once per block and read by the UI-forwarding thread.
     compander_gr: std::sync::Arc<CompanderMeter>,
+    /// Lock-free slot holding the compiled LiveProg program, shared with the
+    /// chain's script stage. Published on compile; the audio thread only loads.
+    script_slot: ScriptSlot,
     /// Keeps the macOS tap watchdog thread alive; cleared on drop so it exits.
     /// (The heartbeat and tap-active flags it watches live only as clones handed
     /// to the control + watchdog threads — they need no handle on the engine.)
@@ -667,6 +670,12 @@ impl AudioEngine {
         let stem_gains = Arc::new(StemGains::default());
         let ir_slot = empty_ir_slot();
         let compander_gr = std::sync::Arc::new(CompanderMeter::default());
+        let script_slot = empty_script_slot();
+        let chain_slots = ChainSlots {
+            ir: ir_slot.clone(),
+            compander_meter: compander_gr.clone(),
+            script: script_slot.clone(),
+        };
         let output_beat = Arc::new(AtomicU64::new(0));
         let tap_active = Arc::new(AtomicBool::new(false));
         let tap_rebuild_pending = Arc::new(AtomicBool::new(false));
@@ -694,8 +703,7 @@ impl AudioEngine {
             let queue_index = queue_index.clone();
             let crossfade = crossfade.clone();
             let stem_gains = stem_gains.clone();
-            let ir_slot = ir_slot.clone();
-            let compander_gr = compander_gr.clone();
+            let chain_slots = chain_slots.clone();
             let output_beat = output_beat.clone();
             let tap_active = tap_active.clone();
             let tap_rebuild_pending = tap_rebuild_pending.clone();
@@ -723,8 +731,7 @@ impl AudioEngine {
                         queue_index,
                         crossfade,
                         stem_gains,
-                        ir_slot,
-                        compander_gr,
+                        chain_slots,
                         output_beat,
                         tap_active,
                         tap_rebuild_pending,
@@ -801,6 +808,7 @@ impl AudioEngine {
             stem_gains,
             ir_slot,
             compander_gr,
+            script_slot,
             #[cfg(target_os = "macos")]
             watchdog_alive,
             #[cfg(target_os = "macos")]
@@ -873,6 +881,11 @@ impl AudioEngine {
         // saved crossfade takes effect immediately (it's read off the atomic).
         self.crossfade
             .store(new_state.playback.crossfade_secs.max(0.0).to_bits(), Ordering::Relaxed);
+        // Same reasoning, one step further: only the script's *source* is
+        // serializable, so a restored or preset-applied state carries text with
+        // no program behind it. Without this the card would show an enabled
+        // script, with the user's code in it, over a chain running identity.
+        self.recompile_from_state(&new_state);
         let mut guard = self.write_state.lock().expect("engine state poisoned");
         *guard = new_state.clone();
         self.shared.store(Arc::new(new_state));
@@ -985,6 +998,34 @@ impl AudioEngine {
         compander.attack_ms = compander.attack_ms.max(0.1);
         compander.release_ms = compander.release_ms.max(0.1);
         self.update(|s| s.compander = compander);
+    }
+
+    /// Compile a LiveProg source and publish it to the chain's script stage.
+    ///
+    /// Compilation happens on whichever thread calls this. The only guarantee
+    /// that matters is that it is never the audio thread: that thread's entire
+    /// involvement with a program is one atomic load per block.
+    ///
+    /// On success the source is stored in engine state so it persists and is
+    /// captured by whole-chain presets. On failure nothing is published and the
+    /// previously-running program keeps playing — a script that no longer
+    /// compiles is a reason to leave the sound alone, not to silence it.
+    pub fn compile_script(&self, source: String) -> Result<(), hm_dsp::script::ScriptError> {
+        let program = hm_dsp::script::compile(&source)?;
+        self.script_slot
+            .store(std::sync::Arc::new(Some(std::sync::Arc::new(program))));
+        self.update(|s| s.script.source = source);
+        Ok(())
+    }
+
+    /// Enable or disable the script stage without recompiling.
+    pub fn set_script(&self, enabled: bool) {
+        self.update(|s| s.script.enabled = enabled);
+    }
+
+    /// Rebuild the slot from a state that was restored rather than authored.
+    fn recompile_from_state(&self, state: &EngineState) {
+        publish_script(&self.script_slot, &state.script.source);
     }
 
     /// Configure the tube saturation stage.
@@ -1403,8 +1444,8 @@ struct ControlCtx {
     queue_index: Arc<AtomicUsize>,
     crossfade: Arc<AtomicU32>,
     stem_gains: Arc<StemGains>,
-    ir_slot: IrSlot,
-    compander_gr: std::sync::Arc<CompanderMeter>,
+    /// The chain's externally-owned slots, assembled once and cloned per stream.
+    chain_slots: ChainSlots,
     output_beat: Arc<AtomicU64>,
     tap_active: Arc<AtomicBool>,
     /// Set by the watchdog when it requests a tap rebuild and cleared by the
@@ -1432,6 +1473,50 @@ struct ControlCtx {
     tap_gave_up: Arc<AtomicBool>,
 }
 
+/// What restoring a state should do to the script slot.
+///
+/// Split out from the engine because the interesting part is the policy, and the
+/// engine can only be built with a real audio device attached — untestable for
+/// the sake of three branches that are entirely decidable from a string.
+#[derive(Debug)]
+enum SlotUpdate {
+    /// No script: clear the slot so a previous one stops playing.
+    Clear,
+    /// Compiled: publish it.
+    Publish(hm_dsp::script::Program),
+    /// Did not compile: leave whatever is loaded alone.
+    ///
+    /// This is a restore or a preset apply, not someone typing. There is nobody
+    /// to show the error to, and silencing a working chain over one stale field
+    /// is worse than ignoring the field.
+    Keep,
+}
+
+fn slot_update(source: &str) -> SlotUpdate {
+    if source.trim().is_empty() {
+        return SlotUpdate::Clear;
+    }
+    match hm_dsp::script::compile(source) {
+        Ok(program) => SlotUpdate::Publish(program),
+        Err(_) => SlotUpdate::Keep,
+    }
+}
+
+/// Apply [`slot_update`]'s verdict to a slot.
+///
+/// Takes the slot rather than the engine so the outcome that matters most can
+/// actually be asserted: that `Keep` leaves the previously-published program
+/// *in place*. An engine cannot be built in a test without an audio device.
+fn publish_script(slot: &ScriptSlot, source: &str) {
+    match slot_update(source) {
+        SlotUpdate::Clear => slot.store(std::sync::Arc::new(None)),
+        SlotUpdate::Publish(program) => {
+            slot.store(std::sync::Arc::new(Some(std::sync::Arc::new(program))))
+        }
+        SlotUpdate::Keep => {}
+    }
+}
+
 fn control_loop(ctx: ControlCtx) {
     let ControlCtx {
         rx,
@@ -1446,8 +1531,7 @@ fn control_loop(ctx: ControlCtx) {
         queue_index,
         crossfade,
         stem_gains,
-        ir_slot,
-        compander_gr,
+        chain_slots,
         output_beat,
         tap_active,
         tap_rebuild_pending,
@@ -1551,8 +1635,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
-                    ir_slot.clone(),
-                    compander_gr.clone(),
+                    chain_slots.clone(),
                     output_beat.clone(),
                     exhausted.clone(),
                 ) {
@@ -1601,8 +1684,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
-                    ir_slot.clone(),
-                    compander_gr.clone(),
+                    chain_slots.clone(),
                     output_beat.clone(),
                     exhausted.clone(),
                 ) {
@@ -1656,8 +1738,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
-                    ir_slot.clone(),
-                    compander_gr.clone(),
+                    chain_slots.clone(),
                     output_beat.clone(),
                     exhausted.clone(),
                 ) {
@@ -1704,8 +1785,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
-                    ir_slot.clone(),
-                    compander_gr.clone(),
+                    chain_slots.clone(),
                     output_beat.clone(),
                     exhausted.clone(),
                 ) {
@@ -1757,8 +1837,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
-                    ir_slot.clone(),
-                    compander_gr.clone(),
+                    chain_slots.clone(),
                     output_beat.clone(),
                     exhausted.clone(),
                 ) {
@@ -1793,8 +1872,7 @@ fn control_loop(ctx: ControlCtx) {
                         playing.clone(),
                         channels,
                         sample_rate as f32,
-                        ir_slot.clone(),
-                        compander_gr.clone(),
+                        chain_slots.clone(),
                         output_beat.clone(),
                         exhausted.clone(),
                     ) {
@@ -1846,8 +1924,7 @@ fn control_loop(ctx: ControlCtx) {
                     playing.clone(),
                     channels,
                     sample_rate as f32,
-                    ir_slot.clone(),
-                    compander_gr.clone(),
+                    chain_slots.clone(),
                     output_beat.clone(),
                     exhausted.clone(),
                 ) {
@@ -1932,8 +2009,7 @@ fn control_loop(ctx: ControlCtx) {
                         playing.clone(),
                         channels,
                         sample_rate as f32,
-                        ir_slot.clone(),
-                        compander_gr.clone(),
+                        chain_slots.clone(),
                         output_beat.clone(),
                         exhausted.clone(),
                     ) {
@@ -2029,12 +2105,11 @@ fn build_output_stream(
     playing: Arc<AtomicBool>,
     channels: usize,
     sample_rate: f32,
-    ir_slot: IrSlot,
-    gr_meter: std::sync::Arc<CompanderMeter>,
+    slots: ChainSlots,
     output_beat: Arc<AtomicU64>,
     exhausted: Arc<AtomicBool>,
 ) -> Result<cpal::Stream, AudioError> {
-    let mut renderer = Renderer::new(source, sample_rate, channels, ir_slot, gr_meter);
+    let mut renderer = Renderer::new(source, sample_rate, channels, slots);
     // A fresh stream starts un-exhausted: the flag may be stale from a previous
     // source, and the control loop must never tear *this* stream down for it.
     exhausted.store(false, Ordering::Relaxed);
@@ -2302,6 +2377,66 @@ mod tests {
     use super::*;
     use crate::sources::FilePlaybackSource;
 
+    /// A stored script is only *text*; the compiled program it needs cannot be
+    /// serialized. So every path that replaces state wholesale — launch restore,
+    /// preset apply — has to rebuild it, or the UI shows an enabled script with
+    /// the user's code in it over a chain running identity.
+    #[test]
+    fn a_restored_script_is_compiled_back_into_the_slot() {
+        let update = slot_update("@sample\n  spl0 = spl0 * 0.5;\n");
+        assert!(
+            matches!(update, SlotUpdate::Publish(_)),
+            "a compiling source must be published, got {update:?}"
+        );
+    }
+
+    /// Nothing to run: the slot must be cleared, not left holding whatever the
+    /// previous state's script was.
+    #[test]
+    fn an_empty_source_clears_the_slot() {
+        assert!(matches!(slot_update(""), SlotUpdate::Clear));
+        assert!(matches!(slot_update("   \n\t "), SlotUpdate::Clear));
+    }
+
+    /// A preset carrying a script that no longer compiles must not silence the
+    /// chain around it. There is no one to report the error to mid-restore, and
+    /// one bad field should not reject the other twenty.
+    #[test]
+    fn a_source_that_will_not_compile_leaves_the_running_program_alone() {
+        assert!(matches!(slot_update("@sample this is not eel2 ((("), SlotUpdate::Keep));
+    }
+
+    /// The same claim, asked of a real slot — `Keep` is the one verdict whose
+    /// whole meaning is what it *doesn't* do, and a match arm that fell through
+    /// to a clear would satisfy every assertion above.
+    #[test]
+    fn a_broken_source_does_not_disturb_what_is_already_playing() {
+        let slot = hm_dsp::empty_script_slot();
+        publish_script(&slot, "@sample\n  spl0 = spl0 * 0.5;\n");
+        assert!(slot.load_full().is_some(), "a compiling source must publish");
+
+        publish_script(&slot, "@sample not ((( eel2");
+        assert!(
+            slot.load_full().is_some(),
+            "a broken source must leave the running program in place, not clear it"
+        );
+
+        // An empty source *is* a reason to clear: there is nothing to run.
+        publish_script(&slot, "   ");
+        assert!(slot.load_full().is_none(), "an empty source must clear the slot");
+    }
+
+    /// Compilation is keyed on the source, never on `enabled` — so switching the
+    /// toggle on after a restart takes effect immediately rather than silently
+    /// requiring a trip through Apply first.
+    #[test]
+    fn a_disabled_script_is_still_compiled() {
+        let mut state = EngineState::default();
+        state.script.enabled = false;
+        state.script.source = "@sample\n  spl0 = spl0 * 0.5;\n".into();
+        assert!(matches!(slot_update(&state.script.source), SlotUpdate::Publish(_)));
+    }
+
     const THRESH: u32 = 3;
 
     #[test]
@@ -2524,8 +2659,7 @@ mod tests {
             constant_source(2.0, 4096),
             48_000.0,
             2,
-            hm_dsp::empty_ir_slot(),
-            Arc::new(hm_dsp::CompanderMeter::default()),
+            ChainSlots::default(),
         );
         let meters = EngineMeters::default();
         let spectrum = SpectrumTap::default();
@@ -2551,8 +2685,7 @@ mod tests {
             constant_source(2.0, 2048),
             48_000.0,
             2,
-            hm_dsp::empty_ir_slot(),
-            Arc::new(hm_dsp::CompanderMeter::default()),
+            ChainSlots::default(),
         );
         let meters = EngineMeters::default();
         let spectrum = SpectrumTap::default();

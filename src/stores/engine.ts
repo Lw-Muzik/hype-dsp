@@ -19,6 +19,8 @@ import {
   engineSetRoom,
   engineSetOutput,
   engineSetSaturation,
+  engineScriptCompile,
+  engineSetScript,
   engineSetSpatializer,
   engineSetSurround3d,
   systemEqSetScope,
@@ -340,6 +342,11 @@ interface EngineStore {
   setCompander: (next: CompanderState) => void;
   setSaturation: (next: SaturationState) => void;
   setOutput: (next: OutputState) => void;
+  /** Turn the LiveProg stage on/off. The compiled program is unaffected. */
+  setScriptEnabled: (enabled: boolean) => void;
+  /** Compile a script and load it into the chain. Rejects with the compile
+   *  error for the caller to show — nothing changes on failure. */
+  compileScript: (source: string) => Promise<void>;
   /** Set which apps the macOS system-wide EQ tap processes. Resolves once the
    *  backend has committed the scope (await before restarting the tap). */
   setSystemEqScope: (scope: SystemEqScope) => Promise<void>;
@@ -826,6 +833,16 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setOutput: (next) => {
       set((s) => ({ state: { ...s.state, output: next } }));
       void engineSetOutput(next).catch(() => {});
+    },
+    setScriptEnabled: (enabled) => {
+      set((s) => ({ state: { ...s.state, script: { ...s.state.script, enabled } } }));
+      void engineSetScript(enabled).catch(() => {});
+    },
+    compileScript: async (source) => {
+      // The source is only mirrored into the store *after* the backend accepts
+      // it, so the state never claims to hold a program the chain rejected.
+      await engineScriptCompile(source);
+      set((s) => ({ state: { ...s.state, script: { ...s.state.script, source } } }));
     },
     setSystemEqScope: (scope) => {
       set((s) => ({ state: { ...s.state, systemEqScope: scope } }));

@@ -10,7 +10,7 @@ pub mod compiler;
 pub use compiler::{compile_ast, Builtin, Op, Program};
 
 pub mod vm;
-pub use vm::{run_init, run_sample};
+pub use vm::{run_init, run_sample, run_sample_within};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScriptError {

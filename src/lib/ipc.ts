@@ -165,6 +165,21 @@ export function engineSetSaturation(saturation: SaturationState): Promise<void> 
   return invoke<void>("engine_set_saturation", { saturation });
 }
 
+/* -------------------------------------------------------------- liveprog */
+
+/** Compile an EEL2-subset script and load it into the chain.
+ *
+ *  Rejects with the compile error (`[line:col] message`) and changes nothing —
+ *  a script that won't compile leaves whatever was already running in place. */
+export function engineScriptCompile(source: string): Promise<void> {
+  return invoke<void>("engine_script_compile", { source });
+}
+
+/** Enable or disable the LiveProg stage without recompiling it. */
+export function engineSetScript(enabled: boolean): Promise<void> {
+  return invoke<void>("engine_set_script", { enabled });
+}
+
 export interface ConvolverIrInfo {
   name: string;
   seconds: number;

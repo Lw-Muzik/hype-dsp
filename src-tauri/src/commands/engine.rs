@@ -178,6 +178,33 @@ pub fn engine_set_saturation(engine: State<'_, AudioEngine>, saturation: hm_core
     engine.set_saturation(saturation);
 }
 
+/// Compile a LiveProg (EEL2-subset) script and load it into the DSP chain.
+///
+/// `async` deliberately. Compiling is cheap — lex, parse and emit over a few
+/// hundred characters — but a sync command runs on the main thread, and this app
+/// has twice shipped one that froze the UI (lyrics, mixer icon extraction). The
+/// cost of not repeating that here is a keyword.
+///
+/// On success the program is published lock-free to the script stage and the
+/// source is stored in engine state, so it survives a restart and is captured by
+/// whole-chain presets. On failure nothing is published, the previously-running
+/// script keeps playing, and the caller gets the line and column.
+#[tauri::command]
+pub async fn engine_script_compile(
+    engine: State<'_, AudioEngine>,
+    source: String,
+) -> Result<(), IpcError> {
+    engine
+        .compile_script(source)
+        .map_err(|e| IpcError::new("script", format!("[{}:{}] {}", e.line, e.col, e.message)))
+}
+
+/// Enable or disable the LiveProg script stage without recompiling it.
+#[tauri::command]
+pub fn engine_set_script(engine: State<'_, AudioEngine>, enabled: bool) {
+    engine.set_script(enabled);
+}
+
 /// Configure the output stage — notably the brickwall limiter on/off. The
 /// limiter is on by default; turning it off removes the clipping safety net.
 #[tauri::command]

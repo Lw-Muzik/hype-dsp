@@ -252,6 +252,19 @@ fn process_objects_for_id(id: &str) -> Vec<AudioObjectID> {
         .collect()
 }
 
+/// Core Audio process-object ids for the given app session ids (the same stable
+/// ids the mixer reports). Used to scope the system-wide EQ tap to a subset of
+/// apps — sharing the mixer's identity resolution so selections always match.
+/// Only currently-outputting processes resolve; unknown/idle ids contribute
+/// nothing. `AudioObjectID` is `u32`, returned as such to keep callers
+/// decoupled from the objc2 type.
+pub fn output_process_objects_for_ids(ids: &[String]) -> Vec<u32> {
+    // `AudioObjectID` is a type alias for `u32`, so this collects directly.
+    ids.iter()
+        .flat_map(|id| process_objects_for_id(id))
+        .collect()
+}
+
 fn tap_uid_string(tap_id: AudioObjectID) -> Option<String> {
     get_cfstring(tap_id, kAudioTapPropertyUID)
 }

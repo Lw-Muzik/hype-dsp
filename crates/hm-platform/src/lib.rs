@@ -24,6 +24,11 @@ mod util;
 #[cfg(target_os = "macos")]
 mod macos;
 
+/// macOS only: resolve mixer app-session ids to Core Audio process-object ids,
+/// for scoping the system-wide EQ tap. See [`macos::output_process_objects_for_ids`].
+#[cfg(target_os = "macos")]
+pub use macos::output_process_objects_for_ids;
+
 // Mounted as `win` (not `windows`) so it can't shadow the `windows` crate.
 #[cfg(target_os = "windows")]
 #[path = "windows.rs"]

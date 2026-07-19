@@ -41,6 +41,8 @@ use objc2_core_foundation::{CFDictionary, CFRetained, CFString};
 use objc2_foundation::{NSMutableArray, NSMutableDictionary, NSNumber, NSObject, NSString};
 use rtrb::RingBuffer;
 
+use hm_core::{SystemEqScope, SystemEqScopeMode};
+
 use crate::error::AudioError;
 use crate::resampler::StereoResampler;
 use crate::{AudioSource, StreamFormat};
@@ -337,9 +339,21 @@ impl SystemTapSource {
     /// `tel` is the shared capture telemetry: its heartbeat is bumped by the io
     /// proc and watched by the engine watchdog, and a fresh generation is started
     /// here so first-callback diagnostics are re-armed for this new tap instance.
-    pub fn new(device_rate: u32, tel: Arc<CaptureTelemetry>) -> Result<Self, AudioError> {
+    ///
+    /// `scope` selects which apps the tap processes: `All` taps the whole system
+    /// (every app but HypeMuzik), `Only` taps just the listed apps (allowlist),
+    /// `Except` taps everything but the listed apps (blocklist). Only
+    /// currently-running output processes resolve — an allowlisted app that
+    /// starts later is picked up on the next tap rebuild.
+    pub fn new(
+        device_rate: u32,
+        tel: Arc<CaptureTelemetry>,
+        scope: &SystemEqScope,
+    ) -> Result<Self, AudioError> {
         crate::diag::log(&format!(
-            "=== SystemTapSource::new(device_rate={device_rate}) ==="
+            "=== SystemTapSource::new(device_rate={device_rate}, mode={:?}, apps={}) ===",
+            scope.mode,
+            scope.apps.len()
         ));
         // Re-arm first-callback capture for this (re)built tap (non-RT).
         tel.begin_generation();
@@ -348,14 +362,51 @@ impl SystemTapSource {
         // never collides with the async teardown of the previous one.
         let seq = TAP_SEQ.fetch_add(1, Ordering::Relaxed);
 
-        // Global tap that mutes everything except us.
-        let exclude = NSMutableArray::<NSNumber>::new();
-        exclude.addObject(&NSNumber::new_u32(own));
+        // Resolve the selected app session ids to Core Audio process objects,
+        // reusing the mixer's identity logic so the selection always matches.
+        let selected: Vec<u32> = if scope.apps.is_empty() {
+            Vec::new()
+        } else {
+            hm_platform::output_process_objects_for_ids(&scope.apps)
+        };
+
         let description = unsafe {
-            let d = CATapDescription::initStereoGlobalTapButExcludeProcesses(
-                CATapDescription::alloc(),
-                &exclude,
-            );
+            let d = match scope.mode {
+                SystemEqScopeMode::Only => {
+                    // Allowlist: tap only the selected apps, never our own
+                    // process (would feed back).
+                    let include = NSMutableArray::<NSNumber>::new();
+                    for &obj in selected.iter().filter(|&&o| o != own) {
+                        include.addObject(&NSNumber::new_u32(obj));
+                    }
+                    if include.count() == 0 {
+                        return Err(AudioError::Unavailable(
+                            "Select at least one running app to equalize, or switch the \
+                             system-EQ scope back to all apps."
+                                .into(),
+                        ));
+                    }
+                    CATapDescription::initStereoMixdownOfProcesses(
+                        CATapDescription::alloc(),
+                        &include,
+                    )
+                }
+                // All / Except: global tap minus our own process, plus the
+                // blocklisted apps when in Except mode.
+                SystemEqScopeMode::All | SystemEqScopeMode::Except => {
+                    let exclude = NSMutableArray::<NSNumber>::new();
+                    exclude.addObject(&NSNumber::new_u32(own));
+                    if scope.mode == SystemEqScopeMode::Except {
+                        for &obj in selected.iter().filter(|&&o| o != own) {
+                            exclude.addObject(&NSNumber::new_u32(obj));
+                        }
+                    }
+                    CATapDescription::initStereoGlobalTapButExcludeProcesses(
+                        CATapDescription::alloc(),
+                        &exclude,
+                    )
+                }
+            };
             d.setMuteBehavior(CATapMuteBehavior::Muted);
             d.setName(&NSString::from_str(&format!("HypeMuzik System Tap {seq}")));
             d

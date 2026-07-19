@@ -1271,12 +1271,20 @@ impl AudioEngine {
     /// its error synchronously (e.g. permission denied).
     #[cfg(target_os = "macos")]
     pub fn play_system_tap(&self) -> Result<(), AudioError> {
-        let source = SystemTapSource::new(48_000, self.capture_tel.clone())?;
+        // The tap is scoped by the current per-app selection (`system_eq_scope`).
+        let scope = self.state().system_eq_scope;
+        let source = SystemTapSource::new(48_000, self.capture_tel.clone(), &scope)?;
         self.ctrl
             .lock()
             .expect("engine ctrl poisoned")
             .send(EngineCommand::PlaySource(Box::new(source)))
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
+    }
+
+    /// Set which apps the system-wide EQ tap processes. Cheap state update; the
+    /// caller restarts the tap (via `play_system_tap`) for it to take effect.
+    pub fn set_system_eq_scope(&self, scope: hm_core::SystemEqScope) {
+        self.update(|s| s.system_eq_scope = scope);
     }
 
     /// Start the self-contained system-wide EQ pipeline (Linux/Windows): re-route
@@ -1907,7 +1915,12 @@ fn control_loop(ctx: ControlCtx) {
                 let sample_rate = config.sample_rate;
                 let channels = config.channels as usize;
                 pos.prepare(sample_rate, 0);
-                let rebuilt = match SystemTapSource::new(sample_rate, capture_tel.clone()) {
+                // Read the scope *now*, not at the time the tap was first built:
+                // a rebuild has to honour the selection as it currently stands,
+                // or a watchdog recovery would quietly widen a user's per-app
+                // choice back to the whole system.
+                let scope = shared.load().system_eq_scope.clone();
+                let rebuilt = match SystemTapSource::new(sample_rate, capture_tel.clone(), &scope) {
                     Ok(source) => match build_output_stream(
                         &device,
                         config,

@@ -2509,6 +2509,7 @@ dependencies = [
  "cpal",
  "hm-core",
  "hm-dsp",
+ "hm-platform",
  "hound",
  "libc",
  "objc2",

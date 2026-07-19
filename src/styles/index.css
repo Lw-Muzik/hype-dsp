@@ -146,6 +146,27 @@ body {
   border-radius: 4px;
 }
 
+/* ...except text fields, which already show focus themselves.
+ *
+ * Every text input and textarea in the app colours a border on focus — its own,
+ * or its wrapper's via `focus-within`. This rule then drew a *second* amber ring
+ * 2px outside it, so a focused search box wore two: one hugging the field and
+ * one around the row. Two indicators for one thing read as a rendering fault
+ * rather than emphasis.
+ *
+ * Deliberately not `input` wholesale. A range slider has no border to colour, so
+ * this outline is the only focus it has — same for checkboxes and radios. They
+ * keep it; only the fields that already say "focused" some other way opt out.
+ *
+ * The trade this makes: a text field added without its own focus style now has
+ * none at all, where before this rule quietly covered it. `focusRing.test.ts`
+ * is what keeps that from happening silently. */
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
 /* Slim, themed scrollbars for scrollable regions. */
 * {
   scrollbar-width: thin;

@@ -5,6 +5,7 @@ import { useUiStore } from "@/stores/ui";
 import { useEngineStore } from "@/stores/engine";
 import { QueueList } from "@/features/player/QueueList";
 import { LyricsView } from "@/features/player/LyricsView";
+import { SyncedLyrics } from "@/features/player/SyncedLyrics";
 import { VideoStage } from "@/features/player/VideoStage";
 import { cn } from "@/lib/cn";
 
@@ -122,12 +123,20 @@ export function RightSidebar() {
 
         {rendered === "queue" && <QueueList />}
         {rendered === "lyrics" && <LyricsView />}
-        {/* The video stays mounted across tab switches (hidden on Queue/Lyrics)
-            so returning to it is instant. Keyed by track: a new video is a new
-            element, not one talked out of the previous track's buffer. */}
+        {/* Video + its lyrics, as a column: the picture pinned at the top and
+            the synced lyrics scrolling in the space below (they follow the queue
+            on their own). Stays mounted across tab switches — hidden on Queue and
+            Lyrics — so returning is instant, and the hidden lyrics loop pauses
+            itself. Keyed by track: a new video is a new element, not one talked
+            out of the previous track's buffer. */}
         {videoLive && videoId && (
-          <div className={cn("p-3", rendered !== "video" && "hidden")}>
-            <VideoStage key={videoId} videoId={videoId} />
+          <div className={cn("flex min-h-0 flex-1 flex-col", rendered !== "video" && "hidden")}>
+            <div className="shrink-0 p-3 pb-2">
+              <VideoStage key={videoId} videoId={videoId} />
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col border-t border-border/60">
+              <SyncedLyrics />
+            </div>
           </div>
         )}
       </aside>

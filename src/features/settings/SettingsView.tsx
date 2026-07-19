@@ -27,6 +27,7 @@ import { Card } from "@/components/Card";
 import { DevicesView } from "@/features/devices/DevicesView";
 import { CloudView } from "@/features/cloud/CloudView";
 import ThemeCard from "@/features/settings/ThemeCard";
+import { UpdateRow } from "@/features/settings/UpdateRow";
 import { YtMusicView } from "@/features/ytmusic/YtMusicView";
 import { Button } from "@/components/Button";
 import { Switch } from "@/components/Switch";
@@ -684,6 +685,9 @@ export function SettingsView() {
           <div className="divide-y divide-border">
             <InfoRow label="Application" value={appInfo?.name ?? "HypeMuzik"} />
             <InfoRow label="Version" value={appInfo?.version ?? "—"} />
+            <div className="border-t border-border pt-3">
+              <UpdateRow />
+            </div>
             <InfoRow
               label="Engine schema"
               value={appInfo ? `v${appInfo.engineSchema}` : "—"}

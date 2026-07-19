@@ -1222,6 +1222,42 @@ export function onEngineFrame(
   return listen<EngineFrame>("engine:frame", (event) => handler(event.payload));
 }
 
+/* ---------------------------------------------------------------- updater */
+
+/** What the updater is doing. Mirrors the Rust `Status` enum, which serializes
+ *  with a `state` discriminant so this is a plain tagged union. */
+export type UpdaterStatus =
+  | { state: "idle" }
+  | { state: "checking" }
+  /** `total` is null for a chunked response — show indeterminate, not 0%. */
+  | { state: "downloading"; received: number; total: number | null }
+  | { state: "ready"; version: string; notes: string | null }
+  | { state: "failed"; message: string };
+
+/** The current status, for first paint; `onUpdaterStatus` covers the rest. */
+export function updaterStatus(): Promise<UpdaterStatus> {
+  return invoke<UpdaterStatus>("updater_status");
+}
+
+/** Check now (and download if something is found). Resolves when the attempt
+ *  finishes — outcome arrives via the status event, not the return value. */
+export function updaterCheckNow(): Promise<void> {
+  return invoke<void>("updater_check_now");
+}
+
+/** Install the staged update and relaunch immediately, at the user's request.
+ *  Never resolves on success: the process is replaced. */
+export function updaterRestartNow(): Promise<void> {
+  return invoke<void>("updater_restart_now");
+}
+
+/** Subscribe to updater status changes. */
+export function onUpdaterStatus(
+  handler: (status: UpdaterStatus) => void,
+): Promise<UnlistenFn> {
+  return listen<UpdaterStatus>("updater://status", (event) => handler(event.payload));
+}
+
 /** Subscribe to play/stop transitions. */
 export function onTransport(
   handler: (playing: boolean) => void,

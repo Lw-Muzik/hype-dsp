@@ -257,6 +257,7 @@ pub fn run() {
             if let Some(proxy) = tv_proxy::start() {
                 app.manage(proxy);
             }
+            app.manage(hm_media::tv::TvHealthCache::default());
 
             // Open the preset store in the app data dir; fall back to an
             // in-memory store so the app still runs if the disk path fails.
@@ -728,6 +729,7 @@ pub fn run() {
             commands::radio::radio_favorite_add,
             commands::radio::radio_favorite_remove,
             commands::tv::tv_search,
+            commands::tv::tv_check_alive,
             commands::tv::tv_by_country,
             commands::tv::tv_by_category,
             commands::tv::tv_categories,

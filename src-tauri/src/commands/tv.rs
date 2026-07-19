@@ -27,6 +27,20 @@ pub fn tv_search(app: AppHandle, query: String) -> Vec<TvChannel> {
     tv::search(&query, cache_dir(&app).as_deref())
 }
 
+/// Probe a batch of channels and return the ids whose stream is currently
+/// reachable, so the UI can hide the dead ones iptv-org ships alongside the live.
+///
+/// `(async)` because it makes real (concurrent) network requests — it must never
+/// run on the webview main thread. Verdicts are cached for an hour in
+/// [`tv::TvHealthCache`], so re-checking a list within that window is instant.
+#[tauri::command(async)]
+pub fn tv_check_alive(
+    cache: State<'_, tv::TvHealthCache>,
+    channels: Vec<TvChannel>,
+) -> Vec<String> {
+    tv::check_alive(&channels, &cache)
+}
+
 /// Every channel for a country (ISO 3166-1 alpha-2 code).
 #[tauri::command(async)]
 pub fn tv_by_country(app: AppHandle, code: String) -> Vec<TvChannel> {

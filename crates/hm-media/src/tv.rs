@@ -15,7 +15,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use hm_core::{TvCategory, TvChannel, TvCountry};
 
@@ -351,9 +351,271 @@ fn http_get(url: &str) -> Option<String> {
     resp.text().ok()
 }
 
+// ── channel health ──────────────────────────────────────────────────────────
+//
+// iptv-org's published playlists are NOT filtered to working streams, and its
+// API carries no health field — measured, US ~95% of streams answer, UK ~50%.
+// So a browsable list is a mix of live and dead, and nothing upstream tells them
+// apart. We probe each stream's playlist ourselves and let the UI hide the dead
+// ones, so what a user sees mostly plays.
+
+/// How long a probe verdict is trusted before we re-check. Streams flap, but not
+/// minute to minute; an hour keeps re-opening a list instant without pinning a
+/// channel to a verdict that has gone stale.
+const HEALTH_TTL: Duration = Duration::from_secs(60 * 60);
+
+/// How many probes run at once. IPTV origins are slow and we may check hundreds
+/// of channels, so this has to be concurrent — but not a flood that looks like an
+/// attack or saturates the link. Sixteen keeps a 300-channel list to a few
+/// seconds while staying polite.
+const HEALTH_CONCURRENCY: usize = 16;
+
+/// Per-probe deadline. A stream that hasn't answered its *playlist* — a few KB of
+/// text — in this long is not one a viewer would sit through anyway.
+const HEALTH_TIMEOUT: Duration = Duration::from_secs(6);
+
+/// Whether a probe response means the stream is playable.
+///
+/// Not merely "2xx". A dead IPTV host very often answers a 200 with an HTML
+/// parking/error page rather than a playlist, so status alone passes streams
+/// that then fail the moment hls.js reads them. The body settles it: a real HLS
+/// playlist opens with `#EXTM3U`. A server that streams it without that marker
+/// but declares an HLS content-type is trusted too — some edges send the type
+/// and a body we only partially read.
+///
+/// Pure so the classification is tested without the network, which is the part
+/// that actually decides whether a channel is shown.
+pub fn probe_is_alive(status: u16, body_head: &str, content_type: &str) -> bool {
+    if !(200..300).contains(&status) {
+        return false;
+    }
+    let ct = content_type.to_ascii_lowercase();
+    body_head.contains("#EXTM3U")
+        || ct.contains("mpegurl")
+        || ct.contains("vnd.apple")
+        || ct.contains("octet-stream")
+}
+
+/// One live probe: fetch the start of a channel's playlist and classify it.
+///
+/// A ranged GET, not a HEAD — many IPTV hosts reject or mishandle HEAD, and we
+/// want the first bytes anyway to see the `#EXTM3U` marker. Redirects are
+/// followed (CDNs bounce the playlist to an edge), and the channel's own
+/// `user_agent`/`referrer` are sent because some origins 403 without them.
+fn probe_channel(client: &reqwest::blocking::Client, ch: &TvChannel) -> bool {
+    let mut req = client
+        .get(&ch.url)
+        .header(reqwest::header::RANGE, "bytes=0-2047");
+    if let Some(ua) = ch.user_agent.as_deref().filter(|s| !s.is_empty()) {
+        req = req.header(reqwest::header::USER_AGENT, ua);
+    }
+    if let Some(r) = ch.referrer.as_deref().filter(|s| !s.is_empty()) {
+        req = req.header(reqwest::header::REFERER, r);
+    }
+    let Ok(resp) = req.send() else {
+        return false;
+    };
+    let status = resp.status().as_u16();
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    // Only the head matters and the request was ranged; still, guard against a
+    // server that ignores Range and streams — cap what we read.
+    let body_head = resp
+        .text()
+        .map(|t| t.chars().take(2048).collect::<String>())
+        .unwrap_or_default();
+    probe_is_alive(status, &body_head, &content_type)
+}
+
+/// A remembered probe verdict and when it was taken.
+#[derive(Clone, Copy)]
+struct Health {
+    alive: bool,
+    at: Instant,
+}
+
+/// App-lifetime cache of probe verdicts, keyed by stream URL.
+///
+/// Keyed by URL rather than channel id because the URL is what was probed — the
+/// same stream can appear under different ids across playlists, and they share a
+/// verdict. Managed as Tauri state so re-opening a list within the hour is free.
+#[derive(Default)]
+pub struct TvHealthCache {
+    seen: std::sync::Mutex<std::collections::HashMap<String, Health>>,
+}
+
+impl TvHealthCache {
+    fn fresh(&self, url: &str, now: Instant) -> Option<bool> {
+        let seen = self.seen.lock().ok()?;
+        seen.get(url)
+            .filter(|h| is_health_fresh(h.at, now))
+            .map(|h| h.alive)
+    }
+
+    fn store(&self, url: &str, alive: bool, now: Instant) {
+        if let Ok(mut seen) = self.seen.lock() {
+            seen.insert(url.to_string(), Health { alive, at: now });
+        }
+    }
+}
+
+/// Whether a verdict taken at `at` is still within the TTL as of `now`.
+fn is_health_fresh(at: Instant, now: Instant) -> bool {
+    now.duration_since(at) < HEALTH_TTL
+}
+
+/// Probe every channel (cache-first) and return the ids that are alive.
+///
+/// Cache hits cost nothing; misses are probed concurrently. Order is not
+/// preserved in the returned set — the caller matches ids back to its list.
+pub fn check_alive(channels: &[TvChannel], cache: &TvHealthCache) -> Vec<String> {
+    let now = Instant::now();
+
+    // Split cached from to-probe in one pass. A channel with no URL can't be
+    // probed and is reported dead rather than silently alive.
+    let mut alive: Vec<String> = Vec::new();
+    let mut todo: Vec<&TvChannel> = Vec::new();
+    for ch in channels {
+        match cache.fresh(&ch.url, now) {
+            Some(true) => alive.push(ch.id.clone()),
+            Some(false) => {}
+            None => todo.push(ch),
+        }
+    }
+    if todo.is_empty() {
+        return alive;
+    }
+
+    let Ok(client) = reqwest::blocking::Client::builder()
+        .timeout(HEALTH_TIMEOUT)
+        .connect_timeout(HEALTH_TIMEOUT)
+        .build()
+    else {
+        return alive; // no client ⇒ report only what the cache already knew
+    };
+
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let fresh: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let workers = HEALTH_CONCURRENCY.min(todo.len());
+
+    std::thread::scope(|s| {
+        for _ in 0..workers {
+            s.spawn(|| loop {
+                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let Some(ch) = todo.get(i) else { break };
+                let ok = probe_channel(&client, ch);
+                cache.store(&ch.url, ok, Instant::now());
+                if ok {
+                    if let Ok(mut f) = fresh.lock() {
+                        f.push(ch.id.clone());
+                    }
+                }
+            });
+        }
+    });
+
+    if let Ok(mut f) = fresh.into_inner() {
+        alive.append(&mut f);
+    }
+    alive
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn chan(id: &str, url: &str) -> TvChannel {
+        TvChannel {
+            id: id.into(),
+            name: id.into(),
+            url: url.into(),
+            logo: None,
+            group: None,
+            country: None,
+            user_agent: None,
+            referrer: None,
+            quality: None,
+        }
+    }
+
+    /// A dead IPTV host answering 200 with an HTML parking page is the exact case
+    /// status-only classification passes and hls.js then chokes on. The body is
+    /// what tells a playlist from a landing page.
+    #[test]
+    fn a_200_that_is_not_a_playlist_is_not_alive() {
+        assert!(!probe_is_alive(200, "<!doctype html><title>domain parked</title>", "text/html"));
+    }
+
+    #[test]
+    fn a_real_playlist_body_is_alive() {
+        assert!(probe_is_alive(200, "#EXTM3U\n#EXT-X-STREAM-INF:...", "text/plain"));
+    }
+
+    /// Some edges send the HLS content-type with a body we only partially read;
+    /// trust the declared type even without the marker in our 2 KB window.
+    #[test]
+    fn an_hls_content_type_is_alive_even_without_the_marker() {
+        assert!(probe_is_alive(206, "\x00\x01binary", "application/vnd.apple.mpegurl"));
+        assert!(probe_is_alive(200, "", "application/octet-stream"));
+    }
+
+    /// The whole point: a non-2xx is dead regardless of body, so a 404 page that
+    /// happens to contain the marker text can't sneak through.
+    #[test]
+    fn a_non_2xx_is_dead_regardless_of_body() {
+        assert!(!probe_is_alive(404, "#EXTM3U tricked you", "application/vnd.apple.mpegurl"));
+        assert!(!probe_is_alive(403, "#EXTM3U", "application/vnd.apple.mpegurl"));
+        assert!(!probe_is_alive(500, "#EXTM3U", "text/plain"));
+    }
+
+    /// A verdict must expire, or a channel that recovers is hidden forever (and
+    /// one that dies is shown forever).
+    #[test]
+    fn a_verdict_expires_after_the_ttl() {
+        let now = Instant::now();
+        let old = now - HEALTH_TTL - Duration::from_secs(1);
+        assert!(is_health_fresh(now, now));
+        assert!(!is_health_fresh(old, now));
+    }
+
+    /// The cache answers a known-fresh channel without a probe, and reports both
+    /// alive and dead verdicts (dead ones are simply absent from `check_alive`).
+    #[test]
+    fn the_cache_serves_a_fresh_verdict_without_probing() {
+        let cache = TvHealthCache::default();
+        let now = Instant::now();
+        cache.store("http://alive/x.m3u8", true, now);
+        cache.store("http://dead/y.m3u8", false, now);
+
+        assert_eq!(cache.fresh("http://alive/x.m3u8", now), Some(true));
+        assert_eq!(cache.fresh("http://dead/y.m3u8", now), Some(false));
+        assert_eq!(cache.fresh("http://unknown/z.m3u8", now), None);
+
+        // A fully-cached batch returns the alive ids and makes no network call.
+        let live = check_alive(
+            &[chan("a", "http://alive/x.m3u8"), chan("b", "http://dead/y.m3u8")],
+            &cache,
+        );
+        assert_eq!(live, vec!["a".to_string()]);
+    }
+
+    /// Two channels can share a URL under different ids; the verdict is keyed by
+    /// URL, so probing one settles both.
+    #[test]
+    fn verdicts_are_shared_by_url_across_ids() {
+        let cache = TvHealthCache::default();
+        cache.store("http://same/s.m3u8", true, Instant::now());
+        let live = check_alive(
+            &[chan("id1", "http://same/s.m3u8"), chan("id2", "http://same/s.m3u8")],
+            &cache,
+        );
+        assert_eq!(live.len(), 2, "both ids sharing the live url are alive");
+    }
+
 
     #[test]
     fn seed_parses_and_is_playable() {

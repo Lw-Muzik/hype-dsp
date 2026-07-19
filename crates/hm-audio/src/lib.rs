@@ -10,6 +10,7 @@
 //! (CoreAudio on macOS) before any streaming code is written.
 
 pub mod capture;
+pub(crate) mod crossfade;
 pub mod decode;
 pub mod fingerprint;
 pub mod ir_loader;

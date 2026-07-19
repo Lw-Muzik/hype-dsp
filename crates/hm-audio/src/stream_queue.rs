@@ -496,6 +496,7 @@ impl AudioSource for StreamQueueSource {
                     self.xf_len = xf.min(cur_len.saturating_sub(self.cursor)).max(1);
                 }
                 let t = (self.xf_cursor as f32 / self.xf_len as f32).min(1.0);
+                let (g_out, g_in) = crate::crossfade::gains(t);
                 let (lc, rc) = self.frame(self.index, self.cursor);
                 let (ln, rn) = self.frame(self.index + 1, self.xf_cursor);
                 self.cursor += 1;
@@ -508,7 +509,7 @@ impl AudioSource for StreamQueueSource {
                     self.signal_track();
                     self.advance_window();
                 }
-                (lc * (1.0 - t) + ln * t, rc * (1.0 - t) + rn * t)
+                (lc * g_out + ln * g_in, rc * g_out + rn * g_in)
             } else if self.cursor < cur_len {
                 let frame = self.frame(self.index, self.cursor);
                 self.cursor += 1;
@@ -676,15 +677,22 @@ mod tests {
         assert_eq!(src.read(&mut tail, 2), 0, "EOF after the queue is exhausted");
     }
 
+    /// Equal power (`cos`), not the linear `[1.0, 0.75, 0.5, 0.25]` this used to
+    /// assert — a linear ramp dips −3 dB mid-fade. See `crate::crossfade`.
     #[test]
     fn crossfade_ramps_from_one_track_to_the_next() {
         let mut src = eager(vec![stereo(1.0, 4), stereo(0.0, 8)], 4);
         let mut out = vec![0.0f32; 8]; // the 4 crossfade frames
         src.read(&mut out, 2);
         let left = [out[0], out[2], out[4], out[6]];
-        for (got, want) in left.iter().zip([1.0, 0.75, 0.5, 0.25]) {
-            assert!((got - want).abs() < 1e-6, "crossfade ramp: {got} vs {want}");
+        let want = [1.0, 0.923_88, std::f32::consts::FRAC_1_SQRT_2, 0.382_68];
+        for (got, want) in left.iter().zip(want) {
+            assert!((got - want).abs() < 1e-4, "crossfade ramp: {got} vs {want}");
         }
+        assert!(
+            left[2] > 0.7,
+            "the midpoint must sit at 1/sqrt(2), not the 0.5 a linear ramp gives"
+        );
     }
 
     /// A lookahead that lands *after* the crossfade window has opened — the

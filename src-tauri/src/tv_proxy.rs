@@ -110,6 +110,19 @@ fn handle(client: &reqwest::blocking::Client, port: u16, request: tiny_http::Req
     }
 }
 
+/// How long a single video body may take to arrive.
+///
+/// The client-wide 20s deadline cannot apply here: reqwest measures it "until the
+/// response body has finished", and a video-only rendition is tens of MB, so a
+/// whole-body request was being **cut off mid-file at 20 seconds** — which the
+/// element shows as a video that stalls and never recovers. Segments are small
+/// and keep the tight deadline; this one needs to bound a transfer, not a click.
+///
+/// Still bounded rather than disabled: the blocking client has no inactivity
+/// timeout, so a stalled upstream would otherwise pin this request's thread
+/// forever. Generous enough that no real music video on a real link comes close.
+const VIDEO_BODY_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
 /// Stream a progressive media file, forwarding the client's `Range`.
 ///
 /// Separate from [`serve_segment`] because their shapes differ where it counts.
@@ -122,6 +135,13 @@ fn handle(client: &reqwest::blocking::Client, port: u16, request: tiny_http::Req
 /// the element gets its `206` and can seek. Everything else is [`serve_segment`]'s
 /// reason for existing, unchanged: googlevideo needs the User-Agent of the client
 /// that resolved the URL, and the CSP only lets the webview load from loopback.
+///
+/// **A `Range` header always goes upstream, invented if the element didn't send
+/// one.** googlevideo paces a request that carries no `Range` to roughly the
+/// bitrate of what was asked for — it assumes it is feeding a player watching in
+/// real time. Measured on the audio path: 106s versus 0.56s for the same 3.4MB
+/// body, from the header alone. A video arriving at 1× realtime is a video that
+/// can never buffer ahead. See [`range_plan`] for why the reply is then rewritten.
 fn serve_video(
     client: &reqwest::blocking::Client,
     upstream: &str,
@@ -133,20 +153,20 @@ fn serve_video(
         .iter()
         .find(|h| h.field.equiv("Range"))
         .map(|h| h.value.as_str().to_string());
+    let plan = range_plan(range.as_deref());
 
-    let mut req = client.get(upstream);
+    let mut req = client
+        .get(upstream)
+        .timeout(VIDEO_BODY_TIMEOUT)
+        .header(reqwest::header::RANGE, plan.upstream_range.as_str());
     if let Some(ua) = ua {
         req = req.header(reqwest::header::USER_AGENT, ua);
-    }
-    if let Some(r) = &range {
-        req = req.header(reqwest::header::RANGE, r.as_str());
     }
 
     let Ok(resp) = req.send() else {
         respond(request, 502, "text/plain", b"upstream fetch failed".to_vec(), None);
         return;
     };
-    let status = resp.status().as_u16();
     // Carry the headers a seekable element needs; without Content-Range a 206 is
     // meaningless to it.
     let pick = |name: reqwest::header::HeaderName| {
@@ -157,7 +177,11 @@ fn serve_video(
     };
     let content_type =
         pick(reqwest::header::CONTENT_TYPE).unwrap_or_else(|| "video/mp4".to_string());
-    let content_range = pick(reqwest::header::CONTENT_RANGE);
+    let (status, content_range) = presented(
+        resp.status().as_u16(),
+        pick(reqwest::header::CONTENT_RANGE),
+        plan.synthetic,
+    );
     let len = resp.content_length();
 
     let mut response = Response::new(
@@ -184,6 +208,46 @@ fn serve_video(
         }
     }
     let _ = request.respond(response);
+}
+
+/// What to ask googlevideo for, and whether we made it up.
+struct RangePlan {
+    /// The `Range` value to send upstream. Never absent — that is the point.
+    upstream_range: String,
+    /// True when the element asked for the whole body and we asked for a range
+    /// anyway. The reply then has to be translated back on the way out.
+    synthetic: bool,
+}
+
+/// Decide the upstream `Range` for a client request that may not have one.
+///
+/// `bytes=0-` asks for *no less than the whole body*, so inventing it changes
+/// nothing about what is fetched — only about how fast googlevideo is willing to
+/// send it. Boundedness is irrelevant; the presence of the header is everything.
+fn range_plan(client_range: Option<&str>) -> RangePlan {
+    match client_range {
+        Some(r) => RangePlan { upstream_range: r.to_string(), synthetic: false },
+        None => RangePlan { upstream_range: "bytes=0-".to_string(), synthetic: true },
+    }
+}
+
+/// Translate the upstream reply back into one that answers the request the
+/// client actually made.
+///
+/// A client that sent no `Range` is owed a `200` with no `Content-Range`. Handing
+/// it the `206` our invented header earned would be answering a question it never
+/// asked — and a `206` to a request without a `Range` is a response WebKit is
+/// entitled to reject. The body is byte-identical either way, so only the framing
+/// needs undoing.
+fn presented(
+    upstream_status: u16,
+    content_range: Option<String>,
+    synthetic: bool,
+) -> (u16, Option<String>) {
+    if synthetic && upstream_status == 206 {
+        return (200, None);
+    }
+    (upstream_status, content_range)
 }
 
 /// Fetch an M3U8 and rewrite every URI (segments, keys, child playlists) to
@@ -413,6 +477,113 @@ mod tests {
         assert!(out.contains("/seg?u="));
         assert!(out.contains("METHOD=AES-128"));
         assert!(out.contains("IV=0x1"));
+    }
+
+    /// googlevideo paces a request carrying no `Range` to about the bitrate of
+    /// what was asked for. Nothing in the *response* reveals that a body was
+    /// paced, so the only place this can be guarded is here, on the way out.
+    #[test]
+    fn a_range_always_goes_upstream() {
+        assert_eq!(range_plan(None).upstream_range, "bytes=0-");
+        assert!(range_plan(None).synthetic);
+    }
+
+    /// The element's own range wins whenever it has one — it is seeking, and
+    /// second-guessing where it wants to read from would break the seek.
+    #[test]
+    fn the_elements_own_range_is_forwarded_unchanged() {
+        let plan = range_plan(Some("bytes=1048576-2097151"));
+        assert_eq!(plan.upstream_range, "bytes=1048576-2097151");
+        assert!(!plan.synthetic);
+    }
+
+    /// A `206` is only an answer to a question the client asked. Ours invented
+    /// the question, so the client must still see the `200` it was owed.
+    #[test]
+    fn an_invented_range_does_not_leak_a_206_to_the_client() {
+        let (status, cr) = presented(206, Some("bytes 0-99/100".into()), true);
+        assert_eq!(status, 200);
+        assert_eq!(cr, None, "a 200 carrying Content-Range is a contradiction");
+    }
+
+    /// When the element asked for a range, its `206` and `Content-Range` are the
+    /// whole mechanism of seeking and must survive untouched.
+    #[test]
+    fn a_real_range_request_keeps_its_206_and_content_range() {
+        let (status, cr) = presented(206, Some("bytes 10-19/100".into()), false);
+        assert_eq!(status, 206);
+        assert_eq!(cr.as_deref(), Some("bytes 10-19/100"));
+    }
+
+    /// Only `206` is ours to undo. A server that ignored the invented header and
+    /// sent the whole body, or that failed, is already answering correctly.
+    #[test]
+    fn other_statuses_pass_through_whoever_asked() {
+        assert_eq!(presented(200, None, true), (200, None));
+        assert_eq!(presented(403, None, true), (403, None));
+        assert_eq!(presented(416, None, false).0, 416);
+    }
+
+    /// The same claim as [`a_range_always_goes_upstream`], asked of the wire.
+    ///
+    /// Worth doing twice because nothing in a *response* reveals that a body was
+    /// paced — a throttled fetch and a fast one are byte-identical, just minutes
+    /// apart. A pure-function test says the plan is right; only a socket says the
+    /// plan reached the socket. A refactor that dropped the header would leave
+    /// every other test in this file green.
+    #[test]
+    fn the_proxy_puts_a_range_on_the_wire_when_the_element_did_not() {
+        use std::io::{BufRead, BufReader, Write};
+
+        let upstream = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let upstream_port = upstream.local_addr().unwrap().port();
+
+        // Stand in for googlevideo: record what was asked, answer like it does.
+        let seen = std::thread::spawn(move || {
+            let (mut sock, _) = upstream.accept().unwrap();
+            let mut reader = BufReader::new(sock.try_clone().unwrap());
+            let mut headers = Vec::new();
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
+                    break;
+                }
+                headers.push(line.trim_end().to_string());
+            }
+            sock.write_all(
+                b"HTTP/1.1 206 Partial Content\r\n\
+                  Content-Type: video/mp4\r\n\
+                  Content-Range: bytes 0-3/4\r\n\
+                  Content-Length: 4\r\n\
+                  Connection: close\r\n\r\nabcd",
+            )
+            .unwrap();
+            sock.flush().unwrap();
+            headers
+        });
+
+        let proxy = start().expect("proxy must start");
+        let target = format!("http://127.0.0.1:{upstream_port}/videoplayback");
+        let resp = reqwest::blocking::Client::new()
+            .get(proxy.video_url(&target, None))
+            .send()
+            .expect("proxy must answer");
+
+        // What the client is owed: it never asked for a range.
+        assert_eq!(resp.status().as_u16(), 200);
+        assert!(resp.headers().get(reqwest::header::CONTENT_RANGE).is_none());
+        assert_eq!(resp.bytes().unwrap().as_ref(), b"abcd");
+
+        // What googlevideo was actually asked — the whole point.
+        let headers = seen.join().unwrap();
+        let range = headers
+            .iter()
+            .find(|h| h.to_ascii_lowercase().starts_with("range:"))
+            .expect("a request with no Range is one googlevideo will pace to ~1x realtime");
+        assert!(
+            range.to_ascii_lowercase().contains("bytes=0-"),
+            "expected the whole body asked for as a range, got {range:?}"
+        );
     }
 
     #[test]

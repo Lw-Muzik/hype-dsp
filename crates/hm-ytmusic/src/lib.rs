@@ -168,6 +168,17 @@ pub struct YtMusicState {
     /// entry is only useful while live, so what makes one stale is also what
     /// makes it collectable and no separate eviction policy is needed.
     resolved: RwLock<std::collections::HashMap<String, ytdlp::StreamTarget>>,
+    /// Resolved *video* urls, on the same terms as [`Self::resolved`].
+    ///
+    /// A separate map because the same video id resolves to two different urls —
+    /// the m4a the engine decodes, and the video-only rendition the picture
+    /// shows. One map keyed by id would have them evict and answer for each
+    /// other.
+    ///
+    /// This one is arguably the more important of the two: the audio url is
+    /// prefetched a track ahead, but the video url is resolved on demand, so its
+    /// cold cost lands *while the user is watching the spinner*.
+    resolved_video: RwLock<std::collections::HashMap<String, ytdlp::StreamTarget>>,
     /// Where yt-dlp lives, once found.
     ///
     /// `detect()` stats every entry on `PATH` and ran on every resolve. Only a
@@ -201,6 +212,30 @@ fn is_fresh(target: &ytdlp::StreamTarget, now: u64) -> bool {
         .is_some_and(|exp| exp.saturating_sub(now) > EXPIRY_MARGIN_SECS)
 }
 
+/// A still-live entry from one of the resolve caches.
+type TargetCache = RwLock<std::collections::HashMap<String, ytdlp::StreamTarget>>;
+
+fn cached_in(cache: &TargetCache, video_id: &str) -> Option<ytdlp::StreamTarget> {
+    let now = now_secs()?;
+    let cache = cache.read().ok()?;
+    cache.get(video_id).filter(|t| is_fresh(t, now)).cloned()
+}
+
+/// Files a resolved url under its video id, and drops whatever has expired.
+fn remember_in(cache: &TargetCache, video_id: &str, target: &ytdlp::StreamTarget) {
+    // Nothing to reason about without a deadline, and a url we can't date is
+    // one we can't safely re-serve.
+    if target.expires_at.is_none() {
+        return;
+    }
+    let Some(now) = now_secs() else { return };
+    let Ok(mut cache) = cache.write() else {
+        return;
+    };
+    cache.retain(|_, t| is_fresh(t, now));
+    cache.insert(video_id.to_string(), target.clone());
+}
+
 impl Default for YtMusicState {
     fn default() -> Self {
         Self::new()
@@ -214,6 +249,7 @@ impl YtMusicState {
             cookies: RwLock::new(None),
             session_first: std::sync::atomic::AtomicBool::new(true),
             resolved: RwLock::new(std::collections::HashMap::new()),
+            resolved_video: RwLock::new(std::collections::HashMap::new()),
             yt_dlp_bin: RwLock::new(None),
         }
     }
@@ -614,24 +650,12 @@ impl YtMusicState {
 
     /// A still-valid url for `video_id`, if we already paid to resolve one.
     fn cached_target(&self, video_id: &str) -> Option<ytdlp::StreamTarget> {
-        let now = now_secs()?;
-        let cache = self.resolved.read().ok()?;
-        cache.get(video_id).filter(|t| is_fresh(t, now)).cloned()
+        cached_in(&self.resolved, video_id)
     }
 
     /// Files a resolved url under its video id, and drops whatever has expired.
     fn remember_target(&self, video_id: &str, target: &ytdlp::StreamTarget) {
-        // Nothing to reason about without a deadline, and a url we can't date is
-        // one we can't safely re-serve.
-        if target.expires_at.is_none() {
-            return;
-        }
-        let Some(now) = now_secs() else { return };
-        let Ok(mut cache) = self.resolved.write() else {
-            return;
-        };
-        cache.retain(|_, t| is_fresh(t, now));
-        cache.insert(video_id.to_string(), target.clone());
+        remember_in(&self.resolved, video_id, target);
     }
 
     /// Resolves ahead of time, so the next track's url is ready before it plays.
@@ -655,8 +679,13 @@ impl YtMusicState {
     /// that resolved them), and re-serving it from cache would make that
     /// failure permanent instead of transient.
     pub fn forget(&self, video_id: &str) {
-        if let Ok(mut cache) = self.resolved.write() {
-            cache.remove(video_id);
+        // Both urls, because the thing that kills one kills the other: they were
+        // issued to the same address in the same session. Dropping only the audio
+        // would leave the picture replaying a url we already know is dead.
+        for cache in [&self.resolved, &self.resolved_video] {
+            if let Ok(mut cache) = cache.write() {
+                cache.remove(video_id);
+            }
         }
     }
 
@@ -681,6 +710,13 @@ impl YtMusicState {
     /// the picture is optional, the sound is not.
     pub fn video_target(&self, video_id: &str) -> Result<(String, Vec<(String, String)>), String> {
         use std::sync::atomic::Ordering;
+        // Same bargain as the audio path, and for a sharper reason: this resolve
+        // is on demand, so its ~5s process start is time the user spends looking
+        // at a spinner. Re-opening the Video tab, or re-mounting the element,
+        // used to pay it again every time.
+        if let Some(hit) = cached_in(&self.resolved_video, video_id) {
+            return Ok((hit.url, hit.headers));
+        }
         let runner = self.runner()?;
         let cookies = self.cookies_snapshot();
         let file = cookie_file(cookies.as_deref())?;
@@ -707,6 +743,7 @@ impl YtMusicState {
             }
         })
         .map_err(|e| e.to_string())?;
+        remember_in(&self.resolved_video, video_id, &target);
         Ok((target.url, target.headers))
     }
 
@@ -1178,6 +1215,69 @@ mod tests {
         assert!(state.cached_target("vid1").is_some());
         state.forget("vid1");
         assert!(state.cached_target("vid1").is_none());
+    }
+
+    fn video_target_fixture(expires_at: Option<u64>) -> ytdlp::StreamTarget {
+        ytdlp::StreamTarget {
+            url: "https://rr2---sn-abc.googlevideo.com/videoplayback?itag=137".into(),
+            headers: vec![("User-Agent".into(), "Mozilla/5.0".into())],
+            ext: "mp4".into(),
+            format_id: "137".into(),
+            abr_kbps: None,
+            expires_at,
+        }
+    }
+
+    /// One video id resolves to two different urls — the m4a the engine decodes
+    /// and the picture-only rendition. A single map keyed by id would hand the
+    /// `<video>` element an audio url (or the engine a silent one), which is a
+    /// far worse failure than the cache miss it was meant to avoid.
+    #[test]
+    fn the_audio_and_video_caches_do_not_answer_for_each_other() {
+        let state = YtMusicState::new();
+        let live = now_secs().unwrap() + 6 * 3600;
+        state.remember_target("vid1", &target(Some(live)));
+        remember_in(&state.resolved_video, "vid1", &video_target_fixture(Some(live)));
+
+        assert_eq!(state.cached_target("vid1").map(|t| t.format_id), Some("140".into()));
+        assert_eq!(
+            cached_in(&state.resolved_video, "vid1").map(|t| t.format_id),
+            Some("137".into()),
+        );
+    }
+
+    /// A dead url is dead in both directions: they were issued to the same
+    /// address in the same session, so whatever invalidated one invalidated both.
+    #[test]
+    fn forgetting_drops_the_video_url_too() {
+        let state = YtMusicState::new();
+        let live = now_secs().unwrap() + 6 * 3600;
+        state.remember_target("vid1", &target(Some(live)));
+        remember_in(&state.resolved_video, "vid1", &video_target_fixture(Some(live)));
+
+        state.forget("vid1");
+
+        assert!(state.cached_target("vid1").is_none());
+        assert!(
+            cached_in(&state.resolved_video, "vid1").is_none(),
+            "a video url must not outlive the forget that dropped its audio"
+        );
+    }
+
+    /// The video cache is bound by the same freshness rule as the audio one —
+    /// it shares the code, and this is what says that on purpose.
+    #[test]
+    fn the_video_cache_will_not_serve_a_stale_url() {
+        let state = YtMusicState::new();
+        remember_in(
+            &state.resolved_video,
+            "vid1",
+            &video_target_fixture(Some(now_secs().unwrap() + 30)),
+        );
+        assert!(cached_in(&state.resolved_video, "vid1").is_none());
+
+        remember_in(&state.resolved_video, "vid2", &video_target_fixture(None));
+        assert!(cached_in(&state.resolved_video, "vid2").is_none());
     }
 
     /// Entries are only useful while live, so what makes one stale also makes it

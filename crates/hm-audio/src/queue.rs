@@ -57,6 +57,13 @@ pub struct QueuePlaybackSource {
     cursor: usize,
     /// Frame offset into the *incoming* track while a crossfade is in progress.
     xf_cursor: usize,
+    /// Frames the in-progress crossfade ramps over, latched when it starts.
+    ///
+    /// Not simply `crossfade_frames()`: a lookahead that finishes decoding after
+    /// the window has already opened leaves less than the full width, and the
+    /// ramp has to complete inside what's actually left. A shorter complete fade
+    /// beats a full-width one truncated at the cut.
+    xf_len: usize,
     running: Arc<AtomicBool>,
     meta_sink: Option<MetaSink>,
     current_index: Option<Arc<AtomicUsize>>,
@@ -146,6 +153,7 @@ impl QueuePlaybackSource {
             index: 0,
             cursor: 0,
             xf_cursor: 0,
+            xf_len: 0,
             running,
             meta_sink,
             current_index,
@@ -269,7 +277,18 @@ impl AudioSource for QueuePlaybackSource {
             let crossfading = xf > 0 && next_ready && self.cursor + xf >= cur_len;
 
             let (l, r) = if crossfading {
-                let t = (self.xf_cursor as f32 / xf as f32).min(1.0);
+                // Latch the ramp width on the first faded frame: whatever is
+                // actually left, which is `xf` when the next track was ready on
+                // time and less when it wasn't. Dividing by the full `xf`
+                // instead ends the fade partway — the outgoing track cut at
+                // audible gain and the incoming one jumping to full. Rare on
+                // local files, but reachable on a long crossfade over a short
+                // track, and the streamed sibling has always had this latch.
+                if self.xf_len == 0 {
+                    self.xf_len = xf.min(cur_len.saturating_sub(self.cursor)).max(1);
+                }
+                let t = (self.xf_cursor as f32 / self.xf_len as f32).min(1.0);
+                let (g_out, g_in) = crate::crossfade::gains(t);
                 let (lc, rc) = self.frame(self.index, self.cursor);
                 let (ln, rn) = self.frame(self.index + 1, self.xf_cursor);
                 self.cursor += 1;
@@ -278,10 +297,11 @@ impl AudioSource for QueuePlaybackSource {
                     self.index += 1;
                     self.cursor = self.xf_cursor;
                     self.xf_cursor = 0;
+                    self.xf_len = 0;
                     self.signal_track();
                     self.advance_window();
                 }
-                (lc * (1.0 - t) + ln * t, rc * (1.0 - t) + rn * t)
+                (lc * g_out + ln * g_in, rc * g_out + rn * g_in)
             } else if self.cursor < cur_len {
                 let frame = self.frame(self.index, self.cursor);
                 self.cursor += 1;
@@ -290,6 +310,7 @@ impl AudioSource for QueuePlaybackSource {
                 // Gapless boundary: advance to the next track.
                 self.index += 1;
                 self.cursor = 0;
+                self.xf_len = 0;
                 self.advance_window();
                 if self.ready(self.index) {
                     self.signal_track();
@@ -319,6 +340,8 @@ impl AudioSource for QueuePlaybackSource {
     fn seek(&mut self, frame: usize) {
         self.cursor = frame.min(self.track_len(self.index));
         self.xf_cursor = 0;
+        // Any ramp in progress belongs to where we just were.
+        self.xf_len = 0;
     }
 
     fn position(&self) -> usize {
@@ -355,6 +378,7 @@ mod tests {
             index: 0,
             cursor: 0,
             xf_cursor: 0,
+            xf_len: 0,
             running: Arc::new(AtomicBool::new(true)),
             meta_sink: None,
             current_index: None,
@@ -377,6 +401,13 @@ mod tests {
         assert_eq!(src.read(&mut tail, 2), 0, "EOF after the queue is exhausted");
     }
 
+    /// The outgoing track's gain across a fade, against silence — so what's read
+    /// back *is* the ramp.
+    ///
+    /// Equal power (`cos`), not the linear `[1.0, 0.75, 0.5, 0.25]` this used to
+    /// assert: two tracks are uncorrelated, so their powers add, and a linear
+    /// ramp leaves a −3 dB hole in the middle of every transition. See
+    /// `crate::crossfade`.
     #[test]
     fn crossfade_ramps_from_one_track_to_the_next() {
         let tracks = vec![stereo(1.0, 4), stereo(0.0, 8)];
@@ -385,9 +416,46 @@ mod tests {
         let mut out = vec![0.0f32; 8]; // the 4 crossfade frames
         src.read(&mut out, 2);
         let left = [out[0], out[2], out[4], out[6]];
-        for (got, want) in left.iter().zip([1.0, 0.75, 0.5, 0.25]) {
-            assert!((got - want).abs() < 1e-6, "crossfade ramp: {got} vs {want}");
+        let want = [1.0, 0.923_88, std::f32::consts::FRAC_1_SQRT_2, 0.382_68];
+        for (got, want) in left.iter().zip(want) {
+            assert!((got - want).abs() < 1e-4, "crossfade ramp: {got} vs {want}");
         }
+        assert!(
+            left[2] > 0.7,
+            "the midpoint must sit at 1/sqrt(2), not the 0.5 a linear ramp gives"
+        );
+    }
+
+    /// The local sibling of `stream_queue`'s late-lookahead test.
+    ///
+    /// A slow disk (or a long crossfade over a short track) can leave less than
+    /// the full window when the next track finally lands. Dividing by the full
+    /// `xf` then ends the ramp partway: the outgoing track cut at audible gain
+    /// and the incoming one jumping to full — a click, at the boundary.
+    #[test]
+    fn a_late_lookahead_still_ramps_fully_out() {
+        // 100-frame tracks, 40-frame crossfade → the window opens at frame 60.
+        let mut src = eager(vec![stereo(1.0, 100), stereo(-1.0, 100)], 40);
+        src.tracks[1] = None; // still decoding
+
+        // Play to frame 80 — 20 frames INTO the window with nothing to fade to.
+        let mut out = vec![0.0f32; 160];
+        src.read(&mut out, 2);
+        assert!(
+            out.iter().all(|s| (*s - 1.0).abs() < 1e-6),
+            "current track should play untouched while there's nothing to fade to"
+        );
+
+        // It lands now, with 20 of the current track's frames left.
+        src.tracks[1] = Some(stereo(-1.0, 100));
+
+        let mut out = vec![0.0f32; 40];
+        src.read(&mut out, 2);
+        let last = out[38];
+        assert!(
+            last < -0.8,
+            "ramp must reach the incoming track before the cut, got {last}"
+        );
     }
 
     #[test]

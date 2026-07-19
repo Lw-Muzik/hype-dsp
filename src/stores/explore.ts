@@ -103,6 +103,71 @@ interface ExploreStore {
   retry: () => void;
 }
 
+/**
+ * A search row as the track it already describes.
+ *
+ * Mirrors the backend's `track_of`, which is why `explore_tracks` answers a song
+ * with a list of one and no request at all: the row states the title, credit,
+ * album, running time and video type, and that is everything a {@link YtTrack}
+ * holds. Duplicated here so a queue of fifty rows costs zero round trips rather
+ * than fifty — the only fields not on the row are the playlist pair (a result
+ * stands on its own, so it is its own folder) and availability (search lists
+ * nothing it won't serve; a blocked track fails at resolve like any other).
+ *
+ * Only ever hand this a `song` or `video`. For every other kind `id` is a browse
+ * id, and the result would be a track whose video id opens nothing.
+ */
+function trackOfItem(item: ExploreItem): YtTrack {
+  return {
+    videoId: item.id,
+    title: item.title,
+    artist: item.artist ?? null,
+    album: item.album ?? null,
+    durationSecs: item.durationSecs ?? null,
+    thumbnail: item.thumbnail,
+    playlistId: item.id,
+    playlistTitle: item.title,
+    isAvailable: true,
+    hasVideo: item.hasVideo ?? false,
+  };
+}
+
+/**
+ * The queue a click on a search result should start: every playable row in the
+ * results, in the order they're shown, positioned on the one that was clicked.
+ *
+ * Playing a result used to enqueue a list of exactly one, so the music stopped
+ * the moment that result ended. Someone who searched asked for a *set* of
+ * results — the rest of them are the obvious thing to play next, and they're
+ * already on screen, so nothing here is unasked-for in the way auto-playing a
+ * whole genre shelf would be.
+ *
+ * Deduped by video id: the same track is often listed under both "Songs" and
+ * "Videos", and hearing it twice in a row is worse than not queueing it twice.
+ *
+ * Returns `null` when `clicked` isn't among the rows — it was opened from a
+ * shelf or an artist page rather than from search, and the caller keeps its
+ * existing single-track behaviour rather than queueing an unrelated list.
+ */
+export function searchQueue(
+  shelves: ExploreShelf[],
+  clicked: ExploreItem,
+): { tracks: YtTrack[]; startIndex: number } | null {
+  const seen = new Set<string>();
+  const rows: ExploreItem[] = [];
+  for (const shelf of shelves) {
+    for (const item of shelf.items) {
+      if (item.kind !== "song" && item.kind !== "video") continue;
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      rows.push(item);
+    }
+  }
+  const startIndex = rows.findIndex((r) => r.id === clicked.id);
+  if (startIndex < 0) return null;
+  return { tracks: rows.map(trackOfItem), startIndex };
+}
+
 export const useExploreStore = create<ExploreStore>((set, get) => ({
   signedIn: false,
   sections: [],
@@ -198,7 +263,14 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
           set({ openError: `"${item.title}" can't be played.` });
           return;
         }
-        useEngineStore.getState().playQueueItems(playable.map(ytmusicItem), 0);
+        // Played out of a search: queue what was searched for, not one row of
+        // it. Falls back to the single track whenever the row came from
+        // somewhere else — see `searchQueue`.
+        const fromSearch = searchQueue(get().results, item);
+        const [queue, from] = fromSearch
+          ? [fromSearch.tracks, fromSearch.startIndex]
+          : [playable, 0];
+        useEngineStore.getState().playQueueItems(queue.map(ytmusicItem), from);
         return;
       }
       set({

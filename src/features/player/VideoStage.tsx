@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   CircleAlert,
   Loader2,
@@ -34,9 +36,44 @@ import { cn } from "@/lib/cn";
  */
 export function VideoStage({ videoId }: { videoId: string }) {
   const ref = useRef<HTMLVideoElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  // The live fullscreen value for the unmount cleanup, which otherwise closes
+  // over the initial `false` and would leave the OS window stuck fullscreen.
+  const fullscreenRef = useRef(false);
+  fullscreenRef.current = fullscreen;
+
+  // Fullscreen is an in-app overlay + the OS window, NOT the DOM Fullscreen API:
+  // macOS WKWebView disables `element.requestFullscreen`, so it silently does
+  // nothing there (it only works on Windows' WebView2). This mirrors the
+  // visualizer and the TV player. The OS window is a bonus for immersion; the
+  // overlay alone already covers the app.
+  const toggleFullscreen = useCallback(() => {
+    setFullscreen((on) => {
+      const next = !on;
+      void getCurrentWindow().setFullscreen(next).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  // Esc leaves fullscreen, the universal expectation. Only while it's on.
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") toggleFullscreen();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen, toggleFullscreen]);
+
+  // Leaving the video (track has no footage, panel closed) must not strand the
+  // OS window in fullscreen with no way back to it.
+  useEffect(() => {
+    return () => {
+      if (fullscreenRef.current) void getCurrentWindow().setFullscreen(false).catch(() => {});
+    };
+  }, []);
 
   // Resolve on demand: this costs a yt-dlp spawn on a cold cache, so it happens
   // when video is switched on, not for every track that might have one. The
@@ -106,8 +143,8 @@ export function VideoStage({ videoId }: { videoId: string }) {
     );
   }
 
-  return (
-    <Stage ref={stageRef}>
+  const stage = (
+    <Stage fullscreen={fullscreen}>
       <video
         ref={ref}
         src={url}
@@ -123,9 +160,24 @@ export function VideoStage({ videoId }: { videoId: string }) {
         onError={() => setError("This video couldn't be played.")}
         className="size-full object-contain"
       />
-      <VideoControls stageRef={stageRef} />
+      <VideoControls fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} />
     </Stage>
   );
+
+  // Fullscreen renders the stage in a portal to `document.body` at `fixed
+  // inset-0`. Not a plain `fixed` inline, because this component lives inside the
+  // right sidebar, whose ancestors create containing blocks (an animated width,
+  // stacking contexts) that a fixed element gets trapped inside — the picture
+  // would go missing while the audio played on. The portal escapes all of them,
+  // the same fix the TV player uses. The `<video>` remounts on the switch and
+  // reloads briefly; it's muted and re-synced to the engine, so the sound never
+  // notices.
+  return fullscreen
+    ? createPortal(
+        <div className="fixed inset-0 z-[100] bg-black">{stage}</div>,
+        document.body,
+      )
+    : stage;
 }
 
 /**
@@ -141,7 +193,13 @@ export function VideoStage({ videoId }: { videoId: string }) {
  * belongs to the stage, not to playback, and it takes the whole stage rather
  * than the `<video>` so these controls come along.
  */
-function VideoControls({ stageRef }: { stageRef: React.RefObject<HTMLDivElement | null> }) {
+function VideoControls({
+  fullscreen,
+  onToggleFullscreen,
+}: {
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
+}) {
   // Subscribed here rather than in `VideoStage` so a ~10×/s position tick
   // re-renders this strip alone, and never the element showing the video.
   const playing = useEngineStore((s) => s.playing);
@@ -155,25 +213,6 @@ function VideoControls({ stageRef }: { stageRef: React.RefObject<HTMLDivElement 
   const next = useEngineStore((s) => s.next);
   const prev = useEngineStore((s) => s.prev);
   const seek = useEngineStore((s) => s.seek);
-
-  const [fullscreen, setFullscreen] = useState(false);
-
-  // The browser owns this state — Esc and the system chrome can both leave
-  // fullscreen without going through our button, so read it rather than track it.
-  useEffect(() => {
-    const onChange = () => setFullscreen(document.fullscreenElement === stageRef.current);
-    document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
-  }, [stageRef]);
-
-  const toggleFullscreen = useCallback(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    // Rejects when the gesture isn't trusted or the element can't be promoted;
-    // either way the picture keeps playing exactly as it was.
-    if (document.fullscreenElement === stage) void document.exitFullscreen().catch(() => {});
-    else void stage.requestFullscreen().catch(() => {});
-  }, [stageRef]);
 
   const showPause = playing && !paused;
   const duration = durationSecs ?? 0;
@@ -237,7 +276,7 @@ function VideoControls({ stageRef }: { stageRef: React.RefObject<HTMLDivElement 
       <button
         type="button"
         aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-        onClick={toggleFullscreen}
+        onClick={onToggleFullscreen}
         className={overlayBtn}
       >
         {fullscreen ? (
@@ -255,20 +294,21 @@ const overlayBtn =
 
 function Stage({
   children,
-  ref,
+  fullscreen = false,
 }: {
   children: React.ReactNode;
-  ref?: React.Ref<HTMLDivElement>;
+  fullscreen?: boolean;
 }) {
   return (
     <div
-      ref={ref}
       className={cn(
-        "group/stage relative grid aspect-video w-full place-items-center overflow-hidden rounded-card bg-black ring-1 ring-border",
-        // Fullscreen hands this element the whole screen, which a fixed 16:9 box
-        // would then letterbox *inside* — black bars around a black stage. Drop
-        // the ratio and the card chrome for as long as it's promoted.
-        "[&:fullscreen]:aspect-auto [&:fullscreen]:h-full [&:fullscreen]:rounded-none [&:fullscreen]:ring-0",
+        "group/stage relative grid w-full place-items-center overflow-hidden bg-black",
+        // Fullscreen fills its portal (which is the whole screen), so drop the
+        // 16:9 box and card chrome — a fixed ratio would letterbox black bars
+        // inside a black stage.
+        fullscreen
+          ? "h-full"
+          : "aspect-video rounded-card ring-1 ring-border",
       )}
     >
       {children}

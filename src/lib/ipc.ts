@@ -395,6 +395,13 @@ export function ytmusicPrefetch(videoId: string): Promise<void> {
   return invoke<void>("ytmusic_prefetch", { videoId });
 }
 
+/** Warm the *video* rendition so the Video tab opens instantly. Same
+ *  fire-and-forget contract as {@link ytmusicPrefetch}; a different resolve into
+ *  a different cache. */
+export function ytmusicVideoPrefetch(videoId: string): Promise<void> {
+  return invoke<void>("ytmusic_video_prefetch", { videoId });
+}
+
 /** Stream one track through the enhancement chain. Passing the known length
  *  (seconds) makes the seek bar right from the first frame. */
 export function ytmusicPlay(

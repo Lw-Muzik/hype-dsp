@@ -79,6 +79,14 @@ interface UiState {
   toggleRight: (tab: RightPanel) => void;
   closeRight: () => void;
 
+  /** Whether the user has opened the Video panel at least once this session.
+   *  Gates video-URL prefetching: resolving a video rendition is a ~5s yt-dlp
+   *  spawn, so we only pay it in the background for people who actually watch —
+   *  once they've shown they do, every later track's video is warm before they
+   *  click. See the engine store's prefetch on track start. */
+  videoWatched: boolean;
+  markVideoWatched: () => void;
+
   /** App metadata, loaded once from the backend on startup. */
   appInfo: AppInfo | null;
   setAppInfo: (info: AppInfo) => void;
@@ -115,6 +123,8 @@ export const useUiStore = create<UiState>((set) => ({
   toggleRight: (tab) =>
     set((state) => ({ rightPanel: state.rightPanel === tab ? null : tab })),
   closeRight: () => set({ rightPanel: null }),
+  videoWatched: false,
+  markVideoWatched: () => set({ videoWatched: true }),
 
   appInfo: null,
   setAppInfo: (appInfo) => set({ appInfo }),

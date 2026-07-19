@@ -419,6 +419,15 @@ pub fn ytmusic_prefetch(state: State<'_, YtMusicState>, video_id: String) {
     let _ = state.prefetch(&video_id);
 }
 
+/// Warm the *video* rendition's url so the Video tab opens instantly. Same
+/// fire-and-forget contract as [`ytmusic_prefetch`]: a failure or a race with a
+/// skip costs nothing, because the Video tab resolves for itself regardless.
+// `(async)`: shells out to yt-dlp and waits on the network.
+#[tauri::command(async)]
+pub fn ytmusic_video_prefetch(state: State<'_, YtMusicState>, video_id: String) {
+    let _ = state.prefetch_video(&video_id);
+}
+
 /// Resolve a track and play it through the chain.
 // `(async)`: resolving shells out to yt-dlp and waits on the network.
 #[tauri::command(async)]

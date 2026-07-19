@@ -672,6 +672,16 @@ impl YtMusicState {
         self.resolve(video_id).map(|_| ())
     }
 
+    /// Resolve and cache the *video* rendition ahead of time, so opening the
+    /// Video tab is instant rather than paying the ~5s yt-dlp spawn on the click.
+    ///
+    /// Distinct from [`Self::prefetch`], which warms the audio url — a different
+    /// resolve into a different cache. [`Self::video_target`] already checks the
+    /// cache and fills it, so this is that call with the result discarded.
+    pub fn prefetch_video(&self, video_id: &str) -> Result<(), String> {
+        self.video_target(video_id).map(|_| ())
+    }
+
     /// Forgets any cached url for `video_id`.
     ///
     /// For the caller that just found one didn't work: a url can die before its

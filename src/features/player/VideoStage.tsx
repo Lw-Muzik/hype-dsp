@@ -12,6 +12,7 @@ import {
   SkipForward,
 } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
+import { useUiStore } from "@/stores/ui";
 import { ipcErrorMessage, ytmusicVideoUrl } from "@/lib/ipc";
 import { syncAction } from "@/features/player/videoSync";
 import { SeekBar } from "@/features/player/SeekBar";
@@ -39,6 +40,12 @@ export function VideoStage({ videoId }: { videoId: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+
+  // This mounting IS the user watching video — record it so the engine starts
+  // warming later tracks' video urls in the background (see its ytmusic path).
+  useEffect(() => {
+    useUiStore.getState().markVideoWatched();
+  }, []);
   // The live fullscreen value for the unmount cleanup, which otherwise closes
   // over the initial `false` and would leave the OS window stuck fullscreen.
   const fullscreenRef = useRef(false);

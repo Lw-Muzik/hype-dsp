@@ -123,78 +123,62 @@ fn handle(client: &reqwest::blocking::Client, port: u16, request: tiny_http::Req
 /// forever. Generous enough that no real music video on a real link comes close.
 const VIDEO_BODY_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
-/// Stream a progressive media file, forwarding the client's `Range`.
+/// Serve a googlevideo video-only rendition to the `<video>` element, fetching
+/// it in bounded chunks.
 ///
-/// Separate from [`serve_segment`] because their shapes differ where it counts.
-/// A segment is a few hundred KB read whole; a music video is tens of MB the
-/// `<video>` element expects to seek within. `serve_segment` buffers the entire
-/// body into a `Vec` and never forwards `Range`, which for a video means the
-/// first frame waits on the last byte and the scrub bar does nothing.
+/// The chunking is not an optimisation — it is the only thing that works.
+/// googlevideo **403s an open-ended or oversized `Range`** on these urls (itag
+/// 136 via the ANDROID_VR client): measured, `bytes=0-` and any range past ~5 MB
+/// are rejected outright, while a bounded ≤~3 MB range is served in a fraction of
+/// a second. A proxy that forwards the element's `bytes=0-`, or invents one, gets
+/// a 403 — and the element limps to a picture only after a minute-plus of retry
+/// (the "video takes 1:36 to show up" bug). So the proxy never asks googlevideo
+/// for more than [`VIDEO_CHUNK`] at once and stitches the chunks into one
+/// continuous body the element sees as an ordinary seekable file.
 ///
-/// Here the body is piped straight through and `Range` is passed both ways, so
-/// the element gets its `206` and can seek. Everything else is [`serve_segment`]'s
-/// reason for existing, unchanged: googlevideo needs the User-Agent of the client
-/// that resolved the URL, and the CSP only lets the webview load from loopback.
+/// The moov sits at the front of these renditions, so the first chunk carries
+/// everything needed to start — the first frame lands in about a second.
 ///
-/// **A `Range` header always goes upstream, invented if the element didn't send
-/// one.** googlevideo paces a request that carries no `Range` to roughly the
-/// bitrate of what was asked for — it assumes it is feeding a player watching in
-/// real time. Measured on the audio path: 106s versus 0.56s for the same 3.4MB
-/// body, from the header alone. A video arriving at 1× realtime is a video that
-/// can never buffer ahead. See [`range_plan`] for why the reply is then rewritten.
+/// The element's `Range` (or its absence) only decides the *framing*: no range →
+/// `200` over the whole file; `bytes=A-B` / `bytes=A-` → `206` from `A`. The UA
+/// still goes upstream, since googlevideo checks it against the resolving client.
 fn serve_video(
     client: &reqwest::blocking::Client,
     upstream: &str,
     ua: Option<&str>,
     request: tiny_http::Request,
 ) {
+    let Some(total) = video_total_len(client, upstream, ua) else {
+        respond(request, 502, "text/plain", b"upstream length unknown".to_vec(), None);
+        return;
+    };
     let range = request
         .headers()
         .iter()
         .find(|h| h.field.equiv("Range"))
         .map(|h| h.value.as_str().to_string());
-    let plan = range_plan(range.as_deref());
+    let framing = video_framing(range.as_deref(), total);
 
-    let mut req = client
-        .get(upstream)
-        .timeout(VIDEO_BODY_TIMEOUT)
-        .header(reqwest::header::RANGE, plan.upstream_range.as_str());
-    if let Some(ua) = ua {
-        req = req.header(reqwest::header::USER_AGENT, ua);
-    }
-
-    let Ok(resp) = req.send() else {
-        respond(request, 502, "text/plain", b"upstream fetch failed".to_vec(), None);
-        return;
+    let reader = ChunkedVideo {
+        client: client.clone(),
+        url: upstream.to_string(),
+        ua: ua.map(str::to_string),
+        next: framing.start,
+        end: framing.end,
+        buf: Vec::new(),
+        buf_pos: 0,
     };
-    // Carry the headers a seekable element needs; without Content-Range a 206 is
-    // meaningless to it.
-    let pick = |name: reqwest::header::HeaderName| {
-        resp.headers()
-            .get(name)
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_string)
-    };
-    let content_type =
-        pick(reqwest::header::CONTENT_TYPE).unwrap_or_else(|| "video/mp4".to_string());
-    let (status, content_range) = presented(
-        resp.status().as_u16(),
-        pick(reqwest::header::CONTENT_RANGE),
-        plan.synthetic,
-    );
-    let len = resp.content_length();
-
+    let content_len = framing.end - framing.start + 1;
     let mut response = Response::new(
-        StatusCode(status),
+        StatusCode(framing.status),
         Vec::new(),
-        resp,
-        len.map(|n| n as usize),
+        reader,
+        Some(content_len as usize),
         None,
     );
     for (name, value) in [
-        ("Content-Type", content_type.as_str()),
+        ("Content-Type", "video/mp4"),
         ("Access-Control-Allow-Origin", "*"),
-        // Lets the element discover it can seek at all.
         ("Accept-Ranges", "bytes"),
         ("Cache-Control", "no-store"),
     ] {
@@ -202,7 +186,7 @@ fn serve_video(
             response.add_header(h);
         }
     }
-    if let Some(cr) = content_range.as_deref() {
+    if let Some(cr) = framing.content_range.as_deref() {
         if let Ok(h) = Header::from_bytes(b"Content-Range".as_ref(), cr.as_bytes()) {
             response.add_header(h);
         }
@@ -210,44 +194,157 @@ fn serve_video(
     let _ = request.respond(response);
 }
 
-/// What to ask googlevideo for, and whether we made it up.
-struct RangePlan {
-    /// The `Range` value to send upstream. Never absent — that is the point.
-    upstream_range: String,
-    /// True when the element asked for the whole body and we asked for a range
-    /// anyway. The reply then has to be translated back on the way out.
-    synthetic: bool,
-}
-
-/// Decide the upstream `Range` for a client request that may not have one.
+/// The largest range googlevideo will serve in one request, with margin.
 ///
-/// `bytes=0-` asks for *no less than the whole body*, so inventing it changes
-/// nothing about what is fetched — only about how fast googlevideo is willing to
-/// send it. Boundedness is irrelevant; the presence of the header is everything.
-fn range_plan(client_range: Option<&str>) -> RangePlan {
-    match client_range {
-        Some(r) => RangePlan { upstream_range: r.to_string(), synthetic: false },
-        None => RangePlan { upstream_range: "bytes=0-".to_string(), synthetic: true },
-    }
-}
+/// Measured against a real itag-136 url: ≤3 MB is served fast, ≥8 MB is a hard
+/// 403, 5 MB is served but already paced. 1 MB sits well inside the safe band and
+/// keeps the first chunk — the one carrying the moov — as small and fast as it
+/// can be, which is what makes the first frame appear at once.
+const VIDEO_CHUNK: u64 = 1 << 20;
 
-/// Translate the upstream reply back into one that answers the request the
-/// client actually made.
-///
-/// A client that sent no `Range` is owed a `200` with no `Content-Range`. Handing
-/// it the `206` our invented header earned would be answering a question it never
-/// asked — and a `206` to a request without a `Range` is a response WebKit is
-/// entitled to reject. The body is byte-identical either way, so only the framing
-/// needs undoing.
-fn presented(
-    upstream_status: u16,
+/// How the element's `Range` maps onto the response we send back.
+struct VideoFraming {
+    status: u16,
+    start: u64,
+    /// Inclusive last byte.
+    end: u64,
     content_range: Option<String>,
-    synthetic: bool,
-) -> (u16, Option<String>) {
-    if synthetic && upstream_status == 206 {
-        return (200, None);
+}
+
+fn video_framing(client_range: Option<&str>, total: u64) -> VideoFraming {
+    let last = total.saturating_sub(1);
+    match parse_byte_range(client_range) {
+        // No Range: the element is owed a 200 over the whole file.
+        None => VideoFraming { status: 200, start: 0, end: last, content_range: None },
+        // A Range: a 206 from `start`, clamped to what exists.
+        Some((start, end_opt)) => {
+            let start = start.min(last);
+            let end = end_opt.unwrap_or(last).min(last);
+            VideoFraming {
+                status: 206,
+                start,
+                end,
+                content_range: Some(format!("bytes {start}-{end}/{total}")),
+            }
+        }
     }
-    (upstream_status, content_range)
+}
+
+/// Parse a `Range: bytes=A-B` / `bytes=A-` header into `(start, end_inclusive?)`.
+/// Only the single-range `bytes=` form a `<video>` element sends; anything else
+/// (multi-range, a suffix `bytes=-N`, garbage) is treated as no range.
+fn parse_byte_range(header: Option<&str>) -> Option<(u64, Option<u64>)> {
+    let spec = header?.trim().strip_prefix("bytes=")?;
+    if spec.contains(',') {
+        return None; // multi-range: can't be one contiguous body
+    }
+    let (a, b) = spec.split_once('-')?;
+    let start: u64 = a.trim().parse().ok()?;
+    let end = match b.trim() {
+        "" => None,
+        s => Some(s.parse().ok()?),
+    };
+    Some((start, end))
+}
+
+/// The full length of the rendition, for framing and clamping.
+///
+/// googlevideo stamps `clen=` on every url, so it's read from there without a
+/// request. The `bytes=0-0` probe is only a fallback for a url that somehow lacks
+/// it — one tiny request that reads the total out of `Content-Range`.
+fn video_total_len(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    ua: Option<&str>,
+) -> Option<u64> {
+    if let Some(n) = parse_clen(url) {
+        return Some(n);
+    }
+    let mut req = client
+        .get(url)
+        .timeout(VIDEO_BODY_TIMEOUT)
+        .header(reqwest::header::RANGE, "bytes=0-0");
+    if let Some(ua) = ua {
+        req = req.header(reqwest::header::USER_AGENT, ua);
+    }
+    let resp = req.send().ok()?;
+    let cr = resp.headers().get(reqwest::header::CONTENT_RANGE)?.to_str().ok()?;
+    total_from_content_range(cr)
+}
+
+/// Read `clen=<n>` out of a googlevideo url's query.
+fn parse_clen(url: &str) -> Option<u64> {
+    url.split(['?', '&'])
+        .find_map(|kv| kv.strip_prefix("clen="))
+        .and_then(|v| v.parse().ok())
+}
+
+/// The total from a `Content-Range: bytes A-B/TOTAL` header.
+fn total_from_content_range(cr: &str) -> Option<u64> {
+    cr.rsplit('/').next()?.trim().parse().ok()
+}
+
+/// The next upstream chunk `(lo, hi_inclusive)` to fetch, or `None` at the end.
+fn next_chunk(next: u64, end: u64, chunk: u64) -> Option<(u64, u64)> {
+    if next > end {
+        return None;
+    }
+    Some((next, (next + chunk - 1).min(end)))
+}
+
+/// A googlevideo body streamed to the element as bounded chunks.
+///
+/// Each `read` that empties the buffer fetches the next [`VIDEO_CHUNK`] range —
+/// bounded, because open-ended or oversized is a 403 here. One chunk (~1 MB) is
+/// resident at a time, so a 24 MB video never costs more than that in RAM.
+struct ChunkedVideo {
+    client: reqwest::blocking::Client,
+    url: String,
+    ua: Option<String>,
+    next: u64,
+    end: u64,
+    buf: Vec<u8>,
+    buf_pos: usize,
+}
+
+impl std::io::Read for ChunkedVideo {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        if self.buf_pos >= self.buf.len() {
+            let Some((lo, hi)) = next_chunk(self.next, self.end, VIDEO_CHUNK) else {
+                return Ok(0); // whole requested span delivered
+            };
+            let mut req = self
+                .client
+                .get(&self.url)
+                .timeout(VIDEO_BODY_TIMEOUT)
+                .header(reqwest::header::RANGE, format!("bytes={lo}-{hi}"));
+            if let Some(ua) = &self.ua {
+                req = req.header(reqwest::header::USER_AGENT, ua);
+            }
+            let resp = req
+                .send()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            if !resp.status().is_success() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("upstream chunk {lo}-{hi} -> {}", resp.status()),
+                ));
+            }
+            self.buf = resp
+                .bytes()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                .to_vec();
+            self.buf_pos = 0;
+            self.next = hi + 1;
+            if self.buf.is_empty() {
+                return Ok(0);
+            }
+        }
+        let n = (self.buf.len() - self.buf_pos).min(out.len());
+        out[..n].copy_from_slice(&self.buf[self.buf_pos..self.buf_pos + n]);
+        self.buf_pos += n;
+        Ok(n)
+    }
 }
 
 /// Fetch an M3U8 and rewrite every URI (segments, keys, child playlists) to
@@ -479,110 +576,165 @@ mod tests {
         assert!(out.contains("IV=0x1"));
     }
 
-    /// googlevideo paces a request carrying no `Range` to about the bitrate of
-    /// what was asked for. Nothing in the *response* reveals that a body was
-    /// paced, so the only place this can be guarded is here, on the way out.
     #[test]
-    fn a_range_always_goes_upstream() {
-        assert_eq!(range_plan(None).upstream_range, "bytes=0-");
-        assert!(range_plan(None).synthetic);
+    fn parses_a_bounded_and_open_ended_range() {
+        assert_eq!(parse_byte_range(Some("bytes=100-199")), Some((100, Some(199))));
+        assert_eq!(parse_byte_range(Some("bytes=100-")), Some((100, None)));
+        assert_eq!(parse_byte_range(Some(" bytes=0-0 ")), Some((0, Some(0))));
     }
 
-    /// The element's own range wins whenever it has one — it is seeking, and
-    /// second-guessing where it wants to read from would break the seek.
+    /// Anything that isn't a single `bytes=A-B` range is treated as "no range" —
+    /// the element never sends those, and we can't frame them as one body.
     #[test]
-    fn the_elements_own_range_is_forwarded_unchanged() {
-        let plan = range_plan(Some("bytes=1048576-2097151"));
-        assert_eq!(plan.upstream_range, "bytes=1048576-2097151");
-        assert!(!plan.synthetic);
+    fn non_single_ranges_are_treated_as_absent() {
+        assert_eq!(parse_byte_range(None), None);
+        assert_eq!(parse_byte_range(Some("bytes=0-1,5-9")), None); // multi-range
+        assert_eq!(parse_byte_range(Some("bytes=-500")), None); // suffix form
+        assert_eq!(parse_byte_range(Some("seconds=0-1")), None); // wrong unit
+        assert_eq!(parse_byte_range(Some("garbage")), None);
     }
 
-    /// A `206` is only an answer to a question the client asked. Ours invented
-    /// the question, so the client must still see the `200` it was owed.
+    /// No range from the element is a 200 over the whole file; a range is a 206
+    /// framed against the real total. This framing is independent of how the
+    /// body is then fetched (chunked), which is the point of testing it apart.
     #[test]
-    fn an_invented_range_does_not_leak_a_206_to_the_client() {
-        let (status, cr) = presented(206, Some("bytes 0-99/100".into()), true);
-        assert_eq!(status, 200);
-        assert_eq!(cr, None, "a 200 carrying Content-Range is a contradiction");
+    fn framing_maps_the_element_range_onto_the_response() {
+        let f = video_framing(None, 1000);
+        assert_eq!((f.status, f.start, f.end), (200, 0, 999));
+        assert!(f.content_range.is_none(), "a 200 must carry no Content-Range");
+
+        let f = video_framing(Some("bytes=200-399"), 1000);
+        assert_eq!((f.status, f.start, f.end), (206, 200, 399));
+        assert_eq!(f.content_range.as_deref(), Some("bytes 200-399/1000"));
+
+        // Open-ended range runs to the last byte.
+        let f = video_framing(Some("bytes=200-"), 1000);
+        assert_eq!((f.status, f.start, f.end), (206, 200, 999));
+        assert_eq!(f.content_range.as_deref(), Some("bytes 200-999/1000"));
     }
 
-    /// When the element asked for a range, its `206` and `Content-Range` are the
-    /// whole mechanism of seeking and must survive untouched.
+    /// A range past the end must clamp, not overrun — else the Content-Length we
+    /// promise and the bytes we deliver disagree and the element hangs.
     #[test]
-    fn a_real_range_request_keeps_its_206_and_content_range() {
-        let (status, cr) = presented(206, Some("bytes 10-19/100".into()), false);
-        assert_eq!(status, 206);
-        assert_eq!(cr.as_deref(), Some("bytes 10-19/100"));
+    fn framing_clamps_a_range_past_the_end() {
+        let f = video_framing(Some("bytes=900-5000"), 1000);
+        assert_eq!((f.start, f.end), (900, 999));
+        assert_eq!(f.content_range.as_deref(), Some("bytes 900-999/1000"));
     }
 
-    /// Only `206` is ours to undo. A server that ignored the invented header and
-    /// sent the whole body, or that failed, is already answering correctly.
     #[test]
-    fn other_statuses_pass_through_whoever_asked() {
-        assert_eq!(presented(200, None, true), (200, None));
-        assert_eq!(presented(403, None, true), (403, None));
-        assert_eq!(presented(416, None, false).0, 416);
+    fn reads_clen_from_the_googlevideo_url() {
+        assert_eq!(parse_clen("https://gv/vp?itag=136&clen=26174413&dur=252"), Some(26174413));
+        assert_eq!(parse_clen("https://gv/vp?clen=42"), Some(42));
+        assert_eq!(parse_clen("https://gv/vp?itag=136"), None);
     }
 
-    /// The same claim as [`a_range_always_goes_upstream`], asked of the wire.
-    ///
-    /// Worth doing twice because nothing in a *response* reveals that a body was
-    /// paced — a throttled fetch and a fast one are byte-identical, just minutes
-    /// apart. A pure-function test says the plan is right; only a socket says the
-    /// plan reached the socket. A refactor that dropped the header would leave
-    /// every other test in this file green.
     #[test]
-    fn the_proxy_puts_a_range_on_the_wire_when_the_element_did_not() {
-        use std::io::{BufRead, BufReader, Write};
+    fn reads_total_from_a_content_range() {
+        assert_eq!(total_from_content_range("bytes 0-0/26174413"), Some(26174413));
+        assert_eq!(total_from_content_range("bytes 100-199/1000"), Some(1000));
+        assert_eq!(total_from_content_range("nonsense"), None);
+    }
+
+    /// The chunk walk covers `[next, end]` exactly, in bounded steps, and stops.
+    #[test]
+    fn chunks_cover_the_span_in_bounded_steps() {
+        assert_eq!(next_chunk(0, 9, 4), Some((0, 3)));
+        assert_eq!(next_chunk(4, 9, 4), Some((4, 7)));
+        assert_eq!(next_chunk(8, 9, 4), Some((8, 9)), "last chunk is short, not overrun");
+        assert_eq!(next_chunk(10, 9, 4), None, "past the end: done");
+        // A single request never exceeds the chunk size — that is the 403 guard.
+        for start in [0u64, 100, 1_000_000] {
+            let (lo, hi) = next_chunk(start, u64::MAX, VIDEO_CHUNK).unwrap();
+            assert!(hi - lo + 1 <= VIDEO_CHUNK, "chunk must stay within the safe range size");
+        }
+    }
+
+    /// End to end against a scripted googlevideo that behaves like the real one:
+    /// it **403s an open-ended or oversized range** and serves only bounded
+    /// chunks. The proxy must still deliver the whole body — proof it chunks,
+    /// which a response alone (identical whether chunked or not) cannot show. A
+    /// regression to a single unbounded fetch fails here and nowhere else.
+    #[test]
+    fn the_proxy_streams_a_whole_video_in_bounded_chunks() {
+        use std::io::{BufRead, BufReader, Read, Write};
+
+        // 3.5 chunks of body, so the walk takes several requests and a short tail.
+        let total: usize = (VIDEO_CHUNK as usize) * 3 + 512;
+        let body: Vec<u8> = (0..total).map(|i| (i % 251) as u8).collect();
+        let body_for_server = body.clone();
 
         let upstream = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let upstream_port = upstream.local_addr().unwrap().port();
 
-        // Stand in for googlevideo: record what was asked, answer like it does.
-        let seen = std::thread::spawn(move || {
-            let (mut sock, _) = upstream.accept().unwrap();
-            let mut reader = BufReader::new(sock.try_clone().unwrap());
-            let mut headers = Vec::new();
+        let server = std::thread::spawn(move || {
+            let mut max_seen: u64 = 0;
+            // The proxy fetches clen from the url, so there's no probe — one
+            // connection per chunk (Connection: close each time).
             loop {
-                let mut line = String::new();
-                if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
-                    break;
+                let Ok((mut sock, _)) = upstream.accept() else { break };
+                let mut reader = BufReader::new(sock.try_clone().unwrap());
+                let mut range = String::new();
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
+                        break;
+                    }
+                    if line.to_ascii_lowercase().starts_with("range:") {
+                        range = line.trim().to_string();
+                    }
                 }
-                headers.push(line.trim_end().to_string());
+                // Parse "Range: bytes=lo-hi".
+                let spec = range.split_once("bytes=").map(|(_, r)| r.trim().to_string()).unwrap_or_default();
+                let (lo, hi) = spec.split_once('-').unwrap_or(("", ""));
+                let lo: u64 = lo.trim().parse().unwrap_or(0);
+                let hi_opt: Option<u64> = hi.trim().parse().ok();
+
+                // Reject exactly what real googlevideo rejects: open-ended, or a
+                // span bigger than one chunk.
+                let too_big = match hi_opt {
+                    None => true,
+                    Some(hi) => hi.saturating_sub(lo) + 1 > VIDEO_CHUNK,
+                };
+                if too_big {
+                    sock.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                    sock.flush().unwrap();
+                    continue;
+                }
+                let hi = hi_opt.unwrap().min(total as u64 - 1);
+                max_seen = max_seen.max(hi - lo + 1);
+                let slice = &body_for_server[lo as usize..=hi as usize];
+                let header = format!(
+                    "HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\nContent-Range: bytes {lo}-{hi}/{total}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    slice.len()
+                );
+                sock.write_all(header.as_bytes()).unwrap();
+                sock.write_all(slice).unwrap();
+                sock.flush().unwrap();
+                if hi as usize + 1 >= total {
+                    return max_seen;
+                }
             }
-            sock.write_all(
-                b"HTTP/1.1 206 Partial Content\r\n\
-                  Content-Type: video/mp4\r\n\
-                  Content-Range: bytes 0-3/4\r\n\
-                  Content-Length: 4\r\n\
-                  Connection: close\r\n\r\nabcd",
-            )
-            .unwrap();
-            sock.flush().unwrap();
-            headers
+            max_seen
         });
 
-        let proxy = start().expect("proxy must start");
-        let target = format!("http://127.0.0.1:{upstream_port}/videoplayback");
+        let proxy = start().expect("proxy starts");
+        let target = format!("http://127.0.0.1:{upstream_port}/videoplayback?clen={total}");
         let resp = reqwest::blocking::Client::new()
             .get(proxy.video_url(&target, None))
             .send()
-            .expect("proxy must answer");
+            .expect("proxy answers");
 
-        // What the client is owed: it never asked for a range.
-        assert_eq!(resp.status().as_u16(), 200);
-        assert!(resp.headers().get(reqwest::header::CONTENT_RANGE).is_none());
-        assert_eq!(resp.bytes().unwrap().as_ref(), b"abcd");
+        assert_eq!(resp.status().as_u16(), 200, "no element range ⇒ 200 over the whole file");
+        let mut got = Vec::new();
+        resp.take(total as u64 + 1024).read_to_end(&mut got).unwrap();
+        assert_eq!(got.len(), total, "the proxy must deliver every byte");
+        assert_eq!(got, body, "and the bytes must be the file, in order");
 
-        // What googlevideo was actually asked — the whole point.
-        let headers = seen.join().unwrap();
-        let range = headers
-            .iter()
-            .find(|h| h.to_ascii_lowercase().starts_with("range:"))
-            .expect("a request with no Range is one googlevideo will pace to ~1x realtime");
+        let max_chunk = server.join().unwrap();
         assert!(
-            range.to_ascii_lowercase().contains("bytes=0-"),
-            "expected the whole body asked for as a range, got {range:?}"
+            max_chunk <= VIDEO_CHUNK,
+            "the proxy asked for {max_chunk} bytes at once — googlevideo would 403 that"
         );
     }
 

@@ -1,8 +1,20 @@
-import { useEffect, useRef, useState } from "react";
-import { CircleAlert, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  CircleAlert,
+  Loader2,
+  Maximize,
+  Minimize,
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+} from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
 import { ipcErrorMessage, ytmusicVideoUrl } from "@/lib/ipc";
 import { syncAction } from "@/features/player/videoSync";
+import { Slider } from "@/components/Slider";
+import { formatTime } from "@/lib/format";
+import { cn } from "@/lib/cn";
 
 /**
  * The music video for the current track, as a picture only.
@@ -22,11 +34,14 @@ import { syncAction } from "@/features/player/videoSync";
  */
 export function VideoStage({ videoId }: { videoId: string }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Resolve on demand: this costs a yt-dlp spawn, so it happens when video is
-  // switched on, not for every track that might have one.
+  // Resolve on demand: this costs a yt-dlp spawn on a cold cache, so it happens
+  // when video is switched on, not for every track that might have one. The
+  // backend caches the result for the url's lifetime, so re-opening this tab or
+  // re-mounting the element is free.
   useEffect(() => {
     let cancelled = false;
     setUrl(null);
@@ -92,24 +107,178 @@ export function VideoStage({ videoId }: { videoId: string }) {
   }
 
   return (
-    <Stage>
+    <Stage ref={stageRef}>
       <video
         ref={ref}
         src={url}
         muted
         playsInline
-        // The engine drives position; the element must never seek itself.
+        // Native controls would be the wrong instrument entirely: they seek the
+        // element, and the element's clock is not the truth — correcting it is
+        // what `syncAction` exists to do, so a native scrub would be undone
+        // within a tick. They also offer a volume slider that does nothing, on a
+        // muted, video-only rendition. `VideoControls` drives the engine instead,
+        // and the picture follows from that, the same way it always does.
         controls={false}
         onError={() => setError("This video couldn't be played.")}
         className="size-full object-contain"
       />
+      <VideoControls stageRef={stageRef} />
     </Stage>
   );
 }
 
-function Stage({ children }: { children: React.ReactNode }) {
+/**
+ * Transport laid over the picture, wired to the **engine**, never to the
+ * element.
+ *
+ * Every control here is the one from the main transport bar, in reach of
+ * someone watching. Pressing play moves the audio, and the picture catches up on
+ * the next tick — which is the same path a click on the main bar takes, so there
+ * is no second way to control playback to keep consistent with the first.
+ *
+ * Fullscreen is the exception, and the only thing here that touches the DOM: it
+ * belongs to the stage, not to playback, and it takes the whole stage rather
+ * than the `<video>` so these controls come along.
+ */
+function VideoControls({ stageRef }: { stageRef: React.RefObject<HTMLDivElement | null> }) {
+  // Subscribed here rather than in `VideoStage` so a ~10×/s position tick
+  // re-renders this strip alone, and never the element showing the video.
+  const playing = useEngineStore((s) => s.playing);
+  const paused = useEngineStore((s) => s.paused);
+  const positionSecs = useEngineStore((s) => s.positionSecs);
+  const durationSecs = useEngineStore((s) => s.durationSecs);
+  const seekable = useEngineStore((s) => s.seekable);
+  const queueLength = useEngineStore((s) => s.queue.length);
+  const queueIndex = useEngineStore((s) => s.queueIndex);
+  const togglePause = useEngineStore((s) => s.togglePause);
+  const next = useEngineStore((s) => s.next);
+  const prev = useEngineStore((s) => s.prev);
+  const seek = useEngineStore((s) => s.seek);
+
+  const [fullscreen, setFullscreen] = useState(false);
+
+  // The browser owns this state — Esc and the system chrome can both leave
+  // fullscreen without going through our button, so read it rather than track it.
+  useEffect(() => {
+    const onChange = () => setFullscreen(document.fullscreenElement === stageRef.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, [stageRef]);
+
+  const toggleFullscreen = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    // Rejects when the gesture isn't trusted or the element can't be promoted;
+    // either way the picture keeps playing exactly as it was.
+    if (document.fullscreenElement === stage) void document.exitFullscreen().catch(() => {});
+    else void stage.requestFullscreen().catch(() => {});
+  }, [stageRef]);
+
+  const showPause = playing && !paused;
+  const duration = durationSecs ?? 0;
+  // A stream is only seekable once the renderer has learned its length, so the
+  // bar arrives dead and comes alive a moment later. Better than hiding it and
+  // having it appear under the cursor.
+  const canSeek = seekable && duration > 0;
+
   return (
-    <div className="grid aspect-video w-full place-items-center overflow-hidden rounded-card bg-black ring-1 ring-border">
+    <div
+      className={cn(
+        "absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8",
+        // Out of the way while watching, back the moment it's wanted. Kept up
+        // whenever the video isn't running, so a paused picture is never a dead
+        // rectangle with no way out of it.
+        "opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/stage:opacity-100",
+        !showPause && "opacity-100",
+      )}
+    >
+      <button
+        type="button"
+        aria-label="Previous track"
+        onClick={prev}
+        disabled={queueIndex <= 0}
+        className={overlayBtn}
+      >
+        <SkipBack className="size-4" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        aria-label={showPause ? "Pause" : "Play"}
+        onClick={togglePause}
+        className={overlayBtn}
+      >
+        {showPause ? (
+          <Pause className="size-5" aria-hidden="true" />
+        ) : (
+          <Play className="size-5" aria-hidden="true" />
+        )}
+      </button>
+      <button
+        type="button"
+        aria-label="Next track"
+        onClick={next}
+        disabled={queueIndex < 0 || queueIndex + 1 >= queueLength}
+        className={overlayBtn}
+      >
+        <SkipForward className="size-4" aria-hidden="true" />
+      </button>
+
+      <span className="w-9 text-right text-[11px] tabular-nums text-white/70">
+        {formatTime(positionSecs)}
+      </span>
+      <Slider
+        label="Seek"
+        min={0}
+        max={Math.max(duration, 0.1)}
+        step={0.1}
+        value={Math.min(positionSecs, duration > 0 ? duration : positionSecs)}
+        onChange={seek}
+        disabled={!canSeek}
+        formatValue={(v) => formatTime(v)}
+        className="flex-1"
+      />
+      <span className="w-9 text-[11px] tabular-nums text-white/70">
+        {formatTime(durationSecs)}
+      </span>
+
+      <button
+        type="button"
+        aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+        onClick={toggleFullscreen}
+        className={overlayBtn}
+      >
+        {fullscreen ? (
+          <Minimize className="size-4" aria-hidden="true" />
+        ) : (
+          <Maximize className="size-4" aria-hidden="true" />
+        )}
+      </button>
+    </div>
+  );
+}
+
+const overlayBtn =
+  "flex size-8 shrink-0 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/15 hover:text-white disabled:pointer-events-none disabled:opacity-30";
+
+function Stage({
+  children,
+  ref,
+}: {
+  children: React.ReactNode;
+  ref?: React.Ref<HTMLDivElement>;
+}) {
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "group/stage relative grid aspect-video w-full place-items-center overflow-hidden rounded-card bg-black ring-1 ring-border",
+        // Fullscreen hands this element the whole screen, which a fixed 16:9 box
+        // would then letterbox *inside* — black bars around a black stage. Drop
+        // the ratio and the card chrome for as long as it's promoted.
+        "[&:fullscreen]:aspect-auto [&:fullscreen]:h-full [&:fullscreen]:rounded-none [&:fullscreen]:ring-0",
+      )}
+    >
       {children}
     </div>
   );

@@ -10,6 +10,13 @@ interface SliderProps {
   label: string;
   disabled?: boolean;
   onChange: (value: number) => void;
+  /** Fires once when an interaction *ends* — pointer release, or a keyboard
+   *  step — carrying the final value. `onChange` streams every intermediate
+   *  value during a drag; `onCommit` is for consumers whose real work is
+   *  expensive to repeat (a seek that re-opens a network stream) and should run
+   *  only when the user settles. Optional; controls that want live continuous
+   *  updates (volume, EQ) simply don't pass it. */
+  onCommit?: (value: number) => void;
   /** Render the live value for screen readers / tooltips. */
   formatValue?: (value: number) => string;
   className?: string;
@@ -31,10 +38,14 @@ export function Slider({
   label,
   disabled = false,
   onChange,
+  onCommit,
   formatValue,
   className,
 }: SliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
+  // The last value this control produced, so a pointer-release can commit it
+  // without recomputing from a stale event.
+  const lastRef = useRef(value);
 
   const fraction = clamp((value - min) / (max - min), 0, 1);
 
@@ -47,7 +58,9 @@ export function Slider({
       const f = clamp((clientX - rect.left) / rect.width, 0, 1);
       const raw = min + f * (max - min);
       const snapped = Math.round(raw / step) * step;
-      onChange(clamp(snapped, min, max));
+      const v = clamp(snapped, min, max);
+      lastRef.current = v;
+      onChange(v);
     },
     [min, max, step, onChange],
   );
@@ -69,6 +82,13 @@ export function Slider({
     },
     [disabled, setFromClientX],
   );
+
+  // Commit at the end of a drag. Both pointerup and lostpointercapture, because
+  // the capture can be yanked (a system gesture, focus loss) without a clean up.
+  const onPointerEnd = useCallback(() => {
+    if (disabled) return;
+    onCommit?.(lastRef.current);
+  }, [disabled, onCommit]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -100,9 +120,14 @@ export function Slider({
           return;
       }
       e.preventDefault();
-      onChange(clamp(next, min, max));
+      const v = clamp(next, min, max);
+      lastRef.current = v;
+      onChange(v);
+      // A key press is a discrete, settled change — commit it at once (one seek
+      // per press, never a storm).
+      onCommit?.(v);
     },
-    [disabled, value, step, min, max, onChange],
+    [disabled, value, step, min, max, onChange, onCommit],
   );
 
   return (
@@ -118,6 +143,8 @@ export function Slider({
       tabIndex={disabled ? -1 : 0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onLostPointerCapture={onPointerEnd}
       onKeyDown={onKeyDown}
       className={cn(
         "group relative flex h-5 cursor-pointer items-center",

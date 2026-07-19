@@ -1,6 +1,6 @@
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
-import { Slider } from "@/components/Slider";
+import { SeekBar } from "@/features/player/SeekBar";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -14,6 +14,7 @@ export function TransportBar() {
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
   const positionSecs = useEngineStore((s) => s.positionSecs);
   const durationSecs = useEngineStore((s) => s.durationSecs);
+  const seekable = useEngineStore((s) => s.seekable);
   const queue = useEngineStore((s) => s.queue);
   const queueIndex = useEngineStore((s) => s.queueIndex);
   const togglePause = useEngineStore((s) => s.togglePause);
@@ -36,15 +37,11 @@ export function TransportBar() {
           <span className="w-9 text-right text-[11px] tabular-nums text-text-faint">
             {formatTime(positionSecs)}
           </span>
-          <Slider
-            label="Seek"
-            min={0}
-            max={Math.max(duration, 0.1)}
-            step={0.1}
-            value={Math.min(positionSecs, duration > 0 ? duration : positionSecs)}
-            onChange={seek}
-            disabled={!nowPlaying || duration <= 0}
-            formatValue={(v) => formatTime(v)}
+          <SeekBar
+            position={positionSecs}
+            duration={duration}
+            seekable={!!nowPlaying && seekable}
+            onSeek={seek}
             className="flex-1"
           />
           <span className="w-9 text-[11px] tabular-nums text-text-faint">

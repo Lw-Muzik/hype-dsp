@@ -12,7 +12,7 @@ import {
 import { useEngineStore } from "@/stores/engine";
 import { ipcErrorMessage, ytmusicVideoUrl } from "@/lib/ipc";
 import { syncAction } from "@/features/player/videoSync";
-import { Slider } from "@/components/Slider";
+import { SeekBar } from "@/features/player/SeekBar";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -177,10 +177,6 @@ function VideoControls({ stageRef }: { stageRef: React.RefObject<HTMLDivElement 
 
   const showPause = playing && !paused;
   const duration = durationSecs ?? 0;
-  // A stream is only seekable once the renderer has learned its length, so the
-  // bar arrives dead and comes alive a moment later. Better than hiding it and
-  // having it appear under the cursor.
-  const canSeek = seekable && duration > 0;
 
   return (
     <div
@@ -227,15 +223,11 @@ function VideoControls({ stageRef }: { stageRef: React.RefObject<HTMLDivElement 
       <span className="w-9 text-right text-[11px] tabular-nums text-white/70">
         {formatTime(positionSecs)}
       </span>
-      <Slider
-        label="Seek"
-        min={0}
-        max={Math.max(duration, 0.1)}
-        step={0.1}
-        value={Math.min(positionSecs, duration > 0 ? duration : positionSecs)}
-        onChange={seek}
-        disabled={!canSeek}
-        formatValue={(v) => formatTime(v)}
+      <SeekBar
+        position={positionSecs}
+        duration={duration}
+        seekable={seekable}
+        onSeek={seek}
         className="flex-1"
       />
       <span className="w-9 text-[11px] tabular-nums text-white/70">

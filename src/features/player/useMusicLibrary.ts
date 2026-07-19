@@ -1,29 +1,22 @@
 import { useEffect, useMemo } from "react";
 import { useLibraryStore } from "@/stores/library";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
-import type {
-  LoadStatus,
-  MusicTrack,
-  RecoverableSourceState,
-  SourceState,
-} from "@/stores/musicLibrary";
+import type { LoadStatus, MusicTrack, SourceState } from "@/stores/musicLibrary";
 import type { ArtSource } from "@/lib/useTrackArtwork";
 
 export type { MusicTrack, RecoverableSourceState, SourceState } from "@/stores/musicLibrary";
 
 export interface MusicLibrary {
-  /** Every source merged (local + phone + cloud + YouTube Music). */
+  /** Every source merged (local + phone + cloud). */
   tracks: MusicTrack[];
   /** Per-source track lists, so the browser can switch the source filter
    *  without an O(n) `.filter` over the merged list on every render. */
   localTracks: MusicTrack[];
   phoneTracks: MusicTrack[];
   cloudTracks: MusicTrack[];
-  ytmusicTracks: MusicTrack[];
   library: SourceState;
   phone: SourceState;
   cloud: SourceState;
-  ytmusic: RecoverableSourceState;
   /** Force every source to reload (e.g. a manual refresh). */
   reload: () => void;
 }
@@ -61,9 +54,15 @@ export function trackArt(t: MusicTrack): ArtSource {
 const isReady = (s: LoadStatus) => s === "ready" || s === "error";
 
 /**
- * Aggregates every reachable source — the local library, paired phones,
- * connected cloud accounts, and YouTube Music — into one collection of
- * browsable tracks.
+ * Aggregates every reachable source — the local library, paired phones, and
+ * connected cloud accounts — into one collection of browsable tracks.
+ *
+ * YouTube Music is deliberately **not** among them. The Library is the music you
+ * have; YouTube is a catalog you browse, and it lives in Explore, where search
+ * and the genre pages give it room a source filter never could. Folding a
+ * thousand streamed rows into "All" also made the Library slower to load and
+ * harder to read, for tracks the user never added to it. Signing in still lives
+ * in Settings, and the store slice is still there for both.
  *
  * State lives in {@link useMusicLibraryStore}, not here, so it survives the
  * Player view unmounting: each source loads **once** and is reused when you
@@ -85,15 +84,9 @@ export function useMusicLibrary(): MusicLibrary {
   const phoneConnected = useMusicLibraryStore((s) => s.phoneConnected);
   const cloudLoad = useMusicLibraryStore((s) => s.cloudLoad);
   const cloudConnected = useMusicLibraryStore((s) => s.cloudConnected);
-  const ytmusic = useMusicLibraryStore((s) => s.ytmusic);
-  const ytmusicLoad = useMusicLibraryStore((s) => s.ytmusicLoad);
-  const ytmusicSignedIn = useMusicLibraryStore((s) => s.ytmusicSignedIn);
-  const ytmusicError = useMusicLibraryStore((s) => s.ytmusicError);
-  const retryYtMusic = useMusicLibraryStore((s) => s.invalidateYtMusic);
   const ensureLocal = useMusicLibraryStore((s) => s.ensureLocal);
   const ensurePhone = useMusicLibraryStore((s) => s.ensurePhone);
   const ensureCloud = useMusicLibraryStore((s) => s.ensureCloud);
-  const ensureYtMusic = useMusicLibraryStore((s) => s.ensureYtMusic);
   const reload = useMusicLibraryStore((s) => s.reloadAll);
 
   // Kick each source's load-once fetch. Re-runs when the load status flips (so
@@ -108,9 +101,6 @@ export function useMusicLibrary(): MusicLibrary {
   useEffect(() => {
     ensureCloud();
   }, [ensureCloud, cloudLoad]);
-  useEffect(() => {
-    ensureYtMusic();
-  }, [ensureYtMusic, ytmusicLoad]);
 
   // Cloud tracks with resolved tags merged over the listed filenames.
   const cloud = useMemo(
@@ -132,8 +122,8 @@ export function useMusicLibrary(): MusicLibrary {
   );
 
   const tracks = useMemo(
-    () => [...local, ...phone, ...cloud, ...ytmusic],
-    [local, phone, cloud, ytmusic],
+    () => [...local, ...phone, ...cloud],
+    [local, phone, cloud],
   );
 
   return {
@@ -141,7 +131,6 @@ export function useMusicLibrary(): MusicLibrary {
     localTracks: local,
     phoneTracks: phone,
     cloudTracks: cloud,
-    ytmusicTracks: ytmusic,
     library: {
       connected: true,
       loading: localLoad === "loading",
@@ -162,15 +151,6 @@ export function useMusicLibrary(): MusicLibrary {
       ready: isReady(cloudLoad),
       count: cloud.length,
       total: cloud.length,
-    },
-    ytmusic: {
-      connected: ytmusicSignedIn,
-      loading: ytmusicLoad === "loading",
-      ready: isReady(ytmusicLoad),
-      count: ytmusic.length,
-      total: ytmusic.length,
-      error: ytmusicError,
-      retry: retryYtMusic,
     },
     reload,
   };

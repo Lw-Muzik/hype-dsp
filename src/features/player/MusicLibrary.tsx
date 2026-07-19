@@ -1,7 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
-  CircleAlert,
   Cloud,
   Disc3,
   FolderOpen,
@@ -11,7 +10,6 @@ import {
   Loader2,
   Music2,
   Play,
-  RotateCw,
   Search,
   Smartphone,
   SquarePlay,
@@ -34,7 +32,7 @@ import { VirtualGrid } from "@/components/VirtualGrid";
 import { Button } from "@/components/Button";
 import { cn } from "@/lib/cn";
 
-type SourceFilter = "all" | "local" | "phone" | "cloud" | "ytmusic";
+type SourceFilter = "all" | "local" | "phone" | "cloud";
 type Facet = "songs" | "albums" | "artists" | "folders" | "genres";
 type ViewMode = "list" | "grid";
 
@@ -157,11 +155,9 @@ export function MusicLibrary() {
     localTracks,
     phoneTracks,
     cloudTracks,
-    ytmusicTracks,
     library,
     phone,
     cloud,
-    ytmusic,
   } = useMusicLibrary();
   const playQueueItems = useEngineStore((s) => s.playQueueItems);
   const current = useEngineStore((s) =>
@@ -191,9 +187,7 @@ export function MusicLibrary() {
         ? localTracks
         : sourceFilter === "phone"
           ? phoneTracks
-          : sourceFilter === "cloud"
-            ? cloudTracks
-            : ytmusicTracks;
+          : cloudTracks;
 
   // Heavy browse derivations (search / facet grouping / hero deck) run against a
   // *deferred* copy so they never block input or navigation: while a large
@@ -246,28 +240,18 @@ export function MusicLibrary() {
   // source so we don't flash an empty state while others are still arriving.
   const activeReady =
     sourceFilter === "all"
-      ? library.ready && phone.ready && cloud.ready && ytmusic.ready
+      ? library.ready && phone.ready && cloud.ready
       : sourceFilter === "local"
         ? library.ready
         : sourceFilter === "phone"
           ? phone.ready
-          : sourceFilter === "cloud"
-            ? cloud.ready
-            : ytmusic.ready;
+          : cloud.ready;
 
-  // The signed-in account's listing failed. Distinct from "not connected": the
-  // account is fine, the fetch wasn't, so the fix is Retry — not a trip to
-  // Settings to connect something that's already connected.
-  const sourceError = sourceFilter === "ytmusic" ? ytmusic.error : null;
-
-  // Phone/Cloud/YouTube Music selected, finished checking, and genuinely not
-  // connected → offer to set them up (only *after* the status check, never
-  // mid-load).
+  // Phone/Cloud selected, finished checking, and genuinely not connected → offer
+  // to set them up (only *after* the status check, never mid-load).
   const needsConnect =
-    !sourceError &&
-    ((sourceFilter === "phone" && phone.ready && !phone.connected) ||
-      (sourceFilter === "cloud" && cloud.ready && !cloud.connected) ||
-      (sourceFilter === "ytmusic" && ytmusic.ready && !ytmusic.connected));
+    (sourceFilter === "phone" && phone.ready && !phone.connected) ||
+    (sourceFilter === "cloud" && cloud.ready && !cloud.connected);
 
   // First load still running with nothing to show yet → show a loading state
   // instead of a blank pane or a misleading "not connected" prompt.
@@ -277,13 +261,11 @@ export function MusicLibrary() {
       ? "Loading music from your phone…"
       : sourceFilter === "cloud"
         ? "Loading your cloud library…"
-        : sourceFilter === "ytmusic"
-          ? "Loading your YouTube Music playlists…"
-          : "Loading your music…";
+        : "Loading your music…";
 
   // A source is still streaming in behind already-visible tracks.
   const stillLoading =
-    library.loading || phone.loading || cloud.loading || ytmusic.loading;
+    library.loading || phone.loading || cloud.loading;
 
   // While a big local library pages in, show how far along we are.
   const loadProgress =
@@ -320,14 +302,6 @@ export function MusicLibrary() {
             active={sourceFilter === "cloud"}
             onClick={() => setSourceFilter("cloud")}
           />
-          <SourcePill
-            icon={SquarePlay}
-            label="YouTube"
-            count={ytmusic.connected ? ytmusic.count : undefined}
-            dot={ytmusic.connected}
-            active={sourceFilter === "ytmusic"}
-            onClick={() => setSourceFilter("ytmusic")}
-          />
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle view={view} onChange={setView} />
@@ -349,17 +323,9 @@ export function MusicLibrary() {
 
       {showLoading ? (
         <LibraryLoading message={loadingMessage} />
-      ) : sourceError ? (
-        <SourceErrorPrompt message={sourceError} onRetry={ytmusic.retry} />
       ) : needsConnect ? (
         <ConnectPrompt
-          kind={
-            sourceFilter === "phone"
-              ? "phone"
-              : sourceFilter === "ytmusic"
-                ? "ytmusic"
-                : "cloud"
-          }
+          kind={sourceFilter === "phone" ? "phone" : "cloud"}
           onConnect={() => setRoute("settings")}
         />
       ) : filtered.length === 0 ? (
@@ -690,7 +656,7 @@ function TrackCard({
         />
         {!unavailable && (
           <span className="absolute inset-0 grid place-items-center rounded-xl bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-            <span className="grid size-10 place-items-center rounded-full bg-accent text-surface shadow-lg">
+            <span className="grid size-10 place-items-center rounded-full bg-accent text-on-accent shadow-lg">
               <Play className="size-5 fill-current" aria-hidden="true" />
             </span>
           </span>
@@ -804,15 +770,6 @@ function EmptySource({ source }: { source: SourceFilter }) {
       />
     );
   }
-  if (source === "ytmusic") {
-    return (
-      <CenteredEmpty
-        icon={SquarePlay}
-        title="No playlists found"
-        body="You're signed in, but this account has no playlists with tracks in them yet."
-      />
-    );
-  }
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       <div className="grid size-14 place-items-center rounded-2xl bg-surface-raised ring-1 ring-border">
@@ -852,7 +809,7 @@ function CenteredEmpty({
 }
 
 /** The sources that can be absent and offer a way to set them up. */
-type ConnectKind = "phone" | "cloud" | "ytmusic";
+type ConnectKind = "phone" | "cloud";
 
 const CONNECT_PROMPT: Record<
   ConnectKind,
@@ -870,34 +827,7 @@ const CONNECT_PROMPT: Record<
     body: "Connect Google Drive or Dropbox in Settings to stream your music here.",
     action: "Connect in Settings",
   },
-  ytmusic: {
-    icon: SquarePlay,
-    title: "Not signed in to YouTube Music",
-    body: "Sign in from Settings to browse and play your playlists here.",
-    action: "Sign in from Settings",
-  },
 };
-
-/** A connected source whose listing failed — says so, and offers the retry that
- *  actually addresses it. Deliberately not a `ConnectPrompt`: sending someone to
- *  Settings to connect an account that's already connected is a dead end. */
-function SourceErrorPrompt({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-      <div className="grid size-14 place-items-center rounded-2xl bg-danger/10 ring-1 ring-danger/30">
-        <CircleAlert className="size-7 text-danger" aria-hidden="true" />
-      </div>
-      <div>
-        <p className="text-base font-medium">Couldn't load your YouTube Music playlists</p>
-        <p className="mt-1 max-w-sm text-sm text-text-muted">{message}</p>
-      </div>
-      <Button variant="primary" onClick={onRetry}>
-        <RotateCw className="size-4" aria-hidden="true" />
-        Retry
-      </Button>
-    </div>
-  );
-}
 
 function ConnectPrompt({ kind, onConnect }: { kind: ConnectKind; onConnect: () => void }) {
   const { icon: Icon, title, body, action } = CONNECT_PROMPT[kind];

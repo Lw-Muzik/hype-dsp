@@ -368,7 +368,12 @@ function SearchBar() {
       )}
 
       {focused && suggestions.length > 0 && !query && (
-        <ul className="absolute left-0 right-0 top-11 z-20 overflow-hidden rounded-control border border-border bg-surface-raised shadow-lg">
+        // `bg-surface-overlay`, not `-raised`: this floats over live content with
+        // no scrim, so it must be opaque. Under the Dynamic theme `surface-raised`
+        // is 55% translucent (glass over the album backdrop) and the For-you
+        // chips read straight through it. `surface-overlay` stays solid in every
+        // theme — the same token, shadow and ring the Combobox popover uses.
+        <ul className="hm-pop absolute left-0 right-0 top-11 z-20 overflow-hidden rounded-control border border-border-strong bg-surface-overlay shadow-2xl ring-1 ring-black/40">
           {suggestions.map((s) => (
             <li key={s}>
               <button

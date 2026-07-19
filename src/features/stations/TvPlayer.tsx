@@ -91,6 +91,26 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
     const video = videoRef.current;
     if (!video) return;
     let cancelled = false;
+    // How many times we'll try to recover from a fatal error before calling the
+    // channel dead. hls.js's default reaction to a fatal network error is to
+    // reload forever — for a stream that is genuinely down (and iptv-org ships
+    // many), that is an eternal spinner the user reads as "the app is broken"
+    // rather than "this channel is". A small budget lets a real transient blip
+    // recover while a dead channel fails fast and honestly.
+    const MAX_RECOVERIES = 3;
+    let recoveries = 0;
+    // Nothing has played within this long ⇒ dead, even if hls.js never emitted a
+    // fatal error. This is the safety net for the case the backend probe can't
+    // catch: a master playlist that loads but whose segments 403/stall, which
+    // otherwise buffers silently forever.
+    const STALL_DEADLINE_MS = 15_000;
+    let stallTimer: number | undefined;
+    const armStall = () => {
+      window.clearTimeout(stallTimer);
+      stallTimer = window.setTimeout(() => {
+        if (!cancelled) setStatus("error");
+      }, STALL_DEADLINE_MS);
+    };
     setStatus("loading");
     setLevels([]);
     setAudioTracks([]);
@@ -101,6 +121,7 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
     void stopEngine();
 
     const teardown = () => {
+      window.clearTimeout(stallTimer);
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -117,6 +138,14 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
         void video.play().catch(() => {});
       });
     };
+
+    // Real playback disarms the stall deadline and refills the recovery budget,
+    // so a stream that plays, blips, and recovers isn't punished for the blip.
+    const onPlaying = () => {
+      window.clearTimeout(stallTimer);
+      recoveries = 0;
+    };
+    video.addEventListener("playing", onPlaying);
 
     tvStreamUrl(channel)
       .then(async (url) => {
@@ -137,6 +166,7 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
           hlsRef.current = hls;
           hls.loadSource(url);
           hls.attachMedia(video);
+          armStall();
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
             play();
             setLevels(
@@ -165,13 +195,37 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
           hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, (_e, data) => setSubtitleTrack(data.id));
           hls.on(Hls.Events.ERROR, (_e, data) => {
             if (!data.fatal) return;
-            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-            else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-            else setStatus("error");
+            // Give recovery a bounded number of tries, then stop. Without the
+            // budget, a fatal network error on a dead stream loops here forever.
+            if (recoveries >= MAX_RECOVERIES) {
+              window.clearTimeout(stallTimer);
+              setStatus("error");
+              return;
+            }
+            recoveries += 1;
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              armStall();
+              hls.startLoad();
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              hls.recoverMediaError();
+            } else {
+              window.clearTimeout(stallTimer);
+              setStatus("error");
+            }
           });
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = url;
+          armStall();
           video.addEventListener("loadedmetadata", play, { once: true });
+          // Native HLS surfaces a load failure as a media `error` event; without
+          // this the WKWebView fallback path would spin forever too.
+          video.addEventListener(
+            "error",
+            () => {
+              if (!cancelled) setStatus("error");
+            },
+            { once: true },
+          );
         } else {
           setStatus("error");
         }
@@ -182,6 +236,7 @@ export function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: ()
 
     return () => {
       cancelled = true;
+      video.removeEventListener("playing", onPlaying);
       teardown();
     };
   }, [channel, reloadKey, stopEngine]);

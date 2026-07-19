@@ -436,11 +436,18 @@ impl StreamQueueSource {
     }
 
     fn signal_track(&self) {
+        self.signal_index(self.index);
+    }
+
+    /// Announce a specific track as now-playing. Split out so a crossfade can
+    /// announce the *incoming* track the moment it becomes audible, not the
+    /// current one — see the streamed sibling's rationale in `queue.rs`.
+    fn signal_index(&self, i: usize) {
         if let Some(idx) = &self.current_index {
-            idx.store(self.index, Ordering::Release);
+            idx.store(i, Ordering::Release);
         }
         if let Some(sink) = &self.meta_sink {
-            if let Some(meta) = self.metas.get(self.index) {
+            if let Some(meta) = self.metas.get(i) {
                 sink.set(meta.clone());
             }
         }
@@ -494,6 +501,9 @@ impl AudioSource for StreamQueueSource {
                 // full-width one truncated at the cut.
                 if self.xf_len == 0 {
                     self.xf_len = xf.min(cur_len.saturating_sub(self.cursor)).max(1);
+                    // Announce the incoming track at the start of the crossfade,
+                    // when it becomes audible — not xf seconds later at the cut.
+                    self.signal_index(self.index + 1);
                 }
                 let t = (self.xf_cursor as f32 / self.xf_len as f32).min(1.0);
                 let (g_out, g_in) = crate::crossfade::gains(t);
@@ -506,7 +516,7 @@ impl AudioSource for StreamQueueSource {
                     self.cursor = self.xf_cursor;
                     self.xf_cursor = 0;
                     self.xf_len = 0;
-                    self.signal_track();
+                    // Already announced at the crossfade's start.
                     self.advance_window();
                 }
                 (lc * g_out + ln * g_in, rc * g_out + rn * g_in)
@@ -701,6 +711,24 @@ mod tests {
     /// Otherwise the outgoing track is cut at whatever gain the truncated ramp
     /// reached and the incoming one jumps to full: a click, arriving exactly
     /// when the network is worst.
+    /// The streamed sibling of the local queue's rule: the incoming track is
+    /// announced at the crossfade's start, when it becomes audible.
+    #[test]
+    fn crossfade_announces_the_incoming_track_at_its_start() {
+        let idx = Arc::new(AtomicUsize::new(0));
+        let mut src = eager(vec![stereo(1.0, 100), stereo(-1.0, 100)], 40);
+        src.current_index = Some(idx.clone());
+
+        let mut out = vec![0.0f32; 120]; // 60 frames — up to the window
+        src.read(&mut out, 2);
+        assert_eq!(idx.load(Ordering::Relaxed), 0, "still the first track before the crossfade");
+
+        let mut out = vec![0.0f32; 2]; // 1 frame into the crossfade
+        src.read(&mut out, 2);
+        assert_eq!(idx.load(Ordering::Relaxed), 1, "incoming track announced at the crossfade start");
+        assert_eq!(src.index, 0, "still mid-fade, not at the boundary");
+    }
+
     #[test]
     fn a_late_lookahead_still_ramps_fully_out() {
         // 100-frame tracks, 40-frame crossfade → the window opens at frame 60.

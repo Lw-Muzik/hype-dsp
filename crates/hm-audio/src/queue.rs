@@ -213,11 +213,19 @@ impl QueuePlaybackSource {
 
     /// Report the current track to the UI (absolute index + its metadata).
     fn signal_track(&self) {
+        self.signal_index(self.index);
+    }
+
+    /// Announce a specific track as now-playing — its metadata and absolute
+    /// queue index. Split from [`Self::signal_track`] so a crossfade can announce
+    /// the *incoming* track the moment it becomes audible, rather than the
+    /// current one.
+    fn signal_index(&self, i: usize) {
         if let Some(idx) = &self.current_index {
-            idx.store(self.index_offset + self.index, Ordering::Release);
+            idx.store(self.index_offset + i, Ordering::Release);
         }
         if let Some(sink) = &self.meta_sink {
-            if let Some(meta) = self.metas.get(self.index) {
+            if let Some(meta) = self.metas.get(i) {
                 sink.set(meta.clone());
             }
         }
@@ -286,6 +294,11 @@ impl AudioSource for QueuePlaybackSource {
                 // track, and the streamed sibling has always had this latch.
                 if self.xf_len == 0 {
                     self.xf_len = xf.min(cur_len.saturating_sub(self.cursor)).max(1);
+                    // The incoming track is now audible (fading in). Announce it
+                    // here, at the start of the crossfade, so the now-playing
+                    // info changes with the sound — not `xf` seconds later when
+                    // the outgoing track finally ends.
+                    self.signal_index(self.index + 1);
                 }
                 let t = (self.xf_cursor as f32 / self.xf_len as f32).min(1.0);
                 let (g_out, g_in) = crate::crossfade::gains(t);
@@ -298,7 +311,8 @@ impl AudioSource for QueuePlaybackSource {
                     self.cursor = self.xf_cursor;
                     self.xf_cursor = 0;
                     self.xf_len = 0;
-                    self.signal_track();
+                    // Already announced at the crossfade's start; re-announcing
+                    // the same track here would only re-emit it.
                     self.advance_window();
                 }
                 (lc * g_out + ln * g_in, rc * g_out + rn * g_in)
@@ -432,6 +446,31 @@ mod tests {
     /// the full window when the next track finally lands. Dividing by the full
     /// `xf` then ends the ramp partway: the outgoing track cut at audible gain
     /// and the incoming one jumping to full — a click, at the boundary.
+    /// The now-playing info must change with the *sound*: the incoming track is
+    /// audible from the start of the crossfade, so it's announced there — not xf
+    /// seconds later when the outgoing track finally ends. This is what makes the
+    /// card flip the moment the next song fades in.
+    #[test]
+    fn crossfade_announces_the_incoming_track_at_its_start() {
+        let idx = Arc::new(AtomicUsize::new(0));
+        // 100-frame tracks, 40-frame crossfade → the window opens at frame 60.
+        let mut src = eager(vec![stereo(1.0, 100), stereo(-1.0, 100)], 40);
+        src.current_index = Some(idx.clone());
+
+        // Play up to the frame before the window opens.
+        let mut out = vec![0.0f32; 120]; // 60 frames
+        src.read(&mut out, 2);
+        assert_eq!(idx.load(Ordering::Relaxed), 0, "still the first track before the crossfade");
+        assert_eq!(src.index, 0);
+
+        // One frame into the crossfade: the incoming track is now announced,
+        // even though we're still fading out of the first (index unchanged).
+        let mut out = vec![0.0f32; 2]; // 1 frame
+        src.read(&mut out, 2);
+        assert_eq!(idx.load(Ordering::Relaxed), 1, "incoming track announced at the crossfade start");
+        assert_eq!(src.index, 0, "still mid-fade, not yet at the hard boundary");
+    }
+
     #[test]
     fn a_late_lookahead_still_ramps_fully_out() {
         // 100-frame tracks, 40-frame crossfade → the window opens at frame 60.

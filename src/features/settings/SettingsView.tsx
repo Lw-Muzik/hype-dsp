@@ -686,11 +686,30 @@ export function SettingsView() {
                   : `${playback.crossfadeSecs.toFixed(1)}s`}
               </span>
             </div>
+            {/* Data Saver silently wins over this slider for everything that
+                streams, which reads as "crossfade is broken for cloud and
+                YouTube" — the setting is doing exactly what it says, two screens
+                away from where the effect shows up. Say so where it's set. */}
+            {playback.dataSaver && playback.crossfadeSecs > 0 && (
+              <p className="flex items-start gap-2 rounded-control bg-surface-overlay px-3 py-2 text-xs text-text-muted">
+                <CircleAlert
+                  className="mt-0.5 size-3.5 shrink-0 text-warning"
+                  aria-hidden="true"
+                />
+                <span>
+                  Data Saver is on, so crossfade applies to local files only.
+                  Cloud, phone and YouTube Music play one track at a time and cut
+                  straight from one to the next.
+                </span>
+              </p>
+            )}
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 text-sm">
                 <p className="font-medium">Data Saver</p>
                 <p className="text-xs text-text-muted">
-                  Stream progressively on slow connections (no full-download / prefetch).
+                  Stream progressively on slow connections (no full-download /
+                  prefetch). Turns off gapless and crossfade for cloud, phone and
+                  YouTube Music.
                 </p>
               </div>
               <Switch

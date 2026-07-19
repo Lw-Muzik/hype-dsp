@@ -54,6 +54,18 @@ export function RightSidebar() {
     if (!videoId && panel === "video") toggleRight("video");
   }, [videoId, panel, toggleRight]);
 
+  // Keep the video mounted once it's been opened, so switching to Queue or
+  // Lyrics and back doesn't remount it — a remount is a fresh `<video>` that
+  // re-fetches and re-buffers the stream, which is the "video takes a moment to
+  // come back" delay. It stays hidden on the other tabs (still decoding, muted,
+  // engine-synced) and unmounts only when the whole panel closes, so a video
+  // nobody opened is never buffered.
+  const [videoLive, setVideoLive] = useState(false);
+  useEffect(() => {
+    if (panel === "video") setVideoLive(true);
+    else if (panel === null) setVideoLive(false);
+  }, [panel]);
+
   const open = panel !== null;
   const tab = panel ?? rendered;
 
@@ -108,17 +120,16 @@ export function RightSidebar() {
           </button>
         </div>
 
-        {rendered === "queue" ? (
-          <QueueList />
-        ) : rendered === "lyrics" ? (
-          <LyricsView />
-        ) : rendered === "video" && videoId ? (
-          // Keyed by track: a new video is a new element, not a reused one that
-          // has to be talked out of the previous track's buffer and position.
-          <div className="p-3">
+        {rendered === "queue" && <QueueList />}
+        {rendered === "lyrics" && <LyricsView />}
+        {/* The video stays mounted across tab switches (hidden on Queue/Lyrics)
+            so returning to it is instant. Keyed by track: a new video is a new
+            element, not one talked out of the previous track's buffer. */}
+        {videoLive && videoId && (
+          <div className={cn("p-3", rendered !== "video" && "hidden")}>
             <VideoStage key={videoId} videoId={videoId} />
           </div>
-        ) : null}
+        )}
       </aside>
     </div>
   );

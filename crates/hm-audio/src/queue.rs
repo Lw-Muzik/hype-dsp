@@ -6,9 +6,11 @@
 //! plus a one-track lookahead decoded, and tracks already played are freed, so
 //! playing a long queue never holds the whole library's decoded PCM in RAM
 //! (which at ~92 MB per 4-min track would otherwise reach many GB). It reports
-//! the current track's metadata (via a [`MetaSink`]) and absolute queue index
-//! (via an atomic) on each transition; `position`/`total_frames` report the
-//! *current* track so the seek bar stays per-track.
+//! the playing track's metadata (via a [`MetaSink`]) and absolute queue index
+//! (via an atomic); `position`/`total_frames` report that same track so the seek
+//! bar stays per-track. During a crossfade "the playing track" is the incoming
+//! one from the moment it becomes audible — metadata, index, position and
+//! duration all switch together at the crossfade's start, not at the cut.
 //!
 //! This is the local-file sibling of [`StreamQueueSource`](crate::stream_queue::StreamQueueSource)
 //! (cloud/phone) and shares the same bounded-window read/crossfade logic; the
@@ -359,11 +361,24 @@ impl AudioSource for QueuePlaybackSource {
     }
 
     fn position(&self) -> usize {
-        self.cursor.min(self.track_len(self.index))
+        // Mid-crossfade the now-playing info is the incoming track, so the seek
+        // bar must be its timeline too — its own position (`xf_cursor`) against
+        // its own length — or the bar would run on the outgoing track's clock
+        // under the next song's title. `xf_cursor` continues seamlessly into
+        // `cursor` at the boundary, so there's no jump when the fade completes.
+        if self.xf_len > 0 {
+            self.xf_cursor.min(self.track_len(self.index + 1))
+        } else {
+            self.cursor.min(self.track_len(self.index))
+        }
     }
 
     fn total_frames(&self) -> usize {
-        self.track_len(self.index)
+        if self.xf_len > 0 {
+            self.track_len(self.index + 1)
+        } else {
+            self.track_len(self.index)
+        }
     }
 }
 
@@ -450,6 +465,32 @@ mod tests {
     /// audible from the start of the crossfade, so it's announced there — not xf
     /// seconds later when the outgoing track finally ends. This is what makes the
     /// card flip the moment the next song fades in.
+    /// The seek bar rides with the now-playing title: once the crossfade begins
+    /// and the incoming track is announced, the reported position and duration
+    /// are *its* — not the outgoing track's clock under the next song's name.
+    #[test]
+    fn crossfade_reports_the_incoming_track_position_and_duration() {
+        // Distinct lengths (100 vs 80) so the duration switch is unmistakable.
+        let mut src = eager(vec![stereo(1.0, 100), stereo(-1.0, 80)], 40);
+
+        // Before the window opens: the outgoing track's own timeline.
+        let mut out = vec![0.0f32; 120]; // 60 frames
+        src.read(&mut out, 2);
+        assert_eq!(src.total_frames(), 100, "outgoing duration before the crossfade");
+
+        // Ten frames into the crossfade: both flip to the incoming track, even
+        // though the play head is still fading out of the first (index unchanged).
+        let mut out = vec![0.0f32; 20]; // 10 frames
+        src.read(&mut out, 2);
+        assert_eq!(src.total_frames(), 80, "incoming duration during the crossfade");
+        assert!(
+            src.position() <= 12,
+            "position is the incoming track's, near its start; got {}",
+            src.position()
+        );
+        assert_eq!(src.index, 0, "still mid-fade, not at the boundary");
+    }
+
     #[test]
     fn crossfade_announces_the_incoming_track_at_its_start() {
         let idx = Arc::new(AtomicUsize::new(0));

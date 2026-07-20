@@ -563,11 +563,22 @@ impl AudioSource for StreamQueueSource {
     }
 
     fn position(&self) -> usize {
-        self.cursor.min(self.track_len(self.index))
+        // Mid-crossfade, report the incoming track's own clock — see the local
+        // queue's note. `xf_cursor` flows into `cursor` at the boundary, so the
+        // seek bar doesn't jump when the fade completes.
+        if self.xf_len > 0 {
+            self.xf_cursor.min(self.track_len(self.index + 1))
+        } else {
+            self.cursor.min(self.track_len(self.index))
+        }
     }
 
     fn total_frames(&self) -> usize {
-        self.track_len(self.index)
+        if self.xf_len > 0 {
+            self.track_len(self.index + 1)
+        } else {
+            self.track_len(self.index)
+        }
     }
 }
 
@@ -713,6 +724,32 @@ mod tests {
     /// when the network is worst.
     /// The streamed sibling of the local queue's rule: the incoming track is
     /// announced at the crossfade's start, when it becomes audible.
+    /// The seek bar rides with the now-playing title: once the crossfade begins
+    /// and the incoming track is announced, the reported position and duration
+    /// are *its* — not the outgoing track's clock under the next song's name.
+    #[test]
+    fn crossfade_reports_the_incoming_track_position_and_duration() {
+        // Distinct lengths (100 vs 80) so the duration switch is unmistakable.
+        let mut src = eager(vec![stereo(1.0, 100), stereo(-1.0, 80)], 40);
+
+        // Before the window opens: the outgoing track's own timeline.
+        let mut out = vec![0.0f32; 120]; // 60 frames
+        src.read(&mut out, 2);
+        assert_eq!(src.total_frames(), 100, "outgoing duration before the crossfade");
+
+        // Ten frames into the crossfade: both flip to the incoming track, even
+        // though the play head is still fading out of the first (index unchanged).
+        let mut out = vec![0.0f32; 20]; // 10 frames
+        src.read(&mut out, 2);
+        assert_eq!(src.total_frames(), 80, "incoming duration during the crossfade");
+        assert!(
+            src.position() <= 12,
+            "position is the incoming track's, near its start; got {}",
+            src.position()
+        );
+        assert_eq!(src.index, 0, "still mid-fade, not at the boundary");
+    }
+
     #[test]
     fn crossfade_announces_the_incoming_track_at_its_start() {
         let idx = Arc::new(AtomicUsize::new(0));

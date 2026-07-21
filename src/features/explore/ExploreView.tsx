@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 import {
   ChevronLeft,
   CircleAlert,
@@ -16,6 +17,7 @@ import {
 import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
+import { VirtualList } from "@/components/VirtualList";
 import { Artwork } from "@/features/player/Artwork";
 import { TrackRow, TRACK_ROW_H } from "@/features/player/TrackRow";
 import { SEARCH_FILTERS, useExploreStore } from "@/stores/explore";
@@ -76,6 +78,11 @@ export function ExploreView() {
   // whatever found the artist.
   const inner = opened ?? artist;
 
+  // The one scroll container every screen lives in. An opened playlist can hold
+  // thousands of tracks, so its list virtualizes against this element rather
+  // than mounting a row per track — see OpenedItem.
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   return (
     <div className="mx-auto flex h-full w-full max-w-5xl flex-col gap-4">
       <PageHeader
@@ -114,7 +121,7 @@ export function ExploreView() {
         </button>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {sectionsLoad === "ready" && !signedIn ? (
           <Centered
             icon={SquarePlay}
@@ -156,7 +163,7 @@ export function ExploreView() {
                 : "Loading Explore…"}
           </div>
         ) : opened ? (
-          <OpenedItem />
+          <OpenedItem scrollRef={scrollRef} />
         ) : artist ? (
           <ShelfList shelves={artist.shelves} />
         ) : searching ? (
@@ -198,7 +205,7 @@ export function ExploreView() {
 }
 
 /** One opened playlist/album: what's in it, and where to start. */
-function OpenedItem() {
+function OpenedItem({ scrollRef }: { scrollRef: RefObject<HTMLDivElement | null> }) {
   const opened = useExploreStore((s) => s.opened)!;
   const openError = useExploreStore((s) => s.openError);
   const playOpened = useExploreStore((s) => s.playOpened);
@@ -247,27 +254,34 @@ function OpenedItem() {
           body={openError}
         />
       ) : (
-        <div className="flex flex-col">
-          {tracks.map((t, i) => (
-            // TrackRow is `h-full` — it takes its height from the row slot the
-            // Library's VirtualList gives it. Without one it collapses and the
-            // artwork spills into the next row, so supply the same height here.
-            <div key={`${t.videoId}:${i}`} style={{ height: TRACK_ROW_H }}>
-              <TrackRow
-                rank={i + 1}
-                title={t.title}
-                artist={t.artist}
-                durationSecs={t.durationSecs}
-                art={{ key: t.videoId, source: "ytmusic", cover: t.thumbnail }}
-                seed={t.album ?? t.title}
-                source="ytmusic"
-                unavailable={!t.isAvailable}
-                playing={currentId === t.videoId}
-                onPlay={() => playOpened(i)}
-              />
-            </div>
-          ))}
-        </div>
+        // Windowed: a playlist can hold thousands of tracks, and mounting a
+        // TrackRow (each with its own Artwork) per track is what froze this
+        // screen. VirtualList reserves the full scroll height but only mounts
+        // the rows in view, so a 6k- or a million-track list renders the same
+        // ~30 nodes and stays smooth. It virtualizes against the page's own
+        // scroll container so the header above scrolls away with the list.
+        // TrackRow is `h-full`; VirtualList gives each row a TRACK_ROW_H slot.
+        <VirtualList
+          items={tracks}
+          rowHeight={TRACK_ROW_H}
+          scrollRef={scrollRef}
+          ariaLabel={item.title}
+          getKey={(t, i) => `${t.videoId}:${i}`}
+          renderRow={(t, i) => (
+            <TrackRow
+              rank={i + 1}
+              title={t.title}
+              artist={t.artist}
+              durationSecs={t.durationSecs}
+              art={{ key: t.videoId, source: "ytmusic", cover: t.thumbnail }}
+              seed={t.album ?? t.title}
+              source="ytmusic"
+              unavailable={!t.isAvailable}
+              playing={currentId === t.videoId}
+              onPlay={() => playOpened(i)}
+            />
+          )}
+        />
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 {
   "name": "hypemuzik-desktop",
   "private": true,
-  "version": "0.1.10",
+  "version": "0.1.11",
   "type": "module",
   "description": "HypeMuzik — system-wide audio enhancement desktop app (Tauri + React).",
   "scripts": {

@@ -180,7 +180,7 @@ function main() {
   if (dryRun) {
     console.log("\n--dry-run: no files written, nothing committed or pushed.");
     console.log("Steps that would run: write the 3 files → cargo update --workspace →");
-    console.log(`git commit -m \"release: ${tag}\" → git tag ${tag} → git push origin ${branch} --follow-tags`);
+    console.log(`git commit -m \"release: ${tag}\" → git tag -a ${tag} → git push origin ${branch} → git push origin refs/tags/${tag}`);
     return;
   }
 
@@ -201,10 +201,18 @@ function main() {
   if (existsSync(join(root, "Cargo.lock"))) changed.push("Cargo.lock");
   git(["add", ...changed], { capture: false });
   git(["commit", "-m", `release: ${tag}`], { capture: false });
-  git(["tag", tag], { capture: false });
+  // Annotated (`-a`), not lightweight: an annotated tag carries the tagger/date
+  // and is what release tooling expects. It also matters for the push below.
+  git(["tag", "-a", tag, "-m", `HypeMuzik ${tag}`], { capture: false });
   console.log(`✓ committed and tagged ${tag}`);
 
-  git(["push", "origin", branch, "--follow-tags"], { capture: false });
+  // Push the branch and the tag as two explicit refs. Do NOT use
+  // `--follow-tags`: it pushes ONLY annotated tags, so a lightweight tag
+  // silently stayed local — the commit reached main (firing ci.yml) while the
+  // tag never reached origin, so release.yml never triggered. Naming the tag
+  // ref pushes it regardless of kind, and only this one tag (unlike `--tags`).
+  git(["push", "origin", branch], { capture: false });
+  git(["push", "origin", `refs/tags/${tag}`], { capture: false });
 
   const remote = git(["remote", "get-url", "origin"]);
   const slug = remote.replace(/^git@github\.com:/, "").replace(/^https:\/\/github\.com\//, "").replace(/\.git$/, "");

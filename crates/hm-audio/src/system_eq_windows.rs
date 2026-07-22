@@ -23,13 +23,15 @@
 //! the instant the thread spawns — the bug that left the toggle showing a phantom
 //! "running" state.
 //!
-//! It still needs a **virtual routing device**. By default that is the bundled,
-//! signed driver (see [`crate::win_driver`] and `docs/windows-driver.md`); for
-//! validation on real hardware *before* that driver ships, the routing device
-//! can be pointed at any installed virtual cable via the `HM_SYSTEM_EQ_DEVICE` env
-//! var. Without a routing device present, [`available`] returns `false` and
-//! `start` returns a clear, actionable error instead of capturing a missing device.
-//! The real-time COM/threading paths remain **untested against live audio**.
+//! It still needs a **virtual routing device**. Accepted, in priority order: the
+//! bundled, signed HypeMuzik driver (see [`crate::win_driver`] and
+//! `docs/windows-driver.md`), then the VB-CABLE device the app's in-app setup
+//! flow installs as the interim zero-setup path while that driver doesn't ship
+//! yet. The `HM_SYSTEM_EQ_DEVICE` env var overrides both (validation against any
+//! other cable). Without a routing device present, [`available`] returns `false`
+//! and `start` returns a clear, actionable error instead of capturing a missing
+//! device. The real-time COM/threading paths remain **untested against live
+//! audio**.
 //!
 //! Two parts make this work; only the loop can be built/tested off-Windows:
 //!   - **The driver + installer** (signed package registering the virtual device):
@@ -88,19 +90,31 @@ use crate::system_eq_shared::process_block;
 /// render endpoints (the installer registers it under this friendly name).
 pub const VIRTUAL_DEVICE_NAME: &str = "HypeMuzik";
 
-/// Friendly-name substring of the device this pipeline routes through.
+/// Friendly-name substring of the VB-CABLE playback endpoint ("CABLE Input
+/// (VB-Audio Virtual Cable)") — the fallback routing device the in-app setup
+/// flow downloads and installs (see the app's `commands::cable`) while the
+/// bundled, signed HypeMuzik driver doesn't ship yet. Ranked *after*
+/// [`VIRTUAL_DEVICE_NAME`], so the branded driver always wins once present.
+pub const FALLBACK_CABLE_NAME: &str = "CABLE Input";
+
+/// Friendly-name substrings of the devices this pipeline may route through, in
+/// priority order (earlier = preferred).
 ///
-/// Defaults to the bundled virtual device ([`VIRTUAL_DEVICE_NAME`]); overridable
-/// via the `HM_SYSTEM_EQ_DEVICE` env var. The override lets the real-time
-/// pipeline be **validated on actual Windows hardware today** against any already
-/// installed virtual output device (VB-Cable, VoiceMeeter, the open-source Virtual
-/// Audio Driver, …) — before the bundled, signed driver ships — and is the same
-/// detection the bundled driver plugs into. Explicit opt-in (an env var), so we
-/// never silently hijack a virtual cable the user installed for something else.
-fn routing_device_name() -> String {
+/// The `HM_SYSTEM_EQ_DEVICE` env var replaces the whole list — it lets the
+/// real-time pipeline be validated against any other virtual output device
+/// (VoiceMeeter, the open-source Virtual Audio Driver, …). Otherwise: the
+/// bundled HypeMuzik device first, then the VB-CABLE the app itself offers to
+/// install. VB-CABLE is recognized without an env var because our own setup
+/// flow installs it — and routing through it only ever happens when the user
+/// explicitly enables system-wide EQ, so a cable installed for another purpose
+/// is never hijacked silently.
+fn routing_device_names() -> Vec<String> {
     match std::env::var("HM_SYSTEM_EQ_DEVICE") {
-        Ok(name) if !name.trim().is_empty() => name,
-        _ => VIRTUAL_DEVICE_NAME.to_string(),
+        Ok(name) if !name.trim().is_empty() => vec![name],
+        _ => vec![
+            VIRTUAL_DEVICE_NAME.to_string(),
+            FALLBACK_CABLE_NAME.to_string(),
+        ],
     }
 }
 
@@ -232,11 +246,11 @@ pub fn available() -> bool {
     unsafe { virtual_device_present().unwrap_or(false) }
 }
 
-/// `true` if any active render endpoint's friendly name contains the virtual
-/// device marker. Returns `Err` on any COM failure so the caller can map it to a
-/// safe `false`.
+/// `true` if any active render endpoint's friendly name contains one of the
+/// accepted routing-device markers. Returns `Err` on any COM failure so the
+/// caller can map it to a safe `false`.
 unsafe fn virtual_device_present() -> windows::core::Result<bool> {
-    let target = routing_device_name();
+    let targets = routing_device_names();
     let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
     let collection = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)?;
     let count = collection.GetCount()?;
@@ -245,7 +259,7 @@ unsafe fn virtual_device_present() -> windows::core::Result<bool> {
             continue;
         };
         if let Some(name) = device_friendly_name(&device) {
-            if name.contains(&target) {
+            if targets.iter().any(|t| name.contains(t.as_str())) {
                 return Ok(true);
             }
         }
@@ -262,26 +276,34 @@ unsafe fn device_friendly_name(device: &IMMDevice) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
-/// Find the active render endpoint whose friendly name contains the virtual
-/// device marker, returning its (device, device-id) pair.
+/// Find the active render endpoint to route through, returning its
+/// (device, device-id) pair.
+///
+/// When several accepted devices are present (e.g. the bundled HypeMuzik driver
+/// *and* a VB-CABLE), the one matching the earliest [`routing_device_names`]
+/// candidate wins — endpoint enumeration order is arbitrary and must not decide.
 unsafe fn find_virtual_device(
     enumerator: &IMMDeviceEnumerator,
 ) -> windows::core::Result<Option<(IMMDevice, String)>> {
-    let target = routing_device_name();
+    let targets = routing_device_names();
     let collection = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)?;
     let count = collection.GetCount()?;
+    // (candidate rank, device, device-id) of the best match so far.
+    let mut best: Option<(usize, IMMDevice, String)> = None;
     for i in 0..count {
         let Ok(device) = collection.Item(i) else {
             continue;
         };
         if let Some(name) = device_friendly_name(&device) {
-            if name.contains(&target) {
-                let id = device_id(&device)?;
-                return Ok(Some((device, id)));
+            if let Some(rank) = targets.iter().position(|t| name.contains(t.as_str())) {
+                if best.as_ref().is_none_or(|(r, _, _)| rank < *r) {
+                    let id = device_id(&device)?;
+                    best = Some((rank, device, id));
+                }
             }
         }
     }
-    Ok(None)
+    Ok(best.map(|(_, device, id)| (device, id)))
 }
 
 /// The endpoint's COM device-id string (used for `IPolicyConfig` switching).
@@ -310,8 +332,9 @@ impl WindowsSystemEq {
     pub fn start(state: Arc<ArcSwap<EngineState>>) -> Result<Self, AudioError> {
         if !available() {
             return Err(AudioError::Unavailable(
-                "Windows system-wide EQ needs the HypeMuzik virtual audio device — \
-                 install it from Settings (see docs/system-eq.md)."
+                "Windows system-wide EQ needs a routing device (the HypeMuzik \
+                 virtual device or VB-CABLE) — set it up from Settings (see \
+                 docs/system-eq.md)."
                     .into(),
             ));
         }
@@ -500,7 +523,7 @@ unsafe fn run_pipeline(
     let (virtual_device, virtual_id) = find_virtual_device(&enumerator)
         .map_err(|e| AudioError::Host(format!("enumerate endpoints: {e}")))?
         .ok_or_else(|| {
-            AudioError::Unavailable("HypeMuzik virtual device not present".into())
+            AudioError::Unavailable("no routing device present".into())
         })?;
 
     // Render endpoint: the *real* default output. If the default is still our
@@ -513,7 +536,7 @@ unsafe fn run_pipeline(
         device_id(&render_device).map_err(|e| AudioError::Host(format!("render id: {e}")))?;
     if render_id == virtual_id {
         return Err(AudioError::Unavailable(
-            "the real output is still the HypeMuzik device — set a real default \
+            "the real output is still the routing device — set a real default \
              output so the processed audio has somewhere to go."
                 .into(),
         ));

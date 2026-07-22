@@ -367,9 +367,15 @@ pub struct SystemAudioStatus {
     /// Windows-only: the bundled virtual-audio driver is installed (always `true`
     /// on macOS/Linux, which need no driver).
     pub driver_installed: bool,
-    /// This OS routes through a bundled driver the user may need to install
-    /// (Windows only) — gates the in-app "Install audio driver" action.
+    /// The in-app "Install audio driver" action applies right now (Windows only:
+    /// a driver package is bundled in this build and not yet installed).
     pub needs_driver: bool,
+    /// This build's resources actually contain a driver package — i.e. a `.inf`
+    /// exists under `drivers/HypeMuzikAudio/` (always `true` on macOS/Linux,
+    /// which need none). `false` means a Windows build shipped without the
+    /// signed driver: installing is impossible, so the UI must say that instead
+    /// of offering a dead-end Install button.
+    pub driver_bundled: bool,
 }
 
 /// Report whether system-wide EQ is supported, ready, and (Windows) whether the
@@ -377,43 +383,61 @@ pub struct SystemAudioStatus {
 // `(async)`: the Windows probe enumerates audio endpoints over COM/WASAPI (and
 // macOS asks Core Audio) — not main-thread work.
 #[tauri::command(async)]
-pub fn system_audio_status() -> SystemAudioStatus {
+pub fn system_audio_status(app: tauri::AppHandle) -> SystemAudioStatus {
     #[cfg(target_os = "macos")]
     {
+        let _ = app;
         SystemAudioStatus {
             supported: true,
             available: hm_audio::system_tap::available(),
             driver_installed: true,
             needs_driver: false,
+            driver_bundled: true,
         }
     }
     #[cfg(target_os = "linux")]
     {
+        let _ = app;
         let available = hm_audio::system_eq_available();
         SystemAudioStatus {
             supported: true,
             available,
             driver_installed: true,
             needs_driver: false,
+            driver_bundled: true,
         }
     }
     #[cfg(target_os = "windows")]
     {
+        use tauri::Manager;
         let installed = hm_audio::win_driver::routing_device_available();
+        // Only offer "Install audio driver" when there is actually a signed
+        // package in this build's resources — a driverless build showing the
+        // button could only dead-end in an error (the .inf glob would miss).
+        let bundled = app
+            .path()
+            .resource_dir()
+            .ok()
+            .map(|dir| dir.join("drivers").join("HypeMuzikAudio"))
+            .and_then(|dir| hm_audio::win_driver::find_driver_inf(&dir))
+            .is_some();
         SystemAudioStatus {
             supported: true,
             available: installed,
             driver_installed: installed,
-            needs_driver: true,
+            needs_driver: !installed && bundled,
+            driver_bundled: bundled,
         }
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
+        let _ = app;
         SystemAudioStatus {
             supported: false,
             available: false,
             driver_installed: false,
             needs_driver: false,
+            driver_bundled: false,
         }
     }
 }

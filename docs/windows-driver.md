@@ -75,8 +75,17 @@ Two viable bases (both derive from Microsoft's SYSVAD "Simple Audio Sample"):
 
 | Base | License | Notes |
 |------|---------|-------|
-| [`VirtualDrivers/Virtual-Audio-Driver`](https://github.com/VirtualDrivers/Virtual-Audio-Driver) | MIT (+ MS-PL sample portions) | Maintained, ships **pre-signed releases**, can be a default render endpoint. Fastest path. Review `THIRD_PARTY_NOTICES.md` for commercial bundling. |
+| [`VirtualDrivers/Virtual-Audio-Driver`](https://github.com/VirtualDrivers/Virtual-Audio-Driver) | MIT (+ MS-PL sample portions) | Maintained, can be a default render endpoint. Review `THIRD_PARTY_NOTICES.md` for commercial bundling. |
 | [Microsoft SYSVAD](https://github.com/microsoft/Windows-driver-samples/tree/main/audio/sysvad) | MIT (MS sample license) | Full control; more work. |
+
+> **Correction (2026-07-22):** an earlier revision called the upstream's releases
+> "pre-signed" as a fast path. Verified wrong for shipping: their "(Signed)"
+> releases are SignPath Foundation code signing — **not** Microsoft attestation —
+> and their README says test-signing mode is required. Kernel drivers on stock
+> Win10 1607+/Win11 load only with a Microsoft signature, so step 2 below cannot
+> be skipped regardless of base. (The upstream author advertises custom builds
+> for commercial use — contact@mikethetech.com — a possible alternative to doing
+> the attestation ourselves.)
 
 Requirements:
 
@@ -131,26 +140,46 @@ installer without committing binaries to git.
 
 ---
 
-## Validate the pipeline today (no driver yet)
+## The shipped interim path — one-click VB-CABLE setup (no driver yet)
 
-The real-time loop can be exercised on real Windows hardware now:
+Until the signed driver exists, driverless builds are not dead ends: the
+Settings card offers **Set up system-wide EQ** (`src-tauri/src/commands/cable.rs`),
+which downloads VB-CABLE from `download.vb-audio.com` (pinned URL + pinned
+SHA-256 — the elevated installer never runs unverified), extracts it, runs
+`VBCABLE_Setup_x64.exe -i -h` under one UAC prompt, waits for the device, and
+auto-enables the EQ. If the device doesn't enumerate, the UI shows an honest
+"Restart your PC to finish setup" state.
+
+Detection accepts routing devices in priority order (`system_eq_windows::
+routing_device_names`): `"HypeMuzik"` (the bundled driver, once it exists), then
+`"CABLE Input"`. Shipping the signed driver therefore *supersedes* the cable
+automatically — nothing to migrate or undo.
+
+When VB-Audio publishes a new driver pack, the pinned hash goes stale and setup
+fails **closed** with a manual-install fallback; bump `VBCABLE_URL` +
+`VBCABLE_SHA256` in `commands/cable.rs` together.
+
+> **Licensing:** VB-CABLE is VB-Audio **donationware**. This flow downloads from
+> their official servers on explicit user action only — but distributing it in a
+> commercial build should be covered by a licensing/distribution agreement with
+> VB-Audio (they offer one; see vb-audio.com → Licensing). Get that agreement
+> before a public release that includes this button, or gate the button off.
+
+Power users can still point the pipeline at any other cable manually:
 
 ```powershell
-# Install any free virtual cable, e.g. VB-CABLE, then:
-$env:HM_SYSTEM_EQ_DEVICE = "CABLE Input"   # substring of the device's friendly name
-# launch HypeMuzik, set that device as default output, enable system-wide EQ
+# Any installed virtual cable works, e.g. VoiceMeeter:
+$env:HM_SYSTEM_EQ_DEVICE = "VoiceMeeter Input"   # replaces the whole candidate list
+# launch HypeMuzik, enable system-wide EQ
 ```
-
-This proves capture→DSP→render end-to-end before investing in the signed driver.
-The same detection path then works unchanged with the bundled `HypeMuzik` device.
 
 ## Freemium notes
 
 - The seamless driver experience is the natural **Pro** hook: gate
   `system_audio_install_driver` / the Enable action behind license state if
   desired (the licensing API already exists — see the Management integration).
-- Free tier can still expose the `HM_SYSTEM_EQ_DEVICE` BYO-cable path for power
-  users without diluting the premium, zero-setup driver experience.
+- Free tier can still expose the cable/BYO path for power users without diluting
+  the premium, zero-setup driver experience.
 
 ## References
 

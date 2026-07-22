@@ -9,6 +9,7 @@ pub mod account;
 pub mod app;
 pub mod audio;
 pub mod autoeq;
+pub mod cable;
 pub mod chain_presets;
 pub mod cloud;
 pub mod engine;

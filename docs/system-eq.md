@@ -64,12 +64,21 @@ for the turnkey checklist. In this repo:
 3. **The driver + installer package** — the signed `.inf`/`.sys`/`.cat`. Built and
    signed on Windows (EV cert + Microsoft attestation), dropped into
    `src-tauri/drivers/HypeMuzikAudio/`. Cannot be built off-Windows.
+4. **One-click interim setup (shipping today)** — builds without the signed
+   driver (`driverBundled: false`) offer **Set up system-wide EQ** instead:
+   `commands/cable.rs` downloads VB-CABLE from VB-Audio's official server,
+   verifies its pinned SHA-256, silently installs it (`-i -h`, one UAC prompt),
+   waits for the device, then the UI auto-enables. Routing candidates are
+   matched in priority order — `"HypeMuzik"` first, then `"CABLE Input"`
+   (`system_eq_windows::routing_device_names`) — so the branded driver
+   automatically supersedes the cable once it ships. See the licensing note in
+   [`windows-driver.md`](windows-driver.md).
 
-The pipeline can be validated on real hardware **before** the driver ships by
-pointing it at any installed virtual cable: set `HM_SYSTEM_EQ_DEVICE` to a
-substring of that device's friendly name (e.g. `CABLE Input`). Until a routing
-device is present, `system_audio_status` reports `driverInstalled: false` and the
-UI offers the install action rather than a phantom running state.
+The pipeline can also be validated against any other virtual cable by setting
+`HM_SYSTEM_EQ_DEVICE` to a substring of that device's friendly name (the env
+override replaces the whole candidate list). Until a routing device is present,
+`system_audio_status` reports `driverInstalled: false` and the UI offers the
+setup/install action rather than a phantom running state.
 
 ## Frontend
 

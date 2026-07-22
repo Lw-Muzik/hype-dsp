@@ -781,8 +781,13 @@ export interface SystemAudioStatus {
   available: boolean;
   /** Windows-only: the bundled virtual-audio driver is installed. */
   driverInstalled: boolean;
-  /** This OS routes through a bundled driver the user may need to install. */
+  /** The in-app "Install audio driver" action applies right now (Windows: a
+   *  driver package is bundled and not yet installed). */
   needsDriver: boolean;
+  /** This build's resources actually contain a driver package (always `true`
+   *  on macOS/Linux, which need none). `false` = a Windows build that shipped
+   *  without the signed driver — installing is impossible, say so instead. */
+  driverBundled: boolean;
 }
 
 /** Per-OS system-EQ readiness (supported / available / driver state) in one call. */
@@ -807,6 +812,23 @@ export function systemEqStatus(): Promise<SystemEqRuntimeStatus> {
  *  afterwards to confirm the device enumerated. */
 export function systemAudioInstallDriver(): Promise<void> {
   return invoke<void>("system_audio_install_driver");
+}
+
+/** Progress phases emitted (as `system-eq-setup-phase` events) while the
+ *  one-click Windows routing setup runs. */
+export type RoutingSetupPhase = "downloading" | "installing" | "detecting";
+
+/** Outcome of the one-click Windows routing setup: `ready` = the routing device
+ *  is present and system-wide EQ can be enabled now; `needsReboot` = installed,
+ *  but Windows must restart before the device appears. */
+export type RoutingSetupOutcome = "ready" | "needsReboot";
+
+/** One-click Windows system-EQ setup for builds without the bundled driver:
+ *  downloads VB-CABLE from VB-Audio's official server (SHA-256-verified),
+ *  silently installs it (one UAC prompt), and waits for the routing device to
+ *  enumerate. Emits `system-eq-setup-phase` events while it runs. */
+export function systemAudioSetupRouting(): Promise<RoutingSetupOutcome> {
+  return invoke<RoutingSetupOutcome>("system_audio_setup_routing");
 }
 
 /** Set which apps the system-wide EQ tap processes (macOS). Restart the tap

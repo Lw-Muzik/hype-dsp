@@ -706,6 +706,7 @@ pub fn run() {
             commands::engine::system_audio_status,
             commands::engine::system_eq_status,
             commands::engine::system_audio_install_driver,
+            commands::cable::system_audio_setup_routing,
             commands::engine::player_stop,
             commands::engine::player_pause,
             commands::engine::player_resume,

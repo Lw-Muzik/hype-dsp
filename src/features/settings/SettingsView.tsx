@@ -54,10 +54,18 @@ import {
   mixerListSessions,
   systemAudioStatus,
   systemAudioInstallDriver,
+  systemAudioSetupRouting,
   systemEqStatus,
+  type RoutingSetupPhase,
   type SystemAudioStatus,
   type SystemEqRuntimeStatus,
 } from "@/lib/ipc";
+import { listen } from "@tauri-apps/api/event";
+import { systemAudioAffordance } from "./systemAudioCard";
+
+/** Set once the routing setup installed VB-CABLE but Windows still needs a
+ *  restart before the device enumerates; cleared when the device appears. */
+const SETUP_REBOOT_KEY = "hm.systemEqSetupAwaitingReboot";
 import type {
   AppSession,
   LicenseInfo,
@@ -503,9 +511,20 @@ export function SettingsView() {
     available: false,
     driverInstalled: false,
     needsDriver: false,
+    driverBundled: false,
   });
   const [driverInstalling, setDriverInstalling] = useState(false);
   const [driverError, setDriverError] = useState<string | null>(null);
+  // Non-null while the one-click routing setup runs; the value is the phase the
+  // backend last reported, so the button narrates real progress.
+  const [setupPhase, setSetupPhase] = useState<RoutingSetupPhase | null>(null);
+  const [awaitingReboot, setAwaitingReboot] = useState(
+    () => localStorage.getItem(SETUP_REBOOT_KEY) === "1",
+  );
+  // Which affordance the card shows: Enable, Install driver, one-click setup
+  // ("not-bundled" = a Windows build shipped without the signed driver), or an
+  // honest unavailable notice.
+  const systemAffordance = systemAudioAffordance(systemStatus);
   // Live engine truth for system-wide EQ (distinct from the persisted *intent*
   // below): `recovering` means a transient failure — e.g. a macOS tap stall under
   // heavy load or a device change — is being recovered in the background, so the
@@ -584,6 +603,26 @@ export function SettingsView() {
     [loadDevices],
   );
 
+  // Narrate the one-click routing setup: the backend emits download → install
+  // → detect phases so the button can show what is actually happening.
+  useEffect(() => {
+    const unlisten = listen<RoutingSetupPhase>("system-eq-setup-phase", (e) =>
+      setSetupPhase(e.payload),
+    );
+    return () => {
+      void unlisten.then((f) => f());
+    };
+  }, []);
+
+  // A routing device that has appeared clears any pending "restart to finish
+  // setup" notice (the reboot happened, or the device enumerated late).
+  useEffect(() => {
+    if (systemStatus.available && awaitingReboot) {
+      localStorage.removeItem(SETUP_REBOOT_KEY);
+      setAwaitingReboot(false);
+    }
+  }, [systemStatus.available, awaitingReboot]);
+
   // Poll the live system-EQ runtime status while the Settings view is open, so a
   // background recovery (or a settled "active"/"disabled") is reflected promptly.
   useEffect(() => {
@@ -631,6 +670,28 @@ export function SettingsView() {
       setDriverError(ipcErrorMessage(e));
     } finally {
       setDriverInstalling(false);
+    }
+  };
+  // One-click Windows routing setup (VB-CABLE download + verified silent
+  // install), then auto-enable — the click should end with equalized audio,
+  // not another button.
+  const setupRouting = async () => {
+    setDriverError(null);
+    setSetupPhase("downloading");
+    try {
+      const outcome = await systemAudioSetupRouting();
+      const next = await systemAudioStatus();
+      setSystemStatus(next);
+      if (next.available) {
+        startSystemAudio();
+      } else if (outcome === "needsReboot") {
+        localStorage.setItem(SETUP_REBOOT_KEY, "1");
+        setAwaitingReboot(true);
+      }
+    } catch (e) {
+      setDriverError(ipcErrorMessage(e));
+    } finally {
+      setSetupPhase(null);
     }
   };
 
@@ -874,7 +935,7 @@ export function SettingsView() {
                   )}
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  {systemStatus.available ? (
+                  {systemAffordance === "enable" ? (
                     <>
                       <Button variant="primary" onClick={startSystemAudio}>
                         {systemEqOn ? "Restart" : "Enable"}
@@ -885,7 +946,7 @@ export function SettingsView() {
                         </Button>
                       )}
                     </>
-                  ) : systemStatus.needsDriver ? (
+                  ) : systemAffordance === "install" ? (
                     <Button
                       variant="primary"
                       onClick={() => void installAudioDriver()}
@@ -893,6 +954,26 @@ export function SettingsView() {
                     >
                       {driverInstalling ? "Installing…" : "Install audio driver"}
                     </Button>
+                  ) : systemAffordance === "not-bundled" ? (
+                    awaitingReboot ? (
+                      <span className="text-xs text-text-muted">
+                        Restart your PC to finish setup
+                      </span>
+                    ) : (
+                      <Button
+                        variant="primary"
+                        onClick={() => void setupRouting()}
+                        disabled={setupPhase !== null}
+                      >
+                        {setupPhase === "downloading"
+                          ? "Downloading…"
+                          : setupPhase === "installing"
+                            ? "Installing…"
+                            : setupPhase === "detecting"
+                              ? "Detecting…"
+                              : "Set up system-wide EQ"}
+                      </Button>
+                    )
                   ) : (
                     <span className="text-xs text-text-muted">
                       Unavailable on this system
@@ -902,14 +983,12 @@ export function SettingsView() {
               </div>
             )}
 
-            {systemStatus.supported &&
-              systemStatus.needsDriver &&
-              !systemStatus.driverInstalled && (
-                <p className="text-xs text-text-muted">
-                  System-wide EQ routes audio through the HypeMuzik virtual audio
-                  device. Installing it needs a one-time administrator approval.
-                </p>
-              )}
+            {systemStatus.supported && systemAffordance === "install" && (
+              <p className="text-xs text-text-muted">
+                System-wide EQ routes audio through the HypeMuzik virtual audio
+                device. Installing it needs a one-time administrator approval.
+              </p>
+            )}
             {systemStatus.available && isMacos && (
               <div className="rounded-control border border-border bg-surface px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
@@ -1019,11 +1098,13 @@ export function SettingsView() {
                 aria-hidden="true"
               />
               <span>
-                {systemStatus.available
+                {systemAffordance === "enable"
                   ? "Everything you hear is re-rendered through the chain. macOS taps other apps (first use prompts for audio-capture permission; the grant persists on a code-signed build); Linux routes through a PipeWire/PulseAudio virtual sink and restores your default output when stopped; Windows routes through the bundled HypeMuzik virtual audio device."
-                  : systemStatus.needsDriver
+                  : systemAffordance === "install"
                     ? "System-wide equalization on Windows routes audio through the bundled HypeMuzik virtual audio device. Install the driver (one-time, admin-approved) to enable it."
-                    : "System-wide equalization isn't available here. See docs/system-eq.md."}
+                    : systemAffordance === "not-bundled"
+                      ? "One-click setup installs VB-Audio's free VB-CABLE virtual audio device (downloaded from vb-audio.com, one admin approval) and routes all system audio through the equalizer. If the download fails, install VB-CABLE manually from vb-audio.com/Cable — it's detected automatically."
+                      : "System-wide equalization isn't available here. See docs/system-eq.md."}
               </span>
             </div>
           </div>

@@ -15,12 +15,13 @@ vi.mock("@/lib/ipc", () => ({
 
 vi.mock("@/stores/engine", () => ({
   ytmusicItem: (t: unknown) => t,
-  useEngineStore: { getState: () => ({ playQueueItems: playQueueItems }) },
+  useEngineStore: { getState: () => ({ playQueueItems, playYtRadio }) },
 }));
 
 const playQueueItems = vi.fn();
+const playYtRadio = vi.fn();
 
-const { useExploreStore, searchQueue } = await import("@/stores/explore");
+const { useExploreStore } = await import("@/stores/explore");
 const ipc = await import("@/lib/ipc");
 
 const shelf = (title: string): ExploreShelf => ({ title, items: [] });
@@ -165,13 +166,14 @@ describe("suggestions", () => {
 });
 
 describe("open", () => {
-  it("plays a song instead of listing one of it", async () => {
+  it("plays a song plus its radio instead of listing one of it", async () => {
     vi.mocked(ipc.ytmusicExploreTracks).mockResolvedValue([
       { videoId: "v1", isAvailable: true } as never,
     ]);
     await useExploreStore.getState().open(item("song", "v1"));
 
-    expect(playQueueItems).toHaveBeenCalledWith([{ videoId: "v1", isAvailable: true }], 0);
+    expect(playYtRadio).toHaveBeenCalledWith({ videoId: "v1", isAvailable: true });
+    expect(playQueueItems).not.toHaveBeenCalled();
     expect(useExploreStore.getState().opened).toBeNull();
   });
 
@@ -180,7 +182,7 @@ describe("open", () => {
       { videoId: "v1", isAvailable: false } as never,
     ]);
     await useExploreStore.getState().open(item("song", "v1"));
-    expect(playQueueItems).not.toHaveBeenCalled();
+    expect(playYtRadio).not.toHaveBeenCalled();
     expect(useExploreStore.getState().openError).toMatch(/can't be played/);
   });
 
@@ -220,99 +222,11 @@ describe("open", () => {
   });
 });
 
-describe("searchQueue", () => {
-  const results = (...items: ExploreItem[]): ExploreShelf[] => [
-    { title: "Songs", items },
-  ];
-
-  it("queues every result, positioned on the one that was clicked", () => {
-    const clicked = item("song", "v2");
-    const q = searchQueue(results(item("song", "v1"), clicked, item("video", "v3")), clicked);
-
-    expect(q?.tracks.map((t) => t.videoId)).toEqual(["v1", "v2", "v3"]);
-    expect(q?.startIndex).toBe(1);
-  });
-
-  it("spans shelves in the order they're shown", () => {
-    const clicked = item("video", "v9");
-    const q = searchQueue(
-      [
-        { title: "Songs", items: [item("song", "v1")] },
-        { title: "Videos", items: [clicked] },
-      ],
-      clicked,
-    );
-    expect(q?.tracks.map((t) => t.videoId)).toEqual(["v1", "v9"]);
-    expect(q?.startIndex).toBe(1);
-  });
-
-  /** A card names a page to open. Queueing one would enqueue a track whose
-   *  "video id" is a browse id, which resolves to nothing. */
-  it("queues only what can be played, never a card", () => {
-    const clicked = item("song", "v1");
-    const q = searchQueue(
-      results(clicked, item("album", "MPRE1"), item("artist", "UC1"), item("playlist", "VLPL1")),
-      clicked,
-    );
-    expect(q?.tracks.map((t) => t.videoId)).toEqual(["v1"]);
-  });
-
-  /** The same track is routinely listed under both "Songs" and "Videos".
-   *  Hearing it twice in a row is worse than not queueing it twice. */
-  it("does not queue the same video twice", () => {
-    const clicked = item("song", "v1");
-    const q = searchQueue(
-      [
-        { title: "Songs", items: [clicked] },
-        { title: "Videos", items: [item("video", "v1"), item("video", "v2")] },
-      ],
-      clicked,
-    );
-    expect(q?.tracks.map((t) => t.videoId)).toEqual(["v1", "v2"]);
-    expect(q?.startIndex).toBe(0);
-  });
-
-  /** Opened from a shelf or an artist page, not from search — queueing the
-   *  leftovers of an unrelated search would be worse than queueing nothing. */
-  it("declines when the track isn't one of the results", () => {
-    expect(searchQueue(results(item("song", "v1")), item("song", "other"))).toBeNull();
-    expect(searchQueue([], item("song", "v1"))).toBeNull();
-  });
-
-  it("carries the fields the row already stated", () => {
-    const clicked: ExploreItem = {
-      ...item("video", "v1"),
-      title: "Tombé",
-      artist: "ELEMENT EleeeH",
-      album: null,
-      durationSecs: 224,
-      thumbnail: "https://i.ytimg.com/x.jpg",
-      hasVideo: true,
-    };
-    const track = searchQueue(results(clicked), clicked)!.tracks[0]!;
-
-    expect(track).toMatchObject({
-      videoId: "v1",
-      title: "Tombé",
-      artist: "ELEMENT EleeeH",
-      durationSecs: 224,
-      thumbnail: "https://i.ytimg.com/x.jpg",
-      hasVideo: true,
-      // Search lists nothing it won't serve; a blocked track fails at resolve.
-      isAvailable: true,
-    });
-  });
-
-  /** `hasVideo` decides whether the player offers a Video tab at all, so a row
-   *  that didn't say must not be turned into a promise of footage. */
-  it("does not promise video a row never claimed", () => {
-    const clicked = item("song", "v1");
-    expect(searchQueue(results(clicked), clicked)!.tracks[0]!.hasVideo).toBe(false);
-  });
-});
-
 describe("playing a search result", () => {
-  it("queues the rest of the results behind it", async () => {
+  /** The old behaviour queued every other row on the results page behind the
+   *  one that was clicked. That's retired: `results` sitting in state must not
+   *  leak into what plays — only the radio decides what comes next now. */
+  it("ignores the other results in state — the radio fills what's next, not the search page", async () => {
     const clicked = item("song", "v2");
     useExploreStore.setState({
       results: [{ title: "Songs", items: [item("song", "v1"), clicked, item("video", "v3")] }],
@@ -323,19 +237,7 @@ describe("playing a search result", () => {
 
     await useExploreStore.getState().open(clicked);
 
-    const [queue, from] = playQueueItems.mock.calls[0]!;
-    expect(queue.map((t: { videoId: string }) => t.videoId)).toEqual(["v1", "v2", "v3"]);
-    expect(from).toBe(1);
-  });
-
-  /** Nothing was searched, so there is no result set to continue into — the
-   *  single-track behaviour is still the right one. */
-  it("still plays a lone track when it came from a shelf", async () => {
-    vi.mocked(ipc.ytmusicExploreTracks).mockResolvedValue([
-      { videoId: "v1", isAvailable: true } as never,
-    ]);
-    await useExploreStore.getState().open(item("song", "v1"));
-
-    expect(playQueueItems).toHaveBeenCalledWith([{ videoId: "v1", isAvailable: true }], 0);
+    expect(playYtRadio).toHaveBeenCalledWith({ videoId: "v2", isAvailable: true });
+    expect(playQueueItems).not.toHaveBeenCalled();
   });
 });

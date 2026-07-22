@@ -185,8 +185,41 @@ const BIN_NAME: &str = "yt-dlp.exe";
 #[cfg(not(target_os = "windows"))]
 const BIN_NAME: &str = "yt-dlp";
 
-/// Locates yt-dlp: PATH first, then the usual install dirs, then `~/.local/bin`.
+/// The app-managed install dir (the one-click setup's target), set once at
+/// startup by the host app. Lives here rather than being passed through every
+/// call so the crate stays host-agnostic: only the host knows its data dir.
+static MANAGED_BIN_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Registers where the host app installs tools it manages itself. Later calls
+/// are ignored (the dir is fixed for the process lifetime).
+pub fn set_managed_bin_dir(dir: PathBuf) {
+    let _ = MANAGED_BIN_DIR.set(dir);
+}
+
+/// The registered app-managed install dir, if the host set one.
+pub fn managed_bin_dir() -> Option<&'static Path> {
+    MANAGED_BIN_DIR.get().map(PathBuf::as_path)
+}
+
+/// Locates yt-dlp: the app-managed dir first, then PATH, then the usual
+/// install dirs, then `~/.local/bin`.
+///
+/// Managed-first is deliberate: that copy is the one the app installed and
+/// keeps auto-updated, so it must win over whatever (possibly stale) copy is
+/// on PATH. Users who manage their own install never populate the managed
+/// dir, so for them nothing changes.
 pub fn find_binary() -> Option<PathBuf> {
+    find_binary_with(managed_bin_dir())
+}
+
+/// [`find_binary`] with the managed dir passed explicitly (testable).
+fn find_binary_with(managed: Option<&Path>) -> Option<PathBuf> {
+    if let Some(dir) = managed {
+        let candidate = dir.join(BIN_NAME);
+        if is_executable(&candidate) {
+            return Some(candidate);
+        }
+    }
     if let Some(path) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&path) {
             let candidate = dir.join(BIN_NAME);
@@ -616,8 +649,15 @@ fn parse_progress(line: &str) -> Option<Progress> {
 }
 
 /// Whether ffmpeg is reachable, which decides if downloads get embedded tags.
+/// Checks the app-managed dir first for the same reason [`find_binary`] does;
+/// yt-dlp itself finds a managed ffmpeg via its own same-directory lookup.
 pub fn have_ffmpeg() -> bool {
     let name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    if let Some(dir) = managed_bin_dir() {
+        if is_executable(&dir.join(name)) {
+            return true;
+        }
+    }
     if let Some(path) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&path) {
             if is_executable(&dir.join(name)) {
@@ -894,5 +934,52 @@ mod tests {
         for alt in VIDEO_FORMAT.split('/') {
             assert!(alt.starts_with("bestvideo"), "not video-only: {alt}");
         }
+    }
+
+    /// Drops an executable fake named like the real binary into `dir`.
+    fn plant_binary(dir: &Path) -> PathBuf {
+        let p = dir.join(BIN_NAME);
+        std::fs::write(&p, b"#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        p
+    }
+
+    /// The managed copy is the one the app keeps updated, so it must win over
+    /// anything PATH could offer.
+    #[test]
+    fn managed_dir_wins_over_path() {
+        let tmp = std::env::temp_dir().join(format!("hm-ytdlp-managed-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let planted = plant_binary(&tmp);
+        assert_eq!(find_binary_with(Some(&tmp)), Some(planted));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// An empty managed dir must fall through to the usual lookup instead of
+    /// masking a PATH install.
+    #[test]
+    fn empty_managed_dir_falls_through() {
+        let tmp = std::env::temp_dir().join(format!("hm-ytdlp-empty-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        // Whatever the machine-wide answer is, an empty managed dir must not
+        // change it.
+        assert_eq!(find_binary_with(Some(&tmp)), find_binary_with(None));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// A plain file that isn't executable must not count as an install (unix
+    /// permission semantics; on Windows presence is the whole check).
+    #[cfg(unix)]
+    #[test]
+    fn non_executable_managed_file_is_ignored() {
+        let tmp = std::env::temp_dir().join(format!("hm-ytdlp-noexec-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join(BIN_NAME), b"").unwrap();
+        assert_eq!(find_binary_with(Some(&tmp)), find_binary_with(None));
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }

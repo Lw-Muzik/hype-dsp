@@ -421,6 +421,15 @@ pub fn run() {
             // credentials) lives in the OS keychain, not next to these JSON
             // stores; `load` restores it, or falls back to signed-out if the
             // keychain is locked or unavailable.
+            //
+            // Register the app-managed tools dir *first*: it's where the
+            // one-click setup installs yt-dlp/ffmpeg, and detection checks it
+            // ahead of PATH. Then let the background updater keep that copy
+            // current (no-op unless the managed copy is the active one).
+            if let Ok(dir) = app.path().app_local_data_dir() {
+                hm_ytmusic::ytdlp::set_managed_bin_dir(dir.join("bin"));
+            }
+            commands::ytmusic_setup::spawn_auto_update();
             app.manage(hm_ytmusic::YtMusicState::load());
 
             let yt_settings_path = app
@@ -664,6 +673,7 @@ pub fn run() {
             commands::link::link_play,
             commands::link::link_play_queue,
             commands::ytmusic::ytmusic_status,
+            commands::ytmusic_setup::ytmusic_setup,
             commands::ytmusic::ytmusic_sign_in,
             commands::ytmusic::ytmusic_sign_out,
             commands::ytmusic::ytmusic_all_tracks,

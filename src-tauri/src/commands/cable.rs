@@ -108,11 +108,10 @@ fn setup_routing_windows(app: &tauri::AppHandle) -> Result<RoutingSetupOutcome, 
     emit("downloading");
     let bytes = download(VBCABLE_URL)?;
     if sha256_hex(&bytes) != VBCABLE_SHA256 {
-        return Err(format!(
-            "the downloaded installer failed verification (VB-Audio may have \
+        return Err("the downloaded installer failed verification (VB-Audio may have \
              published a new version) — install VB-CABLE manually from \
              https://vb-audio.com/Cable/ and try Enable again"
-        ));
+            .into());
     }
 
     let dir = app
@@ -174,7 +173,7 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
 /// stripped (they can't legally appear in these app-controlled paths) so the
 /// quoting can't be broken out of.
 #[cfg(target_os = "windows")]
-fn path_arg(p: &std::path::Path) -> Result<String, String> {
+pub(crate) fn path_arg(p: &std::path::Path) -> Result<String, String> {
     let s = p
         .to_str()
         .ok_or_else(|| "path is not valid UTF-8".to_string())?;
@@ -183,7 +182,7 @@ fn path_arg(p: &std::path::Path) -> Result<String, String> {
 
 /// Run a PowerShell command with no visible console window.
 #[cfg(target_os = "windows")]
-fn powershell(command: &str) -> Result<std::process::ExitStatus, String> {
+pub(crate) fn powershell(command: &str) -> Result<std::process::ExitStatus, String> {
     use std::os::windows::process::CommandExt;
     /// `CREATE_NO_WINDOW` — this is a GUI app; child consoles must not flash.
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -196,7 +195,7 @@ fn powershell(command: &str) -> Result<std::process::ExitStatus, String> {
 
 /// Extract a zip with the built-in `Expand-Archive` (no unzip dependency).
 #[cfg(target_os = "windows")]
-fn expand_archive(zip: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
+pub(crate) fn expand_archive(zip: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
     let zip_arg = path_arg(zip)?;
     let dest_arg = path_arg(dest)?;
     let status = powershell(&format!(

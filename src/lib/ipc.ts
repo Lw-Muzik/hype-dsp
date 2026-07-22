@@ -324,6 +324,14 @@ export function ytmusicSignOut(): Promise<void> {
   return invoke<void>("ytmusic_sign_out");
 }
 
+/** Install whatever YT Music tooling is missing (yt-dlp, ffmpeg) into the
+ *  app-managed folder — download, checksum-verify, atomic install; progress
+ *  arrives on the `ytmusic-setup-progress` event. Resolves to the fresh
+ *  status once everything is in place. */
+export function ytmusicSetup(): Promise<YtMusicStatus> {
+  return invoke<YtMusicStatus>("ytmusic_setup");
+}
+
 /** Every track across the account's playlists. Like {@link cloudAllAudio}, the
  *  listing is cached on disk: by default a cached copy returns instantly (with
  *  `fromCache: true`); pass `refresh` to re-list and update the cache. */

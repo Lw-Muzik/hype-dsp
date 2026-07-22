@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   CircleAlert,
   CircleCheck,
+  Download,
   FolderOpen,
   Info,
   ListMusic,
@@ -10,6 +11,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
@@ -19,16 +21,20 @@ import {
   isIpcError,
   ytmusicDownloadDir,
   ytmusicSetDownloadDir,
+  ytmusicSetup,
   ytmusicSignIn,
   ytmusicSignOut,
   ytmusicStatus,
 } from "@/lib/ipc";
 import type { YtMusicStatus } from "@/lib/types";
 import { HOST_OS } from "@/lib/platform";
+import type { SetupProgressEvent } from "./setupProgress";
+import { setupPercent, setupStatusLine } from "./setupProgress";
 
-/** How to install yt-dlp, per OS. It isn't bundled: it needs updating far more
- *  often than this app ships, so it's the user's package manager that keeps it
- *  working against YouTube's changes. */
+/** The manual install route, per OS — the fallback behind "prefer to install
+ *  it yourself?". The primary route is the in-app one-click setup, which
+ *  downloads the official build and keeps it current; a package-manager
+ *  install still wins for users who already have one. */
 const YTDLP_INSTALL: Record<typeof HOST_OS, { command: string; note: string }> = {
   mac: { command: "brew install yt-dlp", note: "with Homebrew" },
   windows: { command: "winget install yt-dlp", note: "with winget" },
@@ -51,6 +57,30 @@ export function YtMusicView() {
   const [dir, setDir] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupProgress, setSetupProgress] = useState<SetupProgressEvent | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
+
+  /** One click: the backend downloads, verifies and installs whatever is
+   *  missing (yt-dlp, ffmpeg) while progress events narrate the bar. */
+  const runSetup = async () => {
+    setSetupError(null);
+    setSetupBusy(true);
+    const unlisten = await listen<SetupProgressEvent>(
+      "ytmusic-setup-progress",
+      (e) => setSetupProgress(e.payload),
+    );
+    try {
+      setStatus(await ytmusicSetup());
+      toast.success("YouTube Music is ready.");
+    } catch (e) {
+      setSetupError(ipcErrorMessage(e));
+    } finally {
+      unlisten();
+      setSetupBusy(false);
+      setSetupProgress(null);
+    }
+  };
 
   const refresh = useCallback(async () => {
     try {
@@ -181,16 +211,26 @@ export function YtMusicView() {
                     {ytdlp.path}
                   </p>
                 )}
-                {!ytdlp.haveFfmpeg && (
-                  <div className="flex items-start gap-2 rounded-control border border-border bg-surface px-3 py-2 text-xs text-text-muted">
-                    <Info className="mt-0.5 size-3.5 shrink-0 text-text-faint" aria-hidden="true" />
-                    <span>
-                      ffmpeg isn&rsquo;t installed. Downloads still work, but
-                      won&rsquo;t get embedded tags or artwork. Install it the
-                      same way as yt-dlp to fix that.
-                    </span>
-                  </div>
-                )}
+                {!ytdlp.haveFfmpeg &&
+                  (setupBusy ? (
+                    <SetupProgressBar progress={setupProgress} />
+                  ) : (
+                    <div className="flex items-start gap-2 rounded-control border border-border bg-surface px-3 py-2 text-xs text-text-muted">
+                      <Info
+                        className="mt-0.5 size-3.5 shrink-0 text-text-faint"
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1">
+                        ffmpeg isn&rsquo;t installed. Downloads still work, but
+                        won&rsquo;t get embedded tags or artwork.
+                      </span>
+                      <Button variant="secondary" onClick={() => void runSetup()}>
+                        <Download className="size-3.5" aria-hidden="true" />
+                        Install it for me
+                      </Button>
+                    </div>
+                  ))}
+                {setupError && <SetupError message={setupError} />}
               </>
             ) : (
               <>
@@ -202,12 +242,37 @@ export function YtMusicView() {
                     </p>
                     <p className="mt-0.5 text-text-muted">
                       Your playlists browse fine without it, but playing and
-                      downloading need <span className="text-text">yt-dlp</span>.
-                      Install it {install.note}, then reopen this panel.
+                      downloading need a small free tool,{" "}
+                      <span className="text-text">yt-dlp</span>. One click and
+                      the app sets it up for you.
                     </p>
                   </div>
                 </div>
-                <InstallCommand command={install.command} />
+                {setupBusy ? (
+                  <SetupProgressBar progress={setupProgress} />
+                ) : (
+                  <Button variant="primary" onClick={() => void runSetup()}>
+                    <Download className="size-4" aria-hidden="true" />
+                    Set up automatically
+                  </Button>
+                )}
+                {setupError && <SetupError message={setupError} />}
+                {/* Self-managed installs keep working exactly as before —
+                    the terminal route is demoted, not removed. */}
+                {!setupBusy && (
+                  <details className="text-xs text-text-muted">
+                    <summary className="cursor-pointer select-none text-text-faint hover:text-text-muted">
+                      Prefer to install it yourself?
+                    </summary>
+                    <div className="mt-2 flex flex-col gap-2">
+                      <p>
+                        Install it {install.note}, then reopen this panel —
+                        the app finds it on PATH automatically.
+                      </p>
+                      <InstallCommand command={install.command} />
+                    </div>
+                  </details>
+                )}
               </>
             )}
           </div>
@@ -243,6 +308,40 @@ export function YtMusicView() {
           </p>
         </div>
       </Card>
+    </div>
+  );
+}
+
+/** The one-click setup's progress: a bar (determinate while downloading with
+ *  a known size, pulsing otherwise) under a human line of narration. */
+function SetupProgressBar({ progress }: { progress: SetupProgressEvent | null }) {
+  const percent = progress ? setupPercent(progress) : null;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-control border border-border bg-surface px-3 py-2.5">
+      <p className="text-xs text-text-muted">
+        {progress ? setupStatusLine(progress) : "Preparing setup…"}
+      </p>
+      <div className="h-1.5 overflow-hidden rounded-full bg-border/60">
+        <div
+          className={
+            percent === null
+              ? "h-full w-full animate-pulse rounded-full bg-accent-strong/50"
+              : "h-full rounded-full bg-accent-strong transition-[width] duration-200"
+          }
+          style={percent === null ? undefined : { width: `${percent}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Setup failure, inline where the button was: actionable, with the manual
+ *  route always available below it. */
+function SetupError({ message }: { message: string }) {
+  return (
+    <div className="flex items-start gap-2 rounded-control border border-danger/30 bg-danger/10 px-3 py-2 text-sm">
+      <CircleAlert className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden="true" />
+      <span className="min-w-0">{message}</span>
     </div>
   );
 }

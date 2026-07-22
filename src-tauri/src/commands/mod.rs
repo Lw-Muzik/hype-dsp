@@ -28,3 +28,4 @@ pub mod stems;
 pub mod tv;
 pub mod visualizer;
 pub mod ytmusic;
+pub mod ytmusic_setup;

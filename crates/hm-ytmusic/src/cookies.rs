@@ -149,31 +149,113 @@ pub fn now_secs() -> i64 {
 
 /* ---- keychain storage ---- */
 
+/// Windows caps a credential blob at 2560 UTF-16 units (`keyring`'s
+/// windows-native store enforces it; a real signed-in jar's JSON is several
+/// times that — the field failure was "longer than the platform limit of 2560
+/// chars"). So the JSON is stored as numbered chunk entries
+/// (`ytmusic-cookies-0`, `-1`, …) each comfortably under the cap. Every
+/// platform uses the chunked format — macOS/Linux don't need it, but writing it
+/// everywhere means the path Windows depends on is the one exercised daily.
+const CHUNK_UTF16_UNITS: usize = 1024;
+
 fn entry_at(account: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE, account).map_err(|e| format!("keychain unavailable: {e}"))
 }
 
+/// The account name of chunk `i` of `base`'s stored value.
+fn chunk_account(base: &str, i: usize) -> String {
+    format!("{base}-{i}")
+}
+
+/// Split `s` into pieces of at most `max_units` UTF-16 code units, on char
+/// boundaries (a surrogate pair is never split — half a pair would corrupt the
+/// stored value). Always yields at least one piece, so an empty value still
+/// produces an entry and load can tell "empty" from "nothing stored".
+fn split_chunks(s: &str, max_units: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut units = 0usize;
+    for ch in s.chars() {
+        let width = ch.len_utf16();
+        if units + width > max_units && !current.is_empty() {
+            out.push(std::mem::take(&mut current));
+            units = 0;
+        }
+        current.push(ch);
+        units += width;
+    }
+    if !current.is_empty() || out.is_empty() {
+        out.push(current);
+    }
+    out
+}
+
 fn save_at(account: &str, cookies: &[YtCookie]) -> Result<(), String> {
     let json = serde_json::to_string(cookies).map_err(|e| e.to_string())?;
-    entry_at(account)?
-        .set_password(&json)
-        .map_err(|e| format!("could not save credentials: {e}"))
+    let chunks = split_chunks(&json, CHUNK_UTF16_UNITS);
+    for (i, chunk) in chunks.iter().enumerate() {
+        entry_at(&chunk_account(account, i))?
+            .set_password(chunk)
+            .map_err(|e| format!("could not save credentials: {e}"))?;
+    }
+    // Drop leftover tail chunks from a previously longer jar — load reads until
+    // the first missing index, so a stale tail would corrupt the reassembly.
+    let mut i = chunks.len();
+    loop {
+        match entry_at(&chunk_account(account, i))?.delete_credential() {
+            Ok(()) => i += 1,
+            Err(keyring::Error::NoEntry) => break,
+            Err(e) => return Err(format!("could not clear stale credentials: {e}")),
+        }
+    }
+    // And the pre-chunking single entry, which load would otherwise still see
+    // as a (stale) fallback.
+    match entry_at(account)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("could not clear legacy credentials: {e}")),
+    }
 }
 
 fn load_at(account: &str) -> Result<Option<Vec<YtCookie>>, String> {
-    match entry_at(account)?.get_password() {
-        Ok(json) => serde_json::from_str(&json)
-            .map(Some)
-            .map_err(|e| format!("stored credentials are corrupt: {e}")),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(format!("could not read credentials: {e}")),
+    let mut json = String::new();
+    let mut i = 0usize;
+    loop {
+        match entry_at(&chunk_account(account, i))?.get_password() {
+            Ok(chunk) => {
+                json.push_str(&chunk);
+                i += 1;
+            }
+            Err(keyring::Error::NoEntry) => break,
+            Err(e) => return Err(format!("could not read credentials: {e}")),
+        }
     }
+    if i == 0 {
+        // No chunked entries: fall back to the pre-chunking single entry so a
+        // session saved by an older build survives the upgrade (the next save
+        // migrates it to chunks and removes this one).
+        match entry_at(account)?.get_password() {
+            Ok(single) => json = single,
+            Err(keyring::Error::NoEntry) => return Ok(None),
+            Err(e) => return Err(format!("could not read credentials: {e}")),
+        }
+    }
+    serde_json::from_str(&json)
+        .map(Some)
+        .map_err(|e| format!("stored credentials are corrupt: {e}"))
 }
 
 fn clear_at(account: &str) -> Result<(), String> {
     match entry_at(account)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("could not clear credentials: {e}")),
+        Ok(()) | Err(keyring::Error::NoEntry) => {}
+        Err(e) => return Err(format!("could not clear credentials: {e}")),
+    }
+    let mut i = 0usize;
+    loop {
+        match entry_at(&chunk_account(account, i))?.delete_credential() {
+            Ok(()) => i += 1,
+            Err(keyring::Error::NoEntry) => return Ok(()),
+            Err(e) => return Err(format!("could not clear credentials: {e}")),
+        }
     }
 }
 
@@ -383,6 +465,67 @@ mod tests {
     }
 
     #[test]
+    fn split_chunks_respects_the_unit_budget_and_reassembles() {
+        let s = "a".repeat(2500);
+        let chunks = split_chunks(&s, 1024);
+        assert_eq!(chunks.len(), 3); // 1024 + 1024 + 452
+        for c in &chunks {
+            assert!(c.encode_utf16().count() <= 1024);
+        }
+        assert_eq!(chunks.concat(), s);
+    }
+
+    #[test]
+    fn split_chunks_exact_boundary_makes_no_empty_tail() {
+        let s = "a".repeat(2048);
+        let chunks = split_chunks(&s, 1024);
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks.concat(), s);
+    }
+
+    #[test]
+    fn split_chunks_short_input_is_one_chunk() {
+        assert_eq!(split_chunks("[]", 1024), vec!["[]".to_string()]);
+    }
+
+    #[test]
+    fn split_chunks_empty_input_is_one_empty_chunk() {
+        // An empty write must still produce an entry, or load would see
+        // "nothing stored" instead of "empty".
+        assert_eq!(split_chunks("", 1024), vec![String::new()]);
+    }
+
+    #[test]
+    fn split_chunks_never_splits_a_surrogate_pair() {
+        // '𝄞' (U+1D11E) is TWO UTF-16 units; an odd budget forces the boundary
+        // decision. A split mid-pair would corrupt the stored credential.
+        let s = "𝄞".repeat(30);
+        let chunks = split_chunks(&s, 7);
+        for c in &chunks {
+            assert!(c.encode_utf16().count() <= 7);
+            assert_eq!(c.chars().count() * 2, c.encode_utf16().count());
+        }
+        assert_eq!(chunks.concat(), s);
+    }
+
+    #[test]
+    fn a_realistic_cookie_jar_needs_chunking() {
+        // Documents WHY chunked storage exists: a real signed-in jar's JSON is
+        // far over the Windows credential-blob cap that single-entry storage
+        // ran into in the field ("longer than the platform limit of 2560").
+        let jar: Vec<YtCookie> = (0..25)
+            .map(|i| cookie(&format!("COOKIE_{i}"), &"v".repeat(120)))
+            .collect();
+        let json = serde_json::to_string(&jar).unwrap();
+        assert!(json.encode_utf16().count() > 2560);
+        let chunks = split_chunks(&json, CHUNK_UTF16_UNITS);
+        assert!(chunks.len() > 1);
+        for c in &chunks {
+            assert!(c.encode_utf16().count() <= CHUNK_UTF16_UNITS);
+        }
+    }
+
+    #[test]
     fn prune_drops_expired_keeps_session() {
         let mut expired = cookie("OLD", "x");
         expired.expires = Some(100);
@@ -414,7 +557,15 @@ mod tests {
             TEST_ACCOUNT, ACCOUNT,
             "the self-test must not address the account a user's session lives in"
         );
-        let c = vec![cookie("SAPISID", "round-trip-value"), cookie("SID", "y")];
+        // Big enough to need several chunks — the single-entry version of this
+        // jar is exactly what Windows rejected in the field.
+        let c: Vec<YtCookie> = (0..25)
+            .map(|i| cookie(&format!("COOKIE_{i}"), &"v".repeat(120)))
+            .collect();
+        assert!(
+            serde_json::to_string(&c).unwrap().encode_utf16().count() > 2560,
+            "the round-trip jar must exceed the Windows blob cap to prove chunking"
+        );
 
         save_at(TEST_ACCOUNT, &c).expect("save to keychain");
         let loaded = load_at(TEST_ACCOUNT)
@@ -422,11 +573,56 @@ mod tests {
             .expect("entry present");
         assert_eq!(loaded, c);
 
+        // A shorter save must retire the now-surplus tail chunks, or the next
+        // load would reassemble new-head + stale-tail garbage.
+        let shorter = vec![cookie("SAPISID", "x"), cookie("SID", "y")];
+        save_at(TEST_ACCOUNT, &shorter).expect("shorter save");
+        assert_eq!(
+            load_at(TEST_ACCOUNT).expect("load shorter").expect("present"),
+            shorter
+        );
+
         clear_at(TEST_ACCOUNT).expect("clear keychain");
         assert!(load_at(TEST_ACCOUNT).expect("load after clear").is_none());
         // Clearing a missing entry must be a no-op, not an error — sign-out
         // shouldn't fail just because there was nothing stored.
         clear_at(TEST_ACCOUNT).expect("clear is idempotent");
+    }
+
+    /// A session saved by a pre-chunking build (one JSON blob in the base
+    /// entry) must still load after the upgrade, and the next save must migrate
+    /// it to chunks and retire the legacy entry.
+    #[test]
+    #[ignore = "touches the real OS keychain"]
+    fn keychain_legacy_single_entry_still_loads_and_migrates() {
+        const TEST_ACCOUNT: &str = "ytmusic-cookies-selftest-legacy";
+        assert_ne!(TEST_ACCOUNT, ACCOUNT);
+        clear_at(TEST_ACCOUNT).expect("clean slate");
+
+        let c = vec![cookie("SAPISID", "legacy"), cookie("SID", "y")];
+        // Write the old format directly: everything in the base entry.
+        entry_at(TEST_ACCOUNT)
+            .unwrap()
+            .set_password(&serde_json::to_string(&c).unwrap())
+            .expect("write legacy entry");
+
+        assert_eq!(
+            load_at(TEST_ACCOUNT).expect("load legacy").expect("present"),
+            c
+        );
+
+        // Saving migrates: chunks exist, the legacy base entry is gone.
+        save_at(TEST_ACCOUNT, &c).expect("migrating save");
+        assert!(matches!(
+            entry_at(TEST_ACCOUNT).unwrap().get_password(),
+            Err(keyring::Error::NoEntry)
+        ));
+        assert_eq!(
+            load_at(TEST_ACCOUNT).expect("load chunked").expect("present"),
+            c
+        );
+
+        clear_at(TEST_ACCOUNT).expect("cleanup");
     }
 
     #[test]

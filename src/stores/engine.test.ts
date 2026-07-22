@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { itemMeta, ytmusicItem } from "@/stores/engine";
+import { itemMeta, radioItem, ytmusicItem } from "@/stores/engine";
 import type { YtTrack } from "@/lib/types";
 
 const track = (over: Partial<YtTrack> = {}): YtTrack => ({
@@ -83,5 +83,11 @@ describe("itemMeta", () => {
     expect(itemMeta({ ...item(), cover: null }).cover).toBeNull();
     const { cover: _drop, ...noCover } = item();
     expect(itemMeta(noCover).cover).toBeNull();
+  });
+});
+
+describe("radioItem", () => {
+  it("is a ytmusic queue item marked auto-added — the queue UI badges it", () => {
+    expect(radioItem(track())).toEqual({ ...ytmusicItem(track()), autoAdded: true });
   });
 });

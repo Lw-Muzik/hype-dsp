@@ -43,9 +43,12 @@ import {
   profileClear,
   ytmusicPlay,
   ytmusicPrefetch,
+  ytmusicRadio,
+  ytmusicRadioContinue,
   ytmusicVideoPrefetch,
 } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
+import { dedupeRadioTracks, radioStep, type RadioSession } from "@/stores/radio";
 import { BAND_COUNT } from "@/lib/types";
 import {
   observe,
@@ -109,6 +112,8 @@ export interface QueueItem {
   cloud?: CloudEntry;
   ytTrack?: YtTrack;
   radioUrl?: string;
+  /** Queued by radio (Autoplay), not by the user — the queue UI badges these. */
+  autoAdded?: boolean;
 }
 
 const defaultEngineState: EngineState = {
@@ -228,6 +233,11 @@ export function ytmusicItem(t: YtTrack): QueueItem {
     cover: t.thumbnail,
     ytTrack: t,
   };
+}
+
+/** A radio pick: the same ytmusic item, marked auto-added. */
+export function radioItem(t: YtTrack): QueueItem {
+  return { ...ytmusicItem(t), autoAdded: true };
 }
 
 /** Extension hint from a cloud file name (e.g. "Song.flac" → "flac"), for the
@@ -386,6 +396,9 @@ interface EngineStore {
   playCloudList: (files: CloudEntry[], index: number) => void;
   /** Play a pre-built queue of items (any mix of sources) starting at `index`. */
   playQueueItems: (items: QueueItem[], index: number) => void;
+  /** Play `seed` now and grow the queue behind it with YT Music's song radio
+   *  — the endless "similar tracks" queue. */
+  playYtRadio: (seed: YtTrack) => void;
   /** Jump to a position in the current play order. */
   jumpTo: (orderPos: number) => void;
   /** Remove an item (by its queue index) from the current queue. */
@@ -421,6 +434,20 @@ export const useEngineStore = create<EngineStore>((set, get) => {
   // versus a single track / stream the store advances itself (false). Decides
   // how a natural end-of-stream is interpreted.
   let gaplessQueueRunning = false;
+  // The endless-queue (radio) session. Module-level like gaplessQueueRunning:
+  // the UI never reads it — it reads `autoAdded` off the items and the
+  // Autoplay flag off playback settings.
+  let radioSession: RadioSession | null = null;
+  let radioFetching = false;
+  // Bumped whenever the queue is replaced, so a radio page that lands after
+  // the user has moved on can't graft one radio onto another queue.
+  let radioEpoch = 0;
+  // How many order positions the engine's gapless queue was handed — appended
+  // radio tracks beyond this are invisible to it (see advanceOnEnd).
+  let gaplessQueueLen = 0;
+  // The queue finished on its own (nothing left), as opposed to the user
+  // stopping it. Only then may a late-arriving radio batch resume playback.
+  let endedNaturally = false;
   // Persisted across queues and restarts so a proven-slow link stays on the
   // single-track path and a proven-fast one keeps crossfading; an unmeasured
   // link starts "unknown", which chooseStreamMode treats optimistically.
@@ -510,6 +537,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
 
     gaplessQueueRunning =
       useEngineQueue || useCloudQueue || usePhoneQueue || useYtMusicQueue;
+    gaplessQueueLen = gaplessQueueRunning ? order.length : 0;
 
     switch (item.source) {
       case "local":
@@ -587,6 +615,8 @@ export const useEngineStore = create<EngineStore>((set, get) => {
 
     // Cloud covers aren't stored on queue items; fetch the current one lazily.
     fillNowPlayingCover(item);
+    endedNaturally = false;
+    maybeExtendRadio();
   };
 
   /** A cloud item still labelled with its file name (or no artist) needs its
@@ -712,6 +742,8 @@ export const useEngineStore = create<EngineStore>((set, get) => {
 
   /** Replace the queue and start playing `index`. */
   const setQueueAndPlay = (items: QueueItem[], index: number) => {
+    // A new queue is a new listening intent: the old radio session is over.
+    resetRadioSession();
     if (items.length === 0) return;
     const start = Math.max(0, Math.min(index, items.length - 1));
     const { order, orderPos } = buildOrder(items.length, get().shuffle, start);
@@ -724,6 +756,87 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     set({ queue: items, order, orderPos, queueIndex: order[orderPos]! });
     startPlayback(orderPos);
     enrichCloudQueue(items);
+  };
+
+  /** A new listening intent: the old radio session must not graft onto it.
+   *  Called by every path that replaces the queue — not just
+   *  `setQueueAndPlay` — so a session from before can't survive into an
+   *  unrelated queue (e.g. switching to an internet radio station or an
+   *  incoming cast while a YT Music radio session was live). */
+  const resetRadioSession = () => {
+    radioSession = null;
+    radioEpoch += 1;
+    endedNaturally = false;
+    // A bumped epoch means any in-flight fetch is already condemned — it
+    // must not block the new session's own fetch from firing.
+    radioFetching = false;
+  };
+
+  /** Extend the live queue in place: the current stream keeps running; the
+   *  new items only lengthen `queue` and `order`. Appended in listed order
+   *  even under shuffle — a radio is already a curated order. */
+  const appendQueueItems = (items: QueueItem[]) => {
+    if (items.length === 0) return;
+    const { queue, order } = get();
+    const base = queue.length;
+    set({
+      queue: [...queue, ...items],
+      order: [...order, ...items.map((_, i) => base + i)],
+    });
+  };
+
+  /** If the queue ran dry before a radio page landed, pick up where it ended. */
+  const resumeIfEndedNaturally = () => {
+    if (!endedNaturally) return;
+    const { order, orderPos } = get();
+    if (orderPos < order.length - 1) {
+      endedNaturally = false;
+      startPlayback(orderPos + 1);
+    }
+  };
+
+  /** Run one radio fetch and append what it returns. Failures are silent —
+   *  the next track-advance retries via maybeExtendRadio; playback is never
+   *  interrupted for a queue that only might run out. */
+  const fetchRadio = (step: NonNullable<ReturnType<typeof radioStep>>) => {
+    if (radioFetching) return;
+    radioFetching = true;
+    const epoch = radioEpoch;
+    const req =
+      step.kind === "continue"
+        ? ytmusicRadioContinue(step.seedId, step.token)
+        : ytmusicRadio(step.seedId);
+    void req
+      .then((batch) => {
+        if (epoch !== radioEpoch) return; // the queue moved on mid-flight
+        radioSession = { seedId: step.seedId, continuation: batch.continuation };
+        const fresh = dedupeRadioTracks(get().queue, batch.tracks);
+        appendQueueItems(fresh.map(radioItem));
+        resumeIfEndedNaturally();
+      })
+      .catch((e) => console.warn("radio fetch failed:", e))
+      .finally(() => {
+        // A superseded fetch must not un-latch a newer epoch's in-flight one.
+        if (epoch === radioEpoch) radioFetching = false;
+      });
+  };
+
+  /** Keep an endless queue endless — called on every track advance. */
+  const maybeExtendRadio = () => {
+    const { state, queue, order, orderPos, repeat } = get();
+    const lastQi = order.length > 0 ? order[order.length - 1]! : -1;
+    const last = lastQi >= 0 ? queue[lastQi] : undefined;
+    const step = radioStep({
+      autoplay: state.playback.autoplay,
+      fetching: radioFetching,
+      session: radioSession,
+      orderLen: order.length,
+      orderPos,
+      allYtMusic: order.length > 0 && order.every((i) => queue[i]?.ytTrack != null),
+      lastVideoId: last?.ytTrack?.videoId ?? null,
+      repeat,
+    });
+    if (step) fetchRadio(step);
   };
 
   /** Decide what to play when the current item ends naturally. */
@@ -739,15 +852,33 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       return;
     }
     if (gaplessQueueRunning) {
-      // The whole local gapless list just finished.
+      // Radio appended past the list the engine was handed — the engine never
+      // knew those tracks. Continue at the first one.
+      if (order.length > gaplessQueueLen) {
+        startPlayback(gaplessQueueLen);
+        return;
+      }
+      // The whole gapless list just finished.
       if (repeat === "all" && order.length > 0) startPlayback(0);
-      else set(idleState());
+      else {
+        endedNaturally = true;
+        set(idleState());
+        // Last gasp: the low-water fetch that should have kept this queue
+        // endless may simply have failed — try once more before giving up.
+        maybeExtendRadio();
+      }
       return;
     }
     // Single-track sources (phone/cloud/non-gapless local): advance by one.
     const np = stepOrder(orderPos, order.length, repeat, 1);
     if (np !== null) startPlayback(np);
-    else set(idleState());
+    else {
+      endedNaturally = true;
+      set(idleState());
+      // Last gasp: the low-water fetch that should have kept this queue
+      // endless may simply have failed — try once more before giving up.
+      maybeExtendRadio();
+    }
   };
 
   return {
@@ -1069,6 +1200,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       });
       // Cloud covers aren't stored on queue items; fetch the current one lazily.
       fillNowPlayingCover(item);
+      maybeExtendRadio();
     },
 
     play: async (path, name) => {
@@ -1097,6 +1229,13 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
 
     playQueueItems: (items, index) => setQueueAndPlay(items, index),
+
+    playYtRadio: (seed) => {
+      // The seed plays immediately; the similar tracks stream in behind it.
+      setQueueAndPlay([ytmusicItem(seed)], 0); // also tears down any old session
+      radioSession = { seedId: seed.videoId, continuation: null };
+      fetchRadio({ kind: "start", seedId: seed.videoId });
+    },
 
     jumpTo: (pos) => {
       const { order } = get();
@@ -1131,6 +1270,8 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
 
     playRadio: (station) => {
+      // A new queue is a new listening intent: the old radio session is over.
+      resetRadioSession();
       const item: QueueItem = {
         id: station.url,
         source: "radio",
@@ -1150,6 +1291,8 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     playPhone: (device, track) => setQueueAndPlay([phoneItem(device, track)], 0),
 
     castIncoming: (title, artist) => {
+      // A new queue is a new listening intent: the old radio session is over.
+      resetRadioSession();
       const item: QueueItem = {
         id: title,
         source: "cast",
@@ -1216,6 +1359,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
 
     stop: async () => {
+      // An explicit stop must never be resumed by a late radio batch, nor let
+      // one repopulate the queue this just emptied out from under it.
+      resetRadioSession();
       userStopped = true;
       gaplessQueueRunning = false;
       set({

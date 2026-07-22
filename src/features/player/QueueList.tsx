@@ -5,6 +5,7 @@ import type { QueueItem } from "@/stores/engine";
 import { VirtualList } from "@/components/VirtualList";
 import { Artwork } from "@/features/player/Artwork";
 import type { ArtSource } from "@/lib/useTrackArtwork";
+import { Switch } from "@/components/Switch";
 import { cn } from "@/lib/cn";
 
 const ROW_H = 68;
@@ -104,8 +105,13 @@ function QueueRow({
         >
           {item.title}
         </p>
-        <p className="mt-1 truncate text-[13px] text-text-muted">
-          {item.artist ?? "Unknown artist"}
+        <p className="mt-1 flex items-center gap-1.5 truncate text-[13px] text-text-muted">
+          {item.autoAdded && (
+            <span className="shrink-0 rounded-full border border-border-strong px-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-faint">
+              Radio
+            </span>
+          )}
+          <span className="truncate">{item.artist ?? "Unknown artist"}</span>
         </p>
       </div>
 
@@ -138,6 +144,8 @@ export function QueueList() {
   const orderPos = useEngineStore((s) => s.orderPos);
   const jumpTo = useEngineStore((s) => s.jumpTo);
   const removeFromQueue = useEngineStore((s) => s.removeFromQueue);
+  const autoplay = useEngineStore((s) => s.state.playback.autoplay);
+  const setAutoplay = useEngineStore((s) => s.setAutoplay);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const rows = useMemo<Row[]>(
@@ -187,9 +195,13 @@ export function QueueList() {
       )}
 
       {/* Next up — header static, list scrolls. */}
-      <h3 className="shrink-0 px-3 pb-2 pt-4 text-base font-bold tracking-tight">
-        Next up
-      </h3>
+      <div className="flex shrink-0 items-center justify-between px-3 pb-2 pt-4">
+        <h3 className="text-base font-bold tracking-tight">Next up</h3>
+        <label className="flex items-center gap-2 text-[13px] text-text-muted">
+          Autoplay
+          <Switch checked={autoplay} onChange={setAutoplay} label="Autoplay — keep similar tracks coming" />
+        </label>
+      </div>
       {upcoming.length === 0 ? (
         <p className="px-3 text-sm text-text-muted">Nothing up next.</p>
       ) : (

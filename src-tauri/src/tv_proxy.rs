@@ -321,18 +321,16 @@ impl std::io::Read for ChunkedVideo {
             if let Some(ua) = &self.ua {
                 req = req.header(reqwest::header::USER_AGENT, ua);
             }
-            let resp = req
-                .send()
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            let resp = req.send().map_err(std::io::Error::other)?;
             if !resp.status().is_success() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("upstream chunk {lo}-{hi} -> {}", resp.status()),
-                ));
+                return Err(std::io::Error::other(format!(
+                    "upstream chunk {lo}-{hi} -> {}",
+                    resp.status()
+                )));
             }
             self.buf = resp
                 .bytes()
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                .map_err(std::io::Error::other)?
                 .to_vec();
             self.buf_pos = 0;
             self.next = hi + 1;

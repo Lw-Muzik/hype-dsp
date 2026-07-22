@@ -252,6 +252,12 @@ pub fn engine_set_data_saver(engine: State<'_, AudioEngine>, on: bool) {
     engine.set_data_saver(on);
 }
 
+/// Toggle Autoplay — whether a finished YT Music queue extends itself with radio.
+#[tauri::command]
+pub fn engine_set_autoplay(engine: State<'_, AudioEngine>, on: bool) {
+    engine.set_autoplay(on);
+}
+
 /// Play a list of local files as a gapless (and optionally crossfading) queue,
 /// starting at `start`. The crossfade duration is read live from the engine's
 /// playback settings each block, so changing it applies to the current queue.

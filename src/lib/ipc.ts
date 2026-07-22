@@ -736,6 +736,11 @@ export function engineSetDataSaver(on: boolean): Promise<void> {
   return invoke<void>("engine_set_data_saver", { on });
 }
 
+/** Toggle Autoplay — whether a finished YT Music queue extends itself with radio. */
+export function engineSetAutoplay(on: boolean): Promise<void> {
+  return invoke<void>("engine_set_autoplay", { on });
+}
+
 /** Subscribe to the gapless queue's current track index. */
 export function onQueueIndex(
   handler: (index: number) => void,

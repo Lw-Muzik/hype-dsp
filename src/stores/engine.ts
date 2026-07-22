@@ -29,6 +29,7 @@ import {
   linkPlay,
   linkPlayQueue,
   playerPlayCloudQueue,
+  engineSetAutoplay,
   engineSetDataSaver,
   engineSetPlayback,
   playerPause,
@@ -163,7 +164,7 @@ const defaultEngineState: EngineState = {
   script: { enabled: false, source: "" },
   headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
-  playback: { gapless: true, crossfadeSecs: 0, dataSaver: false },
+  playback: { gapless: true, crossfadeSecs: 0, dataSaver: false, autoplay: true },
   systemEqScope: { mode: "all", apps: [] },
   activePresetId: null,
   activeProfileId: null,
@@ -365,6 +366,7 @@ interface EngineStore {
   clearProfile: () => void;
   setPlayback: (gapless: boolean, crossfadeSecs: number) => void;
   setDataSaver: (on: boolean) => void;
+  setAutoplay: (on: boolean) => void;
 
   applyFrame: (frame: EngineFrame) => void;
   applyProgress: (p: TransportProgress) => void;
@@ -944,6 +946,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     setDataSaver: (on) => {
       set((s) => ({ state: { ...s.state, playback: { ...s.state.playback, dataSaver: on } } }));
       void engineSetDataSaver(on).catch(() => {});
+    },
+
+    setAutoplay: (on) => {
+      set((s) => ({ state: { ...s.state, playback: { ...s.state.playback, autoplay: on } } }));
+      void engineSetAutoplay(on).catch(() => {});
     },
 
     applyFrame: (frame) =>

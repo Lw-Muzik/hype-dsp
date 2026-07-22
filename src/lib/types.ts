@@ -153,6 +153,9 @@ export interface PlaybackState {
   crossfadeSecs: number;
   /** Low-bandwidth mode: progressive streaming, no prefetch, bigger buffers. */
   dataSaver: boolean;
+  /** Keep the music going: a finished YT Music queue extends itself with the
+   *  song radio of its last track. */
+  autoplay: boolean;
 }
 
 export interface HeadphoneCorrectionState {

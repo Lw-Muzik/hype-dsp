@@ -325,6 +325,16 @@ pub struct PlaybackState {
     /// Low-bandwidth mode: stream progressively (no full-download / prefetch),
     /// bigger buffers. Forces progressive single-track playback for cloud/phone.
     pub data_saver: bool,
+    /// Keep the music going: a YT Music queue that runs out extends itself
+    /// with the song radio of its last track. Read by the frontend only;
+    /// stored here so the choice survives restarts. Defaults on — saved
+    /// states from before the field existed get the new behaviour.
+    #[serde(default = "default_autoplay")]
+    pub autoplay: bool,
+}
+
+fn default_autoplay() -> bool {
+    true
 }
 
 impl Default for PlaybackState {
@@ -333,6 +343,7 @@ impl Default for PlaybackState {
             gapless: true,
             crossfade_secs: 0.0,
             data_saver: false,
+            autoplay: true,
         }
     }
 }

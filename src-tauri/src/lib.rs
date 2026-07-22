@@ -700,6 +700,7 @@ pub fn run() {
             commands::engine::player_play_queue,
             commands::engine::engine_set_playback,
             commands::engine::engine_set_data_saver,
+            commands::engine::engine_set_autoplay,
             commands::engine::player_play_capture,
             commands::engine::player_play_system_audio,
             commands::engine::stop_system_audio,

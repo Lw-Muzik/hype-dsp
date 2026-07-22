@@ -489,6 +489,13 @@ export interface YtTrack {
   hasVideo: boolean;
 }
 
+/** One page of a song radio: similar tracks plus the token for the next page.
+ *  A missing token is rare — radio panels normally chain forever. */
+export interface RadioBatch {
+  tracks: YtTrack[];
+  continuation: string | null;
+}
+
 /** Whether yt-dlp — which resolves every stream and download — is installed.
  *  Playlists browse without it; only playback and downloads need it. */
 export interface YtDlpInfo {

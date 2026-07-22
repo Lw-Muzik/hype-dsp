@@ -38,6 +38,7 @@ import type {
   PhoneDevice,
   PhoneTrack,
   Playlist,
+  RadioBatch,
   RadioCountry,
   RadioStation,
   TvChannel,
@@ -372,6 +373,14 @@ export function ytmusicSearch(query: string, filter: string): Promise<ExploreShe
  *  report anything that actually matters. */
 export function ytmusicSearchSuggestions(query: string): Promise<string[]> {
   return invoke<string[]>("ytmusic_search_suggestions", { query });
+}
+
+export function ytmusicRadio(videoId: string): Promise<RadioBatch> {
+  return invoke<RadioBatch>("ytmusic_radio", { videoId });
+}
+
+export function ytmusicRadioContinue(videoId: string, token: string): Promise<RadioBatch> {
+  return invoke<RadioBatch>("ytmusic_radio_continue", { videoId, token });
 }
 
 /** An artist's page: top songs, albums, singles, videos, playlists. */

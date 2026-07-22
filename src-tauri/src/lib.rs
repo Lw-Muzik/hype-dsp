@@ -683,6 +683,8 @@ pub fn run() {
             commands::ytmusic::ytmusic_search,
             commands::ytmusic::ytmusic_search_suggestions,
             commands::ytmusic::ytmusic_artist_page,
+            commands::ytmusic::ytmusic_radio,
+            commands::ytmusic::ytmusic_radio_continue,
             commands::ytmusic::ytmusic_video_url,
             commands::ytmusic::ytmusic_prefetch,
             commands::ytmusic::ytmusic_video_prefetch,

@@ -21,7 +21,7 @@ use hm_core::IpcError;
 use hm_link::LinkState;
 use hm_ytmusic::cookies::{self, YtCookie};
 use hm_ytmusic::explore::{ExploreItem, ExploreShelf};
-use hm_ytmusic::{ExploreSection, YtMusicState, YtMusicStatus, YtPlaylist, YtTrack};
+use hm_ytmusic::{ExploreSection, RadioBatch, YtMusicState, YtMusicStatus, YtPlaylist, YtTrack};
 
 use crate::tv_proxy::TvProxy;
 use serde::{Deserialize, Serialize};
@@ -366,6 +366,33 @@ pub async fn ytmusic_artist_page(
 ) -> Result<Vec<ExploreShelf>, IpcError> {
     state
         .artist_page(&browse_id)
+        .await
+        .map_err(|e| IpcError::new("ytmusic", e))
+}
+
+/// The endless "up next" YT Music derives from one song — its radio. Returns
+/// the first page (~25–50 similar tracks) and the token for the next one.
+#[tauri::command]
+pub async fn ytmusic_radio(
+    state: State<'_, YtMusicState>,
+    video_id: String,
+) -> Result<RadioBatch, IpcError> {
+    state
+        .radio(&video_id)
+        .await
+        .map_err(|e| IpcError::new("ytmusic", e))
+}
+
+/// The next page of a radio. `video_id` is the seed the radio was started
+/// from — the wire format re-POSTs the full body plus the token.
+#[tauri::command]
+pub async fn ytmusic_radio_continue(
+    state: State<'_, YtMusicState>,
+    video_id: String,
+    token: String,
+) -> Result<RadioBatch, IpcError> {
+    state
+        .radio_continue(&video_id, &token)
         .await
         .map_err(|e| IpcError::new("ytmusic", e))
 }

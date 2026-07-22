@@ -31,12 +31,15 @@ pub mod cookies;
 pub mod explore;
 mod nav;
 pub mod playlist;
+mod radio;
 pub mod search;
 pub mod ytdlp;
 
 use cookies::{CookieFile, YtCookie};
 use explore::{ExploreItem, ExploreKind, ExploreShelf};
 use search::SearchFilter;
+
+pub use radio::RadioBatch;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};

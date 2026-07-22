@@ -1,0 +1,115 @@
+{
+  "contents": {
+    "singleColumnMusicWatchNextResultsRenderer": {
+      "tabbedRenderer": {
+        "watchNextTabbedResultsRenderer": {
+          "tabs": [
+            {
+              "tabRenderer": {
+                "content": {
+                  "musicQueueRenderer": {
+                    "content": {
+                      "playlistPanelRenderer": {
+                        "playlistId": "RDAMVMseed00000",
+                        "isInfinite": true,
+                        "numItemsToShow": 25,
+                        "contents": [
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "videoId": "seed00000",
+                              "selected": true,
+                              "title": { "runs": [{ "text": "Seed Song" }] },
+                              "longBylineText": { "runs": [{ "text": "Seed Artist" }] },
+                              "lengthText": { "runs": [{ "text": "3:00" }] },
+                              "thumbnail": { "thumbnails": [{ "url": "https://i/seed.jpg", "width": 60, "height": 60 }] }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoWrapperRenderer": {
+                              "primaryRenderer": {
+                                "playlistPanelVideoRenderer": {
+                                  "videoId": "wrapped01",
+                                  "title": { "runs": [{ "text": "Wrapped Song" }] },
+                                  "longBylineText": {
+                                    "runs": [
+                                      { "text": "Artist A", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCabc" } } },
+                                      { "text": " • " },
+                                      { "text": "Album A", "navigationEndpoint": { "browseEndpoint": { "browseId": "MPREb_a1" } } },
+                                      { "text": " • " },
+                                      { "text": "2021" }
+                                    ]
+                                  },
+                                  "lengthText": { "runs": [{ "text": "3:32" }] },
+                                  "thumbnail": { "thumbnails": [{ "url": "https://i/w1_small.jpg", "width": 60, "height": 60 }, { "url": "https://i/w1.jpg", "width": 544, "height": 544 }] },
+                                  "navigationEndpoint": {
+                                    "watchEndpoint": {
+                                      "videoId": "wrapped01",
+                                      "playlistId": "RDAMVMseed00000",
+                                      "watchEndpointMusicSupportedConfigs": { "watchEndpointMusicConfig": { "musicVideoType": "MUSIC_VIDEO_TYPE_ATV" } }
+                                    }
+                                  }
+                                }
+                              },
+                              "counterpart": [
+                                {
+                                  "counterpartRenderer": {
+                                    "playlistPanelVideoRenderer": {
+                                      "videoId": "wrapped01",
+                                      "title": { "runs": [{ "text": "Wrapped Song (Video)" }] },
+                                      "lengthText": { "runs": [{ "text": "3:35" }] },
+                                      "navigationEndpoint": {
+                                        "watchEndpoint": {
+                                          "videoId": "wrapped01",
+                                          "watchEndpointMusicSupportedConfigs": { "watchEndpointMusicConfig": { "musicVideoType": "MUSIC_VIDEO_TYPE_OMV" } }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "videoId": "plain0002",
+                              "title": { "runs": [{ "text": "Plain Video" }] },
+                              "longBylineText": { "runs": [{ "text": "Artist B" }, { "text": " • " }, { "text": "14M views" }] },
+                              "lengthText": { "runs": [{ "text": "4:05" }] },
+                              "thumbnail": { "thumbnails": [{ "url": "https://i/p2.jpg", "width": 400, "height": 225 }] },
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "plain0002",
+                                  "playlistId": "RDAMVMseed00000",
+                                  "watchEndpointMusicSupportedConfigs": { "watchEndpointMusicConfig": { "musicVideoType": "MUSIC_VIDEO_TYPE_OMV" } }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "videoId": "blocked03",
+                              "unplayableText": { "runs": [{ "text": "Not available" }] },
+                              "title": { "runs": [{ "text": "Region Blocked" }] }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "title": { "runs": [{ "text": "No Video Id" }] }
+                            }
+                          }
+                        ],
+                        "continuations": [
+                          { "nextRadioContinuationData": { "continuation": "TOKEN_PAGE_2" } }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

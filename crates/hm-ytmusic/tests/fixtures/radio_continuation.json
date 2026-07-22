@@ -1,0 +1,27 @@
+{
+  "continuationContents": {
+    "playlistPanelContinuation": {
+      "contents": [
+        {
+          "playlistPanelVideoRenderer": {
+            "videoId": "cont00001",
+            "title": { "runs": [{ "text": "Continuation Song" }] },
+            "longBylineText": { "runs": [{ "text": "Artist C" }] },
+            "lengthText": { "runs": [{ "text": "2:58" }] },
+            "thumbnail": { "thumbnails": [{ "url": "https://i/c1.jpg", "width": 544, "height": 544 }] },
+            "navigationEndpoint": {
+              "watchEndpoint": {
+                "videoId": "cont00001",
+                "playlistId": "RDAMVMseed00000",
+                "watchEndpointMusicSupportedConfigs": { "watchEndpointMusicConfig": { "musicVideoType": "MUSIC_VIDEO_TYPE_ATV" } }
+              }
+            }
+          }
+        }
+      ],
+      "continuations": [
+        { "nextRadioContinuationData": { "continuation": "TOKEN_PAGE_3" } }
+      ]
+    }
+  }
+}

@@ -375,10 +375,12 @@ export function ytmusicSearchSuggestions(query: string): Promise<string[]> {
   return invoke<string[]>("ytmusic_search_suggestions", { query });
 }
 
+/** One page of the song radio YT Music derives from `videoId`. */
 export function ytmusicRadio(videoId: string): Promise<RadioBatch> {
   return invoke<RadioBatch>("ytmusic_radio", { videoId });
 }
 
+/** The next radio page; `videoId` is the seed the radio was started from. */
 export function ytmusicRadioContinue(videoId: string, token: string): Promise<RadioBatch> {
   return invoke<RadioBatch>("ytmusic_radio_continue", { videoId, token });
 }

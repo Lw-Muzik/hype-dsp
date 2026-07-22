@@ -97,7 +97,9 @@ fn parse_row(r: &Value) -> Option<YtTrack> {
             if !id.starts_with("MPRE") {
                 return None;
             }
-            run.pointer("/text").and_then(Value::as_str).map(str::to_string)
+            run.pointer("/text")
+                .and_then(Value::as_str)
+                .map(str::to_string)
         })
     });
     let duration_secs = r
@@ -181,21 +183,40 @@ mod tests {
     #[test]
     fn reads_a_wrapper_once_not_twice() {
         let batch = parse_radio_page(&page());
-        let n = batch.tracks.iter().filter(|t| t.video_id == "wrapped01").count();
+        let n = batch
+            .tracks
+            .iter()
+            .filter(|t| t.video_id == "wrapped01")
+            .count();
         assert_eq!(n, 1);
-        let t = batch.tracks.iter().find(|t| t.video_id == "wrapped01").unwrap();
+        let t = batch
+            .tracks
+            .iter()
+            .find(|t| t.video_id == "wrapped01")
+            .unwrap();
         assert_eq!(t.title, "Wrapped Song");
-        assert!(!t.has_video, "the primary rendition is ATV — audio, not video");
+        assert!(
+            !t.has_video,
+            "the primary rendition is ATV — audio, not video"
+        );
     }
 
     #[test]
     fn maps_the_byline_album_by_its_album_link_not_by_position() {
         let batch = parse_radio_page(&page());
-        let t = batch.tracks.iter().find(|t| t.video_id == "wrapped01").unwrap();
+        let t = batch
+            .tracks
+            .iter()
+            .find(|t| t.video_id == "wrapped01")
+            .unwrap();
         assert_eq!(t.artist.as_deref(), Some("Artist A"));
         assert_eq!(t.album.as_deref(), Some("Album A"));
         // "14M views" is plain text, not an album link — must stay out of `album`.
-        let v = batch.tracks.iter().find(|t| t.video_id == "plain0002").unwrap();
+        let v = batch
+            .tracks
+            .iter()
+            .find(|t| t.video_id == "plain0002")
+            .unwrap();
         assert_eq!(v.album, None);
         assert!(v.has_video, "OMV is a real music video");
     }
@@ -204,13 +225,21 @@ mod tests {
     fn skips_unplayable_and_malformed_rows_without_failing_the_page() {
         let batch = parse_radio_page(&page());
         assert!(batch.tracks.iter().all(|t| t.video_id != "blocked03"));
-        assert_eq!(batch.tracks.len(), 2, "the two good rows must survive the bad ones");
+        assert_eq!(
+            batch.tracks.len(),
+            2,
+            "the two good rows must survive the bad ones"
+        );
     }
 
     #[test]
     fn fills_the_track_fields_the_queue_needs() {
         let batch = parse_radio_page(&page());
-        let t = batch.tracks.iter().find(|t| t.video_id == "wrapped01").unwrap();
+        let t = batch
+            .tracks
+            .iter()
+            .find(|t| t.video_id == "wrapped01")
+            .unwrap();
         assert_eq!(t.duration_secs, Some(212.0));
         assert_eq!(t.thumbnail.as_deref(), Some("https://i/w1.jpg"));
         assert_eq!(t.playlist_id, "RDAMVMseed00000");

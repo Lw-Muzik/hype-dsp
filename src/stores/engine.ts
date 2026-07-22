@@ -1234,7 +1234,13 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       // The seed plays immediately; the similar tracks stream in behind it.
       setQueueAndPlay([ytmusicItem(seed)], 0); // also tears down any old session
       radioSession = { seedId: seed.videoId, continuation: null };
-      fetchRadio({ kind: "start", seedId: seed.videoId });
+      // The explicit dispatch exists for the repeat-on case (the in-startPlayback
+      // probe declines at the repeat gate but the first page must still load);
+      // with Autoplay on and repeat off it no-ops against the probe's latch.
+      // Autoplay off means no radio at all — the toggle gates everything.
+      if (get().state.playback.autoplay) {
+        fetchRadio({ kind: "start", seedId: seed.videoId });
+      }
     },
 
     jumpTo: (pos) => {

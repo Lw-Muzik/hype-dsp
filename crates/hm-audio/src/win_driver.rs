@@ -76,11 +76,18 @@ pub fn install_driver(package_dir: &Path) -> Result<(), AudioError> {
     // means "the installer ran" — success is confirmed by re-checking the device.
     // The path is passed as its own argument (quoted) so spaces are safe.
     let inf_arg = inf.replace('\'', "");
+    // `-WindowStyle Hidden` on Start-Process keeps the elevated pnputil console
+    // off-screen too (the UAC prompt still shows — that one we want).
     let ps = format!(
-        "Start-Process pnputil -Verb RunAs -Wait -ArgumentList '/add-driver','{inf_arg}','/install'"
+        "Start-Process pnputil -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '/add-driver','{inf_arg}','/install'"
     );
+    // `CREATE_NO_WINDOW`: this is a GUI app; the powershell wrapper itself
+    // must not flash a console either.
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let status = Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &ps])
+        .creation_flags(CREATE_NO_WINDOW)
         .status()
         .map_err(|e| AudioError::Stream(format!("could not launch the driver installer: {e}")))?;
     if status.success() {

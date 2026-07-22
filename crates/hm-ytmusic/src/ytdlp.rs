@@ -243,9 +243,27 @@ impl ProcessRunner {
         &self.bin
     }
 
+    /// A `Command` for the binary, with the console suppressed on Windows.
+    ///
+    /// This is a GUI-subsystem app, so every spawn of a console executable
+    /// allocates a *visible* console window — one flash per resolved track,
+    /// a whole cascade when a playlist prefetches. `CREATE_NO_WINDOW` keeps
+    /// the child windowless; piped/captured stdio is unaffected.
+    fn command(&self) -> Command {
+        #[allow(unused_mut)]
+        let mut cmd = Command::new(&self.bin);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        cmd
+    }
+
     /// yt-dlp's version string (its own `--version` output, e.g. `2026.07.04`).
     pub fn version(&self) -> Option<String> {
-        let out = Command::new(&self.bin).arg("--version").output().ok()?;
+        let out = self.command().arg("--version").output().ok()?;
         if !out.status.success() {
             return None;
         }
@@ -256,7 +274,8 @@ impl ProcessRunner {
 
 impl YtDlpRunner for ProcessRunner {
     fn run(&self, args: &[String]) -> Result<String, YtDlpError> {
-        let out = Command::new(&self.bin)
+        let out = self
+            .command()
             .args(args)
             .stdin(Stdio::null())
             .output()
@@ -288,7 +307,8 @@ impl YtDlpRunner for ProcessRunner {
         args: &[String],
         on_line: &mut dyn FnMut(&str),
     ) -> Result<String, YtDlpError> {
-        let mut child = Command::new(&self.bin)
+        let mut child = self
+            .command()
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())

@@ -136,7 +136,17 @@ pub fn visualizer_start(
     let bin =
         sidecar_path().ok_or_else(|| IpcError::new("unavailable", "Visualizer isn't available."))?;
 
-    let mut child = Command::new(bin)
+    // `CREATE_NO_WINDOW` (Windows): suppress the sidecar's console window —
+    // its SDL/GL window is a real window and is unaffected by this flag.
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(bin);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = cmd
         .arg(preset_dir(&app))
         .arg(fps.unwrap_or(30).to_string())
         .arg(beat.unwrap_or(1.0).to_string())

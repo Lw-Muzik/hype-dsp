@@ -456,7 +456,16 @@ fn open_url(url: &str) {
     #[cfg(target_os = "macos")]
     let _ = Command::new("open").arg(url).spawn();
     #[cfg(target_os = "windows")]
-    let _ = Command::new("cmd").args(["/C", "start", "", url]).spawn();
+    {
+        // GUI app spawning a console exe: without `CREATE_NO_WINDOW` the
+        // cmd.exe wrapper flashes a terminal before the browser opens.
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    }
     #[cfg(target_os = "linux")]
     let _ = Command::new("xdg-open").arg(url).spawn();
 }

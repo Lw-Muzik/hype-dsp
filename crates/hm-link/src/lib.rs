@@ -990,8 +990,17 @@ fn http_client() -> Result<reqwest::blocking::Client, String> {
 
 /// A friendly name for this desktop, shown on the phone during pairing/cast.
 pub fn device_name() -> String {
-    std::process::Command::new("hostname")
-        .output()
+    // `CREATE_NO_WINDOW` (Windows): hostname.exe is a console binary and this
+    // is a GUI app — without the flag each call flashes a terminal window.
+    #[allow(unused_mut)]
+    let mut cmd = std::process::Command::new("hostname");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd.output()
         .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().trim_end_matches(".local").to_string())

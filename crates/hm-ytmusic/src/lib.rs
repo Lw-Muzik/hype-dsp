@@ -46,7 +46,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use ytdlp::{ProcessRunner, YtDlpError};
 use ytmapi_rs::auth::BrowserToken;
-use ytmapi_rs::common::{AlbumID, ArtistChannelID, MoodCategoryParams, PlaylistID, YoutubeID};
+use ytmapi_rs::common::{
+    AlbumID, ArtistChannelID, MoodCategoryParams, PlaylistID, VideoID, YoutubeID,
+};
 use ytmapi_rs::parse::{ParseFrom, ProcessedResult};
 use ytmapi_rs::query::search::{
     AlbumsFilter, ArtistsFilter, BasicSearch, PlaylistsFilter, SearchQuery, SongsFilter,
@@ -54,7 +56,7 @@ use ytmapi_rs::query::search::{
 };
 use ytmapi_rs::query::{
     GetArtistQuery, GetLibraryPlaylistsQuery, GetMoodPlaylistsQuery, GetPlaylistTracksQuery,
-    GetSearchSuggestionsQuery, PostMethod, PostQuery, Query,
+    GetSearchSuggestionsQuery, GetWatchPlaylistQuery, PostMethod, PostQuery, Query,
 };
 use ytmapi_rs::YtMusic;
 
@@ -513,6 +515,44 @@ impl YtMusicState {
         Ok(explore::parse_page(&json))
     }
 
+    /// The endless "up next" YT Music derives from one song — its radio.
+    ///
+    /// This is the same `next` call the YT Music client makes: playlist
+    /// `RDAMVM<videoId>`, raw id, **no `VL` prefix** (`next` is the opposite of
+    /// `browse` on this). The typed parser upstream would hard-fail the page on
+    /// one odd row and skip no unplayable ones, so the JSON is read by
+    /// [`radio::parse_radio_page`] instead.
+    pub async fn radio(&self, video_id: &str) -> Result<RadioBatch, String> {
+        let yt = self.client().await?;
+        let query = GetWatchPlaylistQuery::new_from_video_id(VideoID::from_raw(video_id));
+        let raw = yt
+            .json_query::<GetWatchPlaylistQuery<VideoID>>(&query)
+            .await
+            .map_err(|e| format!("Radio unavailable: {e}"))?;
+        let json: Value =
+            ytmapi_rs::json::from_json(raw).map_err(|e| format!("Radio unreadable: {e}"))?;
+        Ok(radio::parse_radio_page(&json))
+    }
+
+    /// The next page of a radio: the same body as [`Self::radio`] plus the token
+    /// the previous page returned. Needs the seed's `video_id` because the wire
+    /// format re-POSTs the full body — the token alone is not a request.
+    pub async fn radio_continue(&self, video_id: &str, token: &str) -> Result<RadioBatch, String> {
+        let yt = self.client().await?;
+        let base = GetWatchPlaylistQuery::new_from_video_id(VideoID::from_raw(video_id));
+        let cont = WatchContinuation {
+            base: &base,
+            token: token.to_string(),
+        };
+        let raw = yt
+            .json_query::<WatchContinuation>(&cont)
+            .await
+            .map_err(|e| format!("Radio continuation failed: {e}"))?;
+        let json: Value =
+            ytmapi_rs::json::from_json(raw).map_err(|e| format!("Radio unreadable: {e}"))?;
+        Ok(radio::parse_radio_page(&json))
+    }
+
     /// The tracks behind one Explore item, ready to queue.
     ///
     /// Nothing is cached: Explore is YouTube's live catalog and its whole value
@@ -936,6 +976,42 @@ impl ParseFrom<PlaylistContinuation<'_>> for RawPage {
 }
 
 impl<A: ytmapi_rs::auth::AuthToken> Query<A> for PlaylistContinuation<'_> {
+    type Output = RawPage;
+    type Method = PostMethod;
+}
+
+/// One continuation of a radio: the same `next` POST as the first page, plus
+/// the token. Exists for the same reason as [`PlaylistContinuation`] —
+/// upstream's `GetContinuationsQuery` can only be built through the typed
+/// parser this crate routes around. Wire format is upstream's own
+/// (`ctoken` + `continuation`, same header and path).
+struct WatchContinuation<'a> {
+    base: &'a GetWatchPlaylistQuery<VideoID<'a>>,
+    token: String,
+}
+
+impl PostQuery for WatchContinuation<'_> {
+    fn header(&self) -> serde_json::Map<String, Value> {
+        self.base.header()
+    }
+    fn params(&self) -> Vec<(&str, std::borrow::Cow<'_, str>)> {
+        vec![
+            ("ctoken", self.token.as_str().into()),
+            ("continuation", self.token.as_str().into()),
+        ]
+    }
+    fn path(&self) -> &str {
+        self.base.path()
+    }
+}
+
+impl ParseFrom<WatchContinuation<'_>> for RawPage {
+    fn parse_from(_: ProcessedResult<WatchContinuation<'_>>) -> ytmapi_rs::Result<Self> {
+        Ok(RawPage)
+    }
+}
+
+impl<A: ytmapi_rs::auth::AuthToken> Query<A> for WatchContinuation<'_> {
     type Output = RawPage;
     type Method = PostMethod;
 }
@@ -2120,5 +2196,36 @@ mod tests {
         let playlists = state.playlists().await.expect("the listing must parse");
         eprintln!("parsed {} playlists", playlists.len());
         assert!(!playlists.is_empty(), "a signed-in library should list something");
+    }
+
+    /// Run with `cargo test -p hm-ytmusic -- --ignored`.
+    #[tokio::test]
+    #[ignore = "requires a signed-in YT Music session in the keychain and network access"]
+    async fn live_radio_pages_endlessly() {
+        let Some(state) = live_state() else {
+            eprintln!("skipping: no session in the keychain — sign in through the app first");
+            return;
+        };
+        // A track with a famously deep similarity graph.
+        let seed = "dQw4w9WgXcQ";
+        let first = state.radio(seed).await.expect("the radio page must parse");
+        eprintln!("radio page 1: {} tracks", first.tracks.len());
+        assert!(
+            first.tracks.len() >= 10,
+            "a radio should fill a queue, got {}",
+            first.tracks.len()
+        );
+        assert!(
+            first.tracks.iter().all(|t| t.video_id != seed),
+            "the seed must not be re-queued"
+        );
+        let token = first.continuation.expect("radio pages must chain");
+        let second = state
+            .radio_continue(seed, &token)
+            .await
+            .expect("the continuation must parse");
+        eprintln!("radio page 2: {} tracks", second.tracks.len());
+        assert!(!second.tracks.is_empty(), "the continuation should keep the radio going");
+        assert!(second.continuation.is_some(), "radio should always offer another page");
     }
 }

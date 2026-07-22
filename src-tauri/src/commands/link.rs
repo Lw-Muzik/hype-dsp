@@ -117,6 +117,29 @@ pub fn link_unpair(link: State<'_, LinkState>, device_id: String) {
 
 // ------------------------------------------------- remote (cross-network) link
 
+/// Run a remote-link build step, converting a panic into an `Err`.
+///
+/// A panicking Tauri command never sends its response, so the invoking promise
+/// stays pending forever — in the field that was the "Pair a phone" button
+/// stuck on "Preparing…" with no error anywhere. iroh's endpoint init touches
+/// OS-specific machinery (sockets, route monitoring, system DNS config) that
+/// has panicked on platforms dev machines don't exercise; this turns that into
+/// an error the card can actually show. `AssertUnwindSafe` is fine: on panic
+/// the partially-built state is discarded, never observed.
+fn catch_build<T>(build: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)) {
+        Ok(result) => result,
+        Err(payload) => {
+            let msg = payload
+                .downcast_ref::<&'static str>()
+                .copied()
+                .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                .unwrap_or("unknown panic");
+            Err(format!("remote link initialization crashed: {msg}"))
+        }
+    }
+}
+
 /// Lazily-constructed [`hm_remote::RemoteManager`].
 ///
 /// Building the manager spins up a dedicated multi-thread tokio runtime and an
@@ -173,25 +196,25 @@ impl RemoteState {
         self.cell
             .get_or_init(|| {
                 let pair_handle = self.app.clone();
-                hm_remote::RemoteManager::new(
-                    self.secret_path.clone(),
-                    self.store_path.clone(),
-                    hm_link::device_name(),
-                    true,
-                    move |phone| {
-                        pair_handle.state::<LinkState>().register_remote(
-                            phone.id.clone(),
-                            phone.name.clone(),
-                            phone.port,
-                            phone.token.clone(),
-                        );
-                        let _ = pair_handle.emit("link:remote_connected", &phone.id);
-                    },
-                )
-                .map_err(|e| {
-                    eprintln!("remote phone link unavailable: {e}");
-                    e.to_string()
+                catch_build(|| {
+                    hm_remote::RemoteManager::new(
+                        self.secret_path.clone(),
+                        self.store_path.clone(),
+                        hm_link::device_name(),
+                        true,
+                        move |phone| {
+                            pair_handle.state::<LinkState>().register_remote(
+                                phone.id.clone(),
+                                phone.name.clone(),
+                                phone.port,
+                                phone.token.clone(),
+                            );
+                            let _ = pair_handle.emit("link:remote_connected", &phone.id);
+                        },
+                    )
+                    .map_err(|e| e.to_string())
                 })
+                .inspect_err(|e| eprintln!("remote phone link unavailable: {e}"))
             })
             .as_ref()
             .map_err(Clone::clone)
@@ -450,5 +473,46 @@ pub fn link_upload(
             );
             Err(IpcError::new("link", e))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // `catch_build` exists because a panicking iroh endpoint init left the
+    // "Pair a phone" button on "Preparing…" forever in the field: Tauri never
+    // answers an invoke whose handler panicked, so the UI promise never
+    // settles. Converting the panic to an `Err` makes the card show a real,
+    // reportable error instead.
+
+    #[test]
+    fn catch_build_passes_ok_through() {
+        assert_eq!(catch_build(|| Ok::<_, String>(7)), Ok(7));
+    }
+
+    #[test]
+    fn catch_build_passes_err_through() {
+        assert_eq!(
+            catch_build(|| Err::<(), _>("plain failure".to_string())),
+            Err("plain failure".to_string())
+        );
+    }
+
+    #[test]
+    fn catch_build_converts_a_str_panic_into_err() {
+        let err = catch_build(|| -> Result<(), String> { panic!("iroh exploded") })
+            .expect_err("panic must become Err");
+        assert!(err.contains("iroh exploded"), "got: {err}");
+    }
+
+    #[test]
+    fn catch_build_converts_a_string_panic_into_err() {
+        let boom = String::from("formatted failure 42");
+        let err = catch_build(move || -> Result<(), String> {
+            panic!("{}", boom)
+        })
+        .expect_err("panic must become Err");
+        assert!(err.contains("formatted failure 42"), "got: {err}");
     }
 }

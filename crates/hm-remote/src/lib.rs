@@ -62,6 +62,15 @@ pub async fn build_endpoint(
 /// dart:ffi's `dlopen` (no `JNI_OnLoad`, no glue) that lookup PANICS in release
 /// builds, so the endpoint can never bind. The phone side therefore passes an
 /// explicit public-nameserver resolver (see `phone::phone_dns_resolver`).
+/// How long [`build_endpoint_with`] waits for `bind()` before giving up.
+///
+/// Binding is normally near-instant (sockets + background tasks), but it runs
+/// OS-specific setup that has stalled in the field — and it happens lazily
+/// behind a UI click, where an unbounded await reads as the button spinning
+/// forever. Generous enough for a slow first netcheck; finite so the UI always
+/// gets an answer.
+const BIND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
 pub async fn build_endpoint_with(
     secret: SecretKey,
     alpns: Vec<Vec<u8>>,
@@ -77,7 +86,13 @@ pub async fn build_endpoint_with(
     if !relay {
         builder = builder.relay_mode(iroh::RelayMode::Disabled);
     }
-    Ok(builder.bind().await?)
+    match tokio::time::timeout(BIND_TIMEOUT, builder.bind()).await {
+        Ok(bound) => Ok(bound?),
+        Err(_) => Err(anyhow!(
+            "network endpoint setup timed out after {}s — check firewall/VPN and try again",
+            BIND_TIMEOUT.as_secs()
+        )),
+    }
 }
 
 /// This endpoint's own dialable address (id + relay/direct addresses), e.g. to

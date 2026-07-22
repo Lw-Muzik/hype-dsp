@@ -35,12 +35,14 @@ other source).
 - `radio(video_id) -> Result<RadioBatch>` — `json_query(GetWatchPlaylistQuery::
   new_from_video_id(id))` (auto-builds `RDAMVM<videoId>`; note: `next` takes the
   raw playlist id, NO `VL` prefix — the opposite of `browse`).
-- `radio_continue(token) -> Result<RadioBatch>` — re-POST the same body with
-  `?ctoken=<token>&continuation=<token>`, mirroring the existing playlist
-  continuation-request pattern in `lib.rs` (~line 899). Parses
-  `continuationContents.playlistPanelContinuation`; falls back to the full
-  first-page panel path if `continuationContents` is absent (muse's defensive
-  fallback).
+- `radio_continue(video_id, token) -> Result<RadioBatch>` — re-POST the same
+  body with `?ctoken=<token>&continuation=<token>`, mirroring the existing
+  playlist continuation-request pattern in `lib.rs` (~line 899). The wire
+  format re-POSTs the *full* body, not just the token, so the seed's
+  `video_id` is a required argument, not optional context. The parser is
+  shape-agnostic: it walks the JSON for panel rows and the
+  `nextRadioContinuationData` token wherever they sit, so the first page and a
+  continuation page parse through the same code path.
 - Hand-parse the `playlistPanelRenderer` with our `nav.rs` helpers, tolerant
   per-row (a bad row is skipped, never kills the batch). ytmapi-rs's typed
   parser hard-fails a page on one odd item and does not skip `unplayableText`
@@ -57,13 +59,20 @@ other source).
 ### 2. Tauri commands — `src-tauri/src/commands/ytmusic.rs`
 
 - `ytmusic_radio(video_id: String) -> RadioBatch`
-- `ytmusic_radio_continue(token: String) -> RadioBatch`
+- `ytmusic_radio_continue(video_id: String, token: String) -> RadioBatch`
 
 Async, same auth/client plumbing as the existing ytmusic commands.
 
 ### 3. Engine store — radio session (`src/stores/engine.ts`)
 
-- Session state: `radio: { seedId, continuation, fetching, exhausted } | null`.
+- Session state: module-level `radioSession: { seedId, continuation } | null`,
+  plus separate module-level `radioFetching` (epoch-aware latch), `radioEpoch`
+  (staleness guard, bumped on every queue-replacing action), `gaplessQueueLen`
+  (the engine-queue seam — how many order positions the engine's own gapless
+  queue was handed, versus what radio has since appended), and
+  `endedNaturally` (whether the queue ran out on its own, gating resume). No
+  `exhausted` flag exists: a token-less batch doesn't stop radio, it re-seeds
+  from the last track instead (see the endless guarantee below).
 - `playYtRadio(seed: YtTrack)`: queue = `[seed]`, play immediately, fetch the
   first batch in the background and append (~25–50 tracks appear in Up Next
   while the seed plays).
@@ -75,7 +84,15 @@ Async, same auth/client plumbing as the existing ytmusic commands.
   linearly even under shuffle (matches YT Music).
 - Session teardown: any play action that replaces the queue clears the radio
   session. Toggling autoplay off keeps already-queued tracks but stops
-  extending.
+  extending. Shipped as a reset on EVERY queue-replacing path, not just new
+  queues started via `setQueueAndPlay` — `playRadio` (internet radio) and
+  `castIncoming` (a phone casting to this desktop) also directly replace the
+  queue and reset the session, as does `stop`, so a live continuation token
+  can never graft onto a queue the user has since moved away from.
+- A batch already in flight when Autoplay is toggled off still lands and
+  appends: the toggle only stops *future* low-water fetches from being
+  scheduled, and the epoch guard only discards batches for queues that have
+  since been replaced, not ones still playing with autoplay merely off.
 - Autoplay-extend: an all-ytmusic queue (playlist/album/artist) reaching its
   end with repeat off starts a radio session seeded from its last track,
   appending rather than replacing.
@@ -97,13 +114,18 @@ Async, same auth/client plumbing as the existing ytmusic commands.
   with a serde default of `true` (existing saved states keep working), mirrored
   in `src/lib/types.ts`. Default ON; persisted via the existing EngineState
   autosave.
-- UI: an "Autoplay" switch in the queue/Up-Next panel; a thin divider in the
-  queue where auto-added tracks begin.
+- UI: an "Autoplay" switch in the queue/Up-Next panel. Shipped as a per-row
+  "Radio" badge on auto-added tracks rather than a divider row: the queue's
+  VirtualList relies on a uniform row height, which a divider row would break.
 
 ### 6. Error handling
 
-Radio fetches never interrupt playback: on failure, one silent retry, then give
-up quietly (the queue simply ends, as today). Console-logged, no toasts.
+Radio fetches never interrupt playback. Shipped behavior: a failure is
+console-logged (no toasts) and retried naturally on the next track advance
+(the low-water check runs on every advance, so a failed fetch just gets
+another attempt once the queue is short again), plus a single last-gasp retry
+when the queue reaches its natural end — no dedicated "one silent retry"
+timer of its own.
 
 ### 7. Testing
 
@@ -111,6 +133,11 @@ up quietly (the queue simply ends, as today). Console-logged, no toasts.
   renderers, malformed-row tolerance, `unplayableText` skip, seed skip; one
   `--ignored` live test with a visible skip when keychain auth is absent (the
   silent-skip false-green trap from the search work).
-- Vitest: seed+append flow, low-water trigger at ≤5 remaining, dedup, session
-  teardown on new queue, autoplay-off gating, end-of-playlist extension,
-  shuffle append ordering.
+- Vitest, shipped: the pure decision logic is unit-tested directly —
+  `radioStep` (including the exact low-water boundary: one track above
+  `RADIO_LOW_WATER` does nothing, exactly at it fetches) and
+  `dedupeRadioTracks` in `src/stores/radio.test.ts`, plus `radioItem` in
+  `src/stores/engine.test.ts`. The store wiring itself — append, the
+  gapless-queue seam, natural-end resume — was verified by adversarial code
+  review (see the task-6 report's post-review fix rounds) rather than by
+  store-level Vitest, and is follow-up material for tests at that level.

@@ -75,7 +75,9 @@ Async, same auth/client plumbing as the existing ytmusic commands.
   from the last track instead (see the endless guarantee below).
 - `playYtRadio(seed: YtTrack)`: queue = `[seed]`, play immediately, fetch the
   first batch in the background and append (~25–50 tracks appear in Up Next
-  while the seed plays).
+  while the seed plays). The initial fetch is gated on Autoplay like every
+  other radio fetch (off ⇒ the seed plays alone); with Autoplay on it fires
+  even under repeat, which then loops the grown queue without extending it.
 - Low-water replenishment: whenever the queue advances, if a radio session is
   live, autoplay is on, and ≤5 unplayed tracks remain ahead → fetch the
   continuation and append, deduped by videoId against the whole queue

@@ -869,7 +869,14 @@ fn parse_id3v1(buf: &[u8]) -> Option<hm_core::TrackMeta> {
     meta_useful(&meta).then_some(meta)
 }
 
-/// Issue the GET, optionally from `start_byte` via a `Range` header.
+/// Issue the GET, always as a range request from `start_byte`.
+///
+/// Always ranged, even from byte 0: googlevideo paces a plain GET to about
+/// the bitrate of the content — reasonable for a dumb player, ruinous for a
+/// buffer trying to get ahead of the decoder — while the same request with a
+/// `Range` header is served at full speed (the gapless path measured 190×;
+/// see `stream_queue.rs`). Servers that ignore Range answer 200 with the
+/// whole body, which at byte 0 is exactly what was asked for.
 fn open(
     client: &reqwest::blocking::Client,
     url: &str,
@@ -880,9 +887,7 @@ fn open(
     for (k, v) in headers {
         req = req.header(k.as_str(), v.as_str());
     }
-    if start_byte > 0 {
-        req = req.header("Range", format!("bytes={start_byte}-"));
-    }
+    req = req.header("Range", format!("bytes={start_byte}-"));
     match req.send() {
         Ok(r) if start_byte > 0 => {
             // A ranged resume MUST come back as 206; a 200 means the server
@@ -891,6 +896,8 @@ fn open(
             // failed open so the bounded reconnect ladder handles it.
             (r.status() == reqwest::StatusCode::PARTIAL_CONTENT).then_some(r)
         }
+        // At byte 0 both a 206 (ranged) and a 200 (Range-ignoring server —
+        // internet radio, some CDNs) deliver the body from the start.
         Ok(r) if r.status().is_success() => Some(r),
         _ => None,
     }
@@ -1507,5 +1514,142 @@ mod tests {
         let mut out = vec![0.0f32; 12]; // drains the 6 frames, then underruns
         src.read(&mut out, 2);
         assert_eq!(src.rebuffer_count(), 1, "draining mid-track arms one rebuffer");
+    }
+
+    /// googlevideo paces a plain GET to ~1× realtime; the same request carrying
+    /// a Range serves the same body ~190× faster. The gapless path learned this
+    /// (see `stream_queue.rs`); this is the progressive path's copy of the same
+    /// lesson — the FIRST open must ask as a range too, because that first open
+    /// is the one the listener is waiting on.
+    #[test]
+    fn the_first_open_asks_for_the_body_as_a_range() {
+        use std::io::{BufRead, BufWriter, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+
+        let server_seen = seen.clone();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept");
+            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                if line == "\r\n" || line == "\n" {
+                    break;
+                }
+                server_seen.lock().unwrap().push(line.trim_end().to_string());
+            }
+            let body = b"bytes";
+            let mut w = BufWriter::new(stream);
+            let _ = write!(
+                w,
+                "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-4/5\r\n\
+                 Content-Length: {}\r\n\r\n",
+                body.len()
+            );
+            let _ = w.write_all(body);
+            let _ = w.flush();
+        });
+
+        let client = reqwest::blocking::Client::new();
+        let r = open(
+            &client,
+            &format!("http://{addr}/track"),
+            &[("User-Agent".into(), "hm-test".into())],
+            0,
+        );
+        server.join().expect("server thread");
+        assert!(r.is_some(), "a 206 at byte 0 must be accepted");
+
+        let lines = seen.lock().unwrap().clone();
+        let range = lines
+            .iter()
+            .find(|l| l.to_ascii_lowercase().starts_with("range:"))
+            .unwrap_or_else(|| panic!("no Range header was sent; got {lines:#?}"));
+        assert!(
+            range.eq_ignore_ascii_case("range: bytes=0-"),
+            "asked for the wrong range: {range}"
+        );
+    }
+
+    /// Some radio/Icecast servers ignore Range and answer 200 — at byte 0
+    /// that is exactly the body we asked for, so it must keep working.
+    #[test]
+    fn a_200_at_byte_zero_is_still_accepted() {
+        use std::io::{BufRead, BufWriter, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept");
+            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                if line == "\r\n" || line == "\n" {
+                    break;
+                }
+            }
+            let body = b"bytes";
+            let mut w = BufWriter::new(stream);
+            let _ = write!(
+                w,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            );
+            let _ = w.write_all(body);
+            let _ = w.flush();
+        });
+
+        let client = reqwest::blocking::Client::new();
+        let r = open(&client, &format!("http://{addr}/live"), &[], 0);
+        server.join().expect("server thread");
+        assert!(r.is_some(), "a Range-ignoring server must not break byte-0 opens");
+    }
+
+    /// At an offset a 200 means the server would replay from byte 0 —
+    /// audible duplication. That rejection must survive this change.
+    #[test]
+    fn a_200_at_an_offset_is_still_rejected() {
+        use std::io::{BufRead, BufWriter, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept");
+            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                if line == "\r\n" || line == "\n" {
+                    break;
+                }
+            }
+            let body = b"bytes";
+            let mut w = BufWriter::new(stream);
+            let _ = write!(
+                w,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            );
+            let _ = w.write_all(body);
+            let _ = w.flush();
+        });
+
+        let client = reqwest::blocking::Client::new();
+        let r = open(&client, &format!("http://{addr}/track"), &[], 4096);
+        server.join().expect("server thread");
+        assert!(r.is_none(), "a replay-from-zero response must be treated as a failed open");
     }
 }

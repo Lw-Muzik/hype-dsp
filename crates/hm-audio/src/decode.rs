@@ -64,20 +64,68 @@ fn open_format_bytes(
         .map_err(|e| AudioError::Decode(e.to_string()))
 }
 
+/// A slice of decoded output, emitted incrementally so a caller can start
+/// playback (or otherwise act) before the whole file has been decoded.
+pub enum DecodeChunk {
+    /// Sent exactly once, right after probing: tags/cover art plus the
+    /// stream's native sample rate. Always arrives before any `Pcm`.
+    Meta(TrackMeta, u32),
+    /// Source-rate interleaved stereo PCM, in order.
+    Pcm(Vec<f32>),
+}
+
 /// Decode an audio file to interleaved stereo `f32`.
 pub fn decode_file(path: &Path) -> Result<DecodedAudio, AudioError> {
-    decode_format(open_format(path)?)
+    collect_decoded(open_format(path)?)
 }
 
 /// Decode a fully-downloaded audio file held in memory to interleaved stereo
 /// `f32`. Used by the streamed crossfade queue (cloud/phone tracks).
 pub fn decode_bytes(bytes: Vec<u8>, ext_hint: Option<&str>) -> Result<DecodedAudio, AudioError> {
-    decode_format(open_format_bytes(bytes, ext_hint)?)
+    collect_decoded(open_format_bytes(bytes, ext_hint)?)
 }
 
-/// Decode an already-probed format reader to interleaved stereo `f32`. Shared by
-/// the file and in-memory (stream) decode paths.
-fn decode_format(mut format: Box<dyn FormatReader>) -> Result<DecodedAudio, AudioError> {
+/// Drive [`decode_format_chunked`] to completion, collecting `Meta` +
+/// concatenated `Pcm` into a single [`DecodedAudio`] — the whole-track
+/// behavior `decode_file`/`decode_bytes` have always presented.
+fn collect_decoded(format: Box<dyn FormatReader>) -> Result<DecodedAudio, AudioError> {
+    let mut meta = None;
+    let mut sample_rate = 0;
+    let mut samples: Vec<f32> = Vec::new();
+    decode_format_chunked(format, 8192, &mut |chunk| {
+        match chunk {
+            DecodeChunk::Meta(m, r) => {
+                meta = Some(m);
+                sample_rate = r;
+            }
+            DecodeChunk::Pcm(pcm) => samples.extend(pcm),
+        }
+        true
+    })?;
+
+    if samples.is_empty() {
+        return Err(AudioError::Decode("file produced no audio".into()));
+    }
+    Ok(DecodedAudio {
+        samples,
+        sample_rate,
+        meta: meta.unwrap_or_default(),
+    })
+}
+
+/// Decode an already-probed format reader to interleaved stereo `f32`,
+/// streaming results to `sink` as they become available instead of buffering
+/// the whole track. Shared by the file and in-memory (stream) decode paths.
+///
+/// `sink` receives a single [`DecodeChunk::Meta`] right after probing, then
+/// zero or more [`DecodeChunk::Pcm`] chunks of at least `min_chunk_frames`
+/// frames each (the final chunk may be a smaller partial flush). Returning
+/// `false` from `sink` aborts the decode early (teardown) with `Ok(())`.
+pub fn decode_format_chunked(
+    mut format: Box<dyn FormatReader>,
+    min_chunk_frames: usize,
+    sink: &mut dyn FnMut(DecodeChunk) -> bool,
+) -> Result<(), AudioError> {
     // Tags + cover are available right after probing (front-loaded ID3/Vorbis).
     let meta = extract_metadata(&mut *format);
     let track = format
@@ -92,11 +140,15 @@ fn decode_format(mut format: Box<dyn FormatReader>) -> Result<DecodedAudio, Audi
         .ok_or_else(|| AudioError::Decode("missing audio codec parameters".into()))?;
     let sample_rate = params.sample_rate.unwrap_or(44_100);
 
+    if !sink(DecodeChunk::Meta(meta, sample_rate)) {
+        return Ok(());
+    }
+
     let mut decoder = symphonia::default::get_codecs()
         .make_audio_decoder(&params, &AudioDecoderOptions::default())
         .map_err(|e| AudioError::Decode(e.to_string()))?;
 
-    let mut samples: Vec<f32> = Vec::new();
+    let mut pending: Vec<f32> = Vec::new();
     let mut scratch: Vec<f32> = Vec::new();
     loop {
         let packet = match format.next_packet() {
@@ -113,7 +165,12 @@ fn decode_format(mut format: Box<dyn FormatReader>) -> Result<DecodedAudio, Audi
                 let channels = audio.spec().channels().count().max(1);
                 scratch.clear();
                 audio.copy_to_vec_interleaved::<f32>(&mut scratch);
-                append_stereo(&mut samples, &scratch, channels);
+                append_stereo(&mut pending, &scratch, channels);
+                if pending.len() / 2 >= min_chunk_frames
+                    && !sink(DecodeChunk::Pcm(std::mem::take(&mut pending)))
+                {
+                    return Ok(());
+                }
             }
             Err(SymError::DecodeError(_)) => continue,
             Err(ref e) if is_eof(e) => break,
@@ -121,14 +178,10 @@ fn decode_format(mut format: Box<dyn FormatReader>) -> Result<DecodedAudio, Audi
         }
     }
 
-    if samples.is_empty() {
-        return Err(AudioError::Decode("file produced no audio".into()));
+    if !pending.is_empty() {
+        sink(DecodeChunk::Pcm(pending));
     }
-    Ok(DecodedAudio {
-        samples,
-        sample_rate,
-        meta,
-    })
+    Ok(())
 }
 
 /// Read a file's text tags (title/artist/album/genre) without decoding audio,
@@ -461,6 +514,87 @@ mod tests {
         // ratio == 0.5 exactly: the boundary between the regime the original
         // neighbour-only gate handled correctly and the regime it broke.
         assert_chunked_matches(&ramp(1000), 96_000, 48_000, &[1, 1, 1, 100, 400, 1]);
+    }
+
+    /// A minimal 16-bit stereo PCM WAV: enough for symphonia to decode.
+    fn tiny_wav(frames: usize, rate: u32) -> Vec<u8> {
+        let data_len = (frames * 4) as u32;
+        let mut w = Vec::new();
+        w.extend(b"RIFF");
+        w.extend((36 + data_len).to_le_bytes());
+        w.extend(b"WAVEfmt ");
+        w.extend(16u32.to_le_bytes());
+        w.extend(1u16.to_le_bytes()); // PCM
+        w.extend(2u16.to_le_bytes()); // stereo
+        w.extend(rate.to_le_bytes());
+        w.extend((rate * 4).to_le_bytes()); // byte rate
+        w.extend(4u16.to_le_bytes()); // block align
+        w.extend(16u16.to_le_bytes()); // bits
+        w.extend(b"data");
+        w.extend(data_len.to_le_bytes());
+        for i in 0..frames {
+            let v = ((i % 97) as i16).wrapping_mul(199);
+            w.extend(v.to_le_bytes()); // L
+            w.extend((-v).to_le_bytes()); // R
+        }
+        w
+    }
+
+    #[test]
+    fn chunked_decode_equals_whole_decode() {
+        let wav = tiny_wav(10_000, 44_100);
+        let whole = decode_bytes(wav.clone(), Some("wav")).expect("whole decode");
+
+        let format = open_format_bytes(wav, Some("wav")).expect("probe");
+        let mut meta = None;
+        let mut rate = 0;
+        let mut samples = Vec::new();
+        decode_format_chunked(format, 1024, &mut |c| {
+            match c {
+                DecodeChunk::Meta(m, r) => {
+                    meta = Some(m);
+                    rate = r;
+                }
+                DecodeChunk::Pcm(pcm) => samples.extend(pcm),
+            }
+            true
+        })
+        .expect("chunked decode");
+
+        assert_eq!(rate, whole.sample_rate);
+        assert_eq!(samples.len(), whole.samples.len());
+        assert!(samples.iter().zip(&whole.samples).all(|(a, b)| a == b), "bit-identical PCM");
+    }
+
+    #[test]
+    fn chunked_decode_flushes_in_bounded_chunks() {
+        let wav = tiny_wav(10_000, 44_100);
+        let format = open_format_bytes(wav, Some("wav")).expect("probe");
+        let mut sizes = Vec::new();
+        decode_format_chunked(format, 1024, &mut |c| {
+            if let DecodeChunk::Pcm(p) = c {
+                sizes.push(p.len() / 2);
+            }
+            true
+        })
+        .unwrap();
+        assert!(sizes.len() > 1, "10k frames at min 1024 must arrive in several chunks");
+        // Every flush waited for the minimum except the final partial one.
+        assert!(sizes[..sizes.len() - 1].iter().all(|&s| s >= 1024));
+    }
+
+    #[test]
+    fn a_false_from_the_sink_aborts_the_decode() {
+        let wav = tiny_wav(50_000, 44_100);
+        let format = open_format_bytes(wav, Some("wav")).expect("probe");
+        let mut pcm_calls = 0;
+        let _ = decode_format_chunked(format, 256, &mut |c| {
+            if matches!(c, DecodeChunk::Pcm(_)) {
+                pcm_calls += 1;
+            }
+            pcm_calls < 2 // stop after the second PCM chunk
+        });
+        assert_eq!(pcm_calls, 2, "the decode must stop when the sink says stop");
     }
 
     #[test]

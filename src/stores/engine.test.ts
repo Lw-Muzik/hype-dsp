@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { itemMeta, radioItem, ytmusicItem } from "@/stores/engine";
+import { itemMeta, radioItem, reconcileDuration, ytmusicItem } from "@/stores/engine";
 import type { YtTrack } from "@/lib/types";
 
 const track = (over: Partial<YtTrack> = {}): YtTrack => ({
@@ -89,5 +89,38 @@ describe("itemMeta", () => {
 describe("radioItem", () => {
   it("is a ytmusic queue item marked auto-added — the queue UI badges it", () => {
     expect(radioItem(track())).toEqual({ ...ytmusicItem(track()), autoAdded: true });
+  });
+});
+
+describe("reconcileDuration", () => {
+  /** The bug this exists to fix: a streamed track's engine-reported total
+   *  grows from ~1s as it downloads/decodes. Naively adopting it every tick
+   *  made the seek bar's total visibly count up on every streamed track. */
+  it("trusts the item's known duration while the engine's total is still a growing partial", () => {
+    expect(reconcileDuration(210, 1, null)).toBe(210);
+    expect(reconcileDuration(210, 90, null)).toBe(210);
+    expect(reconcileDuration(210, 209, null)).toBe(210);
+  });
+
+  it("adopts the engine's total once it reaches or exceeds the item's", () => {
+    expect(reconcileDuration(210, 210, null)).toBe(210);
+    expect(reconcileDuration(210, 211, null)).toBe(211);
+  });
+
+  it("uses the engine's total when the item never had one (a local file, or unknown tags)", () => {
+    expect(reconcileDuration(null, 180, null)).toBe(180);
+  });
+
+  it("falls back to the previous duration when neither the item nor this tick's engine value has one", () => {
+    expect(reconcileDuration(null, null, 180)).toBe(180);
+    expect(reconcileDuration(null, null, null)).toBeNull();
+  });
+
+  it("keeps a settled duration if a later tick's engine value briefly drops out (item has none of its own)", () => {
+    // Mirrors calling reconcileDuration tick-over-tick with the previous
+    // return value threaded back in as `prevDuration`.
+    const afterEngineReports = reconcileDuration(null, 180, null);
+    expect(afterEngineReports).toBe(180);
+    expect(reconcileDuration(null, null, afterEngineReports)).toBe(180);
   });
 });

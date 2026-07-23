@@ -267,6 +267,36 @@ export function itemMeta(item: QueueItem): TrackMeta {
   };
 }
 
+/** The duration to show for the current track on this progress tick.
+ *
+ * A streamed track (cloud/phone/YouTube Music) reports a `durationSecs` off
+ * `engine:progress` that *grows* as more of the file downloads/decodes —
+ * it starts around a second and climbs toward the real length. Adopting
+ * that number the moment it arrives (the old `p.durationSecs ?? s.durationSecs`)
+ * made the seek bar's total visibly count up from 0:01 to 3:42 on every
+ * streamed track, and made src-tauri re-publish OS media metadata each time
+ * the number changed.
+ *
+ * `itemDuration` (the queue item's own known duration, when it has one) is
+ * trusted instead for as long as the engine's own total hasn't caught up to
+ * it — a growing partial, by definition, can only under-report the true
+ * length. Once the engine's number reaches or exceeds the item's, it's
+ * adopted (it may be more accurate — e.g. the item's duration came from a
+ * tag estimate) and kept from then on even if the engine stops reporting
+ * one (`engineDuration` going `null` again mid-track isn't expected, but
+ * falls back to `prevDuration` rather than losing the value either way).
+ */
+export function reconcileDuration(
+  itemDuration: number | null,
+  engineDuration: number | null,
+  prevDuration: number | null,
+): number | null {
+  if (itemDuration != null && (engineDuration == null || engineDuration < itemDuration)) {
+    return itemDuration;
+  }
+  return engineDuration ?? prevDuration;
+}
+
 /* ----------------------------------------------------------------- play order */
 
 /** Fisher–Yates shuffle (in place). */
@@ -1149,15 +1179,22 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         Date.now(),
       );
       if (networkState.mode !== prevMode) saveNetworkMode(networkState);
-      set((s) => ({
-        positionSecs: p.positionSecs,
-        // Keep a known (item-provided) duration until the backend learns one,
-        // so streams show their length before the first progress with a value.
-        durationSecs: p.durationSecs ?? s.durationSecs,
-        paused: p.paused,
-        seekable: p.seekable,
-        buffering: p.buffering,
-      }));
+      set((s) => {
+        const item = s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined;
+        return {
+          positionSecs: p.positionSecs,
+          // See `reconcileDuration`: trusts the queue item's own duration
+          // over a streamed track's still-growing engine-reported total.
+          durationSecs: reconcileDuration(
+            item?.durationSecs ?? null,
+            p.durationSecs,
+            s.durationSecs,
+          ),
+          paused: p.paused,
+          seekable: p.seekable,
+          buffering: p.buffering,
+        };
+      });
     },
 
     setPlaying: (playing) => {

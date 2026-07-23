@@ -252,6 +252,16 @@ fn install_binary(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, Strin
     Ok(dest)
 }
 
+/// The file-name part of a URL: the last path segment, with any query string
+/// or fragment stripped. GitHub asset downloads resolve to S3 URLs whose
+/// signed query string runs to hundreds of characters — naming a file after
+/// the raw URL tail overflows the OS filename limit (os error 36 on Linux).
+fn url_file_name(url: &str) -> Option<&str> {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    let name = path.rsplit('/').next().unwrap_or_default();
+    (!name.is_empty()).then_some(name)
+}
+
 /// Depth-first search for a file named `name` under `root` (the ffmpeg
 /// archives nest their binaries under a versioned `…/bin/` folder whose name
 /// we'd rather not hardcode).
@@ -344,24 +354,27 @@ fn install_ytdlp(app: &AppHandle) -> Result<(), String> {
 /// build, most of which the app has no use for.
 fn install_ffmpeg(app: &AppHandle) -> Result<(), String> {
     let client = client()?;
-    let (bytes, final_url, expected) = match ffmpeg_source() {
+    // The archive's on-disk name comes from the *asset* name, never from the
+    // resolved download URL — GitHub redirects to S3 URLs whose signed query
+    // string would blow past the OS filename limit (os error 36 on Linux).
+    let (bytes, archive_name, expected) = match ffmpeg_source() {
         FfmpegSource::Github { asset } => {
             let sums = fetch_text(&client, &format!("{FFMPEG_BUILDS_LATEST}/checksums.sha256"))?;
             let expected = checksum_for(&sums, asset)
                 .ok_or_else(|| format!("the ffmpeg release checksums don't mention {asset}"))?;
-            let (bytes, url) =
+            let (bytes, _) =
                 download_with_progress(&client, &format!("{FFMPEG_BUILDS_LATEST}/{asset}"), app, "ffmpeg")?;
-            (bytes, url, expected)
+            (bytes, asset.to_string(), expected)
         }
         FfmpegSource::Redirect { url } => {
             let (bytes, final_url) = download_with_progress(&client, url, app, "ffmpeg")?;
             // The checksum lives beside the *versioned* file the redirect
             // resolved to — fetching it via the alias would 404.
             let sums = fetch_text(&client, &format!("{final_url}.sha256"))?;
-            let name = final_url.rsplit('/').next().unwrap_or_default().to_string();
+            let name = url_file_name(&final_url).unwrap_or("ffmpeg.zip").to_string();
             let expected = checksum_for(&sums, &name)
                 .ok_or_else(|| "the ffmpeg download published no readable checksum".to_string())?;
-            (bytes, final_url, expected)
+            (bytes, name, expected)
         }
     };
     verify(app, "ffmpeg", &bytes, &expected)?;
@@ -377,8 +390,7 @@ fn install_ffmpeg(app: &AppHandle) -> Result<(), String> {
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch)
         .map_err(|e| format!("could not create the extraction folder: {e}"))?;
-    let archive_name = final_url.rsplit('/').next().unwrap_or("ffmpeg-archive");
-    let archive = scratch.join(archive_name);
+    let archive = scratch.join(&archive_name);
     std::fs::write(&archive, &bytes).map_err(|e| format!("could not save the archive: {e}"))?;
     extract_archive(&archive, &scratch)?;
 
@@ -566,6 +578,36 @@ mod tests {
                 assert!(url.starts_with("https://ffmpeg.martin-riedl.de/"), "unexpected: {url}");
             }
         }
+    }
+
+    /// GitHub asset downloads resolve to S3 URLs whose signed query string is
+    /// hundreds of characters. Naming the saved archive after the raw URL tail
+    /// overflowed the OS filename limit (os error 36 on Linux) — the query
+    /// string and fragment must never reach the filename.
+    #[test]
+    fn url_file_name_strips_query_and_fragment() {
+        let signed = format!(
+            "https://objects.githubusercontent.com/github-production-release-asset-2e65be/\
+             123456/ffmpeg-master-latest-linux64-gpl.tar.xz?X-Amz-Algorithm=AWS4-HMAC-SHA256\
+             &X-Amz-Credential=creds&X-Amz-Signature={}",
+            "f".repeat(640)
+        );
+        assert_eq!(
+            url_file_name(&signed),
+            Some("ffmpeg-master-latest-linux64-gpl.tar.xz")
+        );
+        assert_eq!(
+            url_file_name("https://host/path/ffmpeg.zip#frag"),
+            Some("ffmpeg.zip")
+        );
+        // Clean versioned URL (martin-riedl shape) still yields its file name.
+        assert_eq!(
+            url_file_name("https://ffmpeg.martin-riedl.de/download/macos/arm64/12345_7.1/ffmpeg.zip"),
+            Some("ffmpeg.zip")
+        );
+        // No usable segment → None, so callers fall back to a fixed name.
+        assert_eq!(url_file_name("https://host/dir/"), None);
+        assert_eq!(url_file_name("https://host/dir/?x=1"), None);
     }
 
     #[test]

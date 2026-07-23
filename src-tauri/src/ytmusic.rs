@@ -157,6 +157,25 @@ impl YtSettings {
     }
 }
 
+/// Where the persisted stream-url cache lives: beside the library cache, in
+/// the same app-data dir `yt_lib_path` is built from (see `lib.rs` setup).
+pub fn url_cache_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    app.path().app_data_dir().ok().map(|d| {
+        let _ = std::fs::create_dir_all(&d);
+        d.join("ytmusic-stream-urls.json")
+    })
+}
+
+/// Write-then-rename, like the library cache: a crash mid-write can't leave a
+/// half-parsed file — and a half-parsed cache is silently ignored anyway.
+pub fn save_url_cache(path: &Path, json: &str) {
+    let tmp = path.with_extension("json.tmp");
+    if std::fs::write(&tmp, json).is_ok() {
+        let _ = std::fs::rename(tmp, path);
+    }
+}
+
 /// Whether `path` sits inside `dir`, used to keep downloads where we expect.
 pub fn is_within(dir: &Path, path: &Path) -> bool {
     match (dir.canonicalize(), path.canonicalize()) {
@@ -234,6 +253,26 @@ mod tests {
         let path = base.join("lib.json");
         std::fs::write(&path, "{ not json").unwrap();
         assert!(YtLibraryCache::new(path).get().is_none());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn save_url_cache_round_trips_via_write_then_rename() {
+        let base = std::env::temp_dir().join(format!("hm-yt-urlcache{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let path = base.join("ytmusic-stream-urls.json");
+
+        save_url_cache(&path, r#"{"version":1,"entries":{}}"#);
+        assert!(path.exists(), "save writes the real path, not the .tmp");
+        assert!(
+            !path.with_extension("json.tmp").exists(),
+            "the tmp file is renamed away, not left behind"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            r#"{"version":1,"entries":{}}"#
+        );
+
         let _ = std::fs::remove_dir_all(&base);
     }
 

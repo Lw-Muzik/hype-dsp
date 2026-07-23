@@ -432,6 +432,40 @@ pub fn run() {
             commands::ytmusic_setup::spawn_auto_update();
             app.manage(hm_ytmusic::YtMusicState::load());
 
+            // Yesterday's stream urls are good for ~6 hours; restoring them
+            // makes relaunch-and-play cost one ~300ms probe instead of a ~5s
+            // yt-dlp resolve. Quarantined until probed — see hm-ytmusic.
+            if let Some(path) = ytmusic::url_cache_path(app.handle()) {
+                if let Ok(json) = std::fs::read_to_string(&path) {
+                    app.state::<hm_ytmusic::YtMusicState>().restore_url_cache(&json);
+                }
+                // Save on a slow heartbeat, only when something changed. The
+                // entries are worth at most ~6h, so losing the tail on a crash
+                // costs one resolve — no need for write-on-every-change. Plain
+                // OS thread + blocking sleep, matching the other periodic
+                // background tasks in this file (media polling, EQ autosave)
+                // rather than an async task.
+                let handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("hm-ytcache-saver".into())
+                    .spawn(move || {
+                        let mut last_saved: u64 = 0;
+                        loop {
+                            std::thread::sleep(Duration::from_secs(60));
+                            let state = handle.state::<hm_ytmusic::YtMusicState>();
+                            let generation = state.url_cache_generation();
+                            if generation == last_saved {
+                                continue;
+                            }
+                            if let Some((g, json)) = state.url_cache_snapshot() {
+                                ytmusic::save_url_cache(&path, &json);
+                                last_saved = g;
+                            }
+                        }
+                    })
+                    .ok();
+            }
+
             let yt_settings_path = app
                 .path()
                 .app_data_dir()
@@ -803,6 +837,15 @@ pub fn run() {
             // moment nothing is playing and the tap is already going away.
             if let tauri::RunEvent::ExitRequested { .. } = &_event {
                 updater::install_on_exit(_app);
+
+                // Flush the stream-url cache: the 60s heartbeat may owe a write.
+                if let Some(path) = ytmusic::url_cache_path(_app) {
+                    if let Some((_, json)) =
+                        _app.state::<hm_ytmusic::YtMusicState>().url_cache_snapshot()
+                    {
+                        ytmusic::save_url_cache(&path, &json);
+                    }
+                }
             }
 
             // macOS delivers file-manager opens (and "Open With") as an Apple

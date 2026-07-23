@@ -173,6 +173,18 @@ pub struct YtMusicState {
     /// entry is only useful while live, so what makes one stale is also what
     /// makes it collectable and no separate eviction policy is needed.
     resolved: RwLock<std::collections::HashMap<String, ytdlp::StreamTarget>>,
+    /// Disk-restored urls, quarantined until probed.
+    ///
+    /// A restart often means a network change, and googlevideo urls are
+    /// IP-bound — so nothing in here may be served without one cheap probe
+    /// first (see `live_or_probed_target`). Same-session entries never pass
+    /// through this map and keep their unprobed ~µs hits.
+    restored: TargetCache,
+    /// Bumped whenever what a snapshot would contain changes — `remember`, and
+    /// a probe dropping a restored entry. The disk saver polls it to skip
+    /// writes when nothing moved. Restore doesn't bump: that state came FROM
+    /// the file.
+    cache_generation: std::sync::atomic::AtomicU64,
     /// Resolved *video* urls, on the same terms as [`Self::resolved`].
     ///
     /// A separate map because the same video id resolves to two different urls —
@@ -241,6 +253,16 @@ fn remember_in(cache: &TargetCache, video_id: &str, target: &ytdlp::StreamTarget
     cache.insert(video_id.to_string(), target.clone());
 }
 
+/// On-disk shape of the persisted url cache. Versioned so a future
+/// `StreamTarget` change can't half-parse an old file into wrong urls.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct UrlCacheFile {
+    version: u32,
+    entries: std::collections::HashMap<String, ytdlp::StreamTarget>,
+}
+
+const URL_CACHE_VERSION: u32 = 1;
+
 impl Default for YtMusicState {
     fn default() -> Self {
         Self::new()
@@ -254,6 +276,8 @@ impl YtMusicState {
             cookies: RwLock::new(None),
             session_first: std::sync::atomic::AtomicBool::new(true),
             resolved: RwLock::new(std::collections::HashMap::new()),
+            restored: RwLock::new(std::collections::HashMap::new()),
+            cache_generation: std::sync::atomic::AtomicU64::new(0),
             resolved_video: RwLock::new(std::collections::HashMap::new()),
             yt_dlp_bin: RwLock::new(None),
         }
@@ -699,6 +723,65 @@ impl YtMusicState {
     /// Files a resolved url under its video id, and drops whatever has expired.
     fn remember_target(&self, video_id: &str, target: &ytdlp::StreamTarget) {
         remember_in(&self.resolved, video_id, target);
+        self.cache_generation
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// The audio url cache as a JSON envelope, with its generation — or `None`
+    /// when there is nothing fresh worth writing.
+    ///
+    /// The union of the live map and the not-yet-probed restored map (live
+    /// wins): snapshotting only the live map would shrink the file to what got
+    /// played this session, throwing away restored entries that are still
+    /// perfectly probeable tomorrow.
+    pub fn url_cache_snapshot(&self) -> Option<(u64, String)> {
+        let now = now_secs()?;
+        let mut entries: std::collections::HashMap<String, ytdlp::StreamTarget> = self
+            .restored
+            .read()
+            .ok()?
+            .iter()
+            .filter(|(_, t)| is_fresh(t, now))
+            .map(|(k, t)| (k.clone(), t.clone()))
+            .collect();
+        for (k, t) in self.resolved.read().ok()?.iter() {
+            if is_fresh(t, now) {
+                entries.insert(k.clone(), t.clone());
+            }
+        }
+        if entries.is_empty() {
+            return None;
+        }
+        let file = UrlCacheFile { version: URL_CACHE_VERSION, entries };
+        let generation = self.url_cache_generation();
+        serde_json::to_string(&file).ok().map(|json| (generation, json))
+    }
+
+    /// Load a previous session's url cache into quarantine.
+    ///
+    /// Tolerant by design — a cache that can't be read is a cache that doesn't
+    /// exist, never an error: garbage, an old version, or a clock problem all
+    /// just mean starting cold.
+    pub fn restore_url_cache(&self, json: &str) {
+        let Ok(file) = serde_json::from_str::<UrlCacheFile>(json) else {
+            return;
+        };
+        if file.version != URL_CACHE_VERSION {
+            return;
+        }
+        let Some(now) = now_secs() else { return };
+        let Ok(mut restored) = self.restored.write() else {
+            return;
+        };
+        for (id, t) in file.entries {
+            if is_fresh(&t, now) {
+                restored.insert(id, t);
+            }
+        }
+    }
+
+    pub fn url_cache_generation(&self) -> u64 {
+        self.cache_generation.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Resolves ahead of time, so the next track's url is ready before it plays.
@@ -2241,5 +2324,88 @@ mod tests {
         eprintln!("radio page 2: {} tracks", second.tracks.len());
         assert!(!second.tracks.is_empty(), "the continuation should keep the radio going");
         assert!(second.continuation.is_some(), "radio should always offer another page");
+    }
+
+    // NOTE: named `fresh_in` rather than the brief's `target` — this module
+    // already has a `target(expires_at: Option<u64>)` fixture (used above,
+    // ~line 1248) and Rust free functions can't be overloaded by signature.
+    fn fresh_in(expires_in: i64) -> ytdlp::StreamTarget {
+        let now = now_secs().unwrap() as i64;
+        ytdlp::StreamTarget {
+            url: "https://cdn.example/x".into(),
+            headers: vec![("User-Agent".into(), "hm".into())],
+            ext: "m4a".into(),
+            format_id: "140".into(),
+            abr_kbps: Some(129),
+            expires_at: (now + expires_in > 0).then(|| (now + expires_in) as u64),
+        }
+    }
+
+    /// The whole point of persistence: what one session remembers, the next
+    /// session can restore — and still-fresh means fresh on BOTH trips.
+    #[test]
+    fn url_cache_round_trips_fresh_entries() {
+        let a = YtMusicState::new();
+        a.remember_target("vid1", &fresh_in(6 * 3600));
+        a.remember_target("vid2", &fresh_in(60)); // inside EXPIRY_MARGIN — not fresh
+        let (_, json) = a.url_cache_snapshot().expect("one fresh entry to save");
+
+        let b = YtMusicState::new();
+        b.restore_url_cache(&json);
+        let restored = b.restored.read().unwrap();
+        assert!(restored.contains_key("vid1"), "the fresh entry must round-trip");
+        assert!(!restored.contains_key("vid2"), "a near-expiry entry is not worth restoring");
+        // Restored entries are quarantined, not live: the play path must probe
+        // them first (IP-bound urls), so cached_target must NOT serve them.
+        drop(restored);
+        assert!(b.cached_target("vid1").is_none());
+    }
+
+    #[test]
+    fn snapshot_is_the_union_of_live_and_restored() {
+        let a = YtMusicState::new();
+        a.remember_target("live1", &fresh_in(6 * 3600));
+        let (_, json) = a.url_cache_snapshot().unwrap();
+
+        let b = YtMusicState::new();
+        b.restore_url_cache(&json);
+        b.remember_target("live2", &fresh_in(6 * 3600));
+        let (_, json2) = b.url_cache_snapshot().unwrap();
+        let envelope: serde_json::Value = serde_json::from_str(&json2).unwrap();
+        let entries = envelope.pointer("/entries").unwrap().as_object().unwrap();
+        // Without the union, every relaunch would shrink the file to only
+        // what got played that session.
+        assert!(entries.contains_key("live1"), "an unprobed restored entry must persist");
+        assert!(entries.contains_key("live2"));
+    }
+
+    #[test]
+    fn garbage_and_wrong_versions_are_ignored_not_fatal() {
+        let s = YtMusicState::new();
+        s.restore_url_cache("not json at all");
+        s.restore_url_cache("{\"version\": 99, \"entries\": {}}");
+        s.restore_url_cache("{}");
+        assert!(s.restored.read().unwrap().is_empty());
+        assert!(s.url_cache_snapshot().is_none(), "nothing restorable means nothing to save");
+    }
+
+    /// The saver polls the generation to skip no-op writes.
+    #[test]
+    fn generation_moves_on_remember_not_on_read_or_restore() {
+        let s = YtMusicState::new();
+        let g0 = s.url_cache_generation();
+        let _ = s.cached_target("vid1");
+        assert_eq!(s.url_cache_generation(), g0, "a read must not dirty the cache");
+        s.remember_target("vid1", &fresh_in(6 * 3600));
+        let g1 = s.url_cache_generation();
+        assert!(g1 > g0, "a write must dirty the cache");
+        let (_, json) = s.url_cache_snapshot().unwrap();
+        let t = YtMusicState::new();
+        t.restore_url_cache(&json);
+        assert_eq!(
+            t.url_cache_generation(),
+            0,
+            "restoring what came FROM the file must not schedule a rewrite of it"
+        );
     }
 }

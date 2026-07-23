@@ -112,7 +112,7 @@ impl std::error::Error for YtDlpError {}
 /// die early if the network changes underneath it. A caller that holds these
 /// needs a way to drop one that fails before its time, or a transient failure
 /// becomes a permanent one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StreamTarget {
     pub url: String,
     pub headers: Vec<(String, String)>,

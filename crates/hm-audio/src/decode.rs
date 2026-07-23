@@ -231,6 +231,109 @@ pub fn resample_stereo(samples: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32
     out
 }
 
+/// Chunk-at-a-time [`resample_stereo`]: same arithmetic, same output,
+/// bit-for-bit, no matter where the input is split.
+///
+/// Works on GLOBAL indices — the next output frame `i` and the total source
+/// frames seen — so a chunk boundary never becomes an interpolation boundary.
+/// Emits output frame `i` only once source frame `floor(i/ratio) + 1` exists
+/// (interpolation needs its right-hand neighbour); `finish()` flushes the
+/// tail, where the reference clamps the neighbour to the last frame.
+pub struct StreamResampler {
+    src_rate: u32,
+    dst_rate: u32,
+    /// Interleaved source frames not yet consumed (the pending tail).
+    buf: Vec<f32>,
+    /// Source frames dropped from the front of `buf` so far (global offset).
+    consumed: usize,
+    /// Next output frame index (global).
+    next_out: usize,
+}
+
+impl StreamResampler {
+    pub fn new(src_rate: u32, dst_rate: u32) -> Self {
+        Self {
+            src_rate,
+            dst_rate,
+            buf: Vec::new(),
+            consumed: 0,
+            next_out: 0,
+        }
+    }
+
+    /// Feed source-rate frames; get back every output frame now computable.
+    pub fn push(&mut self, chunk: &[f32]) -> Vec<f32> {
+        if self.src_rate == self.dst_rate {
+            return chunk.to_vec();
+        }
+        self.buf.extend_from_slice(chunk);
+        self.emit(false)
+    }
+
+    /// The stream is over: emit the tail with the reference's end-clamping.
+    pub fn finish(&mut self) -> Vec<f32> {
+        if self.src_rate == self.dst_rate {
+            return Vec::new();
+        }
+        self.emit(true)
+    }
+
+    fn emit(&mut self, at_end: bool) -> Vec<f32> {
+        let ratio = self.dst_rate as f64 / self.src_rate as f64;
+        let avail = self.consumed + self.buf.len() / 2; // global frames present
+        // The reference bounds output by `round(N_final * ratio)`, computed
+        // against the *final* total frame count `N_final`. Mid-stream we
+        // only know `avail` (frames seen so far, `avail <= N_final`), but
+        // `round(N * ratio)` is non-decreasing in `N`, so bounding eagerly
+        // by `round(avail * ratio)` is always <= the true final bound —
+        // never emits a frame the reference wouldn't also emit, for ANY
+        // ratio (this is what breaks for ratio < 0.5 without the bound: a
+        // neighbour can exist for an output index the reference will never
+        // reach). At `finish()`, `avail == N_final`, so this becomes exactly
+        // the reference's own `out_frames`.
+        let out_end = ((avail as f64) * ratio).round() as usize;
+        let last = avail.saturating_sub(1);
+        let mut out = Vec::new();
+        while self.next_out < out_end {
+            let src_pos = self.next_out as f64 / ratio;
+            let idx = src_pos.floor() as usize;
+            // Mid-stream we must not clamp: wait for the neighbour instead.
+            if !at_end && idx + 1 >= avail {
+                break;
+            }
+            let frac = (src_pos - idx as f64) as f32;
+            let i0 = idx.min(last);
+            let i1 = (idx + 1).min(last);
+            let (Some(a0), Some(a1)) = (self.local(i0), self.local(i1)) else {
+                break;
+            };
+            for ch in 0..2 {
+                let a = a0[ch];
+                let b = a1[ch];
+                out.push(a + (b - a) * frac);
+            }
+            self.next_out += 1;
+        }
+        // Drop source frames no future output frame will read. The earliest
+        // future read is floor(next_out/ratio) — that frame itself becomes
+        // the left neighbour of the next emission, so it must be kept.
+        let keep_from = ((self.next_out as f64 / ratio).floor() as usize).min(avail);
+        if keep_from > self.consumed {
+            let drop_frames = keep_from - self.consumed;
+            self.buf.drain(0..(drop_frames * 2).min(self.buf.len()));
+            self.consumed = keep_from;
+        }
+        out
+    }
+
+    /// Global frame `i` out of the retained buffer, if still present.
+    fn local(&self, i: usize) -> Option<[f32; 2]> {
+        let rel = i.checked_sub(self.consumed)?;
+        let base = rel * 2;
+        (base + 1 < self.buf.len()).then(|| [self.buf[base], self.buf[base + 1]])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,5 +374,112 @@ mod tests {
         assert!((decoded.samples[1] + 0.5).abs() < 0.02);
         assert!(probe_duration(&path).unwrap() > 0.0);
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Chunked resampling must be indistinguishable from one-shot: same
+    /// arithmetic, same output, regardless of where the input was split.
+    fn assert_chunked_matches(input: &[f32], src: u32, dst: u32, splits: &[usize]) {
+        let reference = resample_stereo(input, src, dst);
+        let mut r = StreamResampler::new(src, dst);
+        let mut out = Vec::new();
+        let mut at = 0;
+        for &n in splits {
+            let end = (at + n * 2).min(input.len());
+            out.extend(r.push(&input[at..end]));
+            at = end;
+        }
+        out.extend(r.push(&input[at..]));
+        out.extend(r.finish());
+        assert_eq!(out.len(), reference.len(), "same frame count");
+        assert!(
+            out.iter().zip(&reference).all(|(a, b)| a == b),
+            "chunked output must be bit-identical to the one-shot reference"
+        );
+    }
+
+    fn ramp(frames: usize) -> Vec<f32> {
+        (0..frames * 2).map(|i| i as f32 / 100.0).collect()
+    }
+
+    #[test]
+    fn chunked_resample_matches_one_shot_upsampling() {
+        assert_chunked_matches(&ramp(1000), 44_100, 48_000, &[1, 7, 100, 250]);
+    }
+
+    #[test]
+    fn chunked_resample_matches_one_shot_downsampling() {
+        assert_chunked_matches(&ramp(1000), 48_000, 44_100, &[3, 500, 1]);
+    }
+
+    #[test]
+    fn chunked_resample_is_identity_at_same_rate() {
+        assert_chunked_matches(&ramp(64), 48_000, 48_000, &[10, 10]);
+    }
+
+    #[test]
+    fn one_frame_chunks_still_match() {
+        assert_chunked_matches(&ramp(48), 44_100, 48_000, &[1; 40]);
+    }
+
+    #[test]
+    fn chunked_resample_handles_empty_input() {
+        assert_chunked_matches(&[], 44_100, 48_000, &[]);
+    }
+
+    #[test]
+    fn chunked_resample_handles_zero_length_pushes() {
+        // Zero-length `push` calls (no frames available yet, or a decoder
+        // hiccup) must be harmless no-ops, not corrupt the stream.
+        assert_chunked_matches(&ramp(200), 44_100, 48_000, &[0, 5, 0, 0, 50, 0]);
+    }
+
+    #[test]
+    fn chunked_resample_single_frame_input() {
+        assert_chunked_matches(&ramp(1), 44_100, 48_000, &[1]);
+    }
+
+    // Regression coverage for a critical bug found in review: for ratio <
+    // 0.5 (heavy downsampling), a right-hand interpolation neighbour can
+    // exist mid-stream for an output index the one-shot reference — bounded
+    // by `round(N_final * ratio)` — will NEVER emit. Gating solely on
+    // "neighbour exists" (no `avail`-bound) over-emits in that regime;
+    // `finish()` cannot retract already-returned frames. These ratios are
+    // real for this pipeline once hi-res (96k/192k) source files are decoded
+    // down to a 44.1k/48k device rate.
+    #[test]
+    fn chunked_resample_matches_one_shot_heavy_downsampling() {
+        assert_chunked_matches(&ramp(1200), 96_000, 44_100, &[1, 1, 1, 5, 250, 1, 1, 900]);
+    }
+
+    #[test]
+    fn chunked_resample_matches_one_shot_extreme_downsampling() {
+        assert_chunked_matches(&ramp(1200), 192_000, 44_100, &[1, 3, 400, 1, 1, 1]);
+    }
+
+    #[test]
+    fn chunked_resample_matches_at_the_half_ratio_boundary() {
+        // ratio == 0.5 exactly: the boundary between the regime the original
+        // neighbour-only gate handled correctly and the regime it broke.
+        assert_chunked_matches(&ramp(1000), 96_000, 48_000, &[1, 1, 1, 100, 400, 1]);
+    }
+
+    #[test]
+    fn chunked_resample_length_sweep_matches_one_shot() {
+        // Sweep every frame count 1..=300 at a heavy-downsampling ratio,
+        // single monolithic push (chunking isn't the variable here — the
+        // off-by-one is in the emission bound itself, so this must fail on
+        // the buggy version even with a single `push` + `finish`).
+        for n in 1..=300usize {
+            let input = ramp(n);
+            let reference = resample_stereo(&input, 96_000, 44_100);
+            let mut r = StreamResampler::new(96_000, 44_100);
+            let mut out = r.push(&input);
+            out.extend(r.finish());
+            assert_eq!(out.len(), reference.len(), "frame count mismatch at N={n}");
+            assert!(
+                out.iter().zip(&reference).all(|(a, b)| a == b),
+                "content mismatch at N={n}"
+            );
+        }
     }
 }

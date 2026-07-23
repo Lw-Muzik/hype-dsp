@@ -180,10 +180,10 @@ pub struct YtMusicState {
     /// first (see `live_or_probed_target`). Same-session entries never pass
     /// through this map and keep their unprobed ~µs hits.
     restored: TargetCache,
-    /// Bumped whenever what a snapshot would contain changes — `remember`, and
-    /// a probe dropping a restored entry. The disk saver polls it to skip
-    /// writes when nothing moved. Restore doesn't bump: that state came FROM
-    /// the file.
+    /// Bumped whenever what a snapshot would contain changes — `remember_target`,
+    /// a probe dropping a restored entry, and `forget()` (a dead url must leave
+    /// the on-disk snapshot too). The disk saver polls it to skip writes when
+    /// nothing moved. Restore doesn't bump: that state came FROM the file.
     cache_generation: std::sync::atomic::AtomicU64,
     /// Resolved *video* urls, on the same terms as [`Self::resolved`].
     ///
@@ -787,6 +787,10 @@ impl YtMusicState {
     /// played this session, throwing away restored entries that are still
     /// perfectly probeable tomorrow.
     pub fn url_cache_snapshot(&self) -> Option<(u64, String)> {
+        // Read gen before content: a racing write between this and the map
+        // reads below just makes the saver run once more (a spare write),
+        // rather than mark an unsaved entry as saved.
+        let generation = self.url_cache_generation();
         let now = now_secs()?;
         let mut entries: std::collections::HashMap<String, ytdlp::StreamTarget> = self
             .restored
@@ -805,7 +809,6 @@ impl YtMusicState {
             return None;
         }
         let file = UrlCacheFile { version: URL_CACHE_VERSION, entries };
-        let generation = self.url_cache_generation();
         serde_json::to_string(&file).ok().map(|json| (generation, json))
     }
 

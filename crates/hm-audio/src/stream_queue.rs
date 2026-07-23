@@ -61,10 +61,12 @@ type DecodedTrack = (usize, Vec<f32>, TrackMeta);
 /// How many times the worker tries to fetch + decode one track before giving up
 /// and skipping it. Transient failures — a connection dropped while the stream
 /// sat paused, a flaky cloud link, a phone that closed its keep-alive, a 5xx —
-/// are retried on a fresh connection; a permanent failure (404/403, an
-/// undecodable body) is skipped at once without burning the retry budget. This
-/// is what stops one stale connection from silently nuking a good track (which
-/// looked like the queue "jumping" or "stopping" on its own).
+/// are retried; reqwest/hyper evicts an errored connection from the pool, so
+/// when the old connection was the problem, the retry dials fresh without this
+/// code needing to force it. A permanent failure (404/403, an undecodable
+/// body) is skipped at once without burning the retry budget. This is what
+/// stops one stale connection from silently nuking a good track (which looked
+/// like the queue "jumping" or "stopping" on its own).
 const MAX_ATTEMPTS: u32 = 4;
 
 /// Total time budget for one lookahead download (`fetch_once`'s `req.send()`),
@@ -77,15 +79,6 @@ const MAX_ATTEMPTS: u32 = 4;
 /// pooled connection, common after the stream has sat paused a while) fails
 /// fast and is retried rather than stalling the queue on a long hang.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(90);
-
-/// The shared blocking client (see [`streaming::shared_client`]), reused
-/// across tracks and across this module and `streaming.rs` alike — the whole
-/// point being one connection pool that spans consecutive tracks instead of
-/// a fresh TLS handshake per stream. No longer fallible to build here: the
-/// shared client is only ever built once per process, in `streaming.rs`.
-fn new_client() -> reqwest::blocking::Client {
-    crate::streaming::shared_client().clone()
-}
 
 /// A downloaded track body spooled to a temp file rather than held in RAM (a
 /// long lossless track can be hundreds of MB compressed — and the old
@@ -297,12 +290,12 @@ impl StreamQueueSource {
             std::thread::Builder::new()
                 .name("hm-stream-queue".into())
                 .spawn(move || {
-                    // The process-wide shared client (see `new_client` /
+                    // The process-wide shared client (see
                     // `streaming::shared_client`) — reused across tracks, and
                     // across this queue and the progressive-playback path
                     // alike, so consecutive tracks reuse the same connection
                     // pool instead of a fresh TLS handshake each time.
-                    let mut client = new_client();
+                    let client = crate::streaming::shared_client().clone();
                     let mut next = start;
                     while let Ok(want) = want_rx.recv() {
                         while next <= want && next < count {
@@ -318,21 +311,13 @@ impl StreamQueueSource {
                             // first attempt would make every provider that can
                             // cache pay to resolve anyway, and for YT Music
                             // resolving is a yt-dlp process start measured in
-                            // seconds — the gap between two tracks. (`client` is
-                            // re-fetched from `new_client()` on each retry too,
-                            // though since it's the process-wide shared client
-                            // that's a no-op — reqwest's own pool already drops
-                            // a connection that just errored, so the next send
-                            // gets a live one without this needing to force it.)
+                            // seconds — the gap between two tracks.
                             let track = load_with_retry(
                                 idx,
                                 &running,
                                 Duration::from_millis(120),
                                 |n| match resolver(idx, n > 1) {
-                                    Err(_) => {
-                                        client = new_client();
-                                        LoadAttempt::Retry
-                                    }
+                                    Err(_) => LoadAttempt::Retry,
                                     Ok(target) => match fetch_once(&client, &target) {
                                         // Decode straight from the spool file
                                         // (deleted when `spool` drops, on every
@@ -356,10 +341,7 @@ impl StreamQueueSource {
                                             }
                                         }
                                         FetchOutcome::Skip => LoadAttempt::Skip,
-                                        FetchOutcome::Retry => {
-                                            client = new_client();
-                                            LoadAttempt::Retry
-                                        }
+                                        FetchOutcome::Retry => LoadAttempt::Retry,
                                     },
                                 },
                             );

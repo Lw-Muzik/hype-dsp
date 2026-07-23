@@ -42,12 +42,13 @@ import {
   playerStop,
   profileClear,
   ytmusicPlay,
-  ytmusicPrefetch,
+  ytmusicPrefetchBatch,
   ytmusicRadio,
   ytmusicRadioContinue,
   ytmusicVideoPrefetch,
 } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
+import { cancelWarmups, scheduleWarmup } from "@/stores/warmup";
 import { dedupeRadioTracks, radioStep, type RadioSession } from "@/stores/radio";
 import { BAND_COUNT } from "@/lib/types";
 import {
@@ -457,6 +458,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
   let networkState: NetworkState = loadNetworkMode();
   let lastRebuffer = 0;
 
+  /** How long after a track starts before optional prefetches may spawn. */
+  const WARMUP_DELAY_MS = 3000;
+  /** How many upcoming tracks to pre-resolve (sequentially, in the backend). */
+  const WARMUP_DEPTH = 3;
+
   const pushEq = (eq: EngineState["eq"]) => {
     void engineSetEq(eq.bands, eq.preGain, eq.enabled).catch(() => {});
   };
@@ -579,31 +585,47 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         }
         break;
       case "ytmusic":
-        // Warm this track's *video* url the moment it starts, so switching to
-        // the Video tab is instant — including the first video of a session —
-        // rather than a ~5s yt-dlp spawn on the click. It's a background resolve
-        // per video-capable track; tracks run minutes, so the extra call is
-        // occasional, never on the audio's critical path, and fire-and-forget.
-        // (The zero-waste version — grab the video url in the same yt-dlp call
-        // that resolves the audio — would halve the resolves but has to modify
-        // the audio hot path, so it's deliberately left for when that path can
-        // be exercised end to end.) Covers both the queue and single-track paths.
         if (item.ytTrack!.hasVideo) {
-          void ytmusicVideoPrefetch(item.ytTrack!.videoId).catch(() => {});
+          // Deferred: the video url matters when the Video tab opens, not in
+          // the seconds the audio resolve is fighting for the network.
+          const vid = item.ytTrack!.videoId;
+          scheduleWarmup("video", WARMUP_DELAY_MS, () => {
+            void ytmusicVideoPrefetch(vid).catch(() => {});
+          });
         }
         if (useYtMusicQueue) {
           const items = order.map((i) => ({ videoId: queue[i]!.ytTrack!.videoId }));
           void playerPlayYtmusicQueue(items, pos).catch(onError);
+          // Warm the next few tracks once this one is safely playing, so a
+          // skip lands on a resolved url instead of a ~5s yt-dlp spawn.
+          const ahead = order
+            .slice(pos + 1, pos + 1 + WARMUP_DEPTH)
+            .map((i) => queue[i]?.ytTrack?.videoId)
+            .filter((v): v is string => typeof v === "string");
+          if (ahead.length > 0) {
+            scheduleWarmup("batch", WARMUP_DELAY_MS, () => {
+              void ytmusicPrefetchBatch(ahead).catch(() => {});
+            });
+          }
         } else {
           void ytmusicPlay(item.ytTrack!.videoId, item.durationSecs).catch(onError);
-          // Resolve the next track while this one plays. Without it the whole
-          // ~5s yt-dlp resolve happens after the current track ends, because
-          // that's the first moment anything asks for the next url — and every
-          // second of it is silence. The gapless queue has its own lookahead;
-          // this path had none.
-          const nextPos = stepOrder(pos, order.length, repeat, 1);
-          const next = nextPos === null ? undefined : queue[order[nextPos]!];
-          if (next?.ytTrack) void ytmusicPrefetch(next.ytTrack.videoId).catch(() => {});
+          // Resolve the next tracks while this one plays — deferred so the
+          // spawns never contend with this track's own resolve (which is
+          // what the listener is actually waiting on).
+          const aheadSingle: string[] = [];
+          let p = pos;
+          for (let n = 0; n < WARMUP_DEPTH; n++) {
+            const np = stepOrder(p, order.length, repeat, 1);
+            if (np === null) break;
+            const vid = queue[order[np]!]?.ytTrack?.videoId;
+            if (vid) aheadSingle.push(vid);
+            p = np;
+          }
+          if (aheadSingle.length > 0) {
+            scheduleWarmup("batch", WARMUP_DELAY_MS, () => {
+              void ytmusicPrefetchBatch(aheadSingle).catch(() => {});
+            });
+          }
         }
         break;
       case "radio":
@@ -762,7 +784,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
    *  Called by every path that replaces the queue — not just
    *  `setQueueAndPlay` — so a session from before can't survive into an
    *  unrelated queue (e.g. switching to an internet radio station or an
-   *  incoming cast while a YT Music radio session was live). */
+   *  incoming cast while a YT Music radio session was live). Pending warmups
+   *  die with the session too: nothing from the old queue is worth warming,
+   *  and "radio-batch" in particular is never re-scheduled by `startPlayback`
+   *  (unlike "video"/"batch"), so it would otherwise leak into whatever
+   *  queue replaces this one. */
   const resetRadioSession = () => {
     radioSession = null;
     radioEpoch += 1;
@@ -770,6 +796,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     // A bumped epoch means any in-flight fetch is already condemned — it
     // must not block the new session's own fetch from firing.
     radioFetching = false;
+    cancelWarmups();
   };
 
   /** Extend the live queue in place: the current stream keeps running; the
@@ -812,6 +839,14 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         radioSession = { seedId: step.seedId, continuation: batch.continuation };
         const fresh = dedupeRadioTracks(get().queue, batch.tracks);
         appendQueueItems(fresh.map(radioItem));
+        // Warm the first appended tracks: the queue seam otherwise pays a
+        // full cold resolve the moment playback crosses into the new batch.
+        const warm = fresh.slice(0, WARMUP_DEPTH).map((t) => t.videoId);
+        if (warm.length > 0) {
+          scheduleWarmup("radio-batch", WARMUP_DELAY_MS, () => {
+            void ytmusicPrefetchBatch(warm).catch(() => {});
+          });
+        }
         resumeIfEndedNaturally();
       })
       .catch((e) => console.warn("radio fetch failed:", e))
@@ -1367,6 +1402,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     stop: async () => {
       // An explicit stop must never be resumed by a late radio batch, nor let
       // one repopulate the queue this just emptied out from under it.
+      // (resetRadioSession also cancels any pending warmups.)
       resetRadioSession();
       userStopped = true;
       gaplessQueueRunning = false;

@@ -647,6 +647,25 @@ impl MetaSink {
     }
 }
 
+#[cfg(test)]
+impl MetaSink {
+    /// Build a disconnected `MetaSink` for tests outside this module (a real
+    /// caller gets the read side via [`AudioEngine::track_meta_handle`]) —
+    /// paired here with that same read-side handle, so a test can assert
+    /// what was actually published rather than just that `set` didn't panic.
+    pub(crate) fn for_test() -> (Self, Arc<ArcSwap<TrackMeta>>) {
+        let meta = Arc::new(ArcSwap::from_pointee(TrackMeta::default()));
+        let version = Arc::new(AtomicU64::new(0));
+        (
+            Self {
+                meta: meta.clone(),
+                version,
+            },
+            meta,
+        )
+    }
+}
+
 impl Default for AudioEngine {
     fn default() -> Self {
         Self::new()

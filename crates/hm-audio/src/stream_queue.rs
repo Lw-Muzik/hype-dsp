@@ -58,6 +58,61 @@ pub type StreamResolver = Arc<dyn Fn(usize, bool) -> Result<StreamTarget, String
 /// `(absolute index, decoded interleaved stereo, metadata)` from the worker.
 type DecodedTrack = (usize, Vec<f32>, TrackMeta);
 
+/// The state of one absolute-index track slot in [`StreamQueueSource::tracks`].
+///
+/// Replaces the old `Option<Vec<f32>>` (`None` / `Some(empty)` / `Some(samples)`)
+/// so a track can be *playing* before it's *finished* decoding: `Growing` holds
+/// whatever PCM has arrived so far and keeps accepting more via [`DecodeEvent::Chunk`];
+/// `Done` is the terminal state (a track that failed or was skipped is
+/// `Done(Vec::new())` — silence that's still eligible to advance past, exactly
+/// like the old `Some(empty)`).
+#[derive(Debug)]
+enum Slot {
+    /// Not decoded at all yet — buffer silence, don't advance past it.
+    Empty,
+    /// Partially decoded; more [`DecodeEvent::Chunk`]s may still extend this.
+    Growing(Vec<f32>),
+    /// Fully decoded (or permanently failed/empty) — safe to advance past once
+    /// the cursor reaches its end.
+    Done(Vec<f32>),
+}
+
+/// One update from the decode worker to the read-side [`Slot`] state machine.
+///
+/// Unlike the old whole-track [`DecodedTrack`] message, a track's PCM can now
+/// arrive over several `Chunk`s, letting the current track start playing on
+/// partial data (see [`StreamQueueSource::ready`]) instead of waiting for the
+/// whole file. This task's worker is still interim (see `spawn`'s inner
+/// loop) — it sends one whole-track `Chunk`, same as before; a future task
+/// streams the chunks as they're decoded.
+enum DecodeEvent {
+    /// Tag metadata arrived — apply eagerly so the UI can show it before the
+    /// track is playable.
+    Meta { idx: usize, meta: TrackMeta },
+    /// More decoded PCM for `idx`: `Empty` becomes `Growing`, `Growing` extends.
+    /// A `Chunk` after `Done` is a protocol bug (the worker moved on) — ignored
+    /// in release, `debug_assert`ed in tests/dev builds.
+    Chunk { idx: usize, samples: Vec<f32> },
+    /// No more PCM is coming for `idx` — `Growing` becomes `Done`, and an
+    /// `Empty` slot (nothing ever arrived) becomes `Done(Vec::new())`, i.e.
+    /// the old "decoded but empty" skip.
+    Done { idx: usize },
+    /// The track failed permanently — `Done(Vec::new())`, same as `Done` on an
+    /// `Empty` slot: a silent, instantly-skippable track.
+    Failed { idx: usize },
+    /// Drop whatever PCM was buffered for `idx` and go back to `Growing(empty)`
+    /// — used when a track needs to be redecoded (e.g. after a stream reset).
+    /// The read side's cursor is untouched, so playback stalls exactly where
+    /// it was rather than restarting from the top.
+    ///
+    /// Not yet sent by this task's (still whole-track) worker — `drain`
+    /// already handles it because a future streaming/resume worker needs to
+    /// send it and the read-side contract belongs here, next to the rest of
+    /// the protocol, not bolted on later.
+    #[allow(dead_code, reason = "wired for a future streaming/resume worker")]
+    Reset { idx: usize },
+}
+
 /// How many times the worker tries to fetch + decode one track before giving up
 /// and skipping it. Transient failures — a connection dropped while the stream
 /// sat paused, a flaky cloud link, a phone that closed its keep-alive, a 5xx —
@@ -237,10 +292,9 @@ fn load_with_retry(
 
 /// A queue of streamed tracks played gaplessly, with optional crossfade.
 pub struct StreamQueueSource {
-    /// Decoded tracks by absolute index. `None` = not decoded yet (buffer
-    /// silence), `Some(empty)` = decoded-but-failed (skip), `Some(samples)` =
-    /// ready. Tracks below the play head are freed back to `None`.
-    tracks: Vec<Option<Vec<f32>>>,
+    /// Decoded tracks by absolute index — see [`Slot`]. Tracks below the play
+    /// head are freed back to `Slot::Empty`.
+    tracks: Vec<Slot>,
     metas: Vec<TrackMeta>,
     count: usize,
     device_rate: u32,
@@ -257,13 +311,28 @@ pub struct StreamQueueSource {
     /// when it's cut. Which is to say the click would land exactly when the
     /// network is slowest — the case crossfade most needs to survive.
     xf_len: usize,
-    rx: Option<Receiver<DecodedTrack>>,
+    rx: Option<Receiver<DecodeEvent>>,
     /// Asks the worker to ensure tracks are decoded up to (and incl.) this index.
     want_tx: Option<Sender<usize>>,
     running: Arc<AtomicBool>,
     meta_sink: Option<MetaSink>,
     current_index: Option<Arc<AtomicUsize>>,
     _worker: Option<JoinHandle<()>>,
+}
+
+/// How long a `Growing` track must have played out on disk before it's
+/// trusted as the *current* track (see [`StreamQueueSource::ready`]) or as a
+/// crossfade's incoming track (see [`StreamQueueSource::growing_head_at_least`]).
+/// One second: short enough that starting playback doesn't feel delayed,
+/// long enough that ordinary jitter in a still-downloading track doesn't
+/// immediately underrun into audible silence right after it starts.
+const START_FRAMES_SECS: f32 = 1.0;
+
+/// [`START_FRAMES_SECS`] in frames at the device's sample rate `rate` — the
+/// rate everything in `tracks` is already resampled to, so this doesn't need
+/// to know a track's own original rate.
+fn start_frames(rate: u32) -> usize {
+    (rate as f32 * START_FRAMES_SECS).round() as usize
 }
 
 impl StreamQueueSource {
@@ -281,7 +350,7 @@ impl StreamQueueSource {
         current_index: Option<Arc<AtomicUsize>>,
     ) -> Self {
         let start = start.min(count.saturating_sub(1));
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel::<DecodeEvent>();
         let (want_tx, want_rx) = mpsc::channel::<usize>();
         let running = Arc::new(AtomicBool::new(true));
 
@@ -312,7 +381,7 @@ impl StreamQueueSource {
                             // cache pay to resolve anyway, and for YT Music
                             // resolving is a yt-dlp process start measured in
                             // seconds — the gap between two tracks.
-                            let track = load_with_retry(
+                            let (_, samples, meta) = load_with_retry(
                                 idx,
                                 &running,
                                 Duration::from_millis(120),
@@ -345,7 +414,21 @@ impl StreamQueueSource {
                                     },
                                 },
                             );
-                            if tx.send(track).is_err() {
+                            // Interim: still whole-track (one `Chunk` carrying
+                            // everything `load_with_retry` returned) — a future
+                            // task streams these as the decoder produces them.
+                            // An empty result is `load_with_retry`'s uniform
+                            // spelling of "gave up" (permanent `Skip`, retries
+                            // exhausted, or a stop request), so it maps to
+                            // `Failed` rather than a zero-length `Chunk`+`Done`.
+                            let sent = if samples.is_empty() {
+                                tx.send(DecodeEvent::Failed { idx })
+                            } else {
+                                tx.send(DecodeEvent::Meta { idx, meta })
+                                    .and_then(|()| tx.send(DecodeEvent::Chunk { idx, samples }))
+                                    .and_then(|()| tx.send(DecodeEvent::Done { idx }))
+                            };
+                            if sent.is_err() {
                                 return;
                             }
                             next += 1;
@@ -356,7 +439,7 @@ impl StreamQueueSource {
         };
 
         let mut tracks = Vec::with_capacity(count);
-        tracks.resize_with(count, || None);
+        tracks.resize_with(count, || Slot::Empty);
         let metas = vec![TrackMeta::default(); count];
 
         // Prime the current track + one lookahead.
@@ -381,20 +464,43 @@ impl StreamQueueSource {
         }
     }
 
+    /// Whether track `i` can become the *current* playing track: a `Done`
+    /// track always can (even empty — that's the failed/skip case, eligible
+    /// to advance straight past); a `Growing` one only once it's buffered
+    /// [`start_frames`] worth, so playback doesn't start only to immediately
+    /// underrun on ordinary download jitter; `Empty` never can.
     fn ready(&self, i: usize) -> bool {
-        self.tracks.get(i).is_some_and(|t| t.is_some())
+        match self.tracks.get(i) {
+            Some(Slot::Done(_)) => true,
+            Some(Slot::Growing(s)) => s.len() / 2 >= start_frames(self.device_rate),
+            _ => false,
+        }
+    }
+
+    /// Whether track `i` is fully decoded (or a terminal failure/skip) — the
+    /// only state from which a boundary/crossfade may advance *past* it.
+    fn done(&self, i: usize) -> bool {
+        matches!(self.tracks.get(i), Some(Slot::Done(_)))
+    }
+
+    /// Whether `Growing` track `i` already has at least `frames` buffered —
+    /// enough to trust a crossfade into it even before it's `Done`.
+    fn growing_head_at_least(&self, i: usize, frames: usize) -> bool {
+        matches!(self.tracks.get(i), Some(Slot::Growing(s)) if s.len() / 2 >= frames)
     }
 
     fn track_len(&self, i: usize) -> usize {
-        self.tracks
-            .get(i)
-            .and_then(|t| t.as_ref())
-            .map_or(0, |t| t.len() / 2)
+        match self.tracks.get(i) {
+            Some(Slot::Growing(s) | Slot::Done(s)) => s.len() / 2,
+            _ => 0,
+        }
     }
 
     fn frame(&self, i: usize, f: usize) -> (f32, f32) {
-        match self.tracks.get(i).and_then(|t| t.as_ref()) {
-            Some(t) if f * 2 + 1 < t.len() => (t[f * 2], t[f * 2 + 1]),
+        match self.tracks.get(i) {
+            Some(Slot::Growing(t) | Slot::Done(t)) if f * 2 + 1 < t.len() => {
+                (t[f * 2], t[f * 2 + 1])
+            }
             _ => (0.0, 0.0),
         }
     }
@@ -404,13 +510,85 @@ impl StreamQueueSource {
         (secs * self.device_rate as f32).round() as usize
     }
 
-    /// Pull any newly-decoded tracks from the worker into the window.
+    /// Pull any newly-arrived [`DecodeEvent`]s from the worker into the
+    /// window, applying each to the read-side [`Slot`] state machine.
     fn drain(&mut self) {
         if let Some(rx) = &self.rx {
-            while let Ok((idx, samples, meta)) = rx.try_recv() {
-                if idx < self.count {
-                    self.tracks[idx] = Some(samples);
-                    self.metas[idx] = meta;
+            while let Ok(event) = rx.try_recv() {
+                match event {
+                    DecodeEvent::Meta { idx, meta } => {
+                        if idx >= self.count {
+                            continue;
+                        }
+                        self.metas[idx] = meta;
+                        // Apply eagerly, even before the track is playable,
+                        // so an early UI announce (title/art) can land the
+                        // moment tags are known rather than waiting for the
+                        // whole file — the current index is the only one the
+                        // UI is showing right now.
+                        //
+                        // ...except mid-fade (`xf_len > 0`): the crossfade's
+                        // own start already announced the *incoming* track
+                        // (see `signal_index(self.index + 1)` in `read`), so
+                        // re-signalling the outgoing one here would wrong-foot
+                        // the UI back to it until the next real change.
+                        if idx == self.index && self.xf_len == 0 {
+                            self.signal_track();
+                        }
+                    }
+                    DecodeEvent::Chunk { idx, samples } => {
+                        if idx >= self.count {
+                            continue;
+                        }
+                        match &mut self.tracks[idx] {
+                            slot @ Slot::Empty => *slot = Slot::Growing(samples),
+                            Slot::Growing(buf) => buf.extend(samples),
+                            Slot::Done(_) => {
+                                // The worker already said `Done` for this
+                                // index — a further `Chunk` means it kept
+                                // decoding past its own end-of-track signal,
+                                // which is a bug in the worker, not something
+                                // the read side should ever see live.
+                                debug_assert!(
+                                    false,
+                                    "Chunk for idx {idx} after Done — worker protocol bug"
+                                );
+                            }
+                        }
+                    }
+                    DecodeEvent::Done { idx } => {
+                        if idx >= self.count {
+                            continue;
+                        }
+                        let prior = std::mem::replace(&mut self.tracks[idx], Slot::Empty);
+                        self.tracks[idx] = match prior {
+                            Slot::Growing(s) | Slot::Done(s) => Slot::Done(s),
+                            Slot::Empty => Slot::Done(Vec::new()),
+                        };
+                    }
+                    DecodeEvent::Failed { idx } => {
+                        if idx < self.count {
+                            self.tracks[idx] = Slot::Done(Vec::new());
+                        }
+                    }
+                    DecodeEvent::Reset { idx } => {
+                        if idx < self.count {
+                            self.tracks[idx] = Slot::Growing(Vec::new());
+                        }
+                        // A reset touching either side of an in-progress
+                        // crossfade invalidates the ramp: `xf_len` was latched
+                        // against a current-track length, or an incoming
+                        // track's buffered head, that this reset just erased.
+                        // Left alone, the next frame would resume blending
+                        // against stale positions in tracks that no longer
+                        // hold what they held a moment ago. Kill the ramp —
+                        // the ordinary underrun/deferred-fade paths take over
+                        // from here, exactly as if the fade had never started.
+                        if self.xf_len > 0 && (idx == self.index || idx == self.index + 1) {
+                            self.xf_len = 0;
+                            self.xf_cursor = 0;
+                        }
+                    }
                 }
             }
         }
@@ -424,7 +602,7 @@ impl StreamQueueSource {
         }
         for i in 0..self.index {
             if let Some(slot) = self.tracks.get_mut(i) {
-                *slot = None;
+                *slot = Slot::Empty;
             }
         }
     }
@@ -484,9 +662,32 @@ impl AudioSource for StreamQueueSource {
             }
 
             let cur_len = self.track_len(self.index);
-            let next_ready = self.index + 1 < self.count && self.ready(self.index + 1);
             let xf = self.crossfade_frames();
-            let crossfading = xf > 0 && next_ready && self.cursor + xf >= cur_len;
+            // A crossfade may only start from a *finished* current track: its
+            // length (`cur_len`) has to be the track's real length for
+            // "within `xf` of the end" to mean anything, and a `Growing`
+            // track's buffered-so-far length isn't that (see
+            // `a_crossfade_defers_while_the_current_track_grows`). The next
+            // track is trusted either once it's `Done`, or once it's
+            // `Growing` with at least a full fade's worth already buffered —
+            // otherwise the ramp could run off the end of what's arrived.
+            //
+            // That head also has to clear the *start gate*
+            // (`start_frames`), not just the fade width: fading into a
+            // `Growing` track that immediately fails `ready()` right after
+            // the boundary would cut already-audible sound to silence one
+            // frame later — a worse seam than the deferred fade this whole
+            // mechanism exists to avoid. Trusting only a head that already
+            // satisfies the start gate keeps audibility monotone across the
+            // boundary.
+            let next_trusted = self.index + 1 < self.count
+                && (self.done(self.index + 1)
+                    || self.growing_head_at_least(
+                        self.index + 1,
+                        xf.max(start_frames(self.device_rate)),
+                    ));
+            let crossfading =
+                xf > 0 && self.done(self.index) && next_trusted && self.cursor + xf >= cur_len;
 
             let (l, r) = if crossfading {
                 // Latch the ramp width on the first faded frame: whatever is
@@ -518,11 +719,24 @@ impl AudioSource for StreamQueueSource {
                 let frame = self.frame(self.index, self.cursor);
                 self.cursor += 1;
                 frame
+            } else if !self.done(self.index) {
+                // Underrun: a `Growing` track's cursor has caught up to
+                // everything buffered so far. Hold silence *without*
+                // advancing — more `Chunk`s may still land (see `drain`),
+                // and only `Done` may cross this boundary. `produced` still
+                // counts this frame (below): the stream is buffering, not at
+                // end-of-queue.
+                (0.0, 0.0)
             } else {
                 // Gapless boundary: advance to the next track.
                 self.index += 1;
                 self.cursor = 0;
                 self.xf_len = 0;
+                // A fade must never resume at a stale ramp position — this is
+                // the pre-existing "slider abort" path too (e.g. a seek cut a
+                // crossfade short and landed here without ever reaching the
+                // crossfade branch's own reset of `xf_cursor`).
+                self.xf_cursor = 0;
                 self.advance_window();
                 if self.ready(self.index) {
                     self.signal_track();
@@ -584,13 +798,18 @@ mod tests {
         vec![value; frames * 2]
     }
 
-    /// An eager source over pre-decoded tracks (no worker), for testing the
-    /// gapless/crossfade read logic. `crossfade_frames` maps directly to frames
-    /// here (device_rate = 1).
+    /// An eager source over pre-decoded (fully `Done`) tracks (no worker), for
+    /// testing the gapless/crossfade read logic. `crossfade_frames` maps
+    /// directly to frames here (device_rate = 1).
     fn eager(tracks: Vec<Vec<f32>>, crossfade_frames: usize) -> StreamQueueSource {
-        let count = tracks.len();
+        eager_slots(tracks.into_iter().map(Slot::Done).collect(), crossfade_frames)
+    }
+
+    /// An eager source whose slots are given explicitly (Growing/Done mixes).
+    fn eager_slots(slots: Vec<Slot>, crossfade_frames: usize) -> StreamQueueSource {
+        let count = slots.len();
         StreamQueueSource {
-            tracks: tracks.into_iter().map(Some).collect(),
+            tracks: slots,
             metas: vec![TrackMeta::default(); count],
             count,
             device_rate: 1,
@@ -764,7 +983,7 @@ mod tests {
     fn a_late_lookahead_still_ramps_fully_out() {
         // 100-frame tracks, 40-frame crossfade → the window opens at frame 60.
         let mut src = eager(vec![stereo(1.0, 100), stereo(-1.0, 100)], 40);
-        src.tracks[1] = None; // still decoding
+        src.tracks[1] = Slot::Empty; // still decoding — was `None` under the old `Option<Vec<f32>>`
 
         // Play to frame 80 — 20 frames INTO the window with nothing to fade to.
         let mut out = vec![0.0f32; 160];
@@ -775,7 +994,7 @@ mod tests {
         );
 
         // It lands now, with 20 of the current track's frames left.
-        src.tracks[1] = Some(stereo(-1.0, 100));
+        src.tracks[1] = Slot::Done(stereo(-1.0, 100)); // was `Some(...)`
 
         // Ramp over what's actually left: the last frame before the boundary
         // should be almost entirely the incoming track. Dividing by the full 40
@@ -792,9 +1011,9 @@ mod tests {
 
     #[test]
     fn buffers_silence_while_a_track_is_undecoded() {
-        // Track 0 not yet decoded (None): produce silence but NOT end-of-stream.
+        // Track 0 not yet decoded (Empty): produce silence but NOT end-of-stream.
         let mut src = eager(vec![stereo(0.5, 4)], 0);
-        src.tracks[0] = None;
+        src.tracks[0] = Slot::Empty; // was `None`
         let mut out = vec![0.0f32; 6];
         let produced = src.read(&mut out, 2);
         assert_eq!(produced, 3, "still 'producing' (buffering), not EOF");
@@ -894,5 +1113,322 @@ mod tests {
         assert!(name.starts_with("hm-stream-"), "stays a spool file: {name}");
         assert!(!name.contains('/') && !name.contains(".."), "sanitized: {name}");
         assert_eq!(spool.path.parent(), Some(std::env::temp_dir().as_path()));
+    }
+
+    // --- Slot state machine (fast-load phase 3) -----------------------------
+
+    #[test]
+    fn a_growing_track_below_the_start_gate_buffers_silence() {
+        // 2 frames buffered, but device_rate = 4 puts the start gate at 4
+        // frames — below it, so this must not be allowed to start playing yet.
+        let mut src = eager_slots(vec![Slot::Growing(stereo(0.5, 2))], 0);
+        src.device_rate = 4;
+        let mut out = vec![9.0f32; 6]; // 3 stereo frames, poisoned to catch stray writes
+        let produced = src.read(&mut out, 2);
+        assert_eq!(produced, 3, "still 'producing' (buffering), not EOF");
+        assert!(out.iter().all(|&s| s == 0.0), "silence while below the start gate");
+    }
+
+    #[test]
+    fn a_growing_track_past_the_start_gate_plays() {
+        // 5 frames buffered, device_rate = 4 → the start gate is 4 frames, so
+        // this is clear to start playing even though it's still Growing.
+        let mut src = eager_slots(vec![Slot::Growing(stereo(0.6, 5))], 0);
+        src.device_rate = 4;
+        let mut out = vec![0.0f32; 8]; // 4 stereo frames
+        let produced = src.read(&mut out, 2);
+        assert_eq!(produced, 4);
+        assert!(
+            out.chunks(2).all(|f| f == [0.6, 0.6]),
+            "real samples once past the start gate: {out:?}"
+        );
+    }
+
+    #[test]
+    fn an_underrun_on_a_growing_track_stalls_without_advancing() {
+        let mut src = eager_slots(
+            vec![Slot::Growing(stereo(0.4, 2)), Slot::Done(stereo(0.9, 2))],
+            0,
+        );
+        let mut out = vec![0.0f32; 8]; // 4 frames: 2 real, then 2 past the buffered tail
+        let produced = src.read(&mut out, 2);
+        assert_eq!(produced, 4, "still counted as buffering, not EOF");
+        assert_eq!(&out[0..4], &[0.4, 0.4, 0.4, 0.4], "the buffered frames play");
+        assert_eq!(&out[4..8], &[0.0, 0.0, 0.0, 0.0], "silence once the buffer runs out");
+        assert_eq!(src.index, 0, "no advance on an underrun — track 0 might still grow");
+
+        // More PCM lands for the still-Growing track.
+        if let Slot::Growing(buf) = &mut src.tracks[0] {
+            buf.extend(stereo(0.4, 2));
+        } else {
+            panic!("track 0 should still be Growing");
+        }
+        let mut out2 = vec![0.0f32; 4]; // 2 frames
+        let produced2 = src.read(&mut out2, 2);
+        assert_eq!(produced2, 2);
+        assert_eq!(&out2[0..4], &[0.4, 0.4, 0.4, 0.4], "resumes from the cursor, not from 0");
+        assert_eq!(src.index, 0, "still track 0 — no boundary while it's not Done");
+    }
+
+    #[test]
+    fn a_boundary_advances_only_when_done() {
+        let mut src = eager_slots(
+            vec![Slot::Growing(stereo(0.4, 2)), Slot::Done(stereo(0.9, 2))],
+            0,
+        );
+        // Same shape as the underrun test: read the 2 buffered frames, hit the
+        // stall, confirm it, then flip track 0 to Done and confirm the
+        // boundary now fires exactly like `eager()`'s tracks always do.
+        let mut out = vec![0.0f32; 8];
+        src.read(&mut out, 2);
+        assert_eq!(src.index, 0, "underrun stalls first, same as the sibling test");
+
+        match std::mem::replace(&mut src.tracks[0], Slot::Empty) {
+            Slot::Growing(buf) => src.tracks[0] = Slot::Done(buf),
+            other => panic!("expected Growing, got {other:?}"),
+        }
+
+        let mut out2 = vec![0.0f32; 4]; // 2 frames — now crosses onto track 1
+        let produced2 = src.read(&mut out2, 2);
+        assert_eq!(produced2, 2);
+        assert_eq!(&out2[0..4], &[0.9, 0.9, 0.9, 0.9], "advanced onto track 1 at the boundary");
+        assert_eq!(src.index, 1);
+    }
+
+    #[test]
+    fn a_crossfade_defers_while_the_current_track_grows() {
+        let mut src = eager_slots(
+            vec![Slot::Growing(stereo(1.0, 4)), Slot::Done(stereo(-1.0, 8))],
+            4, // crossfade width
+        );
+        // The cursor catches up to everything buffered so far (4 frames):
+        // with the current track still Growing, the crossfade must NOT
+        // start even though the next track is fully Done and the window
+        // (cursor + xf >= cur_len) is already open — this is the underrun
+        // rule, not a fade.
+        let mut out = vec![0.0f32; 12]; // 4 real frames + 2 stalled
+        let produced = src.read(&mut out, 2);
+        assert_eq!(produced, 6, "still buffering — silence-stall, not EOF");
+        assert!(
+            out[0..8].chunks(2).all(|f| f == [1.0, 1.0]),
+            "the 4 buffered frames play plain, no blend: {out:?}"
+        );
+        assert_eq!(&out[8..12], &[0.0, 0.0, 0.0, 0.0], "no fade frames — silence-stall instead");
+        assert_eq!(src.index, 0, "no advance while Growing, fade window open or not");
+
+        // The current track finishes decoding — Done now, with 4 more frames
+        // to actually ramp over.
+        src.tracks[0] = Slot::Done({
+            let mut v = stereo(1.0, 4);
+            v.extend(stereo(1.0, 4));
+            v
+        });
+        let mut out2 = vec![0.0f32; 4]; // 2 of the 4 fade frames
+        src.read(&mut out2, 2);
+        let left = [out2[0], out2[2]];
+        assert!((left[0] - 1.0).abs() < 1e-4, "fade starts at full current gain: {left:?}");
+        assert!(left[1] < left[0], "already ramping toward the incoming track: {left:?}");
+        assert_eq!(src.index, 0, "still mid-fade, not yet at the boundary");
+    }
+
+    #[test]
+    fn a_crossfade_into_a_growing_next_with_enough_head_ramps() {
+        // Same shape as `crossfade_ramps_from_one_track_to_the_next`, but the
+        // next track is still `Growing` — it just already has enough head
+        // (>= the crossfade width) for the fade to be trusted.
+        let mut src = eager_slots(
+            vec![Slot::Done(stereo(1.0, 4)), Slot::Growing(stereo(0.0, 8))],
+            4,
+        );
+        let mut out = vec![0.0f32; 8]; // the 4 crossfade frames
+        src.read(&mut out, 2);
+        let left = [out[0], out[2], out[4], out[6]];
+        let want = [1.0, 0.923_88, std::f32::consts::FRAC_1_SQRT_2, 0.382_68];
+        for (got, want) in left.iter().zip(want) {
+            assert!((got - want).abs() < 1e-4, "crossfade ramp: {got} vs {want}");
+        }
+    }
+
+    #[test]
+    fn a_crossfade_waits_for_a_growing_next_below_the_fade_width() {
+        // Mirrors `a_late_lookahead_still_ramps_fully_out`, but the next
+        // track isn't undecided (`Empty`) — it's `Growing` with fewer frames
+        // than the crossfade width, which must be treated the same: not
+        // enough to trust yet, so the current track keeps playing untouched.
+        let mut src = eager_slots(
+            vec![Slot::Done(stereo(1.0, 100)), Slot::Growing(stereo(-1.0, 20))],
+            40,
+        );
+
+        // Play to frame 80 — 20 frames INTO the window with only 20 buffered
+        // on the next track (< the 40-frame width).
+        let mut out = vec![0.0f32; 160];
+        src.read(&mut out, 2);
+        assert!(
+            out.iter().all(|s| (*s - 1.0).abs() < 1e-6),
+            "current track should play untouched — the next track isn't trusted yet"
+        );
+
+        // The rest of it lands, giving it plenty of head now.
+        src.tracks[1] = Slot::Growing(stereo(-1.0, 100));
+
+        // Ramp over what's actually left: the last frame before the boundary
+        // should be almost entirely the incoming track.
+        let mut out = vec![0.0f32; 40]; // 20 frames left before the boundary
+        src.read(&mut out, 2);
+        let last = out[38];
+        assert!(
+            last < -0.8,
+            "ramp must reach the incoming track before the cut, got {last}"
+        );
+    }
+
+    #[test]
+    fn reset_keeps_the_cursor_and_stalls_until_redecoded() {
+        let mut src = eager_slots(vec![Slot::Growing(stereo(0.3, 6))], 0);
+        let mut out = vec![0.0f32; 6]; // 3 frames
+        src.read(&mut out, 2);
+        assert_eq!(&out[0..6], &[0.3, 0.3, 0.3, 0.3, 0.3, 0.3]);
+        assert_eq!(src.cursor, 3);
+
+        // What `drain` does for a `Reset` event: the buffer is emptied but
+        // the cursor is kept, so redecoding resumes where playback already
+        // is rather than restarting from the top.
+        src.tracks[0] = Slot::Growing(Vec::new());
+        let mut out2 = vec![0.0f32; 4]; // 2 frames
+        let produced = src.read(&mut out2, 2);
+        assert_eq!(produced, 2, "still buffering, not EOF");
+        assert_eq!(&out2[0..4], &[0.0, 0.0, 0.0, 0.0], "silence at the same cursor");
+        assert_eq!(src.cursor, 3, "cursor untouched by the reset");
+
+        // Re-decoded, past the cursor.
+        src.tracks[0] = Slot::Growing(stereo(0.7, 5));
+        let mut out3 = vec![0.0f32; 4]; // 2 frames
+        src.read(&mut out3, 2);
+        assert_eq!(&out3[0..4], &[0.7, 0.7, 0.7, 0.7], "resumes at cursor 3, not from 0");
+    }
+
+    #[test]
+    fn a_failed_track_still_skips() {
+        // Pin against `skips_a_failed_track`, but built through `Slot`
+        // directly: `Done(empty)` (what a `Failed` event produces) skips at
+        // cursor 0, instantly, straight onto the next track.
+        let mut src = eager_slots(vec![Slot::Done(Vec::new()), Slot::Done(stereo(0.7, 2))], 0);
+        let mut out = vec![0.0f32; 6];
+        src.read(&mut out, 2);
+        assert_eq!(&out[0..2], &[0.7, 0.7], "first real audio comes from track 1");
+    }
+
+    #[test]
+    fn drain_applies_the_event_protocol() {
+        let (tx, rx) = mpsc::channel::<DecodeEvent>();
+        let mut src = StreamQueueSource {
+            tracks: vec![Slot::Empty, Slot::Empty],
+            metas: vec![TrackMeta::default(); 2],
+            count: 2,
+            device_rate: 1,
+            crossfade: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+            index: 0,
+            cursor: 0,
+            xf_cursor: 0,
+            xf_len: 0,
+            rx: Some(rx),
+            want_tx: None,
+            running: Arc::new(AtomicBool::new(true)),
+            meta_sink: None,
+            current_index: None,
+            _worker: None,
+        };
+
+        let meta = TrackMeta {
+            title: Some("applied".into()),
+            ..Default::default()
+        };
+        tx.send(DecodeEvent::Meta { idx: 0, meta }).unwrap();
+        tx.send(DecodeEvent::Chunk { idx: 0, samples: stereo(0.1, 2) }).unwrap();
+        tx.send(DecodeEvent::Chunk { idx: 0, samples: stereo(0.1, 3) }).unwrap();
+        tx.send(DecodeEvent::Done { idx: 0 }).unwrap();
+        tx.send(DecodeEvent::Failed { idx: 1 }).unwrap();
+
+        src.drain();
+
+        match &src.tracks[0] {
+            Slot::Done(samples) => assert_eq!(samples.len(), (2 + 3) * 2, "chunks concatenated"),
+            other => panic!("expected Done, got {other:?}"),
+        }
+        assert_eq!(src.metas[0].title.as_deref(), Some("applied"), "meta applied");
+        match &src.tracks[1] {
+            Slot::Done(samples) => assert!(samples.is_empty(), "Failed -> Done(empty)"),
+            other => panic!("expected Done(empty), got {other:?}"),
+        }
+
+        tx.send(DecodeEvent::Reset { idx: 0 }).unwrap();
+        src.drain();
+        match &src.tracks[0] {
+            Slot::Growing(samples) => assert!(samples.is_empty(), "Reset -> Growing(empty)"),
+            other => panic!("expected Growing(empty), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn meta_reaches_the_sink_early_but_not_mid_fade() {
+        let (tx, rx) = mpsc::channel::<DecodeEvent>();
+        let (sink, meta_handle) = MetaSink::for_test();
+        let current_index = Arc::new(AtomicUsize::new(0));
+        let mut src = StreamQueueSource {
+            tracks: vec![Slot::Empty],
+            metas: vec![TrackMeta::default()],
+            count: 1,
+            device_rate: 1,
+            crossfade: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+            index: 0,
+            cursor: 0,
+            xf_cursor: 0,
+            xf_len: 0,
+            rx: Some(rx),
+            want_tx: None,
+            running: Arc::new(AtomicBool::new(true)),
+            meta_sink: Some(sink),
+            current_index: Some(current_index.clone()),
+            _worker: None,
+        };
+
+        // `Meta` for the current index, arriving before the track is even
+        // playable (the slot is still `Empty`) — the early announce this
+        // whole path exists for.
+        let first = TrackMeta {
+            title: Some("first".into()),
+            ..Default::default()
+        };
+        tx.send(DecodeEvent::Meta { idx: 0, meta: first }).unwrap();
+        src.drain();
+        assert_eq!(
+            meta_handle.load().title.as_deref(),
+            Some("first"),
+            "the sink saw the early announce"
+        );
+        assert_eq!(current_index.load(Ordering::Relaxed), 0);
+
+        // Now simulate being mid-crossfade: the incoming track was already
+        // announced at the fade's start (`signal_index` in `read`), so a
+        // fresh `Meta` for the *outgoing* current index must not re-signal
+        // and wrong-foot the UI back to it.
+        src.xf_len = 4;
+        let second = TrackMeta {
+            title: Some("second".into()),
+            ..Default::default()
+        };
+        tx.send(DecodeEvent::Meta { idx: 0, meta: second }).unwrap();
+        src.drain();
+        assert_eq!(
+            src.metas[0].title.as_deref(),
+            Some("second"),
+            "internal bookkeeping still updates"
+        );
+        assert_eq!(
+            meta_handle.load().title.as_deref(),
+            Some("first"),
+            "but the sink is NOT re-signalled mid-fade"
+        );
     }
 }

@@ -85,11 +85,30 @@ enum Slot {
 /// waiting for the whole file.
 enum DecodeEvent {
     /// Tag metadata arrived — apply eagerly so the UI can show it before the
-    /// track is playable.
-    Meta { idx: usize, meta: TrackMeta },
-    /// More decoded PCM for `idx`: `Empty` becomes `Growing`, `Growing` extends.
-    /// A `Chunk` after `Done` is a protocol bug (the worker moved on) — ignored
-    /// in release, `debug_assert`ed in tests/dev builds.
+    /// track is playable. `capacity_frames`, when known, estimates the
+    /// track's total decoded-and-resampled size (interleaved stereo `f32`
+    /// element count, at `device_rate`) from the container's declared frame
+    /// count — a one-time `reserve_exact` hint so the growing buffer doesn't
+    /// creep up via repeated reallocation as `Chunk`s arrive (see `drain`'s
+    /// `Meta` arm). `None` when the container didn't declare a frame count
+    /// up front; the buffer still grows correctly, just via `Vec`'s own
+    /// amortized-growth reallocation instead of one reservation.
+    Meta {
+        idx: usize,
+        meta: TrackMeta,
+        capacity_frames: Option<usize>,
+    },
+    /// More decoded PCM for `idx`: `Empty` becomes `Growing`, `Growing`
+    /// extends — except a *genuinely fresh* `Growing` (zero length AND zero
+    /// capacity: brand new, or just emptied by a `Reset`), which is replaced
+    /// by the incoming `Vec` outright (a move, not a copy) rather than
+    /// extended into, avoiding a pointless allocate-then-copy on the audio
+    /// thread for the common first-chunk / post-`Reset`-republish case. An
+    /// empty `Growing` that already has capacity — a `Meta` capacity hint
+    /// reserved it (see `capacity_frames`) — still extends, so that
+    /// reservation isn't discarded by the move. A `Chunk` after `Done` is a
+    /// protocol bug (the worker moved on) — ignored in release,
+    /// `debug_assert`ed in tests/dev builds.
     Chunk { idx: usize, samples: Vec<f32> },
     /// No more PCM is coming for `idx` — `Growing` becomes `Done`, and an
     /// `Empty` slot (nothing ever arrived) becomes `Done(Vec::new())`, i.e.
@@ -137,6 +156,12 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(90);
 /// `Chunk` — matching the read side's own ~1 s start/crossfade-trust gate
 /// (`start_frames`) closely enough that the first chunk clears it almost as
 /// soon as it lands, without flooding the channel with many tiny sends.
+///
+/// Being a fixed **source-rate** frame count, the minimum flush spans
+/// `48_000 / src_rate` seconds of audio — more than a second for a source
+/// rate below 48 kHz. Harmless: the bytes involved stay small either way, so
+/// a slower-than-1 s first flush doesn't change the channel-flooding math
+/// above.
 const CHUNK_FRAMES: usize = 48_000;
 
 /// A downloaded track body spooled to a temp file rather than held in RAM (a
@@ -467,6 +492,26 @@ fn start_frames(rate: u32) -> usize {
     (rate as f32 * START_FRAMES_SECS).round() as usize
 }
 
+/// Estimate the total interleaved-stereo `f32` element count a track will
+/// occupy once fully decoded and resampled to `device_rate`, from the
+/// container's declared source-rate frame count (see [`DecodeChunk::Meta`]) —
+/// a one-time capacity hint for `drain`'s `Meta` arm (see
+/// [`DecodeEvent::Meta`]) so the growing PCM buffer can be reserved once up
+/// front instead of creeping up through repeated reallocation as `Chunk`s
+/// arrive. Padded 2% over the raw rate-converted estimate: the resampler's
+/// actual output count can land a hair either side of it (rounding at each
+/// end of the conversion), and reserving slightly short would just mean the
+/// first `extend` past the hint reallocates anyway — this only needs to be
+/// close, not exact.
+fn capacity_hint(num_frames: Option<u64>, src_rate: u32, device_rate: u32) -> Option<usize> {
+    let frames = num_frames?;
+    if src_rate == 0 {
+        return None;
+    }
+    let device_frames = frames as f64 * device_rate as f64 / src_rate as f64;
+    Some(((device_frames * 2.0) * 1.02).ceil() as usize) // * 2: interleaved stereo
+}
+
 /// Stream-decode one opened response body for track `idx`, publishing
 /// `Meta`/`Chunk` events as PCM becomes available so the queue can start
 /// playing long before the whole file has downloaded (see [`CHUNK_FRAMES`]).
@@ -512,10 +557,11 @@ fn stream_decode_attempt(
         match open_format_stream(tee, ext) {
             Ok(format) => decode_format_chunked(format, CHUNK_FRAMES, &mut |chunk| {
                 match chunk {
-                    DecodeChunk::Meta(meta, src_rate) => {
+                    DecodeChunk::Meta(meta, src_rate, num_frames) => {
                         resampler = Some(StreamResampler::new(src_rate, device_rate));
                         meta_sent = true;
-                        let _ = tx.send(DecodeEvent::Meta { idx, meta });
+                        let capacity_frames = capacity_hint(num_frames, src_rate, device_rate);
+                        let _ = tx.send(DecodeEvent::Meta { idx, meta, capacity_frames });
                     }
                     DecodeChunk::Pcm(pcm) => {
                         if let Some(r) = resampler.as_mut() {
@@ -650,7 +696,15 @@ fn stream_decode_attempt(
                                     let _ = tx.send(DecodeEvent::Reset { idx });
                                 }
                                 if !meta_sent {
-                                    let _ = tx.send(DecodeEvent::Meta { idx, meta: d.meta });
+                                    // No incremental growth follows (`out`
+                                    // below is the whole track in one
+                                    // `Chunk`, then `Done`) — no capacity
+                                    // hint to give.
+                                    let _ = tx.send(DecodeEvent::Meta {
+                                        idx,
+                                        meta: d.meta,
+                                        capacity_frames: None,
+                                    });
                                 }
                                 let _ = tx.send(DecodeEvent::Chunk { idx, samples: out });
                                 let _ = tx.send(DecodeEvent::Done { idx });
@@ -837,11 +891,28 @@ impl StreamQueueSource {
         if let Some(rx) = &self.rx {
             while let Ok(event) = rx.try_recv() {
                 match event {
-                    DecodeEvent::Meta { idx, meta } => {
+                    DecodeEvent::Meta { idx, meta, capacity_frames } => {
                         if idx >= self.count {
                             continue;
                         }
                         self.metas[idx] = meta;
+                        // A capacity hint arriving before any PCM: reserve it
+                        // once up front so the buffer that's about to grow
+                        // via `Chunk`s (below) doesn't reallocate+copy its
+                        // way there piecemeal on this thread — the audio
+                        // thread. Only applies to a slot with nothing in it
+                        // yet (`Empty`, or a `Growing(empty)` freshly made by
+                        // a `Reset`); a slot that already has PCM has already
+                        // paid for whatever allocation it's using.
+                        if let Some(hint) = capacity_frames {
+                            match &mut self.tracks[idx] {
+                                slot @ Slot::Empty => {
+                                    *slot = Slot::Growing(Vec::with_capacity(hint));
+                                }
+                                Slot::Growing(buf) if buf.is_empty() => buf.reserve_exact(hint),
+                                _ => {}
+                            }
+                        }
                         // Apply eagerly, even before the track is playable,
                         // so an early UI announce (title/art) can land the
                         // moment tags are known rather than waiting for the
@@ -863,6 +934,28 @@ impl StreamQueueSource {
                         }
                         match &mut self.tracks[idx] {
                             slot @ Slot::Empty => *slot = Slot::Growing(samples),
+                            // An empty `Growing` (fresh, or just cleared by a
+                            // `Reset`) takes the incoming `Vec` by a move —
+                            // no realloc, no copy — rather than extending
+                            // into it; this is also what makes the
+                            // whole-track republish after a `Reset` (the
+                            // fallback path's single worst case) a move too.
+                            //
+                            // Gated on zero *capacity*, not just zero
+                            // length: an empty `Growing` can also be one a
+                            // `Meta` capacity hint just reserved (see the
+                            // `Meta` arm above) — moving in would silently
+                            // throw that reservation away and replace it
+                            // with `samples`' own (much smaller) capacity,
+                            // reintroducing exactly the reallocate-as-you-go
+                            // growth the hint exists to avoid. Extending
+                            // into a reserved-but-empty buffer is itself
+                            // already allocation-free, so falling through to
+                            // the general `extend` arm below is correct and
+                            // just as cheap.
+                            Slot::Growing(buf) if buf.is_empty() && buf.capacity() == 0 => {
+                                *buf = samples;
+                            }
                             Slot::Growing(buf) => buf.extend(samples),
                             Slot::Done(_) => {
                                 // The worker already said `Done` for this
@@ -1680,7 +1773,7 @@ mod tests {
             title: Some("applied".into()),
             ..Default::default()
         };
-        tx.send(DecodeEvent::Meta { idx: 0, meta }).unwrap();
+        tx.send(DecodeEvent::Meta { idx: 0, meta, capacity_frames: None }).unwrap();
         tx.send(DecodeEvent::Chunk { idx: 0, samples: stereo(0.1, 2) }).unwrap();
         tx.send(DecodeEvent::Chunk { idx: 0, samples: stereo(0.1, 3) }).unwrap();
         tx.send(DecodeEvent::Done { idx: 0 }).unwrap();
@@ -1703,6 +1796,65 @@ mod tests {
         match &src.tracks[0] {
             Slot::Growing(samples) => assert!(samples.is_empty(), "Reset -> Growing(empty)"),
             other => panic!("expected Growing(empty), got {other:?}"),
+        }
+    }
+
+    /// F1(b): a `Meta` carrying a capacity hint reserves the buffer exactly
+    /// once — every `Chunk` that follows, as long as the running total stays
+    /// under the hint, must find the buffer's capacity unchanged (no
+    /// reallocation) rather than creeping up piecemeal via `Vec::extend`'s
+    /// own amortized growth.
+    #[test]
+    fn meta_capacity_hint_reserves_once_and_holds_steady_across_chunks() {
+        let (tx, rx) = mpsc::channel::<DecodeEvent>();
+        let mut src = StreamQueueSource {
+            tracks: vec![Slot::Empty],
+            metas: vec![TrackMeta::default()],
+            count: 1,
+            device_rate: 1,
+            crossfade: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+            index: 0,
+            cursor: 0,
+            xf_cursor: 0,
+            xf_len: 0,
+            rx: Some(rx),
+            want_tx: None,
+            running: Arc::new(AtomicBool::new(true)),
+            meta_sink: None,
+            current_index: None,
+            _worker: None,
+        };
+
+        let hint = 10_000usize;
+        tx.send(DecodeEvent::Meta {
+            idx: 0,
+            meta: TrackMeta::default(),
+            capacity_frames: Some(hint),
+        })
+        .unwrap();
+        src.drain();
+
+        let reserved = match &src.tracks[0] {
+            Slot::Growing(buf) => {
+                assert!(buf.capacity() >= hint, "the hint must be reserved up front");
+                buf.capacity()
+            }
+            other => panic!("expected Growing after a Meta with a hint, got {other:?}"),
+        };
+
+        // Several chunks, well under `hint` in total: the capacity must
+        // never move — no chunk after the first should trigger a realloc.
+        for _ in 0..5 {
+            tx.send(DecodeEvent::Chunk { idx: 0, samples: stereo(0.1, 100) }).unwrap();
+            src.drain();
+            match &src.tracks[0] {
+                Slot::Growing(buf) => assert_eq!(
+                    buf.capacity(),
+                    reserved,
+                    "capacity must stay stable across appends within the reserved hint"
+                ),
+                other => panic!("expected Growing, got {other:?}"),
+            }
         }
     }
 
@@ -1736,7 +1888,7 @@ mod tests {
             title: Some("first".into()),
             ..Default::default()
         };
-        tx.send(DecodeEvent::Meta { idx: 0, meta: first }).unwrap();
+        tx.send(DecodeEvent::Meta { idx: 0, meta: first, capacity_frames: None }).unwrap();
         src.drain();
         assert_eq!(
             meta_handle.load().title.as_deref(),
@@ -1754,7 +1906,7 @@ mod tests {
             title: Some("second".into()),
             ..Default::default()
         };
-        tx.send(DecodeEvent::Meta { idx: 0, meta: second }).unwrap();
+        tx.send(DecodeEvent::Meta { idx: 0, meta: second, capacity_frames: None }).unwrap();
         src.drain();
         assert_eq!(
             src.metas[0].title.as_deref(),
@@ -2001,8 +2153,12 @@ mod tests {
     }
 
     /// Runs one `stream_decode_attempt` over `serve_body`'s server and
-    /// returns every `DecodeEvent` it published, in order.
-    fn run_stream_decode_attempt(body: Vec<u8>, declared_len: usize) -> Vec<DecodeEvent> {
+    /// returns every `DecodeEvent` it published, in order, plus the
+    /// attempt's own `LoadAttempt` classification.
+    fn run_stream_decode_attempt(
+        body: Vec<u8>,
+        declared_len: usize,
+    ) -> (Vec<DecodeEvent>, LoadAttempt) {
         let (addr, server) = serve_body(body, declared_len);
         let client = reqwest::blocking::Client::builder().build().unwrap();
         let target = StreamTarget {
@@ -2013,21 +2169,25 @@ mod tests {
         let (tx, rx) = mpsc::channel::<DecodeEvent>();
         let running = AtomicBool::new(true);
 
-        match open_stream(&client, &target) {
+        let attempt = match open_stream(&client, &target) {
             Opened::Body { resp, declared } => {
-                stream_decode_attempt(0, resp, declared, target.ext.as_deref(), 44_100, &tx, &running);
+                stream_decode_attempt(0, resp, declared, target.ext.as_deref(), 44_100, &tx, &running)
             }
             _ => panic!("expected Opened::Body from a 200 response"),
-        }
+        };
         server.join().expect("server thread");
         drop(tx);
-        rx.try_iter().collect()
+        (rx.try_iter().collect(), attempt)
     }
 
     #[test]
     fn a_clean_complete_stream_publishes_exactly_meta_chunk_star_done() {
         let wav = crate::decode::tests::tiny_wav(10_000, 44_100);
-        let events = run_stream_decode_attempt(wav.clone(), wav.len());
+        let (events, attempt) = run_stream_decode_attempt(wav.clone(), wav.len());
+        assert!(
+            matches!(attempt, LoadAttempt::Published),
+            "a clean complete stream must report Published, not retry or skip"
+        );
 
         let mut saw_meta = false;
         let mut chunk_count = 0u32;
@@ -2071,7 +2231,11 @@ mod tests {
         let full = crate::decode::tests::tiny_wav(100_000, 44_100);
         let declared_len = full.len();
         let truncated = full[..(44 + 60_000 * 4)].to_vec(); // header + 60k real frames
-        let events = run_stream_decode_attempt(truncated, declared_len);
+        let (events, attempt) = run_stream_decode_attempt(truncated, declared_len);
+        assert!(
+            matches!(attempt, LoadAttempt::Retry),
+            "a truncated body must report Retry, not Published"
+        );
 
         let chunk_count = events.iter().filter(|e| matches!(e, DecodeEvent::Chunk { .. })).count();
         let reset_count = events.iter().filter(|e| matches!(e, DecodeEvent::Reset { .. })).count();

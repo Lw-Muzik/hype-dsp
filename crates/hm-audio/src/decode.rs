@@ -102,9 +102,14 @@ where
 /// A slice of decoded output, emitted incrementally so a caller can start
 /// playback (or otherwise act) before the whole file has been decoded.
 pub enum DecodeChunk {
-    /// Sent exactly once, right after probing: tags/cover art plus the
-    /// stream's native sample rate. Always arrives before any `Pcm`.
-    Meta(TrackMeta, u32),
+    /// Sent exactly once, right after probing: tags/cover art, the stream's
+    /// native sample rate, and — when the container states it (symphonia's
+    /// `Track::num_frames`, the same field `probe_track` reads) — the
+    /// track's total frame count at that native rate. `None` when the
+    /// container doesn't declare it up front (common for a streamed,
+    /// non-seekable source); callers use it only as a capacity hint, never
+    /// a correctness dependency. Always arrives before any `Pcm`.
+    Meta(TrackMeta, u32, Option<u64>),
     /// Source-rate interleaved stereo PCM, in order.
     Pcm(Vec<f32>),
 }
@@ -129,7 +134,7 @@ fn collect_decoded(format: Box<dyn FormatReader>) -> Result<DecodedAudio, AudioE
     let mut samples: Vec<f32> = Vec::new();
     decode_format_chunked(format, 8192, &mut |chunk| {
         match chunk {
-            DecodeChunk::Meta(m, r) => {
+            DecodeChunk::Meta(m, r, _frames) => {
                 meta = Some(m);
                 sample_rate = r;
             }
@@ -173,6 +178,7 @@ pub fn decode_format_chunked<'a>(
         .default_track(TrackType::Audio)
         .ok_or_else(|| AudioError::Decode("no audio track in file".into()))?;
     let track_id = track.id;
+    let num_frames = track.num_frames;
     let params = track
         .codec_params
         .as_ref()
@@ -181,7 +187,7 @@ pub fn decode_format_chunked<'a>(
         .ok_or_else(|| AudioError::Decode("missing audio codec parameters".into()))?;
     let sample_rate = params.sample_rate.unwrap_or(44_100);
 
-    if !sink(DecodeChunk::Meta(meta, sample_rate)) {
+    if !sink(DecodeChunk::Meta(meta, sample_rate, num_frames)) {
         return Ok(());
     }
 
@@ -220,6 +226,9 @@ pub fn decode_format_chunked<'a>(
     }
 
     if !pending.is_empty() {
+        // Terminal statement: the decode loop is already over, so there's
+        // nothing left for the sink to abort by returning `false` — its
+        // return value is deliberately unchecked here.
         sink(DecodeChunk::Pcm(pending));
     }
     Ok(())
@@ -333,6 +342,11 @@ pub fn resample_stereo(samples: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32
 /// Emits output frame `i` only once source frame `floor(i/ratio) + 1` exists
 /// (interpolation needs its right-hand neighbour); `finish()` flushes the
 /// tail, where the reference clamps the neighbour to the last frame.
+///
+/// The bit-identity guarantee hinges on one bound: `emit`'s mid-stream cap
+/// of `round(avail * ratio)` output frames, which — because `round(N *
+/// ratio)` is non-decreasing in `N` — never emits a frame the one-shot
+/// reference (bounded by the *final* frame count) wouldn't also emit.
 pub struct StreamResampler {
     src_rate: u32,
     dst_rate: u32,
@@ -594,7 +608,7 @@ pub(crate) mod tests {
         let mut samples = Vec::new();
         decode_format_chunked(format, 1024, &mut |c| {
             match c {
-                DecodeChunk::Meta(m, r) => {
+                DecodeChunk::Meta(m, r, _frames) => {
                     meta = Some(m);
                     rate = r;
                 }

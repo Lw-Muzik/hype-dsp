@@ -232,6 +232,36 @@ fn is_fresh(target: &ytdlp::StreamTarget, now: u64) -> bool {
 /// A still-live entry from one of the resolve caches.
 type TargetCache = RwLock<std::collections::HashMap<String, ytdlp::StreamTarget>>;
 
+/// One blocking client for every probe: connection reuse, and no per-probe
+/// construction cost. Separate from hm-audio's stream client by crate
+/// boundary — the probe's TLS warm doesn't transfer there; accepted, the
+/// probe's job is validity, not warming.
+fn probe_client() -> &'static reqwest::blocking::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .expect("default TLS config must build")
+    })
+}
+
+/// Whether `target` still answers from THIS network. Two bytes, ranged — the
+/// cheapest question the CDN accepts (~100–300ms).
+fn probe_ok(target: &ytdlp::StreamTarget) -> bool {
+    let mut req = probe_client().get(&target.url).header("Range", "bytes=0-1");
+    for (k, v) in &target.headers {
+        req = req.header(k.as_str(), v.as_str());
+    }
+    match req.send() {
+        Ok(r) => {
+            let s = r.status();
+            s == reqwest::StatusCode::OK || s == reqwest::StatusCode::PARTIAL_CONTENT
+        }
+        Err(_) => false,
+    }
+}
+
 fn cached_in(cache: &TargetCache, video_id: &str) -> Option<ytdlp::StreamTarget> {
     let now = now_secs()?;
     let cache = cache.read().ok()?;
@@ -720,6 +750,28 @@ impl YtMusicState {
         cached_in(&self.resolved, video_id)
     }
 
+    /// The cache read every resolve path goes through: a live hit is served
+    /// as-is (~µs); a disk-restored hit is probed first — promoted on 200/206,
+    /// dropped otherwise so the caller falls through to a fresh resolve.
+    fn live_or_probed_target(&self, video_id: &str) -> Option<ytdlp::StreamTarget> {
+        if let Some(t) = self.cached_target(video_id) {
+            return Some(t);
+        }
+        let quarantined = self.restored.write().ok()?.remove(video_id)?;
+        if probe_ok(&quarantined) {
+            // remember_target() also bumps the generation — promotion doesn't
+            // change the snapshot union, but the bump is harmless (one spare
+            // write).
+            self.remember_target(video_id, &quarantined);
+            return Some(quarantined);
+        }
+        // Dead on arrival (new network, revoked url): the union changed, so
+        // the saver must write the shrunken truth.
+        self.cache_generation
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        None
+    }
+
     /// Files a resolved url under its video id, and drops whatever has expired.
     fn remember_target(&self, video_id: &str, target: &ytdlp::StreamTarget) {
         remember_in(&self.resolved, video_id, target);
@@ -792,7 +844,7 @@ impl YtMusicState {
     /// ignore — a failed prefetch must cost nothing, because the play path will
     /// resolve again and report the failure properly if it's real.
     pub fn prefetch(&self, video_id: &str) -> Result<(), String> {
-        if self.cached_target(video_id).is_some() {
+        if self.live_or_probed_target(video_id).is_some() {
             return Ok(());
         }
         self.resolve(video_id).map(|_| ())
@@ -837,6 +889,10 @@ impl YtMusicState {
                 cache.remove(video_id);
             }
         }
+        // The union a snapshot would contain just shrank — the saver must
+        // notice, or a url we've already flagged dead lingers in the file.
+        self.cache_generation
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Resolves a track to a directly-playable `(url, headers)`.
@@ -911,7 +967,7 @@ impl YtMusicState {
     /// those without it would just trade a clear error for a worse one.
     pub fn resolve(&self, video_id: &str) -> Result<ytdlp::StreamTarget, String> {
         use std::sync::atomic::Ordering;
-        if let Some(hit) = self.cached_target(video_id) {
+        if let Some(hit) = self.live_or_probed_target(video_id) {
             return Ok(hit);
         }
         let runner = self.runner()?;
@@ -2407,5 +2463,118 @@ mod tests {
             0,
             "restoring what came FROM the file must not schedule a rewrite of it"
         );
+    }
+
+    /// One request, canned response, captured request lines.
+    fn one_shot_server(
+        status_line: &'static str,
+    ) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        use std::io::{BufRead, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept");
+            let mut lines = Vec::new();
+            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                if line == "\r\n" || line == "\n" {
+                    break;
+                }
+                lines.push(line.trim_end().to_string());
+            }
+            let mut w = stream;
+            let _ = write!(w, "{status_line}\r\nContent-Length: 2\r\n\r\nok");
+            lines
+        });
+        (format!("http://{addr}/probe"), handle)
+    }
+
+    fn restored_state_with(url: String) -> YtMusicState {
+        let s = YtMusicState::new();
+        let now = now_secs().unwrap();
+        let t = ytdlp::StreamTarget {
+            url,
+            headers: vec![("User-Agent".into(), "hm-probe-test".into())],
+            ext: "m4a".into(),
+            format_id: "140".into(),
+            abr_kbps: None,
+            expires_at: Some(now + 6 * 3600),
+        };
+        s.restored.write().unwrap().insert("vid1".into(), t);
+        s
+    }
+
+    /// A restored entry that answers is promoted: served now, live (unprobed)
+    /// forever after — and the probe itself asks for two bytes, not the track.
+    #[test]
+    fn a_healthy_restored_entry_is_probed_once_then_live() {
+        let (url, server) = one_shot_server("HTTP/1.1 206 Partial Content");
+        let s = restored_state_with(url.clone());
+        let got = s.live_or_probed_target("vid1").expect("a 206 probe must serve the entry");
+        assert_eq!(got.url, url);
+        let lines = server.join().unwrap();
+        assert!(
+            lines.iter().any(|l| l.eq_ignore_ascii_case("range: bytes=0-1")),
+            "the probe must ask for two bytes, not the body; got {lines:#?}"
+        );
+        assert!(
+            lines.iter().any(|l| l.eq_ignore_ascii_case("user-agent: hm-probe-test")),
+            "the entry's own headers must go out — the CDN checks them"
+        );
+        // Promoted: second read is a live hit, no second request (the one-shot
+        // server is already gone, so a re-probe would return None here).
+        assert_eq!(s.live_or_probed_target("vid1").unwrap().url, got.url);
+        assert!(s.restored.read().unwrap().is_empty(), "quarantine is over");
+    }
+
+    /// 403 is what an IP-bound url looks like from a new network: the entry is
+    /// dead on arrival — drop it so the caller falls through to a fresh
+    /// resolve, and dirty the cache so the dead entry leaves the file too.
+    #[test]
+    fn a_dead_restored_entry_is_dropped_and_dirties_the_cache() {
+        let (url, server) = one_shot_server("HTTP/1.1 403 Forbidden");
+        let s = restored_state_with(url);
+        let g0 = s.url_cache_generation();
+        assert!(s.live_or_probed_target("vid1").is_none());
+        let _ = server.join();
+        assert!(s.restored.read().unwrap().is_empty());
+        assert!(s.cached_target("vid1").is_none());
+        assert!(s.url_cache_generation() > g0, "the union changed; the saver must notice");
+    }
+
+    /// Same-session entries never probe — the whole point of quarantining.
+    #[test]
+    fn a_live_entry_is_served_without_any_request() {
+        let s = YtMusicState::new();
+        let now = now_secs().unwrap();
+        let t = ytdlp::StreamTarget {
+            url: "http://127.0.0.1:1/unreachable".into(),
+            headers: vec![],
+            ext: "m4a".into(),
+            format_id: "140".into(),
+            abr_kbps: None,
+            expires_at: Some(now + 6 * 3600),
+        };
+        s.remember_target("vid1", &t);
+        assert_eq!(
+            s.live_or_probed_target("vid1").expect("live hits must not probe").url,
+            t.url
+        );
+    }
+
+    /// `forget()` must dirty the cache too — it removes from `resolved`, and if
+    /// the generation doesn't move, a dead entry that already made it into a
+    /// prior snapshot would never be written out of the file.
+    #[test]
+    fn forgetting_a_url_dirties_the_cache() {
+        let s = YtMusicState::new();
+        s.remember_target("vid1", &fresh_in(6 * 3600));
+        let g0 = s.url_cache_generation();
+        s.forget("vid1");
+        assert!(s.url_cache_generation() > g0, "forgetting changes the union; the saver must notice");
     }
 }

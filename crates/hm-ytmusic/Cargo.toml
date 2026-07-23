@@ -12,6 +12,11 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 
+# Probing disk-restored stream urls (one Range: bytes=0-1 GET before first
+# use — the urls are IP-bound). The workspace dep already carries `blocking`
+# and `rustls`, matching hm-audio's bare inheritance below.
+reqwest = { workspace = true }
+
 # YouTube Music's internal (youtubei) API — playlists and library metadata.
 # `rustls` matches the workspace's reqwest TLS choice; the default `default-tls`
 # feature would drag in native-tls (and openssl on Linux) alongside it.

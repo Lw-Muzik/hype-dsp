@@ -67,14 +67,24 @@ type DecodedTrack = (usize, Vec<f32>, TrackMeta);
 /// looked like the queue "jumping" or "stopping" on its own).
 const MAX_ATTEMPTS: u32 = 4;
 
-/// Build a fresh blocking HTTP client. The short `connect_timeout` matters: a
-/// dead pooled connection (common after the stream has been paused a while)
-/// then fails fast and is retried, rather than stalling playback on a long hang.
-fn new_client() -> reqwest::Result<reqwest::blocking::Client> {
-    reqwest::blocking::Client::builder()
-        .connect_timeout(Duration::from_secs(12))
-        .timeout(Duration::from_secs(90))
-        .build()
+/// Total time budget for one lookahead download (`fetch_once`'s `req.send()`),
+/// covering connect through reading the whole body. This can't live on the
+/// client itself: the client is [`streaming::shared_client`], also used by
+/// `streaming.rs`'s progressive playback path, whose reads legitimately
+/// outlive any one track's download — a client-level cap would sever that
+/// stream mid-song. Applied per-request instead, it only ever bounds a
+/// one-shot, complete-in-one-call fetch, where a stuck download (e.g. a dead
+/// pooled connection, common after the stream has sat paused a while) fails
+/// fast and is retried rather than stalling the queue on a long hang.
+const FETCH_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// The shared blocking client (see [`streaming::shared_client`]), reused
+/// across tracks and across this module and `streaming.rs` alike — the whole
+/// point being one connection pool that spans consecutive tracks instead of
+/// a fresh TLS handshake per stream. No longer fallible to build here: the
+/// shared client is only ever built once per process, in `streaming.rs`.
+fn new_client() -> reqwest::blocking::Client {
+    crate::streaming::shared_client().clone()
 }
 
 /// A downloaded track body spooled to a temp file rather than held in RAM (a
@@ -155,6 +165,8 @@ fn fetch_once(client: &reqwest::blocking::Client, target: &StreamTarget) -> Fetc
     // to arrive can never be ready early, which is exactly what a crossfade
     // needs it to be.
     req = req.header(reqwest::header::RANGE, "bytes=0-");
+    // Per-request, not client-level: see [`FETCH_TIMEOUT`] for why.
+    req = req.timeout(FETCH_TIMEOUT);
     match req.send() {
         Ok(mut resp) => {
             let status = resp.status();
@@ -285,13 +297,12 @@ impl StreamQueueSource {
             std::thread::Builder::new()
                 .name("hm-stream-queue".into())
                 .spawn(move || {
-                    // One HTTP client reused across tracks (each blocking client
-                    // spins up its own runtime, so we avoid rebuilding per track),
-                    // but replaced after a transient failure to drop a stale pool.
-                    let mut client = match new_client() {
-                        Ok(c) => c,
-                        Err(_) => return,
-                    };
+                    // The process-wide shared client (see `new_client` /
+                    // `streaming::shared_client`) — reused across tracks, and
+                    // across this queue and the progressive-playback path
+                    // alike, so consecutive tracks reuse the same connection
+                    // pool instead of a fresh TLS handshake each time.
+                    let mut client = new_client();
                     let mut next = start;
                     while let Ok(want) = want_rx.recv() {
                         while next <= want && next < count {
@@ -299,24 +310,27 @@ impl StreamQueueSource {
                                 return;
                             }
                             let idx = next;
-                            // Retry transient failures on a new connection, so a
-                            // dropped link — e.g. the first fetch after the stream
-                            // sat paused, or a phone that closed its keep-alive —
-                            // doesn't turn a good track into a permanent silent
-                            // skip. Only a retry demands a fresh link: asking for
-                            // one on the first attempt would make every provider
-                            // that can cache pay to resolve anyway, and for YT
-                            // Music resolving is a yt-dlp process start measured
-                            // in seconds — the gap between two tracks.
+                            // Retry transient failures, so a dropped link — e.g.
+                            // the first fetch after the stream sat paused, or a
+                            // phone that closed its keep-alive — doesn't turn a
+                            // good track into a permanent silent skip. Only a
+                            // retry demands a fresh link: asking for one on the
+                            // first attempt would make every provider that can
+                            // cache pay to resolve anyway, and for YT Music
+                            // resolving is a yt-dlp process start measured in
+                            // seconds — the gap between two tracks. (`client` is
+                            // re-fetched from `new_client()` on each retry too,
+                            // though since it's the process-wide shared client
+                            // that's a no-op — reqwest's own pool already drops
+                            // a connection that just errored, so the next send
+                            // gets a live one without this needing to force it.)
                             let track = load_with_retry(
                                 idx,
                                 &running,
                                 Duration::from_millis(120),
                                 |n| match resolver(idx, n > 1) {
                                     Err(_) => {
-                                        if let Ok(c) = new_client() {
-                                            client = c;
-                                        }
+                                        client = new_client();
                                         LoadAttempt::Retry
                                     }
                                     Ok(target) => match fetch_once(&client, &target) {
@@ -343,9 +357,7 @@ impl StreamQueueSource {
                                         }
                                         FetchOutcome::Skip => LoadAttempt::Skip,
                                         FetchOutcome::Retry => {
-                                            if let Ok(c) = new_client() {
-                                                client = c;
-                                            }
+                                            client = new_client();
                                             LoadAttempt::Retry
                                         }
                                     },

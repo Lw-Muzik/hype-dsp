@@ -567,6 +567,28 @@ fn resume_decision(content_bytes: u64, consumed: u64, progressed: bool, stalls: 
     }
 }
 
+/// One blocking client for every stream in the process.
+///
+/// A fresh client per stream re-did the TLS handshake for every track — on
+/// the same googlevideo host, back to back, ~100-300ms a time. reqwest pools
+/// connections per client, so sharing one is what makes consecutive tracks
+/// reuse the socket. Config matches both call sites' *client-level* settings:
+/// `connect_timeout` only. It deliberately carries no overall `.timeout()` —
+/// `stream_worker` below reads from an open connection for as long as a track
+/// plays (minutes), which a whole-request timeout would cut off mid-song.
+/// A caller that needs a total-request deadline for a one-shot download
+/// (`stream_queue.rs`'s lookahead fetch) adds it per-request via
+/// `RequestBuilder::timeout`, not here.
+pub(crate) fn shared_client() -> &'static reqwest::blocking::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(12))
+            .build()
+            .expect("default TLS config must build")
+    })
+}
+
 /// Owns the connect → decode → re-open lifecycle, re-opening with a byte-range
 /// request on each seek and idling at EOF until a seek or cancellation.
 fn stream_worker(
@@ -578,16 +600,7 @@ fn stream_worker(
     meta_sink: Option<crate::engine::MetaSink>,
     duration_hint: Option<f64>,
 ) {
-    let client = match reqwest::blocking::Client::builder()
-        .connect_timeout(Duration::from_secs(12))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => {
-            shared.finished.store(true, Ordering::Relaxed);
-            return;
-        }
-    };
+    let client = shared_client().clone();
 
     // Extension hint helps symphonia pick a demuxer when content sniffing alone
     // is ambiguous (e.g. raw AAC/MP3).

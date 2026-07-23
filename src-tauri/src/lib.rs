@@ -687,6 +687,7 @@ pub fn run() {
             commands::ytmusic::ytmusic_radio_continue,
             commands::ytmusic::ytmusic_video_url,
             commands::ytmusic::ytmusic_prefetch,
+            commands::ytmusic::ytmusic_prefetch_batch,
             commands::ytmusic::ytmusic_video_prefetch,
             commands::ytmusic::ytmusic_play,
             commands::ytmusic::player_play_ytmusic_queue,

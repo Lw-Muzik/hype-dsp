@@ -715,6 +715,20 @@ impl YtMusicState {
         self.resolve(video_id).map(|_| ())
     }
 
+    /// Warm several tracks' stream urls, one at a time.
+    ///
+    /// Sequential on purpose: each miss is a full yt-dlp process, and two
+    /// spawns visibly contend for the CPU and network the click's own resolve
+    /// is using. Cache hits cost nothing ([`Self::prefetch`] checks first), so
+    /// a caller can re-send ids freely. Same fire-and-forget contract as
+    /// `prefetch`: a failure costs nothing because the play path resolves for
+    /// itself and reports properly.
+    pub fn prefetch_batch(&self, video_ids: &[String]) {
+        for id in video_ids {
+            let _ = self.prefetch(id);
+        }
+    }
+
     /// Resolve and cache the *video* rendition ahead of time, so opening the
     /// Video tab is instant rather than paying the ~5s yt-dlp spawn on the click.
     ///

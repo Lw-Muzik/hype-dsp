@@ -414,6 +414,12 @@ export function ytmusicPrefetch(videoId: string): Promise<void> {
   return invoke<void>("ytmusic_prefetch", { videoId });
 }
 
+/** Warm several upcoming tracks' stream urls (sequential in the backend).
+ *  Fire-and-forget; the play path never waits on it. */
+export function ytmusicPrefetchBatch(videoIds: string[]): Promise<void> {
+  return invoke<void>("ytmusic_prefetch_batch", { videoIds });
+}
+
 /** Warm the *video* rendition so the Video tab opens instantly. Same
  *  fire-and-forget contract as {@link ytmusicPrefetch}; a different resolve into
  *  a different cache. */

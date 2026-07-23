@@ -446,6 +446,14 @@ pub fn ytmusic_prefetch(state: State<'_, YtMusicState>, video_id: String) {
     let _ = state.prefetch(&video_id);
 }
 
+/// Warm several upcoming tracks' urls (sequentially — see `prefetch_batch`).
+/// Fire-and-forget like [`ytmusic_prefetch`]; the play path never waits on it.
+// `(async)`: shells out to yt-dlp and waits on the network.
+#[tauri::command(async)]
+pub fn ytmusic_prefetch_batch(state: State<'_, YtMusicState>, video_ids: Vec<String>) {
+    state.prefetch_batch(&video_ids);
+}
+
 /// Warm the *video* rendition's url so the Video tab opens instantly. Same
 /// fire-and-forget contract as [`ytmusic_prefetch`]: a failure or a race with a
 /// skip costs nothing, because the Video tab resolves for itself regardless.

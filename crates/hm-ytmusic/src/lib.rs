@@ -29,6 +29,7 @@
 
 pub mod cookies;
 pub mod explore;
+mod innertube;
 mod nav;
 pub mod playlist;
 mod radio;

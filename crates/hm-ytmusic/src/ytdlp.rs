@@ -135,7 +135,7 @@ pub struct StreamTarget {
 /// CDN already told us, not to model urls. An unreadable or absent value is
 /// `None` — never a default — because a wrong deadline is worse than no deadline:
 /// too long serves a dead url, too short throws away a good one.
-fn parse_expiry(url: &str) -> Option<u64> {
+pub(crate) fn parse_expiry(url: &str) -> Option<u64> {
     let query = url.split_once('?')?.1;
     query
         .split('&')

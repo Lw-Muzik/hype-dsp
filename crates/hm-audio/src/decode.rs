@@ -11,7 +11,7 @@ use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::errors::Error as SymError;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
-use symphonia::core::io::MediaSourceStream;
+use symphonia::core::io::{MediaSourceStream, ReadOnlySource};
 use symphonia::core::meta::MetadataOptions;
 
 use hm_core::TrackMeta;
@@ -55,6 +55,41 @@ fn open_format_bytes(
     ext_hint: Option<&str>,
 ) -> Result<Box<dyn FormatReader>, AudioError> {
     let mss = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = ext_hint {
+        hint.with_extension(ext);
+    }
+    symphonia::default::get_probe()
+        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .map_err(|e| AudioError::Decode(e.to_string()))
+}
+
+/// Probe a **non-seekable** reader — a network response body being streamed
+/// in, wrapped in symphonia's [`ReadOnlySource`] — so it can be decoded on
+/// the fly as it downloads, instead of waiting for the whole file. `ext_hint`
+/// helps symphonia pick the demuxer, same as [`open_format_bytes`].
+///
+/// Takes `reader` by a borrow-friendly generic rather than requiring
+/// `'static` so a caller (the streamed queue's worker) can pass something
+/// that itself borrows stack-local state (a [`TeeReader`](crate::stream_queue) —
+/// mirroring every byte to a spool file) and get that borrow back once the
+/// returned `Box<dyn FormatReader>` is dropped.
+///
+/// Most containers demux fine over a forward-only stream (mp3, flac, ogg,
+/// wav, and a "faststart" mp4/m4a with its `moov` atom before `mdat`).
+/// A container that genuinely needs to seek — an mp4 with `moov` at the
+/// tail, not faststart — surfaces as a probe/decode `Err` here; that's a
+/// per-track runtime outcome the caller falls back on (decode the fully
+/// spooled file whole, which *is* seekable), not a defect in this path.
+pub fn open_format_stream<'a, R>(
+    reader: R,
+    ext_hint: Option<&str>,
+) -> Result<Box<dyn FormatReader + 'a>, AudioError>
+where
+    R: std::io::Read + Send + Sync + 'a,
+{
+    let source = ReadOnlySource::new(reader);
+    let mss = MediaSourceStream::new(Box::new(source), Default::default());
     let mut hint = Hint::new();
     if let Some(ext) = ext_hint {
         hint.with_extension(ext);
@@ -121,8 +156,14 @@ fn collect_decoded(format: Box<dyn FormatReader>) -> Result<DecodedAudio, AudioE
 /// zero or more [`DecodeChunk::Pcm`] chunks of at least `min_chunk_frames`
 /// frames each (the final chunk may be a smaller partial flush). Returning
 /// `false` from `sink` aborts the decode early (teardown) with `Ok(())`.
-pub fn decode_format_chunked(
-    mut format: Box<dyn FormatReader>,
+///
+/// `format` carries an explicit lifetime (rather than the `'static` an
+/// elided `Box<dyn FormatReader>` would infer) so a reader built over
+/// borrowed stack state — [`open_format_stream`]'s streaming case — can be
+/// passed here too; every existing (`'static`) caller still coerces in
+/// unchanged.
+pub fn decode_format_chunked<'a>(
+    mut format: Box<dyn FormatReader + 'a>,
     min_chunk_frames: usize,
     sink: &mut dyn FnMut(DecodeChunk) -> bool,
 ) -> Result<(), AudioError> {
@@ -388,7 +429,7 @@ impl StreamResampler {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -517,7 +558,9 @@ mod tests {
     }
 
     /// A minimal 16-bit stereo PCM WAV: enough for symphonia to decode.
-    fn tiny_wav(frames: usize, rate: u32) -> Vec<u8> {
+    /// `pub(crate)`: reused by `stream_queue`'s tests to build a real,
+    /// probeable body for its local-TCP-harness event-sequence tests.
+    pub(crate) fn tiny_wav(frames: usize, rate: u32) -> Vec<u8> {
         let data_len = (frames * 4) as u32;
         let mut w = Vec::new();
         w.extend(b"RIFF");

@@ -29,7 +29,14 @@ file I/O):
   - a monotonic generation counter bumped on every audio `remember()`, so the
     saver can skip writes when nothing changed;
   - `url_cache_snapshot(&self) -> Option<(u64, String)>` — (generation, JSON
-    envelope of still-fresh audio entries); `None` when empty;
+    envelope of still-fresh audio entries: the union of the live map and the
+    not-yet-probed `restored` map, live winning on conflict — otherwise a
+    relaunch would shrink the file to only what got played); `None` when empty.
+    The generation bumps on `remember()` and on a probe *dropping* a restored
+    entry (the union changed); not on restore itself (that state came from the
+    file). Promotion reuses `remember()` and so bumps too — the union is
+    unchanged, making that one spare write per relaunch-play; accepted for the
+    simpler code;
   - `restore_url_cache(&self, json: &str)` — parses the envelope, drops
     non-fresh entries, fills `restored`. Tolerant: version mismatch or
     garbage input is silently ignored (it is only a cache).

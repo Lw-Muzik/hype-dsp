@@ -79,6 +79,15 @@ enum DecodeEvent {
 }
 ```
 
+`Meta`'s early announce is gated by `xf_len`, not applied unconditionally: it
+re-signals the now-playing UI only when `idx == self.index && xf_len == 0`.
+Mid-crossfade, the incoming track was already announced at the fade's own
+start (`signal_index(self.index + 1)`); re-signalling the outgoing current
+index's `Meta` on top of that would wrong-foot the UI back to the track
+that's fading out until the next real change. The internal bookkeeping
+(`self.metas[idx]`) still updates either way — only the UI-facing signal is
+suppressed mid-fade.
+
 `read()` rules (the correctness core — each is a test):
 - **Start gate**: the current track is playable when `Done`, or `Growing`
   with ≥ `START_FRAMES` (1s at device rate). Below that: buffer silence
@@ -88,15 +97,33 @@ enum DecodeEvent {
   (index += 1) happens ONLY on `Done && cursor >= len`.
 - **Crossfade gates**: a crossfade may start only when the current track is
   `Done` (otherwise its true tail — and therefore the fade point — is
-  unknown) AND the next is `Done` or `Growing` with ≥ the fade width of head
-  PCM. Otherwise defer; the existing `xf_len` latch already handles late
+  unknown) AND the next is `Done` or `Growing` with a buffered head of at
+  least `xf.max(start_frames)` — the fade width, but never less than the
+  ~1s start gate itself (shipped as `growing_head_at_least(idx,
+  xf.max(start_frames(device_rate)))`). The fade width alone isn't enough:
+  trusting a `Growing` head only as wide as the fade would let a track that
+  clears the fade but not the start gate begin fading in, then immediately
+  fail `ready()` and cut to silence one frame after the boundary — a worse
+  seam than the deferred fade this mechanism exists to avoid. Flooring the
+  trust threshold at `start_frames` keeps audibility monotone across the
+  boundary (once it's audible, it never becomes silence again on its own).
+  Otherwise defer; the existing `xf_len` latch already handles late
   lookaheads degrading to shorter fades.
 - **Reset**: empties the slot's buffer back to `Growing(empty)` but KEEPS the
   cursor — the listener's position survives a mid-track retry; playback
   stalls on silence until the re-decode passes the cursor again (today's
   rebuffer experience).
 - `seek` keeps its clamp-to-len contract; `position`/`total_frames` report
-  the growing length (duration UI comes from meta elsewhere).
+  the growing length. This has a frontend consequence the read side alone
+  can't fix: `engine:progress`'s own reported duration grows right along
+  with it (~1s climbing toward the real length as a streamed track
+  decodes), and the store's naive `p.durationSecs ?? s.durationSecs` used
+  to adopt that number the instant it arrived — visibly counting the seek
+  bar's total up from 0:01 to the real length on every streamed track (and
+  re-publishing OS media metadata on each change). Fixed store-side
+  (`reconcileDuration` in `src/stores/engine.ts`): trust the queue item's
+  own known duration until the engine's growing total reaches or exceeds
+  it, then adopt the engine's number and keep it.
 - Memory bound unchanged: played slots free to `Empty`, ~2 tracks resident.
 
 ### 4. Worker: overlap download and decode (`stream_queue.rs`)
@@ -159,6 +186,30 @@ cap downloads within it at CDN speed or was already failing today).
   (they construct `Done` slots).
 - Worker: `TeeReader` pass-through + spool-completeness; fallback decision
   table.
-- `--ignored` live test: stream one real YT track through the queue and
-  assert first-chunk latency < full-track time (best effort, network).
+- **Shipped in place of the promised `--ignored` live latency test**: two
+  real end-to-end tests drive `stream_decode_attempt` over a local TCP
+  harness with a real, probeable WAV body — a clean complete stream
+  (asserts the exact `Meta`/`Chunk*`/`Done` event sequence and a `Published`
+  return) and a body shorter than its declared `Content-Length` (asserts no
+  `Done` is ever published, exactly one `Reset`, and a `Retry` return). Both
+  exercise the real function and the real event protocol end to end, just
+  without a network YT fetch or a latency assertion, which would be flaky
+  against real network variance. What an automated test can't practically
+  cover (audible quality, real-network start latency) is left to the
+  release-build manual checklist the plan already calls for (Task 5, Step
+  3): gapless YT queue start latency by ear, crossfade correctness at batch
+  boundaries, throttled-network stall/resume with no skip or crash, and
+  seeking during a still-growing track. That checklist is the verification
+  path for this work, not an automated substitute — running it is a
+  release-build step, not part of this test suite.
+  - **Not implemented, left as future work**: (1) a hand-built moov-at-tail
+    (non-faststart) mp4/m4a fixture to exercise the container-fallback path
+    (`DecodeSpool`) through this same harness — WAV/PCM has no seek
+    dependency for a well-formed file, so it can't provoke a streaming-probe
+    failure whose complete body still decodes whole; the fallback's
+    *classification* logic is fully pinned at the pure-fn level instead
+    (`after_stream_failure`/`drain_then_classify`), and its wiring is
+    identical code to the already-tested truncation-recovery path. (2) the
+    originally-scoped `--ignored` live test against a real YT track,
+    asserting first-chunk latency < full-track time.
 - Whole-workspace gates as usual.

@@ -203,6 +203,12 @@ pub struct YtMusicState {
     /// hit is remembered: a miss has to stay cheap to retry, or installing
     /// yt-dlp wouldn't take effect until a restart.
     yt_dlp_bin: RwLock<Option<PathBuf>>,
+    /// Session tally for the native InnerTube fast path — how often a POST
+    /// and a probe replaced a yt-dlp spawn, versus how often it fell through.
+    /// Read by nothing yet but `native_miss`'s own log line; exists so a
+    /// future status surface doesn't need a second counting scheme bolted on.
+    native_hits: std::sync::atomic::AtomicU64,
+    native_misses: std::sync::atomic::AtomicU64,
 }
 
 /// How much of a resolved url's life to leave unused.
@@ -263,6 +269,15 @@ fn probe_ok(target: &ytdlp::StreamTarget) -> bool {
     }
 }
 
+/// The dev escape hatch: HM_NATIVE_RESOLVE=0 turns the native fast path off
+/// for a session (read once). The automatic fallback is the user-facing
+/// safety mechanism; this exists for A/B-ing a misbehaving resolve in the
+/// field without a rebuild.
+fn native_resolve_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("HM_NATIVE_RESOLVE").map_or(true, |v| v != "0"))
+}
+
 fn cached_in(cache: &TargetCache, video_id: &str) -> Option<ytdlp::StreamTarget> {
     let now = now_secs()?;
     let cache = cache.read().ok()?;
@@ -311,6 +326,8 @@ impl YtMusicState {
             cache_generation: std::sync::atomic::AtomicU64::new(0),
             resolved_video: RwLock::new(std::collections::HashMap::new()),
             yt_dlp_bin: RwLock::new(None),
+            native_hits: std::sync::atomic::AtomicU64::new(0),
+            native_misses: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -780,6 +797,16 @@ impl YtMusicState {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// Count and log a native-resolve miss. One stderr line per miss keeps
+    /// SABR/client-rot drift visible in Console output long before the
+    /// fallback's slowness is noticed by ear.
+    fn native_miss(&self, reason: &str) {
+        use std::sync::atomic::Ordering;
+        let misses = self.native_misses.fetch_add(1, Ordering::Relaxed) + 1;
+        let hits = self.native_hits.load(Ordering::Relaxed);
+        eprintln!("[hm-ytmusic] native resolve miss ({reason}) — {hits} hits / {misses} misses this session");
+    }
+
     /// The audio url cache as a JSON envelope, with its generation — or `None`
     /// when there is nothing fresh worth writing.
     ///
@@ -973,6 +1000,21 @@ impl YtMusicState {
         use std::sync::atomic::Ordering;
         if let Some(hit) = self.live_or_probed_target(video_id) {
             return Ok(hit);
+        }
+        // The fast path: one InnerTube POST + one probe instead of a ~5s
+        // yt-dlp process. Anything short of a probed, itag-140 url falls
+        // through to yt-dlp exactly as before — a native regression must
+        // never be more than a log line.
+        if native_resolve_enabled() {
+            match innertube::resolve_native(probe_client(), video_id) {
+                Ok(target) if probe_ok(&target) => {
+                    self.native_hits.fetch_add(1, Ordering::Relaxed);
+                    self.remember_target(video_id, &target);
+                    return Ok(target);
+                }
+                Ok(_) => self.native_miss("probe refused the url"),
+                Err(miss) => self.native_miss(&miss.to_string()),
+            }
         }
         let runner = self.runner()?;
         let cookies = self.cookies_snapshot();
@@ -2384,6 +2426,88 @@ mod tests {
         eprintln!("radio page 2: {} tracks", second.tracks.len());
         assert!(!second.tracks.is_empty(), "the continuation should keep the radio going");
         assert!(second.continuation.is_some(), "radio should always offer another page");
+    }
+
+    /// Run with `cargo test -p hm-ytmusic -- --ignored`. Needs network only —
+    /// android_vr is anonymous by design (no keychain skip here).
+    #[tokio::test]
+    #[ignore = "requires network access"]
+    async fn live_native_resolve_is_fast_and_unthrottled() {
+        let t = tokio::task::spawn_blocking(|| {
+            innertube::resolve_native(probe_client(), "dQw4w9WgXcQ")
+        })
+        .await
+        .unwrap()
+        .expect("android_vr should resolve a public track natively");
+        assert_eq!(t.format_id, "140");
+        assert!(t.expires_at.is_some(), "a googlevideo url carries expire=");
+        // The canary: the url must serve real bytes at CDN speed. A silent
+        // n-param/SABR regression pattern is a url that RESOLVES fine and
+        // then serves at ~1x realtime — status checks alone would miss it.
+        let start = std::time::Instant::now();
+        let ok = tokio::task::spawn_blocking(move || {
+            let mut req = probe_client().get(&t.url).header("Range", "bytes=0-65535");
+            for (k, v) in &t.headers {
+                req = req.header(k.as_str(), v.as_str());
+            }
+            req.send().map(|r| r.status().is_success() && r.bytes().map_or(0, |b| b.len()) >= 32_768).unwrap_or(false)
+        })
+        .await
+        .unwrap();
+        let took = start.elapsed();
+        eprintln!("native 64KB fetch: {took:?}");
+        assert!(
+            ok,
+            "the resolved url must serve at least 32KB of the 64KB requested range"
+        );
+        assert!(took < std::time::Duration::from_secs(2), "64KB took {took:?} — throttled?");
+
+        // Exercise the real seam — resolve()'s gate → native → probe →
+        // remember path, not just resolve_native() in isolation. A fresh
+        // state needs no keychain (native is anonymous) and should never
+        // reach the yt-dlp fallback: if the native path has rotted, this
+        // falls to `self.runner()?`, which would fail here anyway since a
+        // live-test box isn't guaranteed to have yt-dlp installed.
+        use std::sync::atomic::Ordering;
+        const ID: &str = "dQw4w9WgXcQ";
+        let state = Arc::new(YtMusicState::new());
+        let s1 = state.clone();
+        let via_resolve = tokio::task::spawn_blocking(move || s1.resolve(ID))
+            .await
+            .unwrap()
+            .expect("resolve() should hit the native path on a fresh, cache-free state");
+        assert_eq!(via_resolve.format_id, "140");
+        assert_eq!(
+            state.native_hits.load(Ordering::Relaxed),
+            1,
+            "resolve() should have taken the native path exactly once — if this \
+             is 0, the client constants have rotted and yt-dlp answered instead"
+        );
+        assert_eq!(
+            state.native_misses.load(Ordering::Relaxed),
+            0,
+            "the native path should not have missed on a fresh, cache-free resolve"
+        );
+
+        // A second resolve of the same id must come back from the cache the
+        // first resolve just filled — the cache check runs before the native
+        // attempt, so neither counter should move again.
+        let s2 = state.clone();
+        let cached = tokio::task::spawn_blocking(move || s2.resolve(ID))
+            .await
+            .unwrap()
+            .expect("a cached resolve cannot fail");
+        assert_eq!(cached.url, via_resolve.url, "the cache must answer with what it stored");
+        assert_eq!(
+            state.native_hits.load(Ordering::Relaxed),
+            1,
+            "a cache hit must not touch the native path — the cache check precedes it"
+        );
+        assert_eq!(
+            state.native_misses.load(Ordering::Relaxed),
+            0,
+            "a cache hit must not touch the native path — the cache check precedes it"
+        );
     }
 
     // NOTE: named `fresh_in` rather than the brief's `target` — this module

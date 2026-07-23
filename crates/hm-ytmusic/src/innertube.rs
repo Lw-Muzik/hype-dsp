@@ -60,7 +60,6 @@ impl std::fmt::Display for NativeMiss {
 /// Every fallible step here maps its error into a [`NativeMiss`] rather than
 /// propagating — this function has no error path that isn't one of the enum's
 /// variants, by construction.
-#[allow(dead_code)] // consumed by Task 2's resolve_with_fallback native-first wiring
 pub(crate) fn resolve_native(
     client: &reqwest::blocking::Client,
     video_id: &str,

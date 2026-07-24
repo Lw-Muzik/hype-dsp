@@ -10,6 +10,7 @@
 //! TypeScript interface in `src/lib/types.ts`. When a type changes on one side,
 //! it must change on the other — they are a single contract expressed twice.
 
+pub mod apo_ids;
 pub mod autoeq_db;
 pub mod chain_presets;
 pub mod ddc_library;

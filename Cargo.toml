@@ -11,6 +11,7 @@ members = [
     "crates/hm-core",
     "crates/hm-visualizer",
     "crates/hm-ytmusic",
+    "crates/hm-apo",
     "src-tauri",
 ]
 

@@ -2530,6 +2530,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hm-apo"
+version = "0.1.16"
+dependencies = [
+ "hm-core",
+ "hm-dsp",
+ "windows 0.61.3",
+ "windows-core 0.61.2",
+]
+
+[[package]]
 name = "hm-audio"
 version = "0.1.16"
 dependencies = [

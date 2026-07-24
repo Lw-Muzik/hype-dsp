@@ -52,7 +52,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -332,8 +332,12 @@ fn build_and_run(
         "node.group" => NODE_GROUP,
         *pw::keys::AUDIO_CHANNELS => "2",
     };
-    let sink_stream =
-        pw::stream::Stream::new(&core, SINK_NAME, sink_props).map_err(|e| format!("sink: {e}"))?;
+    // pipewire-rs 0.10 replaced `Stream::new` with the smart-pointer constructors
+    // (`StreamRc`/`StreamBox`). `StreamRc` owns a cheap Rc clone of the core, so it
+    // stays consistent with the rest of this file's Rc-flavoured handles
+    // (MainLoopRc/ContextRc/CoreRc/RegistryRc) and carries no borrow lifetime.
+    let sink_stream = pw::stream::StreamRc::new(core.clone(), SINK_NAME, sink_props)
+        .map_err(|e| format!("sink: {e}"))?;
 
     let _sink_listener = sink_stream
         .add_local_listener::<()>()
@@ -369,8 +373,8 @@ fn build_and_run(
         "node.group" => NODE_GROUP,
         *pw::keys::AUDIO_CHANNELS => "2",
     };
-    let out_stream =
-        pw::stream::Stream::new(&core, OUT_NAME, out_props).map_err(|e| format!("output: {e}"))?;
+    let out_stream = pw::stream::StreamRc::new(core.clone(), OUT_NAME, out_props)
+        .map_err(|e| format!("output: {e}"))?;
 
     // Built once, at the fixed negotiated rate, and moved into the RT callback.
     let mut chain = ProcessChain::standard(RATE as f32, CHANNELS);

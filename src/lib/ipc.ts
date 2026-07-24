@@ -885,6 +885,26 @@ export function systemAudioSetupRouting(): Promise<RoutingSetupOutcome> {
   return invoke<RoutingSetupOutcome>("system_audio_setup_routing");
 }
 
+/** Result of the Linux system-audio dependency setup. `alreadyReady`/`installed`
+ *  = system EQ is (now) usable; `needsManual` = run `command` yourself (sandbox /
+ *  unknown distro / no polkit); `notApplicable` = nothing installable would help
+ *  or not Linux; `failed` = the install ran but failed. */
+export type LinuxSetupResult =
+  | { kind: "alreadyReady" }
+  | { kind: "installed" }
+  | { kind: "needsManual"; command: string }
+  | { kind: "notApplicable" }
+  | { kind: "failed"; message: string; command: string };
+
+/** Linux: ensure the packages a system-EQ backend needs are installed (e.g.
+ *  `pulseaudio-utils` on a PipeWire-less box), installing via the auto-detected
+ *  package manager behind one `pkexec` prompt. Runs automatically on launch when
+ *  needed; this is the manual retry (ignores a prior decline). Emits
+ *  `system-eq-setup-phase` / `system-eq-setup-manual` events. */
+export function linuxSystemAudioSetup(): Promise<LinuxSetupResult> {
+  return invoke<LinuxSetupResult>("linux_system_audio_setup");
+}
+
 /** Set which apps the system-wide EQ tap processes (macOS). Restart the tap
  *  (call `playerPlaySystemAudio` again) for it to take effect if it's running. */
 export function systemEqSetScope(scope: SystemEqScope): Promise<void> {

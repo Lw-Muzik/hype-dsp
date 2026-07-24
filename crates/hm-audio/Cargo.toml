@@ -37,6 +37,15 @@ hound = { workspace = true }
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# Linux system-wide EQ: native PipeWire client (the EasyEffects model — a virtual
+# sink node + a stream mover via target.object metadata). Build-time this pulls
+# libpipewire-0.3-dev + libclang (bindgen) via pkg-config; at runtime it links
+# libpipewire-0.3.so.0, present on every PipeWire system (declared as a bundle
+# dependency for the deb/rpm so it's pulled in on PulseAudio-only installs).
+# Cannot be built or checked from the macOS/Windows hosts — Linux CI/box only.
+[target.'cfg(target_os = "linux")'.dependencies]
+pipewire = "0.10"
+
 # macOS system-wide capture via Core Audio process taps (macOS 14.4+).
 [target.'cfg(target_os = "macos")'.dependencies]
 hm-platform = { workspace = true }

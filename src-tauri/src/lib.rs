@@ -673,6 +673,13 @@ pub fn run() {
                 let _ = hm_audio::system_eq_windows_apo::repair();
             });
 
+            // Linux: if system-wide EQ is unavailable only because a package is
+            // missing (e.g. pulseaudio-utils on a PipeWire-less box), auto-install
+            // it behind a single polkit prompt. No-op when nothing is needed
+            // (the PipeWire majority) or the user already declined.
+            #[cfg(target_os = "linux")]
+            commands::linux_audio_setup::auto_setup_on_launch(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -784,6 +791,7 @@ pub fn run() {
             commands::apo_setup::apo_setup,
             commands::apo_setup::apo_uninstall,
             commands::apo_setup::apo_repair,
+            commands::linux_audio_setup::linux_system_audio_setup,
             commands::engine::player_stop,
             commands::engine::player_pause,
             commands::engine::player_resume,

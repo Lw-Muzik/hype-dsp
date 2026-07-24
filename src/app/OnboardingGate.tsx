@@ -4,7 +4,7 @@ import { Onboarding } from "@/components/Onboarding";
 
 const ONBOARDED_KEY = "hm_onboarded";
 
-/** Shows the first-launch presentation once, then renders the app (auth gate). */
+/** Shows the first-launch presentation once, then renders the app (session gate). */
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const [done, setDone] = useState(() => {
     try {

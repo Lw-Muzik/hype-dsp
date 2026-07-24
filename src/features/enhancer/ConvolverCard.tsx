@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { Card } from "@/components/Card";
 import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
+import { requirePremium } from "@/components/PremiumGate";
 import { useEngineStore } from "@/stores/engine";
 import { toast } from "@/stores/toast";
 import { ipcErrorMessage } from "@/lib/ipc";
@@ -20,6 +21,7 @@ export function ConvolverCard() {
   const [loading, setLoading] = useState(false);
 
   const pickIr = async () => {
+    if (!requirePremium("CONVOLVER")) return;
     const path = await open({
       multiple: false,
       filters: [{ name: "Impulse response", extensions: ["wav", "irs"] }],
@@ -42,7 +44,10 @@ export function ConvolverCard() {
       actions={
         <Switch
           checked={convolver.enabled}
-          onChange={(v) => setConvolver({ ...convolver, enabled: v })}
+          onChange={(v) => {
+            if (v && !requirePremium("CONVOLVER")) return;
+            setConvolver({ ...convolver, enabled: v });
+          }}
           label="Enable convolver"
         />
       }

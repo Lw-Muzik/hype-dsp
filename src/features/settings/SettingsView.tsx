@@ -8,10 +8,8 @@ import {
   FolderPlus,
   Headphones,
   Info,
-  KeyRound,
   Library,
   ListMusic,
-  LogOut,
   MonitorSpeaker,
   RefreshCw,
   RotateCcw,
@@ -28,16 +26,17 @@ import { DevicesView } from "@/features/devices/DevicesView";
 import { CloudView } from "@/features/cloud/CloudView";
 import ThemeCard from "@/features/settings/ThemeCard";
 import { UpdateRow } from "@/features/settings/UpdateRow";
+import { AccountCard } from "@/features/settings/AccountCard";
 import { YtMusicView } from "@/features/ytmusic/YtMusicView";
 import { Button } from "@/components/Button";
 import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
+import { PremiumGate, requirePremium } from "@/components/PremiumGate";
 import { useUiStore } from "@/stores/ui";
 import { useEngineStore } from "@/stores/engine";
 import { useLibraryStore } from "@/stores/library";
 import { useVisualizerStore, VISUALIZER_LIMITS } from "@/stores/visualizer";
 import { useSystemEqStore } from "@/stores/systemEq";
-import { useAccountStore } from "@/stores/account";
 import { toast } from "@/stores/toast";
 import {
   captureVirtualAvailable,
@@ -68,31 +67,10 @@ import { systemAudioAffordance } from "./systemAudioCard";
 const SETUP_REBOOT_KEY = "hm.systemEqSetupAwaitingReboot";
 import type {
   AppSession,
-  LicenseInfo,
   OutputDevice,
   OutputTransport,
   SystemEqScopeMode,
 } from "@/lib/types";
-
-/** Human date (e.g. "14 Jul 2026") for a server ISO timestamp, or null. */
-function formatDate(iso: string | null): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-/** Label + badge colour for each license state. */
-const PLAN_META: Record<LicenseInfo["state"], { label: string; cls: string }> = {
-  trial: { label: "Trial", cls: "bg-amber-500/15 text-amber-400" },
-  licensed: { label: "Licensed", cls: "bg-success/15 text-success" },
-  expired: { label: "Expired", cls: "bg-danger/15 text-danger" },
-  blocked: { label: "Blocked", cls: "bg-danger/15 text-danger" },
-};
 
 type DeviceState =
   | { status: "loading" }
@@ -498,8 +476,6 @@ function OutputDevices({
 export function SettingsView() {
   const route = routeById("settings");
   const appInfo = useUiStore((s) => s.appInfo);
-  const account = useAccountStore((s) => s.status);
-  const logout = useAccountStore((s) => s.logout);
   const playback = useEngineStore((s) => s.state.playback);
   const setPlayback = useEngineStore((s) => s.setPlayback);
   const setDataSaver = useEngineStore((s) => s.setDataSaver);
@@ -646,6 +622,7 @@ export function SettingsView() {
     playerPlayCapture().catch((e) => setCaptureError(ipcErrorMessage(e)));
   };
   const startSystemAudio = () => {
+    if (!requirePremium("SYSTEM_EQ")) return;
     // Refresh the running-app list on the way in, so the scope picker below
     // isn't empty the first time it's opened.
     refreshScopeApps();
@@ -679,6 +656,7 @@ export function SettingsView() {
   // The free, white-label Windows path: install our own APO (one UAC prompt +
   // reboot). Nothing third-party for the user to see, no cert/account/card.
   const setupApo = async () => {
+    if (!requirePremium("SYSTEM_EQ")) return;
     setDriverError(null);
     setSetupPhase("installing");
     try {
@@ -718,24 +696,17 @@ export function SettingsView() {
     if (systemEqOn) await enableSystemEq();
   };
   const setScopeMode = (mode: SystemEqScopeMode) => {
+    if (!requirePremium("PER_APP_EQ")) return;
     refreshScopeApps();
     void applyScope({ mode, apps: systemEqScope.apps });
   };
   const toggleScopeApp = (id: string) => {
+    if (!requirePremium("PER_APP_EQ")) return;
     const apps = systemEqScope.apps.includes(id)
       ? systemEqScope.apps.filter((a) => a !== id)
       : [...systemEqScope.apps, id];
     void applyScope({ mode: systemEqScope.mode, apps });
   };
-  // Renewal date + label, from the server license (licensed → renewal date,
-  // otherwise the trial end date).
-  const lic = account?.license ?? null;
-  const renewDate = lic
-    ? formatDate(lic.state === "licensed" ? lic.licensedUntil : lic.trialEndsAt)
-    : null;
-  const renewInfo = renewDate
-    ? { label: lic!.state === "licensed" ? "Renews on" : "Trial ends", value: renewDate }
-    : null;
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -765,7 +736,10 @@ export function SettingsView() {
 
         <DevicesView />
 
-        <CloudView />
+        {/* Cloud music (Google Drive / Dropbox) is a Supporter feature. */}
+        <PremiumGate feature="CLOUD">
+          <CloudView />
+        </PremiumGate>
         {/* youtube music view */}
         <YtMusicView />
 
@@ -858,50 +832,7 @@ export function SettingsView() {
           </div>
         </Card>
 
-        <Card title="Account" icon={KeyRound}>
-          {account?.authenticated ? (
-            <>
-              <div className="divide-y divide-border">
-                {account.email && <InfoRow label="Email" value={account.email} />}
-                {account.name && <InfoRow label="Name" value={account.name} />}
-                <div className="flex items-center justify-between py-2 text-sm">
-                  <span className="text-text-muted">Plan</span>
-                  {lic ? (
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${PLAN_META[lic.state].cls}`}
-                    >
-                      {PLAN_META[lic.state].label}
-                    </span>
-                  ) : (
-                    <span className="font-medium">—</span>
-                  )}
-                </div>
-                {lic && (
-                  <InfoRow
-                    label="Days remaining"
-                    value={`${lic.daysLeft} day${lic.daysLeft === 1 ? "" : "s"}`}
-                  />
-                )}
-                {renewInfo && <InfoRow label={renewInfo.label} value={renewInfo.value} />}
-              </div>
-              <div className="mt-3 flex items-center justify-end gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={() => toast.info("Renewals are coming soon.")}
-                >
-                  <RefreshCw className="size-4" aria-hidden="true" />
-                  Renew
-                </Button>
-                <Button variant="ghost" onClick={() => void logout()}>
-                  <LogOut className="size-4" aria-hidden="true" />
-                  Sign out
-                </Button>
-              </div>
-            </>
-          ) : (
-            <p className="py-2 text-sm text-text-muted">You’re not signed in.</p>
-          )}
-        </Card>
+        <AccountCard />
 
         <Card title="System-wide audio" icon={Sparkles}>
           <div className="flex flex-col gap-3">

@@ -12,7 +12,9 @@ use std::time::Duration;
 
 use hm_core::IpcError;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
+
+use super::install::resolve_install_id;
 
 /// Management API base, overridable at runtime via `HM_MANAGEMENT_API`
 /// (e.g. `http://localhost:4000/api` for local dev).
@@ -24,6 +26,11 @@ struct Stored {
     refresh: Option<String>,
     email: Option<String>,
     name: Option<String>,
+    /// Whether `email` is a real, claimed address. `false` for the synthetic
+    /// `anon+<installId>@anon.hypemuzik.app` the anonymous bootstrap mints —
+    /// that's how the UI tells "frictionless free session" from "signed in".
+    #[serde(default)]
+    email_verified: bool,
 }
 
 /// The server's license verdict — `allowed` is the only thing the UI gates on.
@@ -45,12 +52,25 @@ pub struct AccountStatus {
     pub email: Option<String>,
     pub name: Option<String>,
     pub license: Option<LicenseInfo>,
+    /// `false` for a frictionless anonymous session (synthetic email, nothing
+    /// claimed yet) — the Settings view uses this to offer "attach email"
+    /// instead of showing account details.
+    pub email_verified: bool,
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UserDto {
     email: String,
     name: Option<String>,
+    #[serde(default)]
+    email_verified: bool,
+}
+
+/// `GET /me/entitlements` response — the one thing the premium gate consumes.
+#[derive(Deserialize)]
+struct EntitlementsDto {
+    premium: bool,
 }
 
 #[derive(Deserialize)]
@@ -113,6 +133,7 @@ impl AccountState {
         s.refresh = Some(dto.refresh_token);
         s.email = Some(dto.user.email);
         s.name = dto.user.name;
+        s.email_verified = dto.user.email_verified;
         self.save(&s);
     }
 
@@ -195,6 +216,35 @@ impl AccountState {
         Some(resp)
     }
 
+    /// Authenticated POST (Bearer), retrying once after a token refresh on 401 —
+    /// the `auth_get` pattern, for the claim endpoints. `None` means there's no
+    /// session to authenticate with, or the request couldn't reach the server.
+    fn auth_post(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Option<reqwest::blocking::Response> {
+        let access = self.inner.lock().expect("account poisoned").access.clone()?;
+        let resp = self
+            .client
+            .post(self.url(path))
+            .bearer_auth(&access)
+            .json(body)
+            .send()
+            .ok()?;
+        if resp.status().as_u16() == 401 && self.refresh_after_401(&access) {
+            let access = self.inner.lock().expect("account poisoned").access.clone()?;
+            return self
+                .client
+                .post(self.url(path))
+                .bearer_auth(&access)
+                .json(body)
+                .send()
+                .ok();
+        }
+        Some(resp)
+    }
+
     /// Create a passwordless account (with details) — the server emails a code.
     pub fn signup(&self, email: &str, name: Option<&str>) -> Result<(), String> {
         let resp = self.post("/auth/signup", serde_json::json!({ "email": email, "name": name }))?;
@@ -231,6 +281,87 @@ impl AccountState {
         Ok(())
     }
 
+    /// Silently provision a session for a brand-new user: no email, no
+    /// password, keyed off the keychain-persisted install id. Idempotent —
+    /// the server links the same `Install` to the same `User` every time, so
+    /// calling this again (e.g. next launch, if the local session was lost)
+    /// just re-issues tokens for the account already tied to this install.
+    pub fn bootstrap_anonymous(
+        &self,
+        install_id: &str,
+        os: &str,
+        arch: &str,
+        app_version: &str,
+    ) -> Result<(), String> {
+        let resp = self.post(
+            "/auth/anonymous",
+            serde_json::json!({
+                "installId": install_id,
+                "os": os,
+                "arch": arch,
+                "appVersion": app_version,
+            }),
+        )?;
+        match resp.status().as_u16() {
+            200 | 201 => {}
+            code => return Err(format!("Couldn't start a session ({code})")),
+        }
+        let dto: AuthDto = resp.json().map_err(|e| e.to_string())?;
+        self.store_session(dto);
+        Ok(())
+    }
+
+    /// Request a code to attach a real email to the current (possibly
+    /// anonymous) account. Does not change the account until `claim_verify`.
+    pub fn claim_request(&self, email: &str) -> Result<(), String> {
+        let resp = self
+            .auth_post("/auth/claim/request", &serde_json::json!({ "email": email }))
+            .ok_or_else(|| "couldn't reach the server".to_string())?;
+        match resp.status().as_u16() {
+            200 | 201 => Ok(()),
+            409 => Err("That email already has an account — sign in instead".into()),
+            401 => Err("Your session expired — restart the app and try again".into()),
+            code => Err(format!("Couldn't send a code ({code})")),
+        }
+    }
+
+    /// Verify the emailed code and attach the email to the current account in
+    /// place — same user id, same history/entitlement, now with a real,
+    /// verified email instead of the anonymous placeholder.
+    pub fn claim_verify(&self, email: &str, code: &str, name: Option<&str>) -> Result<(), String> {
+        let resp = self
+            .auth_post(
+                "/auth/claim/verify",
+                &serde_json::json!({ "email": email, "code": code, "name": name }),
+            )
+            .ok_or_else(|| "couldn't reach the server".to_string())?;
+        match resp.status().as_u16() {
+            200 | 201 => {}
+            401 => return Err("Invalid or expired code".into()),
+            409 => return Err("That email already has an account — sign in instead".into()),
+            code => return Err(format!("Verification failed ({code})")),
+        }
+        let dto: AuthDto = resp.json().map_err(|e| e.to_string())?;
+        self.store_session(dto);
+        Ok(())
+    }
+
+    /// Whether the signed-in account is entitled to Supporter/premium
+    /// features. `Err` means the check couldn't be completed (offline,
+    /// unauthenticated, or a server error) — callers should fall back to a
+    /// cached last-known value rather than treat that as a hard "no", since a
+    /// blip must never downgrade a supporter mid-session.
+    pub fn entitlements(&self) -> Result<bool, String> {
+        let resp = self
+            .auth_get("/me/entitlements")
+            .ok_or_else(|| "couldn't reach the server".to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Entitlement check failed ({})", resp.status().as_u16()));
+        }
+        let dto: EntitlementsDto = resp.json().map_err(|e| e.to_string())?;
+        Ok(dto.premium)
+    }
+
     pub fn logout(&self) {
         let refresh = self.inner.lock().expect("account poisoned").refresh.clone();
         if let Some(refresh) = refresh {
@@ -244,9 +375,9 @@ impl AccountState {
     }
 
     pub fn status(&self) -> AccountStatus {
-        let (email, name, has_access) = {
+        let (email, name, has_access, email_verified) = {
             let s = self.inner.lock().expect("account poisoned");
-            (s.email.clone(), s.name.clone(), s.access.is_some())
+            (s.email.clone(), s.name.clone(), s.access.is_some(), s.email_verified)
         };
         if !has_access {
             return AccountStatus {
@@ -254,6 +385,7 @@ impl AccountState {
                 email: None,
                 name: None,
                 license: None,
+                email_verified: false,
             };
         }
         let license = self
@@ -267,6 +399,7 @@ impl AccountState {
             email: if authenticated { email } else { None },
             name: if authenticated { name } else { None },
             license,
+            email_verified: authenticated && email_verified,
         }
     }
 
@@ -345,4 +478,59 @@ pub fn account_heartbeat(
     app_version: String,
 ) {
     account.heartbeat(&platform, &app_version);
+}
+
+/// Silently provision the free-tier session on first launch (or whenever no
+/// local session exists) — no email, no password. Uses the SAME
+/// keychain-persisted install id as `install::spawn_tracking`, so the
+/// anonymous account and the accountless install ping are always the same
+/// identity; this must never mint a second id.
+#[tauri::command(async)]
+pub fn account_bootstrap_anonymous(
+    app: AppHandle,
+    account: State<'_, AccountState>,
+) -> Result<AccountStatus, IpcError> {
+    let install_id = resolve_install_id(&app);
+    let version = app.package_info().version.to_string();
+    account
+        .bootstrap_anonymous(&install_id, std::env::consts::OS, std::env::consts::ARCH, &version)
+        .map_err(|e| IpcError::new("account", e))?;
+    Ok(account.status())
+}
+
+/// Start attaching a real email to the current account (Settings → "Sign in /
+/// attach email"). Optional — never a gate.
+#[tauri::command(async)]
+pub fn account_claim_request(
+    account: State<'_, AccountState>,
+    email: String,
+) -> Result<(), IpcError> {
+    account
+        .claim_request(&email)
+        .map_err(|e| IpcError::new("account", e))
+}
+
+/// Verify the emailed code and attach it to the current account in place.
+#[tauri::command(async)]
+pub fn account_claim_verify(
+    account: State<'_, AccountState>,
+    email: String,
+    code: String,
+    name: Option<String>,
+) -> Result<AccountStatus, IpcError> {
+    account
+        .claim_verify(&email, &code, name.as_deref())
+        .map_err(|e| IpcError::new("account", e))?;
+    Ok(account.status())
+}
+
+/// Whether the account is entitled to Supporter/premium features. Rejects
+/// (rather than returning `false`) when the check couldn't be completed, so
+/// the front-end's entitlement store can fall back to its cached last-known
+/// value instead of wrongly downgrading a supporter who is offline.
+#[tauri::command(async)]
+pub fn account_entitlements(account: State<'_, AccountState>) -> Result<bool, IpcError> {
+    account
+        .entitlements()
+        .map_err(|e| IpcError::new("account", e))
 }

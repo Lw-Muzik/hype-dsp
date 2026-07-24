@@ -301,6 +301,11 @@ export interface AccountStatus {
   email: string | null;
   name: string | null;
   license: LicenseInfo | null;
+  /** `false` for the frictionless anonymous session every install gets on
+   *  first launch (a synthetic, unrouted email) — `true` once the user
+   *  attaches (or signs in with) a real, verified email. Not a gate: it only
+   *  decides whether Settings offers "attach email" or shows account details. */
+  emailVerified: boolean;
 }
 
 export interface MixerSnapshot {

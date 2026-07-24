@@ -68,7 +68,12 @@ fn write_keychain_id(id: &str) {
 
 /// Resolve the persistent install id: app-data → keychain (reinstall) → mint.
 /// Always writes the id back to both stores so it survives a reinstall.
-fn resolve_install_id(app: &AppHandle) -> String {
+///
+/// This is the **single source of truth** for the install id — the anonymous
+/// account bootstrap (`commands::account`) calls this too, so the free-tier
+/// session and the accountless install-tracking ping are always keyed off the
+/// same identity. Never mint a second id elsewhere.
+pub fn resolve_install_id(app: &AppHandle) -> String {
     if let Some(id) = read_file_id(app) {
         // Keep the keychain copy in sync (belt-and-suspenders) without a read cost.
         return id;

@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { TrialBanner } from "@/components/TrialBanner";
 import { Toaster } from "@/components/Toaster";
+import { SupporterUpsellModal } from "@/components/PremiumGate";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
 import { RightSidebar } from "@/components/RightSidebar";
 import { ResizeHandle } from "@/components/ResizeHandle";
@@ -107,6 +108,7 @@ export function App() {
         <NowPlayingBar />
       </div>
       <Toaster />
+      <SupporterUpsellModal />
     </div>
   );
 }

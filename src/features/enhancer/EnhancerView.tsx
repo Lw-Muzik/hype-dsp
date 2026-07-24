@@ -18,6 +18,7 @@ import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
 import { Combobox } from "@/components/Combobox";
 import type { ComboItem } from "@/components/Combobox";
+import { requirePremium } from "@/components/PremiumGate";
 import { useEngineStore } from "@/stores/engine";
 import {
   ipcErrorMessage,
@@ -97,6 +98,17 @@ export function EnhancerView() {
     profileSetActive(id)
       .then((p) => applyProfile(p))
       .catch(() => {});
+  };
+
+  // 3D Surround is a Supporter feature — gate turning it on (never gate
+  // turning it off) and opening the speaker configurator.
+  const toggleSurround3d = (v: boolean) => {
+    if (v && !requirePremium("SURROUND_3D")) return;
+    setSurround3d({ ...surround3d, enabled: v });
+  };
+  const openSurroundConfig = () => {
+    if (!requirePremium("SURROUND_3D")) return;
+    setSurroundOpen(true);
   };
 
   return (
@@ -285,7 +297,7 @@ export function EnhancerView() {
           actions={
             <Switch
               checked={surround3d.enabled}
-              onChange={(v) => setSurround3d({ ...surround3d, enabled: v })}
+              onChange={toggleSurround3d}
               label="Enable 3D Surround"
             />
           }
@@ -301,7 +313,7 @@ export function EnhancerView() {
               {Math.round(surround3d.intensity * 100)}% intensity, subwoofer{" "}
               {Math.round(surround3d.subwoofer * 100)}%.
             </p>
-            <Button variant="secondary" onClick={() => setSurroundOpen(true)}>
+            <Button variant="secondary" onClick={openSurroundConfig}>
               <Orbit className="size-4" aria-hidden="true" />
               Configure speakers
             </Button>

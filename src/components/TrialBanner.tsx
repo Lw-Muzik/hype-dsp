@@ -1,23 +1,10 @@
-import { Sparkles } from "lucide-react";
-import { useUiStore } from "@/stores/ui";
-
 /**
- * A subtle trial-countdown banner. Upgrades are managed by an administrator, so
- * there's no self-serve activation here — the auth gate (`AuthGate`) blocks
- * access entirely once a trial ends. Licensed users see nothing.
+ * Retired: core playback, library, basic EQ, Stations, visualizers, and
+ * YouTube Music are free forever now — there's no trial to count down (see
+ * `SessionGate`, which replaced the old sign-in-wall `AuthGate`). Kept as a
+ * no-op rather than deleted so `App.tsx` doesn't need touching if a future
+ * "renewal due" style notice ever needs this exact slot back.
  */
 export function TrialBanner() {
-  const license = useUiStore((s) => s.license);
-  if (!license || license.kind !== "trial") return null;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex items-center gap-2 border-b border-border bg-surface-raised px-5 py-2 text-sm text-text-muted"
-    >
-      <Sparkles className="size-4" aria-hidden="true" />
-      Trial — {license.daysLeft} day{license.daysLeft === 1 ? "" : "s"} left.
-    </div>
-  );
+  return null;
 }

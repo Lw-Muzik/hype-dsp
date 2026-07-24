@@ -4,6 +4,7 @@ import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
 import { Combobox } from "@/components/Combobox";
 import type { ComboItem } from "@/components/Combobox";
+import { requirePremium } from "@/components/PremiumGate";
 import { useEngineStore } from "@/stores/engine";
 import { ROOM_PRESETS } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -39,6 +40,7 @@ export function RoomCard() {
   const setRoom = useEngineStore((s) => s.setRoom);
 
   const applyPreset = (id: string) => {
+    if (!requirePremium("ROOM_REVERB")) return;
     const p = ROOM_PRESETS.find((x) => x.id === id);
     if (!p) return;
     setRoom({
@@ -60,7 +62,10 @@ export function RoomCard() {
       actions={
         <Switch
           checked={room.enabled}
-          onChange={(v) => setRoom({ ...room, enabled: v })}
+          onChange={(v) => {
+            if (v && !requirePremium("ROOM_REVERB")) return;
+            setRoom({ ...room, enabled: v });
+          }}
           label="Enable room reverb"
         />
       }

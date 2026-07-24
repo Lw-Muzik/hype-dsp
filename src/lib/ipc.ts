@@ -1041,6 +1041,42 @@ export function accountHeartbeat(
   return invoke<void>("account_heartbeat", { platform, appVersion });
 }
 
+/** Silently provision the frictionless free-tier session (no email, no
+ *  password) keyed off this install's keychain id. Idempotent — safe to call
+ *  whenever there's no local session, including after a sign-out. */
+export function accountBootstrapAnonymous(): Promise<AccountStatus> {
+  return invoke<AccountStatus>("account_bootstrap_anonymous");
+}
+
+/** Start attaching a real email to the current account (Settings → "Attach
+ *  email"); the server emails a code. Rejects 409 if a different, already
+ *  verified account owns that email. */
+export function accountClaimRequest(email: string): Promise<void> {
+  return invoke<void>("account_claim_request", { email });
+}
+
+/** Verify the emailed code and attach it to the current account in place —
+ *  same account id, now with a real, verified email. */
+export function accountClaimVerify(
+  email: string,
+  code: string,
+  name?: string,
+): Promise<AccountStatus> {
+  return invoke<AccountStatus>("account_claim_verify", {
+    email,
+    code,
+    name: name ?? null,
+  });
+}
+
+/** Whether the account is entitled to Supporter/premium features. Rejects
+ *  (rather than resolving `false`) when the check couldn't be completed
+ *  (offline, no session yet) — callers should keep a cached last-known value
+ *  rather than treat a rejection as "not a supporter". */
+export function accountEntitlements(): Promise<boolean> {
+  return invoke<boolean>("account_entitlements");
+}
+
 /* ----------------------------------------------------------------- stems */
 
 export interface StemStatus {

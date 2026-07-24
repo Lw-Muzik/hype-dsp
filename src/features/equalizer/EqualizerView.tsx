@@ -10,6 +10,7 @@ import { Slider } from "@/components/Slider";
 import { EqBandSlider } from "@/components/EqBandSlider";
 import { EqVisualizer } from "@/features/equalizer/EqVisualizer";
 import { PresetPicker } from "@/features/equalizer/PresetPicker";
+import { requirePremium } from "@/components/PremiumGate";
 import { useEngineStore } from "@/stores/engine";
 import {
   autoeqSearch,
@@ -190,6 +191,7 @@ export function EqualizerView() {
   };
 
   const importVdcFile = async () => {
+    if (!requirePremium("VIPER_DDC")) return;
     const path = await open({
       multiple: false,
       filters: [{ name: "ViPER DDC", extensions: ["vdc"] }],
@@ -207,6 +209,7 @@ export function EqualizerView() {
   };
 
   const applyDdcPreset = async (name: string) => {
+    if (!requirePremium("VIPER_DDC")) return;
     setApplyingDdc(true);
     try {
       await applyDdc(name);
@@ -242,6 +245,7 @@ export function EqualizerView() {
   }, [autoEqQuery, showAutoEq]);
 
   const applyAutoEqEntry = async (entry: AutoEqEntry) => {
+    if (!requirePremium("AUTOEQ")) return;
     setApplyingUrl(entry.url);
     try {
       await applyAutoEq(entry.url);
@@ -359,7 +363,11 @@ export function EqualizerView() {
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="ghost"
-                onClick={() => { setShowAutoEq((v) => !v); setShowImport(false); }}
+                onClick={() => {
+                  if (!showAutoEq && !requirePremium("AUTOEQ")) return;
+                  setShowAutoEq((v) => !v);
+                  setShowImport(false);
+                }}
                 aria-expanded={showAutoEq}
               >
                 Find headphone (AutoEQ)…

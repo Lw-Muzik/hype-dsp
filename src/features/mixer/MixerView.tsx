@@ -4,12 +4,26 @@ import { routeById } from "@/app/routes";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { Slider } from "@/components/Slider";
+import { PremiumGate } from "@/components/PremiumGate";
 import { ipcErrorMessage, mixerListSessions, mixerSetMuted, mixerSetVolume } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
 import type { AppSession, MixerSnapshot } from "@/lib/types";
 
+/** Per-app volume/mute is a Supporter feature — the page header always shows,
+ *  but the live session list (and its polling) is gated behind the upsell. */
 export function MixerView() {
   const route = routeById("mixer");
+  return (
+    <div className="mx-auto w-full max-w-3xl">
+      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
+      <PremiumGate feature="PER_APP_MIXER" variant="page">
+        <MixerSessions />
+      </PremiumGate>
+    </div>
+  );
+}
+
+function MixerSessions() {
   const [snap, setSnap] = useState<MixerSnapshot | null>(null);
 
   const refresh = useCallback(() => {
@@ -66,9 +80,7 @@ export function MixerView() {
     );
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
-
+    <>
       {snap && !snap.supported ? (
         <Card title="Per-app volume" icon={Info}>
           <div className="flex items-start gap-3 text-sm">
@@ -143,6 +155,6 @@ export function MixerView() {
           </ul>
         </Card>
       )}
-    </div>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AudioLines, Cpu, Loader2, Sparkles } from "lucide-react";
+import { PremiumGate } from "@/components/PremiumGate";
 import { useEngineStore } from "@/stores/engine";
 import {
   ipcErrorMessage,
@@ -74,10 +75,21 @@ const PADS: Pad[] = [
 const sameSet = (a: number[], b: number[]) =>
   a.length === b.length && a.every((x) => b.includes(x));
 
+/** Stem separation is a Supporter feature (it's real CPU/GPU work, not just a
+ *  UI toggle) — gated at the whole-view level so a non-Supporter never even
+ *  triggers the auto-arm/separation pipeline below. */
+export function StemsPanel() {
+  return (
+    <PremiumGate feature="STEMS" variant="page">
+      <StemsPanelBody />
+    </PremiumGate>
+  );
+}
+
 /** VirtualDJ-style stems pad grid: the playing track auto-separates in the
  *  background (htdemucs on CoreML, drums split into kick/hihat), then the pads
  *  go live — tap to mute a stem, tap a combo pad to isolate. No "separate" step. */
-export function StemsPanel() {
+function StemsPanelBody() {
   const trackPath = useEngineStore((s) => s.currentTrackPath);
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
 

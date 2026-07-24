@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { Lock, Sparkles } from "lucide-react";
+import { Loader2, Lock, Sparkles } from "lucide-react";
 import { create } from "zustand";
 import { Button } from "@/components/Button";
 import { Dialog } from "@/components/Dialog";
@@ -20,6 +20,16 @@ import {
 
 /** Quick-pick Supporter amounts, in whole dollars. */
 const QUICK_AMOUNTS = [5, 10, 25] as const;
+
+/** The checkout modal's own progression: pick an amount → wait for Paddle to
+ *  confirm the browser payment → celebrate. */
+type CheckoutPhase = "select" | "pending" | "success";
+
+/** While waiting for a payment to confirm, re-check entitlement this often (on
+ *  top of the focus-triggered refresh), giving up — and pointing at Restore —
+ *  after the budget, so a webhook that never lands doesn't spin forever. */
+const CONFIRM_POLL_MS = 4000;
+const CONFIRM_POLL_BUDGET = 30; // ~2 minutes
 
 const inputCls =
   "w-full rounded-control border border-border bg-surface px-3 py-2 text-sm outline-none placeholder:text-text-faint focus-visible:border-accent";
@@ -70,15 +80,53 @@ export function requirePremium(feature: PremiumFeature): boolean {
   return false;
 }
 
+/**
+ * Fires a single celebratory toast whenever the account transitions into
+ * Supporter mid-session — covering unlocks that land while the upsell modal
+ * isn't showing its success view (a late webhook, a restore from the Account
+ * card, a cross-device sign-in). Armed only after the first entitlement check
+ * settles, so the cache→server hydration on launch (which legitimately flips
+ * false→true for an existing supporter) never reads as a fresh unlock.
+ */
+function useSupporterUnlockToast(): void {
+  const premium = usePremium();
+  const loading = useEntitlementStore((s) => s.loading);
+  const prev = useRef(premium);
+  const armed = useRef(false);
+  useEffect(() => {
+    if (!armed.current) {
+      if (!loading) {
+        armed.current = true;
+        prev.current = premium;
+      }
+      return;
+    }
+    if (!prev.current && premium) {
+      toast.success("You're a Supporter — thank you! Everything's unlocked.");
+    }
+    prev.current = premium;
+  }, [premium, loading]);
+}
+
 /** The modal every upsell CTA opens. Mount exactly once (in `App.tsx`). */
 export function SupporterUpsellModal() {
   const open = useUpsellStore((s) => s.open);
   const feature = useUpsellStore((s) => s.feature);
   const close = useUpsellStore((s) => s.close);
+  const premium = usePremium();
+
+  // Also carries the app-wide unlock acknowledgement — this component is
+  // always mounted, so it's the natural home for the transition watcher.
+  useSupporterUnlockToast();
 
   return (
-    <Dialog open={open} onClose={close} title="Become a Supporter">
-      <UpsellBody feature={feature} onClose={close} />
+    <Dialog
+      open={open}
+      onClose={close}
+      title={premium ? "Supporter" : "Become a Supporter"}
+    >
+      {/* Remount per open so the checkout phase always starts fresh. */}
+      {open && <UpsellBody feature={feature} onClose={close} />}
     </Dialog>
   );
 }
@@ -90,10 +138,37 @@ function UpsellBody({
   feature: PremiumFeature | null;
   onClose: () => void;
 }) {
+  const premium = usePremium();
   const [amount, setAmount] = useState<number>(10);
   const [custom, setCustom] = useState("");
   const [checkingOut, setCheckingOut] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const [phase, setPhase] = useState<CheckoutPhase>("select");
+  const [stalled, setStalled] = useState(false);
+
+  // Entitlement flipped to premium (via the poll below, the focus refresh, or
+  // a Restore) → celebrate, from whatever phase we're in.
+  useEffect(() => {
+    if (premium && phase !== "success") setPhase("success");
+  }, [premium, phase]);
+
+  // While confirming, poll entitlement on top of SessionGate's focus refresh,
+  // and give up gracefully after the budget so a payment whose webhook never
+  // arrives (e.g. before the backend is on HTTPS) points the user at Restore
+  // instead of spinning forever.
+  useEffect(() => {
+    if (phase !== "pending") return;
+    let ticks = 0;
+    const id = window.setInterval(() => {
+      ticks += 1;
+      void useEntitlementStore.getState().refresh();
+      if (ticks >= CONFIRM_POLL_BUDGET) {
+        setStalled(true);
+        window.clearInterval(id);
+      }
+    }, CONFIRM_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [phase]);
 
   // A non-empty custom amount always wins over the quick picks — including
   // when it doesn't parse, so a user who typed garbage never silently
@@ -109,20 +184,20 @@ function UpsellBody({
     try {
       const checkoutUrl = await accountSupportCheckout(selectedAmount);
       await openExternalUrl(checkoutUrl);
-      toast.info(
-        "Complete your Supporter checkout in the browser — premium unlocks automatically.",
-      );
-      onClose();
-      // The user may return to a focused window (SessionGate already refreshes
-      // then) or may still be mid-checkout — kick one now too so a fast
-      // checkout unlocks without waiting for a focus event.
-      void useEntitlementStore.getState().refresh();
+      // Keep the modal open and switch to a "confirming…" view rather than
+      // closing — the user shouldn't be left wondering whether it worked. That
+      // view polls entitlement and either unlocks or points at Restore itself.
+      setPhase("pending");
     } catch (err) {
       toast.error(ipcErrorMessage(err));
     } finally {
       setCheckingOut(false);
     }
   }
+
+  if (phase === "success") return <SupporterSuccess onClose={onClose} />;
+  if (phase === "pending")
+    return <SupporterPending stalled={stalled} onClose={onClose} />;
 
   return (
     <div className="flex flex-col gap-4">
@@ -218,11 +293,13 @@ function RestoreSupporter({
     try {
       const restored = await accountSupportRestore(trimmed);
       if (restored) {
-        toast.success("Supporter restored — thanks again for your support!");
+        // The refresh flips entitlement to premium, which the central
+        // useSupporterUnlockToast acknowledges (and drives the modal's success
+        // view) — so we deliberately don't toast a second thank-you here.
+        void useEntitlementStore.getState().refresh();
       } else {
         toast.info("No Supporter checkout found for that email.");
       }
-      void useEntitlementStore.getState().refresh();
     } catch (err) {
       toast.error(ipcErrorMessage(err));
     } finally {
@@ -263,6 +340,76 @@ function RestoreSupporter({
         {busy ? "Checking…" : "Restore"}
       </Button>
     </form>
+  );
+}
+
+/** Shown after the browser checkout is opened: we're waiting for Paddle to
+ *  confirm the payment (which flips entitlement to premium). Offers Restore as
+ *  an escape hatch, auto-surfaced once the wait has stalled. */
+function SupporterPending({
+  stalled,
+  onClose,
+}: {
+  stalled: boolean;
+  onClose: () => void;
+}) {
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start gap-3">
+        <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-from/15 text-brand-from">
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        </div>
+        <div className="flex flex-col gap-1 text-sm">
+          <p className="font-medium text-text">Confirming your payment…</p>
+          <p className="text-text-muted">
+            Finish checkout in your browser if you haven&apos;t yet. Premium
+            unlocks here automatically once your payment is confirmed — usually
+            just a few seconds.
+          </p>
+        </div>
+      </div>
+
+      {stalled && (
+        <p className="text-sm text-text-muted">
+          This is taking longer than usual. If you&apos;ve already completed
+          payment, restore it with your receipt email:
+        </p>
+      )}
+
+      <RestoreSupporter
+        open={stalled || restoreOpen}
+        onToggle={() => setRestoreOpen((v) => !v)}
+      />
+
+      <div className="flex justify-end">
+        <Button variant="ghost" onClick={onClose}>
+          Dismiss
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Shown the moment entitlement flips to Supporter — the explicit thank-you the
+ *  silent badge-flip was missing. */
+function SupporterSuccess({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-4 py-4 text-center">
+      <div className="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-from to-brand-to text-on-brand">
+        <Sparkles className="size-7" aria-hidden="true" />
+      </div>
+      <div className="flex flex-col gap-1">
+        <p className="text-base font-semibold">You&apos;re a Supporter — thank you!</p>
+        <p className="text-sm text-text-muted">
+          Everything&apos;s unlocked: the full Advanced DSP suite, stem
+          separation, and cloud music. We genuinely appreciate the support.
+        </p>
+      </div>
+      <Button variant="primary" onClick={onClose} className="mt-1">
+        Done
+      </Button>
+    </div>
   );
 }
 

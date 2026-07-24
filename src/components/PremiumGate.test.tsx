@@ -138,7 +138,7 @@ describe("requirePremium", () => {
 });
 
 describe("Supporter checkout (amount picker)", () => {
-  it("starts checkout for a quick-pick amount and opens it in the system browser", async () => {
+  it("starts checkout for a quick-pick amount, opens it in the browser, and shows the confirming state", async () => {
     vi.mocked(accountSupportCheckout).mockResolvedValue("https://checkout.paddle.com/txn_123");
     render(<SupporterUpsellModal />);
     act(() => openSupporterUpsell("STEMS"));
@@ -148,16 +148,32 @@ describe("Supporter checkout (amount picker)", () => {
 
     await waitFor(() => expect(accountSupportCheckout).toHaveBeenCalledWith(25));
     expect(openExternalUrl).toHaveBeenCalledWith("https://checkout.paddle.com/txn_123");
+    // The modal stays OPEN and switches to the "confirming…" view — the user
+    // isn't dropped back with no feedback while the webhook is in flight.
     await waitFor(() =>
-      expect(
-        useToastStore
-          .getState()
-          .toasts.some((t) => /complete your supporter checkout/i.test(t.message)),
-      ).toBe(true),
+      expect(screen.getByText(/Confirming your payment/i)).toBeInTheDocument(),
     );
-    expect(useEntitlementStore.getState().refresh).toHaveBeenCalled();
-    // A successful checkout closes the modal.
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+  });
+
+  it("shows the thank-you view once entitlement flips to premium after checkout", async () => {
+    vi.mocked(accountSupportCheckout).mockResolvedValue("https://checkout.paddle.com/txn_789");
+    render(<SupporterUpsellModal />);
+    act(() => openSupporterUpsell("CLOUD"));
+
+    // Default amount is $10 — check out straight away.
+    fireEvent.click(screen.getByRole("button", { name: /Support \$10/ }));
+    await waitFor(() =>
+      expect(screen.getByText(/Confirming your payment/i)).toBeInTheDocument(),
+    );
+
+    // The webhook lands → entitlement refresh flips premium true.
+    act(() => useEntitlementStore.setState({ premium: true }));
+
+    expect(screen.getByText(/thank you/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
   });
 
   it("uses a typed custom amount instead of the quick picks", async () => {
@@ -223,10 +239,10 @@ describe("Restore Supporter", () => {
     await waitFor(() =>
       expect(accountSupportRestore).toHaveBeenCalledWith("supporter@example.com"),
     );
-    await waitFor(() =>
-      expect(useToastStore.getState().toasts.some((t) => /restored/i.test(t.message))).toBe(true),
-    );
-    expect(useEntitlementStore.getState().refresh).toHaveBeenCalled();
+    // A successful restore refreshes entitlement; the thank-you is handled
+    // centrally by the unlock watcher (no duplicate "restored" toast here).
+    await waitFor(() => expect(useEntitlementStore.getState().refresh).toHaveBeenCalled());
+    expect(useToastStore.getState().toasts.some((t) => /restored/i.test(t.message))).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Maybe later" }));
   });
@@ -250,5 +266,31 @@ describe("Restore Supporter", () => {
     expect(useToastStore.getState().toasts.every((t) => t.kind !== "error")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Maybe later" }));
+  });
+});
+
+describe("Supporter unlock acknowledgement", () => {
+  const isUnlockToast = (m: string) => /you're a supporter/i.test(m);
+
+  it("toasts once when entitlement transitions to Supporter mid-session", () => {
+    // First check has already settled at not-premium (loading:false in setup).
+    render(<SupporterUpsellModal />);
+    expect(useToastStore.getState().toasts.some((t) => isUnlockToast(t.message))).toBe(false);
+
+    act(() => useEntitlementStore.setState({ premium: true }));
+
+    expect(useToastStore.getState().toasts.some((t) => isUnlockToast(t.message))).toBe(true);
+  });
+
+  it("stays silent on the cache→server hydration flip for an existing supporter", () => {
+    // Launch: still loading, cache not yet premium.
+    useEntitlementStore.setState({ premium: false, loading: true });
+    render(<SupporterUpsellModal />);
+
+    // The first successful check settles as premium (an existing supporter) —
+    // this is hydration, not a fresh unlock, so it must NOT toast.
+    act(() => useEntitlementStore.setState({ premium: true, loading: false }));
+
+    expect(useToastStore.getState().toasts.some((t) => isUnlockToast(t.message))).toBe(false);
   });
 });

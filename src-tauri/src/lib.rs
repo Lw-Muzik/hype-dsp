@@ -687,6 +687,11 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             commands::linux_audio_setup::auto_setup_on_launch(app.handle().clone());
 
+            // Anonymous install tracking: register a keychain-persisted UUID and
+            // heartbeat to the Management API, so first-time users are counted
+            // with no signup. Fire-and-forget; never affects the app.
+            commands::install::spawn_tracking(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

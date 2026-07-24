@@ -15,6 +15,7 @@ pub mod chain_presets;
 pub mod cloud;
 pub mod engine;
 pub mod identify;
+pub mod install;
 pub mod library;
 pub mod link;
 pub mod license;

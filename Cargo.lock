@@ -2820,6 +2820,7 @@ dependencies = [
  "hm-stems",
  "hm-ytmusic",
  "hound",
+ "keyring",
  "libc",
  "lofty",
  "objc2-app-kit",
@@ -2840,6 +2841,7 @@ dependencies = [
  "tiny_http",
  "tokio",
  "url",
+ "uuid",
 ]
 
 [[package]]

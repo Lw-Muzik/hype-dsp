@@ -9,6 +9,7 @@ const status = (over: Partial<SystemAudioStatus>): SystemAudioStatus => ({
   driverInstalled: false,
   needsDriver: false,
   driverBundled: true,
+  apoInstalled: false,
   ...over,
 });
 

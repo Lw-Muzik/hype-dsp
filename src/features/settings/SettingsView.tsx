@@ -54,7 +54,7 @@ import {
   mixerListSessions,
   systemAudioStatus,
   systemAudioInstallDriver,
-  systemAudioSetupRouting,
+  apoSetup,
   systemEqStatus,
   type RoutingSetupPhase,
   type SystemAudioStatus,
@@ -512,6 +512,7 @@ export function SettingsView() {
     driverInstalled: false,
     needsDriver: false,
     driverBundled: false,
+    apoInstalled: false,
   });
   const [driverInstalling, setDriverInstalling] = useState(false);
   const [driverError, setDriverError] = useState<string | null>(null);
@@ -675,18 +676,20 @@ export function SettingsView() {
   // One-click Windows routing setup (VB-CABLE download + verified silent
   // install), then auto-enable — the click should end with equalized audio,
   // not another button.
-  const setupRouting = async () => {
+  // The free, white-label Windows path: install our own APO (one UAC prompt +
+  // reboot). Nothing third-party for the user to see, no cert/account/card.
+  const setupApo = async () => {
     setDriverError(null);
-    setSetupPhase("downloading");
+    setSetupPhase("installing");
     try {
-      const outcome = await systemAudioSetupRouting();
+      const outcome = await apoSetup();
       const next = await systemAudioStatus();
       setSystemStatus(next);
-      if (next.available) {
-        startSystemAudio();
-      } else if (outcome === "needsReboot") {
+      if (outcome === "needsReboot") {
         localStorage.setItem(SETUP_REBOOT_KEY, "1");
         setAwaitingReboot(true);
+      } else if (next.available) {
+        startSystemAudio();
       }
     } catch (e) {
       setDriverError(ipcErrorMessage(e));
@@ -962,16 +965,12 @@ export function SettingsView() {
                     ) : (
                       <Button
                         variant="primary"
-                        onClick={() => void setupRouting()}
+                        onClick={() => void setupApo()}
                         disabled={setupPhase !== null}
                       >
-                        {setupPhase === "downloading"
-                          ? "Downloading…"
-                          : setupPhase === "installing"
-                            ? "Installing…"
-                            : setupPhase === "detecting"
-                              ? "Detecting…"
-                              : "Set up system-wide EQ"}
+                        {setupPhase === "installing"
+                          ? "Installing…"
+                          : "Set up system-wide EQ"}
                       </Button>
                     )
                   ) : (

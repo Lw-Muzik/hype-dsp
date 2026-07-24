@@ -39,7 +39,8 @@
     ],
     "resources": {
       "../crates/hm-visualizer/presets/*.milk": "presets/",
-      "drivers/HypeMuzikAudio/*": "drivers/HypeMuzikAudio/"
+      "drivers/HypeMuzikAudio/*": "drivers/HypeMuzikAudio/",
+      "apo/*": "apo/"
     },
     "windows": {
       "nsis": {

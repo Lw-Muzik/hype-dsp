@@ -57,7 +57,8 @@ pub fn system_eq_available() -> bool {
     }
     #[cfg(target_os = "windows")]
     {
-        system_eq_windows::available()
+        // Either the signed virtual driver or our free APO makes it available.
+        system_eq_windows::available() || system_eq_windows_apo::apo_installed()
     }
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {

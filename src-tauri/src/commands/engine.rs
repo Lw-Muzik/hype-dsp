@@ -382,6 +382,9 @@ pub struct SystemAudioStatus {
     /// signed driver: installing is impossible, so the UI must say that instead
     /// of offering a dead-end Install button.
     pub driver_bundled: bool,
+    /// Windows-only: our free APO (Audio Processing Object) is installed — the
+    /// no-cert path to system-wide EQ. `false` on macOS/Linux (they don't use it).
+    pub apo_installed: bool,
 }
 
 /// Report whether system-wide EQ is supported, ready, and (Windows) whether the
@@ -399,6 +402,7 @@ pub fn system_audio_status(app: tauri::AppHandle) -> SystemAudioStatus {
             driver_installed: true,
             needs_driver: false,
             driver_bundled: true,
+            apo_installed: false,
         }
     }
     #[cfg(target_os = "linux")]
@@ -411,6 +415,7 @@ pub fn system_audio_status(app: tauri::AppHandle) -> SystemAudioStatus {
             driver_installed: true,
             needs_driver: false,
             driver_bundled: true,
+            apo_installed: false,
         }
     }
     #[cfg(target_os = "windows")]
@@ -427,12 +432,15 @@ pub fn system_audio_status(app: tauri::AppHandle) -> SystemAudioStatus {
             .map(|dir| dir.join("drivers").join("HypeMuzikAudio"))
             .and_then(|dir| hm_audio::win_driver::find_driver_inf(&dir))
             .is_some();
+        // The free APO backend is usable even without the signed driver.
+        let apo = hm_audio::system_eq_windows_apo::apo_installed();
         SystemAudioStatus {
             supported: true,
-            available: installed,
+            available: installed || apo,
             driver_installed: installed,
-            needs_driver: !installed && bundled,
+            needs_driver: !installed && !apo && bundled,
             driver_bundled: bundled,
+            apo_installed: apo,
         }
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
@@ -444,6 +452,7 @@ pub fn system_audio_status(app: tauri::AppHandle) -> SystemAudioStatus {
             driver_installed: false,
             needs_driver: false,
             driver_bundled: false,
+            apo_installed: false,
         }
     }
 }

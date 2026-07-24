@@ -1366,8 +1366,23 @@ impl AudioEngine {
         let session: Box<dyn Send> =
             Box::new(crate::system_eq_linux::LinuxSystemEq::start(state)?);
         #[cfg(target_os = "windows")]
-        let session: Box<dyn Send> =
-            Box::new(crate::system_eq_windows::WindowsSystemEq::start(state)?);
+        let session: Box<dyn Send> = {
+            // Prefer a bundled signed virtual driver; else our free APO; else
+            // there is nothing to run.
+            use crate::system_eq_windows_apo as apo;
+            let driver = crate::system_eq_windows::available();
+            match apo::select(driver, apo::apo_installed()) {
+                apo::WindowsBackend::SignedDriver => {
+                    Box::new(crate::system_eq_windows::WindowsSystemEq::start(state)?)
+                }
+                apo::WindowsBackend::Apo => Box::new(apo::ApoBackend::start(state)?),
+                apo::WindowsBackend::None => {
+                    return Err(AudioError::Unavailable(
+                        "no Windows system-wide EQ backend is installed".into(),
+                    ))
+                }
+            }
+        };
         *self.system_eq.lock().expect("system_eq poisoned") = Some(session);
         self.system_eq_status
             .store(SystemEqStatus::Active as u8, Ordering::Relaxed);

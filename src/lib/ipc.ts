@@ -818,11 +818,35 @@ export interface SystemAudioStatus {
    *  on macOS/Linux, which need none). `false` = a Windows build that shipped
    *  without the signed driver — installing is impossible, say so instead. */
   driverBundled: boolean;
+  /** Windows-only: our free APO backend is installed (the no-cert path). `false`
+   *  on macOS/Linux. When true, system-wide EQ works with no signed driver. */
+  apoInstalled: boolean;
 }
 
 /** Per-OS system-EQ readiness (supported / available / driver state) in one call. */
 export function systemAudioStatus(): Promise<SystemAudioStatus> {
   return invoke<SystemAudioStatus>("system_audio_status");
+}
+
+/** Outcome of the free Windows APO setup: installed + attached, reboot to finish. */
+export type ApoSetupOutcome = "needsReboot";
+
+/** Install the free Windows APO system-wide EQ backend (one UAC prompt: copies
+ *  the DLL, registers it, sets DisableProtectedAudioDG, attaches to the default
+ *  endpoint). Requires a reboot to finish. Windows-only. */
+export function apoSetup(): Promise<ApoSetupOutcome> {
+  return invoke<ApoSetupOutcome>("apo_setup");
+}
+
+/** Remove the APO backend (one UAC prompt). Windows-only. */
+export function apoUninstall(): Promise<void> {
+  return invoke<void>("apo_uninstall");
+}
+
+/** Re-attach the APO to the current default endpoint if it was detached (a
+ *  Windows update or device change). Windows-only. */
+export function apoRepair(): Promise<void> {
+  return invoke<void>("apo_repair");
 }
 
 /** Runtime state of system-wide EQ. `"recovering"` means a transient failure

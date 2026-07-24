@@ -6,6 +6,7 @@
 //! `src/lib/ipc.ts`.
 
 pub mod account;
+pub mod apo_setup;
 pub mod app;
 pub mod audio;
 pub mod autoeq;

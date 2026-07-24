@@ -185,6 +185,24 @@ fn forward_frames(
 
 /// Build and run the Tauri application.
 pub fn run() {
+    // Elevated-helper entry: when re-launched with `--apo-install <dll>` /
+    // `--apo-uninstall` (via the UAC prompt from `commands::apo_setup`), do the
+    // privileged registry/endpoint work and exit before any GUI is created.
+    #[cfg(target_os = "windows")]
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if let Some(i) = args.iter().position(|a| a == "--apo-install") {
+            if let Some(dll) = args.get(i + 1) {
+                let _ = hm_audio::system_eq_windows_apo::install(std::path::Path::new(dll));
+            }
+            return;
+        }
+        if args.iter().any(|a| a == "--apo-uninstall") {
+            let _ = hm_audio::system_eq_windows_apo::uninstall();
+            return;
+        }
+    }
+
     let engine = AudioEngine::new();
     let meters = engine.meters();
     let spectrum = engine.spectrum();
@@ -647,6 +665,14 @@ pub fn run() {
                     )
                 })
                 .ok();
+
+            // Windows: if the APO is installed but a Windows update or device
+            // change detached it from the default endpoint, re-attach on launch.
+            #[cfg(target_os = "windows")]
+            std::thread::spawn(|| {
+                let _ = hm_audio::system_eq_windows_apo::repair();
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -755,6 +781,9 @@ pub fn run() {
             commands::engine::system_eq_status,
             commands::engine::system_audio_install_driver,
             commands::cable::system_audio_setup_routing,
+            commands::apo_setup::apo_setup,
+            commands::apo_setup::apo_uninstall,
+            commands::apo_setup::apo_repair,
             commands::engine::player_stop,
             commands::engine::player_pause,
             commands::engine::player_resume,

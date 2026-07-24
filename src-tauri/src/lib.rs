@@ -267,10 +267,17 @@ pub fn run() {
         // see `RunEvent::Reopen` below), relaunching the app, or "Open With".
         // ⌘Q (the Quit menu item) still exits normally.
         .on_window_event(|window, event| {
+            // macOS convention: closing the window HIDES the app so playback (and
+            // the audio engine) keep running in the background — the dock icon
+            // reopens it (see `RunEvent::Reopen`), ⌘Q quits. Windows/Linux follow
+            // their own convention: the close button quits the app.
+            #[cfg(target_os = "macos")]
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
             }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (window, event);
         })
         .manage(engine)
         .manage(updater::UpdaterState::default())

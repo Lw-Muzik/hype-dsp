@@ -91,16 +91,8 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # Build the free system-wide-EQ APO DLL and stage it as a bundle resource
-      # so the installer can find it at resource_dir()/apo/hm_apo.dll. Windows
-      # only; the crate is empty on other targets.
-      - name: Build + stage the APO DLL (Windows)
-        if: matrix.platform == 'windows-2022'
-        shell: pwsh
-        run: |
-          cargo build -p hm-apo --release --target x86_64-pc-windows-msvc
-          New-Item -ItemType Directory -Force -Path src-tauri/apo | Out-Null
-          Copy-Item target/x86_64-pc-windows-msvc/release/hm_apo.dll src-tauri/apo/hm_apo.dll -Force
+      # NOTE: the APO DLL (Windows) is built + staged automatically by
+      # beforeBuildCommand → build-sidecar.mjs, so no CI-only step is needed.
 
       - name: Build app + bundle installers
         id: tauri

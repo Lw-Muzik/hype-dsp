@@ -163,3 +163,24 @@ if (isWin) {
     );
   }
 }
+
+if (isWin) {
+  // Build the free system-wide-EQ APO DLL and stage it as a bundle resource
+  // (`tauri.conf.json` bundles `apo/*`, so the installer finds it at
+  // `resource_dir()/apo/hm_apo.dll`). Windows only — `hm-apo` is an empty crate
+  // on every other target, so nothing else produces or needs a DLL. Runs on both
+  // local `tauri build` and CI (via `beforeBuildCommand`), so no manual step.
+  console.log("[apo] building hm-apo (release)…");
+  execFileSync("cargo", ["build", "--release", "-p", "hm-apo"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  const apoSrc = join(root, "target", "release", "hm_apo.dll");
+  if (!existsSync(apoSrc)) {
+    throw new Error(`[apo] hm_apo.dll not found at ${apoSrc} after build`);
+  }
+  const apoDir = join(root, "src-tauri", "apo");
+  mkdirSync(apoDir, { recursive: true });
+  copyFileSync(apoSrc, join(apoDir, "hm_apo.dll"));
+  console.log(`[apo] staged ${join(apoDir, "hm_apo.dll")}`);
+}

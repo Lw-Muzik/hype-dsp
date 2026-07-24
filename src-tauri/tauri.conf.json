@@ -14,7 +14,6 @@
     "windows": [
       {
         "label": "main",
-        "title": "HypeMuzik",
         "width": 1180,
         "height": 1060,
         "minWidth": 340,
@@ -49,10 +48,14 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libpipewire-0.3-0"]
+        "depends": [
+          "libpipewire-0.3-0"
+        ]
       },
       "rpm": {
-        "depends": ["pipewire-libs"]
+        "depends": [
+          "pipewire-libs"
+        ]
       }
     },
     "fileAssociations": [

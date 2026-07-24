@@ -1077,6 +1077,34 @@ export function accountEntitlements(): Promise<boolean> {
   return invoke<boolean>("account_entitlements");
 }
 
+/** Start a Paddle "Supporter" checkout for this install; resolves to the
+ *  checkout URL to open in the system browser (see {@link openExternalUrl}).
+ *  `amount` is whole/fractional dollars (e.g. `10` for $10). Public — works
+ *  for the frictionless anonymous session, no sign-in required. */
+export function accountSupportCheckout(
+  amount: number,
+  currency?: string,
+): Promise<string> {
+  return invoke<string>("account_support_checkout", {
+    amount,
+    currency: currency ?? null,
+  });
+}
+
+/** Restore a Supporter entitlement onto this install from a past checkout's
+ *  receipt email (after a reinstall, or on a second machine). Resolves to
+ *  whether a match was found and applied — callers should re-run
+ *  {@link accountEntitlements} afterwards to pick up the change. */
+export function accountSupportRestore(email: string): Promise<boolean> {
+  return invoke<boolean>("account_support_restore", { email });
+}
+
+/** Open a URL in the OS's default browser — never embed checkout/OAuth pages
+ *  in the webview. The same mechanism the cloud OAuth connect flow uses. */
+export function openExternalUrl(url: string): Promise<void> {
+  return invoke<void>("open_external_url", { url });
+}
+
 /* ----------------------------------------------------------------- stems */
 
 export interface StemStatus {

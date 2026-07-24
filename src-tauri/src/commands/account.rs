@@ -73,6 +73,19 @@ struct EntitlementsDto {
     premium: bool,
 }
 
+/// `POST /support/checkout` response.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CheckoutDto {
+    checkout_url: String,
+}
+
+/// `POST /support/restore` response.
+#[derive(Deserialize)]
+struct RestoreDto {
+    restored: bool,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AuthDto {
@@ -362,6 +375,45 @@ impl AccountState {
         Ok(dto.premium)
     }
 
+    /// Start a Paddle "Supporter" checkout for this install. Public — no
+    /// session required, so an anonymous free-tier donor never has to sign in
+    /// first; the amount alone is what a supporter is paying for. `amount` is
+    /// whole/fractional dollars (e.g. `10.0` for $10); `currency` is omitted
+    /// from the request entirely when `None` rather than sent as JSON `null`,
+    /// so the server's own default applies.
+    pub fn support_checkout(
+        &self,
+        install_id: &str,
+        amount: f64,
+        currency: Option<&str>,
+    ) -> Result<String, String> {
+        let mut body = serde_json::json!({ "installId": install_id, "amount": amount });
+        if let Some(currency) = currency {
+            body["currency"] = serde_json::Value::String(currency.to_string());
+        }
+        let resp = self.post("/support/checkout", body)?;
+        if !resp.status().is_success() {
+            return Err(format!("Couldn't start checkout ({})", resp.status().as_u16()));
+        }
+        let dto: CheckoutDto = resp.json().map_err(|e| e.to_string())?;
+        Ok(dto.checkout_url)
+    }
+
+    /// Restore a Supporter entitlement onto this install from a past
+    /// checkout's receipt email (reinstall, or a second machine). Public —
+    /// no session required, matching `support_checkout`.
+    pub fn support_restore(&self, install_id: &str, email: &str) -> Result<bool, String> {
+        let resp = self.post(
+            "/support/restore",
+            serde_json::json!({ "installId": install_id, "email": email }),
+        )?;
+        if !resp.status().is_success() {
+            return Err(format!("Restore failed ({})", resp.status().as_u16()));
+        }
+        let dto: RestoreDto = resp.json().map_err(|e| e.to_string())?;
+        Ok(dto.restored)
+    }
+
     pub fn logout(&self) {
         let refresh = self.inner.lock().expect("account poisoned").refresh.clone();
         if let Some(refresh) = refresh {
@@ -533,4 +585,49 @@ pub fn account_entitlements(account: State<'_, AccountState>) -> Result<bool, Ip
     account
         .entitlements()
         .map_err(|e| IpcError::new("account", e))
+}
+
+/// Start a Paddle "Supporter" checkout for this install and return the
+/// checkout URL. Resolves the install id the same way
+/// `account_bootstrap_anonymous` does — the checkout and the install/account
+/// this app already tracks must always be the same identity. The front end
+/// opens the returned URL itself (see `open_external_url`) once it has it,
+/// rather than this command doing the fetch and the browser-open as one
+/// blocking step.
+#[tauri::command(async)]
+pub fn account_support_checkout(
+    app: AppHandle,
+    account: State<'_, AccountState>,
+    amount: f64,
+    currency: Option<String>,
+) -> Result<String, IpcError> {
+    let install_id = resolve_install_id(&app);
+    account
+        .support_checkout(&install_id, amount, currency.as_deref())
+        .map_err(|e| IpcError::new("account", e))
+}
+
+/// Restore a Supporter entitlement onto this install from a past checkout's
+/// receipt email (e.g. after a reinstall, or supporting from a second
+/// machine). The caller should re-fetch `account_entitlements` afterwards —
+/// this only reports whether the server found and applied a match.
+#[tauri::command(async)]
+pub fn account_support_restore(
+    app: AppHandle,
+    account: State<'_, AccountState>,
+    email: String,
+) -> Result<bool, IpcError> {
+    let install_id = resolve_install_id(&app);
+    account
+        .support_restore(&install_id, &email)
+        .map_err(|e| IpcError::new("account", e))
+}
+
+/// Open a URL in the OS's default browser. Exposed so the front end can open
+/// a URL it already holds (the Supporter checkout link) — reuses the exact
+/// per-OS mechanism the cloud OAuth flow uses (`crate::cloud::open_url`)
+/// rather than embedding a new way to leave the webview.
+#[tauri::command(async)]
+pub fn open_external_url(url: String) {
+    crate::cloud::open_url(&url);
 }

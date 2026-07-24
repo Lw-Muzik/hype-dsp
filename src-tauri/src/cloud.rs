@@ -452,7 +452,12 @@ fn random_b64url(bytes: usize) -> String {
     URL_SAFE_NO_PAD.encode(buf)
 }
 
-fn open_url(url: &str) {
+/// Open a URL in the OS default browser. Never embed checkout/OAuth pages in
+/// the webview (3-D Secure, wallets, and consent screens can require a real
+/// browser) — this is the one mechanism the whole app uses to leave the
+/// webview, reused as-is by `commands::account::open_external_url` for the
+/// Supporter checkout link.
+pub(crate) fn open_url(url: &str) {
     #[cfg(target_os = "macos")]
     let _ = Command::new("open").arg(url).spawn();
     #[cfg(target_os = "windows")]

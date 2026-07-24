@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { ArrowLeft, KeyRound, LogOut, Mail, Sparkles } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
-import { openSupporterCheckout } from "@/components/PremiumGate";
+import { openSupporterUpsell } from "@/components/PremiumGate";
 import { useAccountStore } from "@/stores/account";
 import { useEntitlementStore, usePremium } from "@/stores/entitlement";
 import { ipcErrorMessage } from "@/lib/ipc";
@@ -212,7 +212,7 @@ export function AccountCard() {
 
         <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
           {!premium && (
-            <Button variant="primary" onClick={openSupporterCheckout}>
+            <Button variant="primary" onClick={() => openSupporterUpsell()}>
               <Sparkles className="size-4" aria-hidden="true" />
               Become a Supporter
             </Button>

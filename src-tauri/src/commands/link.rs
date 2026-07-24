@@ -396,7 +396,8 @@ pub fn link_play_queue(
         })
     });
     engine
-        .play_stream_queue(resolver, count, start)
+        // Phone files carry their own tags, decoded from the stream — no seed.
+        .play_stream_queue(resolver, count, start, Vec::new())
         .map_err(Into::into)
 }
 

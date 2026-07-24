@@ -735,6 +735,7 @@ impl StreamQueueSource {
         start: usize,
         device_rate: u32,
         crossfade: Arc<AtomicU32>,
+        seeded_metas: Vec<TrackMeta>,
         meta_sink: Option<MetaSink>,
         current_index: Option<Arc<AtomicUsize>>,
     ) -> Self {
@@ -815,7 +816,11 @@ impl StreamQueueSource {
 
         let mut tracks = Vec::with_capacity(count);
         tracks.resize_with(count, || Slot::Empty);
-        let metas = vec![TrackMeta::default(); count];
+        // Start from the caller-seeded metadata (e.g. the YouTube Music
+        // title/artist/cover known from the API), padded/truncated to the queue
+        // length; stream-decoded tags refine it later via the merge in `drain`.
+        let mut metas = seeded_metas;
+        metas.resize(count, TrackMeta::default());
 
         // Prime the current track + one lookahead.
         let _ = want_tx.send(start + 1);
@@ -895,7 +900,18 @@ impl StreamQueueSource {
                         if idx >= self.count {
                             continue;
                         }
-                        self.metas[idx] = meta;
+                        // Merge, don't clobber: a decoded field wins when it has
+                        // a value, but an empty one keeps whatever was there —
+                        // notably the metadata the caller *seeded* (e.g. the YT
+                        // Music title/artist/cover from the API, for a stream
+                        // that carries no tags of its own).
+                        let prev = std::mem::take(&mut self.metas[idx]);
+                        self.metas[idx] = TrackMeta {
+                            title: meta.title.or(prev.title),
+                            artist: meta.artist.or(prev.artist),
+                            album: meta.album.or(prev.album),
+                            cover: meta.cover.or(prev.cover),
+                        };
                         // A capacity hint arriving before any PCM: reserve it
                         // once up front so the buffer that's about to grow
                         // via `Chunk`s (below) doesn't reallocate+copy its
@@ -1917,6 +1933,64 @@ mod tests {
             meta_handle.load().title.as_deref(),
             Some("first"),
             "but the sink is NOT re-signalled mid-fade"
+        );
+    }
+
+    #[test]
+    fn seeded_meta_survives_a_tagless_stream() {
+        // YouTube Music case: the caller seeded the track's title/artist/cover
+        // (known from the API), and the googlevideo stream carries no tags, so
+        // the decoded `Meta` is empty. That empty meta must NOT clobber the
+        // seeded values — otherwise the OS "now playing" widget shows nothing.
+        let (tx, rx) = mpsc::channel::<DecodeEvent>();
+        let (sink, meta_handle) = MetaSink::for_test();
+        let mut src = StreamQueueSource {
+            tracks: vec![Slot::Empty],
+            metas: vec![TrackMeta {
+                title: Some("Seeded Title".into()),
+                artist: Some("Seeded Artist".into()),
+                cover: Some("data:image/png;base64,AAA".into()),
+                ..Default::default()
+            }],
+            count: 1,
+            device_rate: 1,
+            crossfade: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+            index: 0,
+            cursor: 0,
+            xf_cursor: 0,
+            xf_len: 0,
+            rx: Some(rx),
+            want_tx: None,
+            running: Arc::new(AtomicBool::new(true)),
+            meta_sink: Some(sink),
+            current_index: None,
+            _worker: None,
+        };
+
+        // The stream decodes with no usable tags → an empty Meta for the current
+        // track.
+        tx.send(DecodeEvent::Meta {
+            idx: 0,
+            meta: TrackMeta::default(),
+            capacity_frames: None,
+        })
+        .unwrap();
+        src.drain();
+
+        assert_eq!(
+            src.metas[0].title.as_deref(),
+            Some("Seeded Title"),
+            "an empty decoded meta must not clobber the seeded title"
+        );
+        assert_eq!(
+            src.metas[0].cover.as_deref(),
+            Some("data:image/png;base64,AAA"),
+            "nor the seeded cover"
+        );
+        assert_eq!(
+            meta_handle.load().title.as_deref(),
+            Some("Seeded Title"),
+            "the sink (OS now-playing) receives the seeded title, not nothing"
         );
     }
 

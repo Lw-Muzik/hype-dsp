@@ -537,6 +537,10 @@ enum EngineCommand {
         resolver: StreamResolver,
         count: usize,
         start: usize,
+        /// Per-track metadata known up front (e.g. from the YouTube Music API),
+        /// seeded so the now-playing UI + OS media controls show it even when the
+        /// stream carries no tags. May be shorter than `count` (padded) or empty.
+        metas: Vec<TrackMeta>,
     },
     PlayCapture,
     /// Play four separated stems together, mixed live by the engine's stem gains,
@@ -1311,6 +1315,7 @@ impl AudioEngine {
         resolver: StreamResolver,
         count: usize,
         start: usize,
+        metas: Vec<TrackMeta>,
     ) -> Result<(), AudioError> {
         self.ctrl
             .lock()
@@ -1319,6 +1324,7 @@ impl AudioEngine {
                 resolver,
                 count,
                 start,
+                metas,
             })
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
@@ -1840,6 +1846,7 @@ fn control_loop(ctx: ControlCtx) {
                 resolver,
                 count,
                 start,
+                metas,
             } => {
                 drop(active.take());
                 meters.zero();
@@ -1862,6 +1869,7 @@ fn control_loop(ctx: ControlCtx) {
                     start,
                     sample_rate,
                     crossfade.clone(),
+                    metas,
                     Some(sink),
                     Some(queue_index.clone()),
                 ));

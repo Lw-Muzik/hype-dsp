@@ -442,6 +442,11 @@ export function ytmusicPlay(
 /** One track in a YouTube Music crossfade/gapless queue. */
 export interface YtQueueItem {
   videoId: string;
+  /** Display metadata (from the API) so the now-playing card and the OS media
+   *  widget show it — googlevideo streams carry no tags of their own. */
+  title?: string;
+  artist?: string;
+  cover?: string;
 }
 
 /** Play a YT Music queue gaplessly/crossfading; URLs resolve lazily per track

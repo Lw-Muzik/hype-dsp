@@ -482,11 +482,19 @@ pub fn ytmusic_play(
         .map_err(Into::into)
 }
 
-/// One track in a YT Music gapless/crossfade queue.
+/// One track in a YT Music gapless/crossfade queue. Carries the display metadata
+/// (known from the API) so the engine can seed the now-playing UI + OS media
+/// controls — googlevideo streams have no tags of their own to probe.
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct YtQueueItem {
     pub video_id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub artist: Option<String>,
+    #[serde(default)]
+    pub cover: Option<String>,
 }
 
 /// Play a queue of YT Music tracks gaplessly / crossfading.
@@ -506,6 +514,17 @@ pub fn player_play_ytmusic_queue(
         return Err(IpcError::new("invalid", "empty YouTube Music queue"));
     }
     let count = items.len();
+    // Seed the engine with each track's known title/artist/cover so the
+    // now-playing card and the OS media widget show it (the stream is tagless).
+    let metas: Vec<hm_core::TrackMeta> = items
+        .iter()
+        .map(|it| hm_core::TrackMeta {
+            title: it.title.clone(),
+            artist: it.artist.clone(),
+            album: None,
+            cover: it.cover.clone(),
+        })
+        .collect();
     let items = Arc::new(items);
     let resolver: StreamResolver = Arc::new(move |i: usize, fresh: bool| {
         let item = items
@@ -527,7 +546,7 @@ pub fn player_play_ytmusic_queue(
         })
     });
     engine
-        .play_stream_queue(resolver, count, start)
+        .play_stream_queue(resolver, count, start, metas)
         .map_err(Into::into)
 }
 

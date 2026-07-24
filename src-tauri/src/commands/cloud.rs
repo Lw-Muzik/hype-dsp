@@ -264,6 +264,7 @@ pub fn player_play_cloud_queue(
         })
     });
     engine
-        .play_stream_queue(resolver, count, start)
+        // Cloud files carry their own tags, decoded from the stream — no seed.
+        .play_stream_queue(resolver, count, start, Vec::new())
         .map_err(Into::into)
 }

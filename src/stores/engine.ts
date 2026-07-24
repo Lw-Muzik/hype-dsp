@@ -624,7 +624,18 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           });
         }
         if (useYtMusicQueue) {
-          const items = order.map((i) => ({ videoId: queue[i]!.ytTrack!.videoId }));
+          // Pass the display metadata (title/artist/cover) too, so the engine
+          // seeds the now-playing card and the OS media widget — the stream is
+          // tagless, so without this they'd show only the app name/icon.
+          const items = order.map((i) => {
+            const t = queue[i]!.ytTrack!;
+            return {
+              videoId: t.videoId,
+              title: t.title,
+              artist: t.artist ?? undefined,
+              cover: t.thumbnail ?? undefined,
+            };
+          });
           void playerPlayYtmusicQueue(items, pos).catch(onError);
           // Warm the next few tracks once this one is safely playing, so a
           // skip lands on a resolved url instead of a ~5s yt-dlp spawn.

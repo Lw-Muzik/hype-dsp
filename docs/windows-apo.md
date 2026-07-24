@@ -43,12 +43,36 @@ flow app → `ApoBackend` (60 Hz) → seqlock shared memory → the APO's RT
 `APOProcess`, which applies them lock-free and, on any DSP fault, degrades to
 pass-through (`catch_unwind`) instead of crashing `audiodg`.
 
-## What remains — and why it needs a Windows box
+## Also built (compile-verified, not yet run on Windows)
 
-Everything above compiles (verified via `cargo xwin`) but nothing has run in
-`audiodg` yet. The remaining pieces are Windows-develop-and-validate work:
+- **Installer/attacher** (`hm-audio/system_eq_windows_apo.rs`: `install`/`uninstall`/
+  `repair`): copies the DLL, registers the CLSID, sets `DisableProtectedAudioDG`,
+  and attaches via `IMMDevice::OpenPropertyStore(READWRITE)` + `IPropertyStore::SetValue`
+  on the FX PKEY slots. Elevation is one UAC prompt via re-launching the app with
+  `--apo-install`/`--apo-uninstall` (`commands/apo_setup.rs` + `lib.rs::run`).
+- **Repair-on-launch** — `lib.rs setup()` calls `repair()` on a background thread.
+- **Engine selection** — `start_system_eq` picks signed-driver > APO > none.
+- **Frontend** — Settings free-path button installs the APO (`apoSetup`); status
+  carries `apo_installed`.
+- **Bundle** — `tauri.conf.json` bundles `apo/*`; the Windows release job builds
+  and stages `hm_apo.dll`.
 
-### 1. The elevated installer/attacher (`commands/apo_setup.rs`) — the crux
+## What still remains — needs a Windows box
+
+- **⚠️ The `FxProperties` write is the #1 validation item.** We attach via
+  `IPropertyStore::SetValue` on the endpoint (the clean API). If the audio engine
+  doesn't pick our CLSID up from there, fall back to writing the REG_BINARY
+  serialized-PROPVARIANT values directly under the endpoint's `FxProperties`
+  registry key (the value names come from `fx_value_names(slot)`), matching how
+  Equalizer APO's `DeviceAPOInfo.cpp` does it. Also add composite-endpoint
+  detection (`{b3f8fa53-...},41`) — the installer currently assumes SFX/EFX — and
+  save/restore the displaced child APO.
+- **Live device-change watcher** — an `IMMNotificationClient` for
+  `OnDefaultDeviceChanged` to re-attach immediately (today only repair-on-launch
+  handles a changed default).
+- On-device validation (below).
+
+### Reference: the elevated installer/attacher — the crux
 
 One UAC prompt (mirror `commands/cable.rs`'s elevation) that:
 

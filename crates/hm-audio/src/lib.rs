@@ -39,6 +39,12 @@ mod system_eq_shared;
 pub mod system_tap;
 #[cfg(target_os = "linux")]
 pub mod system_eq_linux;
+/// Native PipeWire backend for Linux system EQ (the macOS-parity path).
+#[cfg(target_os = "linux")]
+pub mod system_eq_pipewire;
+/// Classic-PulseAudio virtual-sink backend (fallback where PipeWire isn't running).
+#[cfg(target_os = "linux")]
+pub mod system_eq_pulse;
 #[cfg(target_os = "windows")]
 pub mod system_eq_windows;
 /// Bundled virtual-audio driver lifecycle (install/status) for Windows system EQ.

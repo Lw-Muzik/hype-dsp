@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-22.04]
+        os: [macos-latest, windows-latest, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y libasound2-dev libwebkit2gtk-4.1-dev \
+            libpipewire-0.3-dev libspa-0.2-dev libclang-dev pkg-config
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -64,7 +65,7 @@ jobs:
         # Pin Windows to 2022: the cmake-rs crate (v0.1.58, via projectm-sys)
         # only knows the "Visual Studio 17 2022" generator, while windows-latest
         # now ships VS 18. windows-2022 has the matching toolchain.
-        os: [macos-latest, windows-2022, ubuntu-22.04]
+        os: [macos-latest, windows-2022, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +77,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake libgl1-mesa-dev mesa-common-dev libglm-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
-            libxfixes-dev libxss-dev
+            libxfixes-dev libxss-dev \
+            libpipewire-0.3-dev libspa-0.2-dev libclang-dev pkg-config libasound2-dev
 
       - name: Install build deps (macOS)
         if: runner.os == 'macOS'

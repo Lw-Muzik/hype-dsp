@@ -20,25 +20,89 @@ the tap into the chain, and the processed mix is rendered to the real device.
   for the audio-capture permission to persist.
 - Enabled via `engine.play_system_tap()`.
 
-## Linux — PulseAudio / PipeWire virtual sink (shipping)
+## Linux — dual backend, PipeWire-first (shipping)
 
-`crates/hm-audio/src/system_eq_linux.rs`. The portable Linux approach *re-routes*
-rather than taps:
+`crates/hm-audio/src/system_eq_linux.rs` is a **dispatcher** that picks a backend
+at runtime, because Linux has two incompatible audio-server families. It keeps the
+`available()` / `LinuxSystemEq::start()` facade the engine calls, and selects:
 
-1. create a **null sink** (`module-null-sink`) and make it the **default output**,
-   so every app renders into it (existing streams are moved over);
-2. capture its `.monitor` with `parec`;
-3. run the samples through `ProcessChain` (live params, in a worker thread);
-4. play the result to the **real** output device with `pacat`.
+### PipeWire — native client (primary, `system_eq_pipewire.rs`)
 
-The originals go to the null sink, never the speakers — no doubling. This is the
-same model as EasyEffects' "process all outputs". On stop it restores the previous
-default sink and unloads the null sink.
+The macOS-parity path: transparent, zero-config, crash-safe, low-latency. On
+modern distros (~90–95 % of 2026 desktops) PipeWire's **WirePlumber** owns routing
+policy, so the old `pactl set-default-sink` + `move-sink-input` trick is only
+*advisory* — apps frequently keep playing to the real device **unprocessed**. That
+was the "system EQ does nothing on Linux" bug. EasyEffects avoids it by being a
+resident native client, and so do we:
 
-- Uses the ubiquitous `pactl` / `parec` / `pacat` CLIs, so it needs **no extra
-  crates** and works on both PipeWire (pulse layer) and classic PulseAudio.
-- No driver, no admin. `hm_audio::system_eq_linux::available()` checks `pactl info`.
-- Enabled via `engine.start_system_eq()`, stopped via `engine.stop_system_eq()`.
+1. a **sink stream** (`media.class = Audio/Sink`, node `hypemuzik_eq`) *is* a
+   selectable virtual sink; the graph mixes every app routed to it and delivers the
+   audio to our RT process callback, which pushes it into a lock-free ring;
+2. an **output stream** (`AUTOCONNECT` to the real default device) pops the ring,
+   runs `ProcessChain`, and renders to the device;
+3. a **stream mover** — a registry listener — sets `target.object` metadata on
+   every `Stream/Output/Audio` node (except our own output and HypeMuzik's own
+   playback) so it routes into our sink. `target.object` *is* WirePlumber's routing
+   mechanism, so it cooperates instead of fighting; new, existing, and even
+   user-pinned streams are all captured and re-captured on each new-node event.
+
+We deliberately **do not switch the default sink** (WirePlumber overrides that).
+Because our nodes are owned by our client connection, a crash makes PipeWire
+destroy them and WirePlumber re-route apps back to the real device — no
+system-wide silence, unlike the null-sink approach.
+
+- Adds the `pipewire` crate (0.10) → build-time `libpipewire-0.3-dev` + `libclang`
+  + `pkg-config`; runtime `libpipewire-0.3.so.0` (declared as a `.deb`/`.rpm`
+  dependency). Needs libpipewire ≥ 0.3.65, so the Linux **build** runner is
+  `ubuntu-24.04` (22.04 ships 0.3.48).
+- `available()` = the `$XDG_RUNTIME_DIR/pipewire-0` socket exists.
+
+### classic PulseAudio — virtual sink (fallback, `system_eq_pulse.rs`)
+
+For the shrinking minority on a real PulseAudio daemon (no PipeWire), where the
+`module-null-sink` + `parec`/`pacat` model *is* reliable. Repaired from the first
+cut so it can't phantom-"run": every `pactl` exit status is checked, the default
+switch is **read back and verified**, `available()` also confirms `parec`/`pacat`
+exist, and a startup handshake fails loudly if no audio actually moves.
+
+- `available()` = `pactl info` reachable **and** `parec`/`pacat` on `PATH`.
+- Known limitation: hardware volume keys change the (null-sink) default, not our
+  render level to the real device — use the app's own volume. (PipeWire path is
+  unaffected.)
+
+### selection & honest availability
+
+`classify_stack()` is PipeWire-first: on a PipeWire box `pactl` *also* works via
+`pipewire-pulse`, so the Pulse probe can be true too, but we must never fall back
+to the broken CLI while PipeWire is live. Neither present → honestly unavailable
+(no toggle). Enabled via `engine.start_system_eq()`, stopped via
+`engine.stop_system_eq()`.
+
+> **Snap note:** a `.snap` built from the `.deb` must expose PipeWire to the
+> confined app (the `audio-playback`/`audio-record` plugs and access to the
+> `pipewire-0` socket, plus staged `libpipewire-0.3-0`). `snap/snapcraft.yaml` may
+> need updating before the snap's system EQ works — verify on device.
+
+### launch-time dependency auto-install
+
+`src-tauri/src/commands/linux_audio_setup.rs` (`auto_setup_on_launch`, wired in
+`lib.rs setup()`). Most users need nothing — PipeWire already provides everything
+and the `.deb`/`.rpm` `Depends: libpipewire` pulls the runtime lib at install
+time. When system EQ *is* unavailable only because a package is missing (e.g.
+`pulseaudio-utils` on a PipeWire-less box), it installs it on launch:
+
+- Detects the package manager (`apt`/`dnf`/`pacman`/`zypper`) from `PATH` and runs
+  `pkexec <pm> install …` — **one polkit prompt** (Linux can't install silently
+  like the Windows VB-CABLE flow; system packages need root).
+- Never touches a whole audio server, only the missing user-space tools; no-op
+  when nothing's needed.
+- **Sandbox (Flatpak/Snap), unknown distro, or a declined/failed prompt** → emits
+  `system-eq-setup-manual` with the exact `sudo …` command; the app toasts it and
+  copies it to the clipboard. A declined auto-prompt is remembered (a marker in
+  the config dir) so it won't re-ask every launch; the Settings action
+  (`linux_system_audio_setup`) is a manual retry that ignores the marker.
+- Package names come from a fixed allowlist and `pkexec` is invoked without a
+  shell — no injection surface.
 
 ## Windows — bundled virtual audio device (in progress)
 

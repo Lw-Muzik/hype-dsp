@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import type { UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { toast } from "@/stores/toast";
 import ThemeBackdrop from "@/features/theme/ThemeBackdrop";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
@@ -24,6 +25,28 @@ export function App() {
   useEffect(() => {
     void resumeSystemEq();
   }, [resumeSystemEq]);
+
+  // Linux: when the launch-time system-audio setup can't auto-install (a sandbox,
+  // an unknown distro, or a declined/failed prompt), it emits the exact command
+  // to run. Surface it — and copy it to the clipboard — so the user can finish.
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    let cancelled = false;
+    void listen<string>("system-eq-setup-manual", (e) => {
+      const command = e.payload;
+      void navigator.clipboard?.writeText(command).catch(() => {});
+      toast.info(`System-wide EQ needs a component. Copied — run in a terminal: ${command}`);
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   // Re-check the local library when the app regains focus: a drive may have been
   // plugged in or ejected while we were away, so tracks should appear/disappear.

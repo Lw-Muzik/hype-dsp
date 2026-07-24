@@ -26,7 +26,11 @@ jobs:
             args: "--target universal-apple-darwin"
             rust-targets: "aarch64-apple-darwin,x86_64-apple-darwin"
           # Linux → .deb, .rpm, .AppImage
-          - platform: ubuntu-22.04
+          # 24.04 (not 22.04): the native PipeWire system-EQ backend needs a
+          # libpipewire-0.3-dev new enough for the `pipewire` crate, which 22.04's
+          # 0.3.48 is not. This raises the built binary's glibc floor to 2.39 —
+          # acceptable since PipeWire-era users run modern distros anyway.
+          - platform: ubuntu-24.04
             args: ""
             rust-targets: ""
           # Windows → .msi (WiX) + .exe (NSIS)
@@ -45,7 +49,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Linux build dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -55,6 +59,10 @@ jobs:
             patchelf \
             libxdo-dev \
             libasound2-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libclang-dev \
+            pkg-config \
             build-essential \
             file
 
@@ -182,7 +190,7 @@ jobs:
       - name: Download the Linux build artifacts (.deb)
         uses: actions/download-artifact@v4
         with:
-          name: hypemuzik-ubuntu-22.04
+          name: hypemuzik-ubuntu-24.04
           path: linux-build
 
       - name: Stage the .deb and stamp the snap version

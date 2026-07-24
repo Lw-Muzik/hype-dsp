@@ -207,7 +207,7 @@ jobs:
       - name: Upload the .snap as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hypemuzik-snap
+          name: lw-ziki-amp
           if-no-files-found: error
           retention-days: 14
           path: ${{ steps.snap.outputs.snap }}

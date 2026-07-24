@@ -1,4 +1,4 @@
-name: hypemuzik
+name: lw-ziki-amp
 base: core22
 # Stamped from src-tauri/tauri.conf.json by the release workflow before build.
 version: '0.1.6'
@@ -12,12 +12,12 @@ confinement: strict
 compression: lzo
 
 apps:
-  hypemuzik:
-    command: usr/bin/hypemuzik
+  lw-ziki-amp:
+    command: usr/bin/lw-ziki-amp
     # Provides the GTK/WebKitGTK runtime + desktop integration the Tauri
     # webview needs, and fixes up the bundled .desktop file.
     extensions: [gnome]
-    desktop: usr/share/applications/HypeMuzik.desktop
+    desktop: usr/share/applications/lw-ziki-amp.desktop
     plugs:
       - home            # open/play files from the user's folders
       - removable-media # ...and from mounted drives
@@ -29,7 +29,7 @@ apps:
       - avahi-observe   # mDNS discovery for Phone Link
 
 parts:
-  hypemuzik:
+  lw-ziki-amp:
     plugin: nil
     # The release build's Linux .deb is staged next to this file as `app.deb`
     # by CI; extract its payload (binary + desktop file + icons + visualizer

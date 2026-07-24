@@ -41,6 +41,9 @@ pub mod system_tap;
 pub mod system_eq_linux;
 #[cfg(target_os = "windows")]
 pub mod system_eq_windows;
+/// Windows APO backend (free path) — selection + slot-plan helpers (host-tested)
+/// plus the Windows-only live-param feed and install probe.
+pub mod system_eq_windows_apo;
 /// Bundled virtual-audio driver lifecycle (install/status) for Windows system EQ.
 #[cfg(target_os = "windows")]
 pub mod win_driver;

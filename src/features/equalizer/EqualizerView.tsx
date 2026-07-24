@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { routeById } from "@/app/routes";
@@ -20,9 +20,16 @@ import {
   eqSaveCustom,
   ipcErrorMessage,
 } from "@/lib/ipc";
-import { BAND_COUNT, ISO_CENTERS_HZ } from "@/lib/types";
+import { BAND_COUNT } from "@/lib/types";
 import type { AutoEqEntry, EqPreset } from "@/lib/types";
 import { formatDb, formatHz } from "@/lib/format";
+import {
+  EQ_BAND_COUNTS,
+  bandFrequencies,
+  faderPointsToBands,
+  sampleEngineAt,
+} from "@/lib/eqBands";
+import { useUiStore } from "@/stores/ui";
 import { toast } from "@/stores/toast";
 
 const DB_MIN = -12;
@@ -31,26 +38,30 @@ const DB_MAX = 12;
 interface BandColumnProps {
   index: number;
   value: number;
-  /** Stable store action — (bandIndex, valueDb). */
-  onBandChange: (index: number, valueDb: number) => void;
+  freqHz: number;
+  showLabel: boolean;
+  /** Stable handler — (faderIndex, valueDb). */
+  onFaderChange: (index: number, valueDb: number) => void;
 }
 
 /**
  * One fader column, memoized with a stable per-band handler so a drag on one
- * band (or a live-spectrum frame elsewhere) doesn't re-reconcile all 31 rows.
+ * band (or a live-spectrum frame elsewhere) doesn't re-reconcile every row.
  */
 const BandColumn = memo(function BandColumn({
   index,
   value,
-  onBandChange,
+  freqHz,
+  showLabel,
+  onFaderChange,
 }: BandColumnProps) {
-  const label = formatHz(ISO_CENTERS_HZ[index] ?? 20);
+  const label = formatHz(freqHz);
   const onChange = useCallback(
-    (v: number) => onBandChange(index, v),
-    [onBandChange, index],
+    (v: number) => onFaderChange(index, v),
+    [onFaderChange, index],
   );
   return (
-    <div className="flex flex-1 flex-col items-center gap-1">
+    <div className="flex min-w-0 flex-1 flex-col items-center gap-1">
       <EqBandSlider
         value={value}
         min={DB_MIN}
@@ -58,8 +69,8 @@ const BandColumn = memo(function BandColumn({
         label={label}
         onChange={onChange}
       />
-      <span className="h-3 text-[8px] leading-none text-text-faint">
-        {index % 3 === 0 ? label : ""}
+      <span className="h-3 truncate text-[8px] leading-none text-text-faint">
+        {showLabel ? label : ""}
       </span>
     </div>
   );
@@ -72,7 +83,6 @@ export function EqualizerView() {
   const preGain = useEngineStore((s) => s.state.eq.preGain);
   const enabled = useEngineStore((s) => s.state.eq.enabled);
   const activePresetId = useEngineStore((s) => s.state.activePresetId);
-  const setBand = useEngineStore((s) => s.setBand);
   const setBands = useEngineStore((s) => s.setBands);
   const setPreGain = useEngineStore((s) => s.setPreGain);
   const setEqEnabled = useEngineStore((s) => s.setEqEnabled);
@@ -81,6 +91,28 @@ export function EqualizerView() {
   const importVdc = useEngineStore((s) => s.importVdc);
   const applyDdc = useEngineStore((s) => s.applyDdc);
   const applyAutoEq = useEngineStore((s) => s.applyAutoEq);
+
+  // How many faders to show — a UI view over the fixed 31-band engine. Each
+  // fader is a control point at a log-spaced frequency; its value interpolates
+  // onto the engine's 31 ISO bands, and the faders read back by sampling the
+  // engine curve, so switching count preserves the sound.
+  const eqBandCount = useUiStore((s) => s.eqBandCount);
+  const setEqBandCount = useUiStore((s) => s.setEqBandCount);
+  const freqs = useMemo(() => bandFrequencies(eqBandCount), [eqBandCount]);
+  const faderValues = useMemo(() => sampleEngineAt(bands, freqs), [bands, freqs]);
+  // Show enough labels to read the axis without crowding at high counts.
+  const labelStride = eqBandCount <= 12 ? 1 : eqBandCount <= 20 ? 2 : 3;
+  const onFaderChange = useCallback(
+    (i: number, gain: number) => {
+      const points = sampleEngineAt(
+        useEngineStore.getState().state.eq.bands,
+        freqs,
+      );
+      points[i] = gain;
+      setBands(faderPointsToBands(freqs, points));
+    },
+    [freqs, setBands],
+  );
 
   const [presets, setPresets] = useState<EqPreset[]>([]);
   const [showImport, setShowImport] = useState(false);
@@ -259,10 +291,39 @@ export function EqualizerView() {
 
           <EqVisualizer bands={bands} />
 
-          {/* 31 band faders */}
+          {/* Band-count selector — how many faders to show over the 31-band engine */}
+          <div className="flex items-center justify-end gap-2 text-xs text-text-muted">
+            <span>Bands</span>
+            <div className="flex overflow-hidden rounded-control border border-border">
+              {EQ_BAND_COUNTS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setEqBandCount(n)}
+                  aria-pressed={eqBandCount === n}
+                  className={`px-2.5 py-1 tabular-nums transition-colors ${
+                    eqBandCount === n
+                      ? "bg-accent text-white"
+                      : "text-text-muted hover:bg-white/5"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* band faders (N control points, interpolated onto the 31-band engine) */}
           <div className="flex h-44 items-stretch gap-1">
-            {bands.map((value, i) => (
-              <BandColumn key={i} index={i} value={value} onBandChange={setBand} />
+            {faderValues.map((value, i) => (
+              <BandColumn
+                key={i}
+                index={i}
+                value={value}
+                freqHz={freqs[i] ?? 20}
+                showLabel={i % labelStride === 0}
+                onFaderChange={onFaderChange}
+              />
             ))}
           </div>
 

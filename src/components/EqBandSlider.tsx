@@ -102,7 +102,11 @@ export function EqBandSlider({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onKeyDown={onKeyDown}
-      className="relative w-4 flex-1 cursor-pointer touch-none"
+      // Fill the column (was a fixed w-4) so a full bank of faders shrinks to fit
+      // any width instead of overflowing/overlapping when the content narrows —
+      // e.g. while dragging the right sidebar wider. The track/handle stay
+      // centered, so the visuals track their column at every size.
+      className="relative min-w-0 w-full flex-1 cursor-pointer touch-none"
     >
       <div className="absolute left-1/2 top-0 h-full w-1 -translate-x-1/2 rounded-full bg-border-strong" />
       <div

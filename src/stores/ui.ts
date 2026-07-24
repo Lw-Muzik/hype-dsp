@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { AppInfo, LicenseStatus } from "@/lib/types";
+import { EQ_BAND_COUNTS } from "@/lib/eqBands";
 
 /** Top-level navigable views (one window, eight destinations). */
 export type Route =
@@ -54,6 +55,26 @@ const saveWidth = (side: Side, w: number): void => {
   }
 };
 
+const EQ_BANDS_KEY = "hm.eqBandCount";
+const DEFAULT_EQ_BANDS = 31;
+
+const loadEqBandCount = (): number => {
+  try {
+    const n = Number(localStorage.getItem(EQ_BANDS_KEY));
+    return (EQ_BAND_COUNTS as readonly number[]).includes(n) ? n : DEFAULT_EQ_BANDS;
+  } catch {
+    return DEFAULT_EQ_BANDS;
+  }
+};
+
+const saveEqBandCount = (n: number): void => {
+  try {
+    localStorage.setItem(EQ_BANDS_KEY, String(n));
+  } catch {
+    // Private mode / no storage — the choice just won't persist.
+  }
+};
+
 interface UiState {
   /** Currently displayed view. */
   route: Route;
@@ -72,6 +93,11 @@ interface UiState {
    *  transition so they track the cursor 1:1. */
   resizing: boolean;
   setResizing: (resizing: boolean) => void;
+
+  /** How many faders the graphic EQ shows (a UI view over the 31-band engine),
+   *  persisted. One of {@link EQ_BAND_COUNTS}. */
+  eqBandCount: number;
+  setEqBandCount: (n: number) => void;
 
   /** The right sidebar's active tab, or null when hidden. */
   rightPanel: RightPanel | null;
@@ -95,6 +121,12 @@ export const useUiStore = create<UiState>((set) => ({
   sidebarCollapsed: false,
   toggleSidebar: () =>
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
+  eqBandCount: loadEqBandCount(),
+  setEqBandCount: (n) => {
+    saveEqBandCount(n);
+    set({ eqBandCount: n });
+  },
 
   leftWidth: loadWidth("left"),
   rightWidth: loadWidth("right"),

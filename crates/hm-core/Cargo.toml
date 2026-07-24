@@ -12,3 +12,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 rusqlite = { workspace = true }
+
+# The Windows APO's cross-process param IPC (`apo_ipc::SharedMapping`) is a
+# named `CreateFileMappingW`/`MapViewOfFile` region. Version matches
+# `hm-audio`'s Windows dependency for consistency across the workspace.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+] }

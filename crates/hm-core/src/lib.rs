@@ -11,6 +11,7 @@
 //! it must change on the other — they are a single contract expressed twice.
 
 pub mod apo_ids;
+pub mod apo_ipc;
 pub mod autoeq_db;
 pub mod chain_presets;
 pub mod ddc_library;

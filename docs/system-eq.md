@@ -78,10 +78,11 @@ to the broken CLI while PipeWire is live. Neither present → honestly unavailab
 (no toggle). Enabled via `engine.start_system_eq()`, stopped via
 `engine.stop_system_eq()`.
 
-> **Snap note:** a `.snap` built from the `.deb` must expose PipeWire to the
-> confined app (the `audio-playback`/`audio-record` plugs and access to the
-> `pipewire-0` socket, plus staged `libpipewire-0.3-0`). `snap/snapcraft.yaml` may
-> need updating before the snap's system EQ works — verify on device.
+> **Snap note (configured):** `snap/snapcraft.yaml` is set up for PipeWire under
+> strict confinement — `base: core24` (matches the ubuntu-24.04 build's glibc and
+> ships a modern libpipewire), the `audio-playback`/`audio-record` plugs for the
+> host `pipewire-0` socket, and `libpipewire-0.3-0` in `stage-packages` (the
+> extracted `.deb` doesn't resolve its `Depends`). Verify on an actual snap build.
 
 ### launch-time dependency auto-install
 

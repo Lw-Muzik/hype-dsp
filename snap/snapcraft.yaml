@@ -1,5 +1,8 @@
 name: hypemuzik
-base: core22
+# core24 (not core22): the release .deb is built on ubuntu-24.04 (glibc 2.39, for
+# a libpipewire new enough for the system-EQ backend), so the snap runtime must
+# match or the binary won't load. core24 also supplies a modern libpipewire.
+base: core24
 # Stamped from src-tauri/tauri.conf.json by the release workflow before build.
 version: '0.1.6'
 summary: System-wide audio enhancer & music player
@@ -38,6 +41,10 @@ parts:
     override-build: |
       dpkg-deb -x "$CRAFT_PROJECT_DIR/app.deb" "$CRAFT_PART_INSTALL"
     # Bundle WebKitGTK (not part of the GNOME platform snap) so the webview
-    # loads under strict confinement.
+    # loads under strict confinement, plus libpipewire — the binary links it for
+    # the native system-wide-EQ backend, and extracting the .deb doesn't resolve
+    # its Depends, so it must be staged here. The `audio-playback`/`audio-record`
+    # plugs above give the confined app access to the host PipeWire socket.
     stage-packages:
       - libwebkit2gtk-4.1-0
+      - libpipewire-0.3-0

@@ -23,6 +23,7 @@ pub mod linux_audio_setup;
 pub mod lyrics;
 pub mod mixer;
 pub mod movies;
+pub mod movies_yt;
 pub mod open_with;
 pub mod presets;
 pub mod profiles;

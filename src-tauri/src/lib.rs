@@ -864,6 +864,7 @@ pub fn run() {
             commands::movies::movies_browse,
             commands::movies::movies_search,
             commands::movies::movies_resolve,
+            commands::movies_yt::yt_movies_channel,
             commands::license::license_status,
             commands::license::license_activate,
             commands::license::license_deactivate,

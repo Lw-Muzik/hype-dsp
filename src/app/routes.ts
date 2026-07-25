@@ -82,7 +82,7 @@ export const ROUTES: readonly NavRoute[] = [
     label: "Movies",
     icon: Clapperboard,
     group: "main",
-    tagline: "Public-domain and Creative-Commons films from the Internet Archive.",
+    tagline: "Modern hits from licensed YouTube distributors, plus public-domain classics.",
   },
   {
     id: "visuals",

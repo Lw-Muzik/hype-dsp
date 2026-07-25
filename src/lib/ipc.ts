@@ -33,8 +33,11 @@ import type {
   LibraryTrack,
   LicenseStatus,
   MixerSnapshot,
+  ArchiveMovie,
   Movie,
   MovieDetail,
+  YoutubeMovie,
+  YtMovieEntry,
   OutputDevice,
   OutputState,
   PhoneDevice,
@@ -1367,19 +1370,55 @@ export function tvStreamUrl(channel: TvChannel): Promise<string> {
 
 /* -------------------------------------------------------------- movies */
 
-/** One collection's popular films (most-downloaded first), page 1-based. */
-export function moviesBrowse(collection: string, page: number): Promise<Movie[]> {
-  return invoke<Movie[]>("movies_browse", { collection, page });
+/** `movies_browse`/`movies_search` return the Rust `MovieCard` shape
+ *  verbatim — no `source` field, since only this (Archive) path produces
+ *  one. Tagging happens here, once, rather than asking every caller to
+ *  remember it. */
+function toArchiveMovie(raw: Omit<ArchiveMovie, "source">): ArchiveMovie {
+  return { source: "archive", ...raw };
 }
 
-/** Search across the whitelisted Internet Archive film collections. */
+/** One collection's popular films (most-downloaded first), page 1-based. */
+export function moviesBrowse(collection: string, page: number): Promise<Movie[]> {
+  return invoke<Omit<ArchiveMovie, "source">[]>("movies_browse", { collection, page }).then((rows) =>
+    rows.map(toArchiveMovie),
+  );
+}
+
+/** Search across the whitelisted Internet Archive film collections. YouTube
+ *  distributor channels aren't included — their uploads have no keyless
+ *  search (that needs the YouTube Data API), only a listing, so search stays
+ *  Archive-only for v1. */
 export function moviesSearch(query: string, page: number): Promise<Movie[]> {
-  return invoke<Movie[]>("movies_search", { query, page });
+  return invoke<Omit<ArchiveMovie, "source">[]>("movies_search", { query, page }).then((rows) =>
+    rows.map(toArchiveMovie),
+  );
 }
 
 /** An identifier's full metadata, resolved to playable SD/HD streams. */
 export function moviesResolve(identifier: string): Promise<MovieDetail> {
   return invoke<MovieDetail>("movies_resolve", { identifier });
+}
+
+/** One licensed distributor YouTube channel's full-length uploads, discovered
+ *  keylessly (yt-dlp `--flat-playlist`, never a stream-extraction call — see
+ *  `commands::movies_yt`) and filtered to movie-length items server-side.
+ *  `limit` caps how many the shelf asks for. Playback for every result here
+ *  goes through the official YouTube iframe embed (`YoutubeMoviePlayer`),
+ *  never through the app's own stream path. */
+export function ytMoviesChannel(channelId: string, limit: number): Promise<Movie[]> {
+  return invoke<YtMovieEntry[]>("yt_movies_channel", { channelId, limit }).then((rows) =>
+    rows.map(
+      (r): YoutubeMovie => ({
+        source: "youtube",
+        videoId: r.videoId,
+        title: r.title,
+        durationSec: r.durationSec,
+        posterUrl: r.thumbnail,
+        channelTitle: r.channelTitle,
+      }),
+    ),
+  );
 }
 
 /** Open a native folder picker; returns the chosen directory. */

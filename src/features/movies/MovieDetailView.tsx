@@ -5,17 +5,22 @@ import { Segmented } from "@/components/Segmented";
 import { useMoviesStore } from "@/stores/movies";
 import { MoviePoster } from "./MoviePoster";
 import { MoviePlayer } from "./MoviePlayer";
+import { YoutubeMoviePlayer } from "./YoutubeMoviePlayer";
 import { availableQualities, selectStream, type Quality } from "./streamSelect";
+import { formatDurationLabel } from "./duration";
 
 /**
- * A movie's detail screen: poster/title/year/synopsis, a Play button, and an
- * SD/HD toggle (default SD) — then the player itself once Play is pressed.
+ * A movie's detail screen. Branches on `opened.source` first thing: Archive
+ * titles keep the original poster/synopsis/SD-HD-toggle screen and play
+ * through `MoviePlayer` (a direct MP4 the app streams itself); YouTube titles
+ * have no per-item resolve step — the channel listing already carried
+ * everything they need — and play through `YoutubeMoviePlayer` (the official
+ * iframe embed) with no quality toggle at all, since YouTube handles
+ * rendition switching itself.
  *
- * The card that was clicked (`opened`) already has poster/title/year, so this
- * renders instantly; `detail` (synopsis + streams) fills in once
- * `movies_resolve` answers. Mounted with `key={opened.identifier}` by
- * `MoviesView`, so switching movies always starts from a clean "not playing,
- * SD selected" state rather than carrying the previous movie's over.
+ * Mounted with a source-aware key by `MoviesView`, so switching movies always
+ * starts from a clean "not playing" state rather than carrying the previous
+ * movie's over.
  */
 export function MovieDetailView() {
   const opened = useMoviesStore((s) => s.opened);
@@ -29,6 +34,52 @@ export function MovieDetailView() {
   const [playing, setPlaying] = useState(false);
 
   if (!opened) return null;
+
+  if (opened.source === "youtube") {
+    if (playing) {
+      return (
+        <div className="flex flex-col gap-3 pb-4">
+          <BackButton onClick={() => setPlaying(false)} label="Back to details" />
+          <YoutubeMoviePlayer title={opened.title} videoId={opened.videoId} onClose={() => setPlaying(false)} />
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-4 pb-4">
+        <BackButton onClick={close} label="Movies" />
+
+        <div className="flex flex-col gap-5 sm:flex-row">
+          <MoviePoster
+            src={opened.posterUrl}
+            title={opened.title}
+            className="aspect-video w-full shrink-0 rounded-card sm:w-64"
+          />
+
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">{opened.title}</h2>
+              <p className="text-sm text-text-muted">
+                {opened.channelTitle ?? "YouTube"}
+                {opened.durationSec > 0 ? ` · ${formatDurationLabel(opened.durationSec)}` : ""}
+              </p>
+            </div>
+
+            <p className="text-sm text-text-faint">
+              Plays through the official YouTube player, ads included — the licensed way this
+              distributor's full movies can be watched here.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Button variant="primary" onClick={() => setPlaying(true)}>
+                <PlayIcon className="size-4" aria-hidden="true" />
+                Play
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const title = detail?.title ?? opened.title;
   const year = detail?.year ?? opened.year;

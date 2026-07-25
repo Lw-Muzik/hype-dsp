@@ -611,9 +611,20 @@ export interface PhoneTrack {
 
 /* ------------------------------------------------------------------ movies */
 
-/** One film in a browse/search result — a poster card's worth of data. Mirrors
- *  `commands::movies::MovieCard`. */
-export interface Movie {
+/** Which backend a movie card came from — drives which detail screen and
+ *  player the UI uses. `"archive"` cards are direct, Range-supporting MP4s
+ *  the app streams itself (`MoviePlayer`); `"youtube"` cards are licensed
+ *  distributor uploads that only ever play through the official YouTube
+ *  iframe embed (`YoutubeMoviePlayer`) — the app never extracts or proxies
+ *  their video/audio stream (see `commands::movies_yt`'s doc comment). */
+export type MovieSource = "archive" | "youtube";
+
+/** One film in an Internet Archive browse/search result — a poster card's
+ *  worth of data. Mirrors `commands::movies::MovieCard`, plus the `source`
+ *  tag `lib/ipc.ts` attaches (the Rust DTO itself carries no such field —
+ *  only the archive path ever produces one). */
+export interface ArchiveMovie {
+  source: "archive";
   identifier: string;
   title: string;
   year: number | null;
@@ -621,8 +632,36 @@ export interface Movie {
   downloads: number | null;
 }
 
-/** One playable rendition of a film — a direct, Range-supporting archive.org
- *  download URL. Mirrors `commands::movies::MovieStream`. */
+/** One full movie enumerated from a licensed distributor YouTube channel.
+ *  Thumbnail stands in for a poster; duration is known up front from the
+ *  channel listing, so — unlike Archive — there is no separate per-item
+ *  detail resolve (see `stores/movies.ts`'s `open()`). */
+export interface YoutubeMovie {
+  source: "youtube";
+  videoId: string;
+  title: string;
+  durationSec: number;
+  posterUrl: string;
+  channelTitle: string | null;
+}
+
+/** A movie card, whichever backend it came from — see {@link MovieSource}. */
+export type Movie = ArchiveMovie | YoutubeMovie;
+
+/** The raw shape `yt_movies_channel` returns over IPC (mirrors
+ *  `commands::movies_yt::YtMovie`), before `lib/ipc.ts` tags it with
+ *  `source: "youtube"` and renames `thumbnail` to `posterUrl` to match
+ *  {@link Movie}'s common shape. Not used directly outside `ipc.ts`. */
+export interface YtMovieEntry {
+  videoId: string;
+  title: string;
+  durationSec: number;
+  thumbnail: string;
+  channelTitle: string | null;
+}
+
+/** One playable rendition of an Archive film — a direct, Range-supporting
+ *  archive.org download URL. Mirrors `commands::movies::MovieStream`. */
 export interface MovieStream {
   /** "SD" or "HD". */
   label: string;
@@ -630,7 +669,9 @@ export interface MovieStream {
   mime: string;
 }
 
-/** Full detail for the movie player screen. Mirrors `commands::movies::MovieDetail`. */
+/** Full detail for an Archive movie's player screen. Mirrors
+ *  `commands::movies::MovieDetail`. YouTube movies have no equivalent resolve
+ *  step — everything their detail screen needs is already on the card. */
 export interface MovieDetail {
   identifier: string;
   title: string;

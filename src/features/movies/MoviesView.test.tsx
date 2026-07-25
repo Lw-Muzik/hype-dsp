@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
-import type { Movie } from "@/lib/types";
+import type { ArchiveMovie, YoutubeMovie } from "@/lib/types";
 
 // The store reaches for IPC as soon as an action runs, so it's mocked first.
 vi.mock("@/lib/ipc", () => ({
@@ -10,6 +10,8 @@ vi.mock("@/lib/ipc", () => ({
   moviesBrowse: vi.fn(),
   moviesSearch: vi.fn(),
   moviesResolve: vi.fn(),
+  ytMoviesChannel: vi.fn(),
+  openExternalUrl: vi.fn(),
 }));
 
 // `MovieDetailView` → `MoviePlayer` are statically imported by `MoviesView`
@@ -38,7 +40,8 @@ const { MoviesView } = await import("@/features/movies/MoviesView");
 const { useMoviesStore } = await import("@/stores/movies");
 const ipc = await import("@/lib/ipc");
 
-const movie = (identifier: string, over: Partial<Movie> = {}): Movie => ({
+const movie = (identifier: string, over: Partial<ArchiveMovie> = {}): ArchiveMovie => ({
+  source: "archive",
   identifier,
   title: `Movie ${identifier}`,
   year: 1950,
@@ -47,10 +50,26 @@ const movie = (identifier: string, over: Partial<Movie> = {}): Movie => ({
   ...over,
 });
 
+const ytMovie = (videoId: string, over: Partial<YoutubeMovie> = {}): YoutubeMovie => ({
+  source: "youtube",
+  videoId,
+  title: `YT Movie ${videoId}`,
+  durationSec: 5400,
+  posterUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+  channelTitle: "FilmRise",
+  ...over,
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
+  // Every render of <MoviesView> mounts the four YouTube shelves alongside
+  // the Archive ones — default them to an empty, resolved listing so tests
+  // that don't care about the YouTube path aren't left with a hanging
+  // promise or an unrelated error state.
+  vi.mocked(ipc.ytMoviesChannel).mockResolvedValue([]);
   useMoviesStore.setState({
     shelves: {},
+    ytShelves: {},
     query: "",
     results: [],
     searchLoad: "idle",
@@ -74,6 +93,8 @@ describe("<MoviesView> shelves", () => {
 
     render(<MoviesView />);
 
+    // The Archive collections are grouped under one "Classics" heading.
+    expect(screen.getByText("Classics")).toBeInTheDocument();
     expect(screen.getByText("Feature Films")).toBeInTheDocument();
     expect(screen.getByText("Sci-Fi & Horror")).toBeInTheDocument();
     expect(screen.getByText("Silent Films")).toBeInTheDocument();
@@ -97,6 +118,84 @@ describe("<MoviesView> shelves", () => {
     await waitFor(() => expect(screen.getByText("Archive is down")).toBeInTheDocument());
     // A dead shelf doesn't take the rest of the page down with it.
     expect(screen.getByText("Silent Films")).toBeInTheDocument();
+  });
+});
+
+describe("<MoviesView> YouTube distributor shelves", () => {
+  it("renders every verified channel as a shelf, and its lazily-fetched movies", async () => {
+    vi.mocked(ipc.ytMoviesChannel).mockImplementation((channelId) =>
+      Promise.resolve([ytMovie(`${channelId}_1`, { title: `${channelId} pick` })]),
+    );
+
+    render(<MoviesView />);
+
+    expect(screen.getByText("FilmRise")).toBeInTheDocument();
+    expect(screen.getByText("Shout! Studios")).toBeInTheDocument();
+    expect(screen.getByText("Maverick Movies")).toBeInTheDocument();
+    expect(screen.getByText("Mosfilm")).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(screen.getByText("UC8IHAQMuiJdY6ALuhG7iU8Q pick")).toBeInTheDocument(),
+    );
+    expect(ipc.ytMoviesChannel).toHaveBeenCalledWith("UC8IHAQMuiJdY6ALuhG7iU8Q", expect.any(Number));
+    expect(ipc.ytMoviesChannel).toHaveBeenCalledWith("UCEK3tT7DcfWGWJpNEDBdWog", expect.any(Number));
+  });
+
+  it("shows a channel shelf's own error (e.g. yt-dlp missing) without blanking the rest of the page", async () => {
+    vi.mocked(ipc.ytMoviesChannel).mockImplementation((channelId) =>
+      channelId === "UC8IHAQMuiJdY6ALuhG7iU8Q"
+        ? Promise.reject(new Error("yt-dlp isn't installed"))
+        : Promise.resolve([]),
+    );
+
+    render(<MoviesView />);
+
+    await waitFor(() => expect(screen.getByText("yt-dlp isn't installed")).toBeInTheDocument());
+    // A dead channel shelf doesn't take the rest of the page down with it.
+    expect(screen.getByText("Mosfilm")).toBeInTheDocument();
+  });
+});
+
+describe("<MoviesView> detail routing by source", () => {
+  it("opening a YouTube card shows the YouTube detail screen with no SD/HD toggle", async () => {
+    vi.mocked(ipc.ytMoviesChannel).mockImplementation((channelId) =>
+      channelId === "UC8IHAQMuiJdY6ALuhG7iU8Q"
+        ? Promise.resolve([ytMovie("dQw4w9WgXcQ", { title: "A Licensed Full Movie" })])
+        : Promise.resolve([]),
+    );
+
+    render(<MoviesView />);
+
+    const card = await screen.findByText("A Licensed Full Movie");
+    fireEvent.click(card);
+
+    // The YouTube branch has a single Play button and no quality toggle —
+    // `movies_resolve` is never called for it.
+    await waitFor(() => expect(screen.getByRole("button", { name: /play/i })).toBeInTheDocument());
+    expect(screen.queryByRole("radiogroup", { name: /video quality/i })).not.toBeInTheDocument();
+    expect(ipc.moviesResolve).not.toHaveBeenCalled();
+  });
+
+  it("opening an Archive card resolves detail and offers the classics screen", async () => {
+    vi.mocked(ipc.moviesBrowse).mockImplementation((collection) =>
+      collection === "feature_films" ? Promise.resolve([movie("metropolis")]) : Promise.resolve([]),
+    );
+    vi.mocked(ipc.moviesResolve).mockResolvedValue({
+      identifier: "metropolis",
+      title: "Metropolis",
+      year: 1927,
+      description: "A dystopian city.",
+      posterUrl: "https://archive.org/services/img/metropolis",
+      streams: [{ label: "SD", url: "https://archive.org/download/metropolis/sd.mp4", mime: "video/mp4" }],
+    });
+
+    render(<MoviesView />);
+
+    const card = await screen.findByText("Movie metropolis");
+    fireEvent.click(card);
+
+    await waitFor(() => expect(screen.getByText("A dystopian city.")).toBeInTheDocument());
+    expect(ipc.moviesResolve).toHaveBeenCalledWith("metropolis");
   });
 });
 

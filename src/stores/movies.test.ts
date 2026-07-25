@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Movie, MovieDetail } from "@/lib/types";
+import type { ArchiveMovie, MovieDetail, YoutubeMovie } from "@/lib/types";
 
 // The store reaches for IPC as soon as an action runs, so it's mocked first —
 // same setup as explore.test.ts.
@@ -8,9 +8,10 @@ vi.mock("@/lib/ipc", () => ({
   moviesBrowse: vi.fn(),
   moviesSearch: vi.fn(),
   moviesResolve: vi.fn(),
+  ytMoviesChannel: vi.fn(),
 }));
 
-const { useMoviesStore, MOVIE_COLLECTIONS } = await import("@/stores/movies");
+const { useMoviesStore, MOVIE_COLLECTIONS, YT_MOVIE_CHANNELS } = await import("@/stores/movies");
 const ipc = await import("@/lib/ipc");
 
 /** A promise plus the handle to settle it, so a test can control arrival order. */
@@ -22,12 +23,23 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-const movie = (identifier: string, over: Partial<Movie> = {}): Movie => ({
+const movie = (identifier: string, over: Partial<ArchiveMovie> = {}): ArchiveMovie => ({
+  source: "archive",
   identifier,
   title: `Movie ${identifier}`,
   year: 1955,
   posterUrl: `https://archive.org/services/img/${identifier}`,
   downloads: 1000,
+  ...over,
+});
+
+const ytMovie = (videoId: string, over: Partial<YoutubeMovie> = {}): YoutubeMovie => ({
+  source: "youtube",
+  videoId,
+  title: `YT Movie ${videoId}`,
+  durationSec: 5400,
+  posterUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+  channelTitle: "FilmRise",
   ...over,
 });
 
@@ -45,6 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useMoviesStore.setState({
     shelves: {},
+    ytShelves: {},
     query: "",
     results: [],
     searchLoad: "idle",
@@ -67,6 +80,93 @@ describe("MOVIE_COLLECTIONS", () => {
       "prelinger",
       "short_films",
     ]);
+  });
+});
+
+describe("YT_MOVIE_CHANNELS", () => {
+  it("lists exactly the four verified distributor channels from the spec", () => {
+    expect(YT_MOVIE_CHANNELS.map((c) => c.id)).toEqual([
+      "UC8IHAQMuiJdY6ALuhG7iU8Q",
+      "UCpHaAKu74UHvcYCi2g_PvBQ",
+      "UC2u3R3pjOiPZu4LtTlKkxdw",
+      "UCEK3tT7DcfWGWJpNEDBdWog",
+    ]);
+    expect(YT_MOVIE_CHANNELS.map((c) => c.label)).toEqual([
+      "FilmRise",
+      "Shout! Studios",
+      "Maverick Movies",
+      "Mosfilm",
+    ]);
+  });
+});
+
+describe("ensureYtShelf", () => {
+  it("loads a channel's shelf once", async () => {
+    vi.mocked(ipc.ytMoviesChannel).mockResolvedValue([ytMovie("a"), ytMovie("b")]);
+    useMoviesStore.getState().ensureYtShelf("UC8IHAQMuiJdY6ALuhG7iU8Q");
+    expect(useMoviesStore.getState().ytShelves["UC8IHAQMuiJdY6ALuhG7iU8Q"]?.load).toBe("loading");
+
+    await vi.waitFor(() =>
+      expect(useMoviesStore.getState().ytShelves["UC8IHAQMuiJdY6ALuhG7iU8Q"]?.load).toBe("ready"),
+    );
+    expect(useMoviesStore.getState().ytShelves["UC8IHAQMuiJdY6ALuhG7iU8Q"]?.movies).toHaveLength(2);
+    expect(ipc.ytMoviesChannel).toHaveBeenCalledWith("UC8IHAQMuiJdY6ALuhG7iU8Q", expect.any(Number));
+  });
+
+  it("does not refetch a channel shelf that's already loading or loaded", async () => {
+    vi.mocked(ipc.ytMoviesChannel).mockResolvedValue([ytMovie("a")]);
+    useMoviesStore.getState().ensureYtShelf("UCpHaAKu74UHvcYCi2g_PvBQ");
+    useMoviesStore.getState().ensureYtShelf("UCpHaAKu74UHvcYCi2g_PvBQ");
+    await vi.waitFor(() =>
+      expect(useMoviesStore.getState().ytShelves["UCpHaAKu74UHvcYCi2g_PvBQ"]?.load).toBe("ready"),
+    );
+    useMoviesStore.getState().ensureYtShelf("UCpHaAKu74UHvcYCi2g_PvBQ");
+    expect(ipc.ytMoviesChannel).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps one channel's failure (e.g. yt-dlp missing) from touching another's shelf", async () => {
+    vi.mocked(ipc.ytMoviesChannel)
+      .mockRejectedValueOnce(new Error("yt-dlp isn't installed"))
+      .mockResolvedValueOnce([ytMovie("a")]);
+    useMoviesStore.getState().ensureYtShelf("UC8IHAQMuiJdY6ALuhG7iU8Q");
+    useMoviesStore.getState().ensureYtShelf("UCpHaAKu74UHvcYCi2g_PvBQ");
+
+    await vi.waitFor(() => {
+      expect(useMoviesStore.getState().ytShelves["UC8IHAQMuiJdY6ALuhG7iU8Q"]?.load).toBe("error");
+      expect(useMoviesStore.getState().ytShelves["UCpHaAKu74UHvcYCi2g_PvBQ"]?.load).toBe("ready");
+    });
+    expect(useMoviesStore.getState().ytShelves["UC8IHAQMuiJdY6ALuhG7iU8Q"]?.error).toBe(
+      "yt-dlp isn't installed",
+    );
+  });
+
+  it("retryYtShelf resets to idle and fetches again", async () => {
+    vi.mocked(ipc.ytMoviesChannel).mockRejectedValueOnce(new Error("nope"));
+    useMoviesStore.getState().ensureYtShelf("UC2u3R3pjOiPZu4LtTlKkxdw");
+    await vi.waitFor(() =>
+      expect(useMoviesStore.getState().ytShelves["UC2u3R3pjOiPZu4LtTlKkxdw"]?.load).toBe("error"),
+    );
+
+    vi.mocked(ipc.ytMoviesChannel).mockResolvedValueOnce([ytMovie("a")]);
+    useMoviesStore.getState().retryYtShelf("UC2u3R3pjOiPZu4LtTlKkxdw");
+    await vi.waitFor(() =>
+      expect(useMoviesStore.getState().ytShelves["UC2u3R3pjOiPZu4LtTlKkxdw"]?.load).toBe("ready"),
+    );
+    expect(ipc.ytMoviesChannel).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the YouTube shelves in a map separate from the Archive shelves", async () => {
+    vi.mocked(ipc.moviesBrowse).mockResolvedValue([movie("a")]);
+    vi.mocked(ipc.ytMoviesChannel).mockResolvedValue([ytMovie("b")]);
+    useMoviesStore.getState().ensureShelf("feature_films");
+    useMoviesStore.getState().ensureYtShelf("UC8IHAQMuiJdY6ALuhG7iU8Q");
+
+    await vi.waitFor(() => {
+      expect(useMoviesStore.getState().shelves.feature_films?.load).toBe("ready");
+      expect(useMoviesStore.getState().ytShelves["UC8IHAQMuiJdY6ALuhG7iU8Q"]?.load).toBe("ready");
+    });
+    expect(useMoviesStore.getState().shelves.feature_films?.movies[0]).toEqual(movie("a"));
+    expect(useMoviesStore.getState().ytShelves["UC8IHAQMuiJdY6ALuhG7iU8Q"]?.movies[0]).toEqual(ytMovie("b"));
   });
 });
 
@@ -150,8 +250,8 @@ describe("search", () => {
 
   /** Typing outruns the network — the first request can land last. */
   it("ignores an older search that arrives after a newer one", async () => {
-    const first = deferred<Movie[]>();
-    const second = deferred<Movie[]>();
+    const first = deferred<ArchiveMovie[]>();
+    const second = deferred<ArchiveMovie[]>();
     vi.mocked(ipc.moviesSearch).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
     useMoviesStore.getState().search("nos");
@@ -167,7 +267,7 @@ describe("search", () => {
   });
 
   it("does not let an abandoned search land after it was cleared", async () => {
-    const inflight = deferred<Movie[]>();
+    const inflight = deferred<ArchiveMovie[]>();
     vi.mocked(ipc.moviesSearch).mockReturnValueOnce(inflight.promise);
     useMoviesStore.getState().search("q");
     useMoviesStore.getState().clearSearch();
@@ -198,7 +298,7 @@ describe("open / detail resolution", () => {
     useMoviesStore.getState().open(movie("dead_link"));
     await vi.waitFor(() => expect(useMoviesStore.getState().detailLoad).toBe("error"));
     expect(useMoviesStore.getState().detailError).toBe("gone");
-    expect(useMoviesStore.getState().opened?.identifier).toBe("dead_link");
+    expect((useMoviesStore.getState().opened as ArchiveMovie | null)?.identifier).toBe("dead_link");
   });
 
   it("ignores a slower resolve for a movie the user already navigated away from", async () => {
@@ -239,5 +339,24 @@ describe("open / detail resolution", () => {
     useMoviesStore.getState().retryDetail();
     await vi.waitFor(() => expect(useMoviesStore.getState().detailLoad).toBe("ready"));
     expect(ipc.moviesResolve).toHaveBeenCalledTimes(2);
+  });
+
+  /** A YouTube card carries everything its detail screen needs already —
+   *  there is no `movies_resolve`-equivalent call for it. */
+  it("opening a YouTube movie is immediately ready, with no resolve call", () => {
+    const card = ytMovie("dQw4w9WgXcQ");
+    useMoviesStore.getState().open(card);
+
+    expect(useMoviesStore.getState().opened).toEqual(card);
+    expect(useMoviesStore.getState().detailLoad).toBe("ready");
+    expect(useMoviesStore.getState().detail).toBeNull();
+    expect(ipc.moviesResolve).not.toHaveBeenCalled();
+  });
+
+  it("retryDetail is a no-op for an opened YouTube movie", () => {
+    useMoviesStore.getState().open(ytMovie("a"));
+    useMoviesStore.getState().retryDetail();
+    expect(ipc.moviesResolve).not.toHaveBeenCalled();
+    expect(useMoviesStore.getState().detailLoad).toBe("ready");
   });
 });

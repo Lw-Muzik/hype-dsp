@@ -118,8 +118,12 @@ impl RemoteManager {
             .enable_all()
             .build()?;
         let secret = crate::secret::load_or_create_secret(&secret_path)?;
-        let endpoint =
-            runtime.block_on(build_endpoint(secret, vec![ALPN_PAIR.to_vec()], relay))?;
+        // Build the endpoint via spawn+channel, NOT `runtime.block_on`: `new` is
+        // called from Tauri `(async)` commands (e.g. `link_remote_qr`, the QR
+        // pairing button), which run on the app's tokio runtime. `block_on`
+        // there panics with "Cannot start a runtime from within a runtime";
+        // `run_blocking` blocks on a plain channel instead, safe from any thread.
+        let endpoint = run_blocking(&runtime, build_endpoint(secret, vec![ALPN_PAIR.to_vec()], relay))?;
         let inner = Arc::new(Inner {
             peers: Mutex::new(load_peers(&store_path)),
             store_path,
@@ -238,12 +242,30 @@ impl RemoteManager {
         F: Future<Output = T> + Send + 'static,
         T: Send + 'static,
     {
-        let (tx, rx) = std::sync::mpsc::channel();
-        self.runtime.spawn(async move {
-            let _ = tx.send(fut.await);
-        });
-        rx.recv().expect("remote runtime task dropped")
+        run_blocking(&self.runtime, fut)
     }
+}
+
+/// Drive `fut` to completion on `runtime`, blocking the calling thread on a
+/// channel until it's done.
+///
+/// Unlike [`tokio::runtime::Runtime::block_on`], this never *enters* the runtime
+/// on the current thread — it only `spawn`s onto `runtime`'s worker threads and
+/// waits on a plain std channel. So it's safe to call even while the current
+/// thread is already driving *another* tokio runtime (a Tauri `(async)` command
+/// worker), where `block_on` would panic "Cannot start a runtime from within a
+/// runtime". Used by [`RemoteManager::new`] (before `self` exists) and
+/// [`RemoteManager::block`].
+fn run_blocking<T, F>(runtime: &tokio::runtime::Runtime, fut: F) -> T
+where
+    F: Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+    runtime.spawn(async move {
+        let _ = tx.send(fut.await);
+    });
+    rx.recv().expect("remote runtime task dropped")
 }
 
 /// Accept pairing connections until the endpoint closes.
@@ -442,6 +464,46 @@ mod tests {
         })?;
 
         assert_eq!(manager.remote_phones().len(), 1, "peer not persisted");
+        let _ = std::fs::remove_file(secret_path);
+        let _ = std::fs::remove_file(store_path);
+        Ok(())
+    }
+
+    /// Building the manager must be safe from *inside* another tokio runtime.
+    /// Tauri drives `(async)` commands on its runtime's worker threads, so the
+    /// first-ever build for a user with no paired phones happens there — via
+    /// `link_remote_qr` (the "Pair a phone across networks" QR button). A
+    /// `Runtime::block_on` in the constructor panics there with "Cannot start a
+    /// runtime from within a runtime", surfacing as "remote link initialization
+    /// crashed" on the pairing card. This reproduces that call site.
+    #[test]
+    fn new_builds_from_within_another_runtime() -> Result<()> {
+        let tag = crate::secret::random_pin();
+        let secret_path = std::env::temp_dir().join(format!("hm_remote_nest_sk_{tag}"));
+        let store_path = std::env::temp_dir().join(format!("hm_remote_nest_store_{tag}.json"));
+
+        let outer = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        let sp = secret_path.clone();
+        let st = store_path.clone();
+        // Call the synchronous, blocking `new` directly inside a task driven by
+        // `outer` — the same shape as a Tauri `(async)` command body. A
+        // `Runtime::block_on` inside `new` nests on this thread and panics; the
+        // spawn+channel build path completes instead. The manager is returned
+        // out of the async block so it (and its inner runtime) drop here on the
+        // test thread — as in production, where it lives in app state and is
+        // never torn down inside a command future.
+        let built = outer.block_on(async move {
+            RemoteManager::new(sp, st, "Nest Test".into(), false, |_| {}).map_err(|e| e.to_string())
+        });
+        assert!(
+            built.is_ok(),
+            "manager build failed inside a runtime: {:?}",
+            built.as_ref().err()
+        );
+        drop(built);
+
         let _ = std::fs::remove_file(secret_path);
         let _ = std::fs::remove_file(store_path);
         Ok(())

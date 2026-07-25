@@ -609,6 +609,40 @@ export interface PhoneTrack {
   hasArt: boolean;
 }
 
+/* ------------------------------------------------------------------ movies */
+
+/** One film in a browse/search result — a poster card's worth of data. Mirrors
+ *  `commands::movies::MovieCard`. */
+export interface Movie {
+  identifier: string;
+  title: string;
+  year: number | null;
+  posterUrl: string;
+  downloads: number | null;
+}
+
+/** One playable rendition of a film — a direct, Range-supporting archive.org
+ *  download URL. Mirrors `commands::movies::MovieStream`. */
+export interface MovieStream {
+  /** "SD" or "HD". */
+  label: string;
+  url: string;
+  mime: string;
+}
+
+/** Full detail for the movie player screen. Mirrors `commands::movies::MovieDetail`. */
+export interface MovieDetail {
+  identifier: string;
+  title: string;
+  year: number | null;
+  /** HTML-stripped synopsis, or null if archive.org had none. */
+  description: string | null;
+  posterUrl: string;
+  /** SD first (the default), then HD if the item has one. Empty when neither
+   *  rendition exists — the UI shows that as "nothing playable", not an error. */
+  streams: MovieStream[];
+}
+
 /** One headphone in the bundled AutoEQ index (mirrors `hm_core::AutoEqEntry`). */
 export interface AutoEqEntry {
   /** Display name, e.g. "Sennheiser HD 600". */

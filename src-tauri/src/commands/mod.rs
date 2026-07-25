@@ -22,6 +22,7 @@ pub mod license;
 pub mod linux_audio_setup;
 pub mod lyrics;
 pub mod mixer;
+pub mod movies;
 pub mod open_with;
 pub mod presets;
 pub mod profiles;

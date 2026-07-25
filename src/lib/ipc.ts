@@ -33,6 +33,8 @@ import type {
   LibraryTrack,
   LicenseStatus,
   MixerSnapshot,
+  Movie,
+  MovieDetail,
   OutputDevice,
   OutputState,
   PhoneDevice,
@@ -1361,6 +1363,23 @@ export function tvFavoriteRemove(id: string): Promise<void> {
  * `<video>`/hls.js loads (the proxy adds the stream's headers + CORS). */
 export function tvStreamUrl(channel: TvChannel): Promise<string> {
   return invoke<string>("tv_stream_url", { channel });
+}
+
+/* -------------------------------------------------------------- movies */
+
+/** One collection's popular films (most-downloaded first), page 1-based. */
+export function moviesBrowse(collection: string, page: number): Promise<Movie[]> {
+  return invoke<Movie[]>("movies_browse", { collection, page });
+}
+
+/** Search across the whitelisted Internet Archive film collections. */
+export function moviesSearch(query: string, page: number): Promise<Movie[]> {
+  return invoke<Movie[]>("movies_search", { query, page });
+}
+
+/** An identifier's full metadata, resolved to playable SD/HD streams. */
+export function moviesResolve(identifier: string): Promise<MovieDetail> {
+  return invoke<MovieDetail>("movies_resolve", { identifier });
 }
 
 /** Open a native folder picker; returns the chosen directory. */

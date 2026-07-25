@@ -8,6 +8,7 @@ export type Route =
   | "equalizer"
   | "explore"
   | "mixer"
+  | "movies"
   | "stems"
   | "player"
   | "stations"

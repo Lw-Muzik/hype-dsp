@@ -35,6 +35,14 @@ export function AccountCard() {
   const premium = usePremium();
   const entitlementLoading = useEntitlementStore((s) => s.loading);
 
+  // Admin → exempt from purchases, full access, no upsell. Trial → premium is
+  // on loan for the first N days (license.state === "trial"); after it lapses
+  // premium re-locks and the upsell returns.
+  const isAdmin = account?.isAdmin ?? false;
+  const license = account?.license ?? null;
+  const onTrial = premium && !isAdmin && license?.state === "trial";
+  const daysLeft = license?.daysLeft ?? 0;
+
   const [flow, setFlow] = useState<Flow>("none");
   const [step, setStep] = useState<Step>("details");
   const [email, setEmail] = useState("");
@@ -86,15 +94,34 @@ export function AccountCard() {
     }
   };
 
+  const good = "bg-success/15 text-success";
+  const muted = "bg-surface-overlay text-text-muted";
+  const { badgeLabel, badgeCls } = ((): { badgeLabel: string; badgeCls: string } => {
+    if (isAdmin) return { badgeLabel: "Admin", badgeCls: good };
+    if (entitlementLoading) return { badgeLabel: "Checking…", badgeCls: muted };
+    if (onTrial)
+      return {
+        badgeLabel: `Trial · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`,
+        badgeCls: good,
+      };
+    if (premium) return { badgeLabel: "Supporter", badgeCls: good };
+    return { badgeLabel: "Free", badgeCls: muted };
+  })();
   const premiumBadge = (
-    <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-        premium ? "bg-success/15 text-success" : "bg-surface-overlay text-text-muted"
-      }`}
-    >
-      {entitlementLoading ? "Checking…" : premium ? "Supporter" : "Free"}
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badgeCls}`}>
+      {badgeLabel}
     </span>
   );
+
+  // Purchase CTA appears for free users and trial users (convert early), but
+  // never for the admin (exempt) or an established Supporter/licensed account.
+  const showUpsell = !isAdmin && (!premium || onTrial);
+  // A one-line explainer under the plan row for the two special states.
+  const planNote = isAdmin
+    ? "Full access to every feature — no purchase needed."
+    : onTrial
+      ? "You're on a free trial of the premium suite. When it ends, premium features return to the free tier — core playback stays free."
+      : null;
 
   if (!account?.authenticated) {
     return (
@@ -188,13 +215,16 @@ export function AccountCard() {
     <Card title="Account" icon={KeyRound}>
       <div className="flex flex-col gap-3">
         {account.emailVerified ? (
-          <div className="divide-y divide-border">
-            {account.email && <InfoRow label="Email" value={account.email} />}
-            {account.name && <InfoRow label="Name" value={account.name} />}
-            <div className="flex items-center justify-between py-2 text-sm">
-              <span className="text-text-muted">Plan</span>
-              {premiumBadge}
+          <div className="flex flex-col gap-1">
+            <div className="divide-y divide-border">
+              {account.email && <InfoRow label="Email" value={account.email} />}
+              {account.name && <InfoRow label="Name" value={account.name} />}
+              <div className="flex items-center justify-between py-2 text-sm">
+                <span className="text-text-muted">Plan</span>
+                {premiumBadge}
+              </div>
             </div>
+            {planNote && <p className="text-xs text-text-muted">{planNote}</p>}
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -207,11 +237,12 @@ export function AccountCard() {
               <span className="text-text-muted">Plan</span>
               {premiumBadge}
             </div>
+            {planNote && <p className="text-xs text-text-muted">{planNote}</p>}
           </div>
         )}
 
         <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
-          {!premium && (
+          {showUpsell && (
             <Button variant="primary" onClick={() => openSupporterUpsell()}>
               <Sparkles className="size-4" aria-hidden="true" />
               Become a Supporter

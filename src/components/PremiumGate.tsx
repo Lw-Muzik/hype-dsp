@@ -17,6 +17,14 @@ import {
   usePremium,
   type PremiumFeature,
 } from "@/stores/entitlement";
+import { useAccountStore } from "@/stores/account";
+
+/** The admin account is exempt from purchases and always has full access — it
+ *  unlocks every gate regardless of entitlement (even before the first
+ *  entitlement check settles) and never sees an upsell. */
+function accountIsAdmin(): boolean {
+  return useAccountStore.getState().status?.isAdmin ?? false;
+}
 
 /** Quick-pick Supporter amounts, in whole dollars. */
 const QUICK_AMOUNTS = [5, 10, 25] as const;
@@ -61,6 +69,8 @@ const useUpsellStore = create<UpsellStore>((set) => ({
  * gating any one feature) calls this with no argument.
  */
 export function openSupporterUpsell(feature?: PremiumFeature): void {
+  // The admin is exempt from purchases — never surface an upsell for it.
+  if (accountIsAdmin()) return;
   useUpsellStore.getState().show(feature);
 }
 
@@ -75,7 +85,7 @@ export function openSupporterUpsell(feature?: PremiumFeature): void {
  * ```
  */
 export function requirePremium(feature: PremiumFeature): boolean {
-  if (useEntitlementStore.getState().premium) return true;
+  if (useEntitlementStore.getState().premium || accountIsAdmin()) return true;
   openSupporterUpsell(feature);
   return false;
 }
@@ -431,7 +441,8 @@ interface PremiumGateProps {
  */
 export function PremiumGate({ feature, children, variant = "inline" }: PremiumGateProps) {
   const premium = usePremium();
-  if (premium) return <>{children}</>;
+  const isAdmin = useAccountStore((s) => s.status?.isAdmin ?? false);
+  if (premium || isAdmin) return <>{children}</>;
   return <UpsellCard feature={feature} variant={variant} />;
 }
 

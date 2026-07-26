@@ -56,6 +56,9 @@ pub struct AccountStatus {
     /// claimed yet) — the Settings view uses this to offer "attach email"
     /// instead of showing account details.
     pub email_verified: bool,
+    /// The admin account: exempt from purchases, always full premium access.
+    /// The UI hides all Supporter upsell for it. Sourced live from `GET /me`.
+    pub is_admin: bool,
 }
 
 #[derive(Deserialize)]
@@ -71,6 +74,22 @@ struct UserDto {
 #[derive(Deserialize)]
 struct EntitlementsDto {
     premium: bool,
+}
+
+/// `GET /me` response — we only read the role, to tell the **admin** account
+/// apart. The admin is exempt from purchases and always has full premium
+/// access, so the UI hides every upsell for it.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MeDto {
+    #[serde(default)]
+    role: Option<String>,
+}
+
+impl MeDto {
+    fn is_admin(&self) -> bool {
+        self.role.as_deref() == Some("ADMIN")
+    }
 }
 
 /// `POST /support/checkout` response.
@@ -438,12 +457,20 @@ impl AccountState {
                 name: None,
                 license: None,
                 email_verified: false,
+                is_admin: false,
             };
         }
         let license = self
             .auth_get("/me/license")
             .filter(|r| r.status().is_success())
             .and_then(|r| r.json::<LicenseInfo>().ok());
+        // Live role, so promoting an account to admin takes effect on the next
+        // status refresh (no re-sign-in). A failed fetch just leaves it non-admin.
+        let is_admin = self
+            .auth_get("/me")
+            .filter(|r| r.status().is_success())
+            .and_then(|r| r.json::<MeDto>().ok())
+            .is_some_and(|me| me.is_admin());
         // refresh() may have cleared a dead session while fetching.
         let authenticated = self.inner.lock().expect("account poisoned").access.is_some();
         AccountStatus {
@@ -452,6 +479,7 @@ impl AccountState {
             name: if authenticated { name } else { None },
             license,
             email_verified: authenticated && email_verified,
+            is_admin: authenticated && is_admin,
         }
     }
 
@@ -630,4 +658,25 @@ pub fn account_support_restore(
 #[tauri::command(async)]
 pub fn open_external_url(url: String) {
     crate::cloud::open_url(&url);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MeDto;
+
+    /// The admin account (role `"ADMIN"`) is the only one flagged admin; every
+    /// other role — and a `/me` payload that omits the field entirely — is not.
+    #[test]
+    fn me_dto_admin_derivation() {
+        let admin: MeDto = serde_json::from_str(r#"{"role":"ADMIN"}"#).unwrap();
+        assert!(admin.is_admin(), "ADMIN role must be admin");
+
+        let user: MeDto = serde_json::from_str(r#"{"role":"USER"}"#).unwrap();
+        assert!(!user.is_admin(), "USER role must not be admin");
+
+        // `/me` may carry unrelated fields; only `role` matters, and a missing
+        // role defaults to non-admin (safe: never grants exemption by accident).
+        let missing: MeDto = serde_json::from_str(r#"{"email":"x@y.z"}"#).unwrap();
+        assert!(!missing.is_admin(), "absent role must not be admin");
+    }
 }

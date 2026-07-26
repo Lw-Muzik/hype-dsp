@@ -306,6 +306,9 @@ export interface AccountStatus {
    *  attaches (or signs in with) a real, verified email. Not a gate: it only
    *  decides whether Settings offers "attach email" or shows account details. */
   emailVerified: boolean;
+  /** The admin account — exempt from purchases, always full premium access.
+   *  The UI hides every Supporter upsell for it. Sourced live from `GET /me`. */
+  isAdmin: boolean;
 }
 
 export interface MixerSnapshot {

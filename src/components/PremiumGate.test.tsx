@@ -10,6 +10,18 @@ import {
 } from "@/components/PremiumGate";
 import { useEntitlementStore } from "@/stores/entitlement";
 import { useToastStore } from "@/stores/toast";
+import { useAccountStore } from "@/stores/account";
+import type { AccountStatus } from "@/lib/types";
+
+/** A signed-in admin account — exempt from purchases, full access. */
+const ADMIN_STATUS: AccountStatus = {
+  authenticated: true,
+  email: "admin@hypemuzik.app",
+  name: "Administrator",
+  license: null,
+  emailVerified: true,
+  isAdmin: true,
+};
 
 /**
  * Only the three network-hitting IPC calls are mocked; `ipcErrorMessage` (a
@@ -36,6 +48,9 @@ beforeEach(() => {
     refresh: vi.fn().mockResolvedValue(undefined),
   });
   useToastStore.setState({ toasts: [] });
+  // Default to no signed-in account (so gates behave for non-admins); the admin
+  // suite opts in explicitly.
+  useAccountStore.setState({ status: null });
   vi.mocked(accountSupportCheckout).mockReset();
   vi.mocked(accountSupportRestore).mockReset();
   vi.mocked(openExternalUrl).mockReset().mockResolvedValue(undefined);
@@ -266,6 +281,45 @@ describe("Restore Supporter", () => {
     expect(useToastStore.getState().toasts.every((t) => t.kind !== "error")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Maybe later" }));
+  });
+});
+
+describe("admin exemption", () => {
+  it("renders gated children for the admin even when entitlement is not premium", () => {
+    useEntitlementStore.setState({ premium: false });
+    useAccountStore.setState({ status: ADMIN_STATUS });
+
+    render(
+      <PremiumGate feature="STEMS">
+        <div>Stems UI</div>
+      </PremiumGate>,
+    );
+
+    expect(screen.getByText("Stems UI")).toBeInTheDocument();
+    expect(screen.queryByText(/is a Supporter feature/)).not.toBeInTheDocument();
+  });
+
+  it("requirePremium returns true for the admin without opening an upsell", () => {
+    useEntitlementStore.setState({ premium: false });
+    useAccountStore.setState({ status: ADMIN_STATUS });
+    render(<SupporterUpsellModal />);
+
+    let result = false;
+    act(() => {
+      result = requirePremium("SYSTEM_EQ");
+    });
+
+    expect(result).toBe(true);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("openSupporterUpsell is a no-op for the admin (no purchase ever surfaces)", () => {
+    useAccountStore.setState({ status: ADMIN_STATUS });
+    render(<SupporterUpsellModal />);
+
+    act(() => openSupporterUpsell("CLOUD"));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
 

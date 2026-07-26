@@ -75,6 +75,7 @@ export const useAccountStore = create<AccountStore>((set) => ({
         name: null,
         license: null,
         emailVerified: false,
+        isAdmin: false,
       },
     });
   },

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { accountEntitlements } from "@/lib/ipc";
+import { PAYMENTS_ENABLED } from "@/config/payments";
 
 /**
  * Supporter entitlement — the single source of truth the premium gate
@@ -60,9 +61,13 @@ interface EntitlementStore {
 }
 
 export const useEntitlementStore = create<EntitlementStore>((set) => ({
-  premium: loadCachedPremium(),
-  loading: true,
+  // Payments off ⇒ there is no entitlement to hold: everything is unlocked
+  // from the first render, with no "Checking…" window and no server round
+  // trip. See `@/config/payments`.
+  premium: PAYMENTS_ENABLED ? loadCachedPremium() : true,
+  loading: PAYMENTS_ENABLED,
   refresh: async () => {
+    if (!PAYMENTS_ENABLED) return;
     try {
       const premium = await accountEntitlements();
       saveCachedPremium(premium);

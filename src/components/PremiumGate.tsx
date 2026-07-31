@@ -18,6 +18,7 @@ import {
   type PremiumFeature,
 } from "@/stores/entitlement";
 import { useAccountStore } from "@/stores/account";
+import { PAYMENTS_ENABLED } from "@/config/payments";
 
 /** The admin account is exempt from purchases and always has full access — it
  *  unlocks every gate regardless of entitlement (even before the first
@@ -69,6 +70,9 @@ const useUpsellStore = create<UpsellStore>((set) => ({
  * gating any one feature) calls this with no argument.
  */
 export function openSupporterUpsell(feature?: PremiumFeature): void {
+  // Payments are switched off — there is nothing to sell, so no CTA can open
+  // the modal. See `@/config/payments`.
+  if (!PAYMENTS_ENABLED) return;
   // The admin is exempt from purchases — never surface an upsell for it.
   if (accountIsAdmin()) return;
   useUpsellStore.getState().show(feature);
@@ -85,6 +89,9 @@ export function openSupporterUpsell(feature?: PremiumFeature): void {
  * ```
  */
 export function requirePremium(feature: PremiumFeature): boolean {
+  // Payments off ⇒ nothing is gated; every caller proceeds. See
+  // `@/config/payments`.
+  if (!PAYMENTS_ENABLED) return true;
   if (useEntitlementStore.getState().premium || accountIsAdmin()) return true;
   openSupporterUpsell(feature);
   return false;
@@ -104,6 +111,9 @@ function useSupporterUnlockToast(): void {
   const prev = useRef(premium);
   const armed = useRef(false);
   useEffect(() => {
+    // Payments off ⇒ everyone is "unlocked" from the first render, so there is
+    // no purchase to acknowledge. See `@/config/payments`.
+    if (!PAYMENTS_ENABLED) return;
     if (!armed.current) {
       if (!loading) {
         armed.current = true;
@@ -128,6 +138,11 @@ export function SupporterUpsellModal() {
   // Also carries the app-wide unlock acknowledgement — this component is
   // always mounted, so it's the natural home for the transition watcher.
   useSupporterUnlockToast();
+
+  // Payments off ⇒ no checkout surface at all. Guarded after the hooks above
+  // (PAYMENTS_ENABLED is a module constant, but keeping every hook
+  // unconditional keeps rules-of-hooks trivially satisfied).
+  if (!PAYMENTS_ENABLED) return null;
 
   return (
     <Dialog
@@ -442,6 +457,9 @@ interface PremiumGateProps {
 export function PremiumGate({ feature, children, variant = "inline" }: PremiumGateProps) {
   const premium = usePremium();
   const isAdmin = useAccountStore((s) => s.status?.isAdmin ?? false);
+  // Payments off ⇒ nothing is gated; the wrapped view always mounts. See
+  // `@/config/payments`.
+  if (!PAYMENTS_ENABLED) return <>{children}</>;
   if (premium || isAdmin) return <>{children}</>;
   return <UpsellCard feature={feature} variant={variant} />;
 }

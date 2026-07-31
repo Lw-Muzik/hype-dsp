@@ -7,6 +7,7 @@ import { openSupporterUpsell } from "@/components/PremiumGate";
 import { useAccountStore } from "@/stores/account";
 import { useEntitlementStore, usePremium } from "@/stores/entitlement";
 import { ipcErrorMessage } from "@/lib/ipc";
+import { PAYMENTS_ENABLED } from "@/config/payments";
 
 const inputCls =
   "rounded-control border border-border bg-surface px-3 py-2 text-sm outline-none placeholder:text-text-faint focus-visible:border-accent";
@@ -113,15 +114,21 @@ export function AccountCard() {
     </span>
   );
 
+  // Payments off ⇒ there are no plans to distinguish, so the whole Plan row
+  // (badge + explainer) and the purchase CTA come out. See
+  // `@/config/payments`.
+  const showPlan = PAYMENTS_ENABLED;
   // Purchase CTA appears for free users and trial users (convert early), but
   // never for the admin (exempt) or an established Supporter/licensed account.
-  const showUpsell = !isAdmin && (!premium || onTrial);
+  const showUpsell = PAYMENTS_ENABLED && !isAdmin && (!premium || onTrial);
   // A one-line explainer under the plan row for the two special states.
-  const planNote = isAdmin
-    ? "Full access to every feature — no purchase needed."
-    : onTrial
-      ? "You're on a free trial of the premium suite. When it ends, premium features return to the free tier — core playback stays free."
-      : null;
+  const planNote = !PAYMENTS_ENABLED
+    ? null
+    : isAdmin
+      ? "Full access to every feature — no purchase needed."
+      : onTrial
+        ? "You're on a free trial of the premium suite. When it ends, premium features return to the free tier — core playback stays free."
+        : null;
 
   if (!account?.authenticated) {
     return (
@@ -219,10 +226,12 @@ export function AccountCard() {
             <div className="divide-y divide-border">
               {account.email && <InfoRow label="Email" value={account.email} />}
               {account.name && <InfoRow label="Name" value={account.name} />}
-              <div className="flex items-center justify-between py-2 text-sm">
-                <span className="text-text-muted">Plan</span>
-                {premiumBadge}
-              </div>
+              {showPlan && (
+                <div className="flex items-center justify-between py-2 text-sm">
+                  <span className="text-text-muted">Plan</span>
+                  {premiumBadge}
+                </div>
+              )}
             </div>
             {planNote && <p className="text-xs text-text-muted">{planNote}</p>}
           </div>
@@ -231,12 +240,15 @@ export function AccountCard() {
             <p className="text-sm text-text-muted">
               You’re using HypeMuzik anonymously — there’s nothing to sign in
               with yet. Attach an email to sync your library and settings
-              across devices and get donation receipts.
+              across devices
+              {PAYMENTS_ENABLED ? " and get donation receipts." : "."}
             </p>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-text-muted">Plan</span>
-              {premiumBadge}
-            </div>
+            {showPlan && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-text-muted">Plan</span>
+                {premiumBadge}
+              </div>
+            )}
             {planNote && <p className="text-xs text-text-muted">{planNote}</p>}
           </div>
         )}

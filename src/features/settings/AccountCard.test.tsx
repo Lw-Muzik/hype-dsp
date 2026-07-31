@@ -7,6 +7,12 @@ import { useAccountStore } from "@/stores/account";
 import { useEntitlementStore } from "@/stores/entitlement";
 import type { AccountStatus, LicenseInfo } from "@/lib/types";
 
+// Payments are currently switched OFF app-wide (`@/config/payments`), which
+// hides the Plan row and the Supporter CTA. Force the flag back on so the
+// plan/badge/upsell logic stays under test while it's dormant — delete when
+// payments are resumed. Off-state is covered by `payments-disabled.test.tsx`.
+vi.mock("@/config/payments", () => ({ PAYMENTS_ENABLED: true }));
+
 // Keep the pure `ipcErrorMessage` real; stub only the network-hitting calls so
 // nothing reaches Tauri during a render-only test.
 vi.mock("@/lib/ipc", async (importOriginal) => {

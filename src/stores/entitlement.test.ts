@@ -16,6 +16,13 @@ vi.mock("@/lib/ipc", () => ({
   accountEntitlements: vi.fn(),
 }));
 
+// Payments are currently switched OFF app-wide (`@/config/payments`), which
+// short-circuits this store to "always premium, never fetch". Force the flag
+// back on so the real entitlement logic stays under test while it's dormant —
+// delete when payments are resumed. Off-state is covered by
+// `payments-disabled.test.tsx`.
+vi.mock("@/config/payments", () => ({ PAYMENTS_ENABLED: true }));
+
 const LS_KEY = "hm.premium";
 
 describe("useEntitlementStore — initial (cached) value", () => {

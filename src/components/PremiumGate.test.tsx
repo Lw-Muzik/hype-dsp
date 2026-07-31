@@ -13,6 +13,12 @@ import { useToastStore } from "@/stores/toast";
 import { useAccountStore } from "@/stores/account";
 import type { AccountStatus } from "@/lib/types";
 
+// Payments are currently switched OFF app-wide (`@/config/payments`). Force
+// the flag back on here so the gating/checkout logic stays fully under test
+// while it's dormant — delete this mock when payments are resumed. The
+// switched-off behaviour is covered by `payments-disabled.test.tsx`.
+vi.mock("@/config/payments", () => ({ PAYMENTS_ENABLED: true }));
+
 /** A signed-in admin account — exempt from purchases, full access. */
 const ADMIN_STATUS: AccountStatus = {
   authenticated: true,

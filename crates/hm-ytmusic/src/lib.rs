@@ -253,21 +253,74 @@ fn probe_client() -> &'static reqwest::blocking::Client {
     })
 }
 
-/// Whether `target` still answers from THIS network. Two bytes, ranged — the
-/// cheapest question the CDN accepts (~100–300ms).
+/// Whether `target` will actually play from THIS network.
+///
+/// The request is the **open-ended** `Range: bytes=0-` a player opens with, and
+/// that specific shape is the whole point. This used to ask for two bytes, on
+/// the reasoning that it was the cheapest question the CDN accepts — but a
+/// proof-of-origin gated url answers small bounded ranges inside its first
+/// mebibyte perfectly happily and refuses only the whole-file request. So the
+/// cheap probe passed every gated url it was ever shown, and "probed" meant
+/// nothing at the one moment it had to mean something (2026-08-18: yt-dlp's
+/// pinned ANDROID_VR crossed the gate and every track went silent while the
+/// probe reported health).
+///
+/// Still one round trip and no more expensive than before: the response is
+/// dropped without reading a body, so the CDN streams nothing.
 fn probe_ok(target: &ytdlp::StreamTarget) -> bool {
-    let mut req = probe_client().get(&target.url).header("Range", "bytes=0-1");
+    matches!(probe(target), ProbeVerdict::Serves)
+}
+
+/// What the CDN said, keeping "this will never play" apart from "ask again".
+///
+/// The distinction decides whether a resolve fails outright, so the middle
+/// ground matters: a 429 or a 503 is the CDN asking for patience, and treating
+/// it like a gate would turn a busy minute into a dead track.
+#[derive(Debug, PartialEq, Eq)]
+enum ProbeVerdict {
+    /// It served the whole-file request. This url plays.
+    Serves,
+    /// It answered with a status that will not change on its own — the
+    /// proof-of-origin gate (403), or a url that is simply gone. Nothing is
+    /// retrievable here; only a different url can help.
+    Refused,
+    /// Anything else: transport failure, timeout, offline, or a CDN saying
+    /// "not now" (429, 5xx). Says nothing about the url itself.
+    Inconclusive,
+}
+
+fn probe(target: &ytdlp::StreamTarget) -> ProbeVerdict {
+    let mut req = probe_client().get(&target.url).header("Range", "bytes=0-");
     for (k, v) in &target.headers {
         req = req.header(k.as_str(), v.as_str());
     }
     match req.send() {
         Ok(r) => {
             let s = r.status();
-            s == reqwest::StatusCode::OK || s == reqwest::StatusCode::PARTIAL_CONTENT
+            if s == reqwest::StatusCode::OK || s == reqwest::StatusCode::PARTIAL_CONTENT {
+                ProbeVerdict::Serves
+            } else if matches!(
+                s,
+                reqwest::StatusCode::FORBIDDEN
+                    | reqwest::StatusCode::NOT_FOUND
+                    | reqwest::StatusCode::GONE
+            ) {
+                ProbeVerdict::Refused
+            } else {
+                ProbeVerdict::Inconclusive
+            }
         }
-        Err(_) => false,
+        Err(_) => ProbeVerdict::Inconclusive,
     }
 }
+
+/// What to say when every resolve produced a url the CDN will not serve.
+///
+/// Deliberately names the cause and one thing the user can do, because the
+/// alternative this replaces was silence.
+const GATED_STREAM_MESSAGE: &str =
+    "YouTube refused to stream this track to an anonymous client. Signing in to \
+     YouTube in Settings usually restores playback.";
 
 /// The dev escape hatch: HM_NATIVE_RESOLVE=0 turns the native fast path off
 /// for a session (read once). The automatic fallback is the user-facing
@@ -1025,6 +1078,19 @@ impl YtMusicState {
             file.as_ref().map(CookieFile::path),
             self.session_first.load(Ordering::Relaxed),
         )?;
+        // yt-dlp stopped being a floor that can be trusted unseen. Since
+        // 2026-08-18 its pinned ANDROID_VR (1.65.10, still current upstream)
+        // sits above YouTube's proof-of-origin wall, so it hands back urls that
+        // resolve perfectly and then refuse to serve a byte — which reaches the
+        // user as a track that skips without playing and no error anywhere.
+        //
+        // Only a settled refusal fails the resolve. An inconclusive probe —
+        // the user's network, or a CDN saying "not now" — says nothing about
+        // the url, and failing on it would break playback that would otherwise
+        // have recovered on its own.
+        if probe(&resolved.target) == ProbeVerdict::Refused {
+            return Err(GATED_STREAM_MESSAGE.to_string());
+        }
         self.remember_target(video_id, &resolved.target);
         // Remember what actually worked, so the next track leads with it. Both
         // directions: if the session starts working again, we go back to it.
@@ -2441,26 +2507,53 @@ mod tests {
         .expect("android_vr should resolve a public track natively");
         assert_eq!(t.format_id, "140");
         assert!(t.expires_at.is_some(), "a googlevideo url carries expire=");
-        // The canary: the url must serve real bytes at CDN speed. A silent
-        // n-param/SABR regression pattern is a url that RESOLVES fine and
-        // then serves at ~1x realtime — status checks alone would miss it.
+        // The canary, and it has to be the right question. This used to read
+        // `bytes=0-65535` and call a 32KB answer health — but a proof-of-origin
+        // gated url serves every bounded range inside its first mebibyte and
+        // refuses only the open-ended request a player opens with. On
+        // 2026-08-18 that is precisely what shipped: urls that passed this
+        // assertion and played nothing. So ask both questions, and ask the
+        // whole-file one first.
         let start = std::time::Instant::now();
-        let ok = tokio::task::spawn_blocking(move || {
-            let mut req = probe_client().get(&t.url).header("Range", "bytes=0-65535");
-            for (k, v) in &t.headers {
-                req = req.header(k.as_str(), v.as_str());
-            }
-            req.send().map(|r| r.status().is_success() && r.bytes().map_or(0, |b| b.len()) >= 32_768).unwrap_or(false)
+        let headers = t.headers.clone();
+        let url = t.url.clone();
+        let (open_ended, past_gate, bytes) = tokio::task::spawn_blocking(move || {
+            let ask = |range: &str| {
+                let mut req = probe_client().get(&url).header("Range", range);
+                for (k, v) in &headers {
+                    req = req.header(k.as_str(), v.as_str());
+                }
+                req.send()
+            };
+            let whole = ask("bytes=0-").map(|r| r.status().is_success()).unwrap_or(false);
+            // One mebibyte in — the exact offset a gated url stops at.
+            let past = ask("bytes=1048576-2097151")
+                .map(|r| r.status().is_success())
+                .unwrap_or(false);
+            let bytes = ask("bytes=0-65535")
+                .map(|r| r.bytes().map_or(0, |b| b.len()))
+                .unwrap_or(0);
+            (whole, past, bytes)
         })
         .await
         .unwrap();
         let took = start.elapsed();
-        eprintln!("native 64KB fetch: {took:?}");
+        eprintln!("native probe: open-ended={open_ended} past-1MiB={past_gate} 64KB={bytes}B in {took:?}");
         assert!(
-            ok,
-            "the resolved url must serve at least 32KB of the 64KB requested range"
+            open_ended,
+            "the resolved url refused `Range: bytes=0-` — the one request every \
+             player opens with. This is a gated url: it will resolve fine and \
+             play absolutely nothing. Check ANDROID_VR_VERSIONS against the 1.64 wall."
         );
-        assert!(took < std::time::Duration::from_secs(2), "64KB took {took:?} — throttled?");
+        assert!(
+            past_gate,
+            "the url refused the chunk past 1 MiB — gated to its first mebibyte, \
+             which is about 64 seconds of itag 140 and then silence"
+        );
+        // A silent n-param/SABR regression looks like a url that resolves fine
+        // and then serves at ~1x realtime — status checks alone would miss it.
+        assert!(bytes >= 32_768, "served only {bytes}B of the 64KB asked for");
+        assert!(took < std::time::Duration::from_secs(6), "probes took {took:?} — throttled?");
 
         // Exercise the real seam — resolve()'s gate → native → probe →
         // remember path, not just resolve_native() in isolation. A fresh
@@ -2637,7 +2730,13 @@ mod tests {
     }
 
     /// A restored entry that answers is promoted: served now, live (unprobed)
-    /// forever after — and the probe itself asks for two bytes, not the track.
+    /// forever after — and the probe asks the **open-ended** question.
+    ///
+    /// It used to ask for two bytes. A proof-of-origin gated url serves those,
+    /// and every other small bounded range inside its first mebibyte, while
+    /// refusing the whole-file request a player actually opens with — so the
+    /// cheap probe blessed urls that could not play a note. `bytes=0-` is the
+    /// only request whose answer means anything.
     #[test]
     fn a_healthy_restored_entry_is_probed_once_then_live() {
         let (url, server) = one_shot_server("HTTP/1.1 206 Partial Content");
@@ -2646,8 +2745,9 @@ mod tests {
         assert_eq!(got.url, url);
         let lines = server.join().unwrap();
         assert!(
-            lines.iter().any(|l| l.eq_ignore_ascii_case("range: bytes=0-1")),
-            "the probe must ask for two bytes, not the body; got {lines:#?}"
+            lines.iter().any(|l| l.eq_ignore_ascii_case("range: bytes=0-")),
+            "the probe must ask the open-ended question a player opens with — \
+             a bounded range is served by gated urls too; got {lines:#?}"
         );
         assert!(
             lines.iter().any(|l| l.eq_ignore_ascii_case("user-agent: hm-probe-test")),
@@ -2657,6 +2757,52 @@ mod tests {
         // server is already gone, so a re-probe would return None here).
         assert_eq!(s.live_or_probed_target("vid1").unwrap().url, got.url);
         assert!(s.restored.read().unwrap().is_empty(), "quarantine is over");
+    }
+
+    /// "It refused" and "we could not ask" must not collapse into one answer.
+    ///
+    /// The resolve now fails outright on a refusal, because a gated url is one
+    /// that will never play — but a probe that could not reach the CDN says
+    /// nothing about the url, and failing on that would turn a flaky moment on
+    /// the user's wifi into a dead track.
+    #[test]
+    fn a_refusal_and_an_unreachable_probe_are_different_answers() {
+        let target = |url: String| ytdlp::StreamTarget {
+            url,
+            headers: vec![],
+            ext: "m4a".into(),
+            format_id: "140".into(),
+            abr_kbps: None,
+            expires_at: None,
+        };
+
+        let (url, server) = one_shot_server("HTTP/1.1 206 Partial Content");
+        assert_eq!(probe(&target(url)), ProbeVerdict::Serves);
+        let _ = server.join();
+
+        let (url, server) = one_shot_server("HTTP/1.1 403 Forbidden");
+        assert_eq!(
+            probe(&target(url)),
+            ProbeVerdict::Refused,
+            "a gated url answers, and says no"
+        );
+        let _ = server.join();
+
+        // A port with nothing behind it: the request cannot be asked at all.
+        let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = dead.local_addr().unwrap();
+        drop(dead);
+        assert_eq!(
+            probe(&target(format!("http://{addr}/probe"))),
+            ProbeVerdict::Inconclusive,
+            "no answer to read is not the same as a refusal"
+        );
+
+        // "Not now" must never read as "never": a rate-limited probe that
+        // failed the resolve would turn a busy minute into a dead track.
+        let (url, server) = one_shot_server("HTTP/1.1 429 Too Many Requests");
+        assert_eq!(probe(&target(url)), ProbeVerdict::Inconclusive);
+        let _ = server.join();
     }
 
     /// 403 is what an IP-bound url looks like from a new network: the entry is

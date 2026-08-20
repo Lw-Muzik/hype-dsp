@@ -2518,37 +2518,59 @@ mod tests {
         let headers = t.headers.clone();
         let url = t.url.clone();
         let (open_ended, past_gate, bytes) = tokio::task::spawn_blocking(move || {
-            let ask = |range: &str| {
+            // A transport failure must never read as a refusal. Swallowing one
+            // into `false` is how this canary once blamed the client identity
+            // for a five-second timeout and sent the next reader off to
+            // re-measure IDENTITIES that were perfectly healthy — the same
+            // conflation `ProbeVerdict` exists to prevent in production.
+            let ask = |range: &str| -> Result<reqwest::StatusCode, String> {
                 let mut req = probe_client().get(&url).header("Range", range);
                 for (k, v) in &headers {
                     req = req.header(k.as_str(), v.as_str());
                 }
-                req.send()
+                req.send().map(|r| r.status()).map_err(|e| {
+                    // The outer message is always "error sending request";
+                    // the cause (timed out / connection reset) is the part
+                    // that says whether to re-measure or just re-run.
+                    let mut chain = e.to_string();
+                    let mut src: Option<&dyn std::error::Error> =
+                        std::error::Error::source(&e);
+                    while let Some(cause) = src {
+                        chain.push_str(&format!(" <- {cause}"));
+                        src = cause.source();
+                    }
+                    chain
+                })
             };
-            let whole = ask("bytes=0-").map(|r| r.status().is_success()).unwrap_or(false);
+            let whole = ask("bytes=0-");
             // One mebibyte in — the exact offset a gated url stops at.
-            let past = ask("bytes=1048576-2097151")
-                .map(|r| r.status().is_success())
-                .unwrap_or(false);
-            let bytes = ask("bytes=0-65535")
-                .map(|r| r.bytes().map_or(0, |b| b.len()))
-                .unwrap_or(0);
+            let past = ask("bytes=1048576-2097151");
+            let bytes = {
+                let mut req = probe_client().get(&url).header("Range", "bytes=0-65535");
+                for (k, v) in &headers {
+                    req = req.header(k.as_str(), v.as_str());
+                }
+                req.send().map(|r| r.bytes().map_or(0, |b| b.len())).unwrap_or(0)
+            };
             (whole, past, bytes)
         })
         .await
         .unwrap();
         let took = start.elapsed();
-        eprintln!("native probe: open-ended={open_ended} past-1MiB={past_gate} 64KB={bytes}B in {took:?}");
+        eprintln!("native probe: open-ended={open_ended:?} past-1MiB={past_gate:?} 64KB={bytes}B in {took:?}");
         assert!(
-            open_ended,
-            "the resolved url refused `Range: bytes=0-` — the one request every \
-             player opens with. This is a gated url: it will resolve fine and \
-             play absolutely nothing. Check ANDROID_VR_VERSIONS against the 1.64 wall."
+            open_ended.as_ref().is_ok_and(reqwest::StatusCode::is_success),
+            "the resolved url did not serve `Range: bytes=0-`, the one request \
+             every player opens with — got {open_ended:?}. A 403 here is the \
+             proof-of-origin gate: the url resolves fine and plays absolutely \
+             nothing, so re-measure innertube::IDENTITIES. Anything else is a \
+             network answer about this run, not about the client identity."
         );
         assert!(
-            past_gate,
-            "the url refused the chunk past 1 MiB — gated to its first mebibyte, \
-             which is about 64 seconds of itag 140 and then silence"
+            past_gate.as_ref().is_ok_and(reqwest::StatusCode::is_success),
+            "the url did not serve the chunk past 1 MiB — got {past_gate:?}. A \
+             403 means gated to its first mebibyte, which is about 64 seconds \
+             of itag 140 and then silence"
         );
         // A silent n-param/SABR regression looks like a url that resolves fine
         // and then serves at ~1x realtime — status checks alone would miss it.

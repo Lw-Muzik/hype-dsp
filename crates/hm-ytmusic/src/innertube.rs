@@ -13,49 +13,138 @@
 //! ANDROID_VR **from client version 1.64**, and yt-dlp 2026.07.04 — the latest
 //! release — pins `1.65.10`. So the fallback started returning urls that
 //! resolve `OK`, serve a bounded slice, and 403 the open-ended GET a player
-//! opens with: silence, not an error. The native path is no longer merely a
-//! latency win over yt-dlp; while upstream is pinned above the wall it is the
-//! only path here that returns a url which plays. See [`ANDROID_VR_VERSIONS`].
+//! opens with: silence, not an error.
+//!
+//! **Then the other wall closed on 2026-08-20** and playback stopped outright,
+//! with every track answering *"Sign in to confirm you're not a bot"*. Below
+//! 1.64 ANDROID_VR is now bot-checked *wholesale* rather than occasionally, so
+//! the version rotation built on 08-18 has nothing left to rotate to. The
+//! client is refused on one side of the wall and gated on the other, and there
+//! is no version of it that plays. VISIONOS replaces it — see
+//! [`ClientIdentity`].
 
 use crate::ytdlp::{self, StreamTarget};
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------
-// THE THING THAT ROTS: the ANDROID_VR client identities the `player` call
-// presents. When the native hit-rate collapses, re-measure the table below
-// *before* suspecting SABR — a stale version here looks identical to a SABR
-// rollout, and copying yt-dlp's `_base_client` is no longer safe: as of
-// 2026-08-18 upstream's pin is on the wrong side of the wall.
-const CLIENT_NAME: &str = "ANDROID_VR";
-/// Numeric id for the X-YouTube-Client-Name header (android_vr = 28).
-const CLIENT_ID: &str = "28";
+// THE THING THAT ROTS: the client identities the `player` call presents. When
+// the native hit-rate collapses, re-measure the table below *before*
+// suspecting SABR — a stale identity here looks identical to a SABR rollout,
+// and copying yt-dlp's `_base_client` wholesale is not safe either: on
+// 2026-08-18 upstream's ANDROID_VR pin was on the wrong side of the wall.
 
-/// The ANDROID_VR client versions worth asking, in the order they are asked.
+/// One client identity, as presented to InnerTube.
 ///
-/// Measured 2026-08-18 on one session, one minute, one video, itag 140:
+/// Measured 2026-08-20, when playback stopped everywhere:
 ///
-/// | clientVersion      | playabilityStatus | `Range: bytes=0-` |
-/// |--------------------|-------------------|-------------------|
-/// | 1.57.29 – 1.62.20  | OK (bot-checked sometimes) | **206**  |
-/// | 1.63.24 / 1.63.29  | LOGIN_REQUIRED    | —                 |
-/// | 1.64.16 … 1.68.24  | **OK**            | **403**           |
-/// | 1.70.10            | OK                | no itag 140       |
+/// | client                | playabilityStatus  | `Range: bytes=0-`  |
+/// |-----------------------|--------------------|--------------------|
+/// | ANDROID_VR <  1.64    | **LOGIN_REQUIRED** | —                  |
+/// | ANDROID_VR >= 1.64    | OK                 | **403**            |
+/// | IOS / ANDROID         | OK                 | **403**            |
+/// | TVHTML5 / *_MUSIC     | **LOGIN_REQUIRED** | —                  |
+/// | **VISIONOS**          | **OK**             | **206, whole file**|
 ///
-/// There is a wall on each side. **From 1.64 every url is proof-of-origin
-/// gated** — it resolves `OK` and then refuses the one open-ended GET a player
-/// opens with, which reads to a user as a track that skips without playing.
-/// Below 1.64 the urls are un-gated but the client is bot-checked, and *which*
-/// version is refused moves between sessions. So no single version is
-/// dependable and they are asked in turn: a different version is a genuinely
-/// different request where a repeat of the refused one is not.
+/// The gate on the `OK` rows is on the **byte offset**, exactly 1048576:
+/// `bytes=0-1048575` serves and `bytes=1048576-` is 403. That is YouTube's
+/// PO-token "cold start" allowance, so no proxy and no smaller range walks
+/// around it — only a token or a client that does not need one.
 ///
-/// **Every version here has been measured serving an open-ended GET.** That is
-/// the only probe that means anything — a gated url serves bounded ranges
-/// inside its first mebibyte perfectly happily, which is exactly how this
-/// shipped past a probe that read two bytes. Never add a version without that
-/// measurement, and never add one at or above 1.64.
-pub(crate) const ANDROID_VR_VERSIONS: &[&str] =
-    &["1.62.20", "1.63.24", "1.61.48", "1.60.19"];
+/// VISIONOS is the one client left answering `OK` with a **plaintext** itag
+/// 140 (no `signatureCipher`, so no n-param JS to solve) whose url serves a
+/// whole file. Verified 5/5 on fresh search results, and corroborated
+/// upstream: yt-dlp 2026.08.19 moved its own defaults to `('visionos', 'web')`
+/// and marked `android_vr` PO-token-required.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClientIdentity {
+    /// Apple Vision Pro. A single published identity rather than an app with a
+    /// rolling version, so there is no version list to walk: when it is
+    /// refused the second axis is the `visitorData`.
+    VisionOs,
+    /// Kept behind VISIONOS rather than deleted. Every version here is below
+    /// 1.64, so it fails **loudly** — a refusal, not a gated url that plays a
+    /// megabyte and stops — which costs one clean miss and leaves a second
+    /// axis if VISIONOS is ever refused. Never add one at or above 1.64.
+    AndroidVr(&'static str),
+}
+
+/// The identities worth asking, in the order they are asked.
+pub(crate) const IDENTITIES: &[ClientIdentity] = &[
+    ClientIdentity::VisionOs,
+    ClientIdentity::AndroidVr("1.62.20"),
+    ClientIdentity::AndroidVr("1.63.24"),
+    ClientIdentity::AndroidVr("1.61.48"),
+    ClientIdentity::AndroidVr("1.60.19"),
+];
+
+const VISIONOS_VERSION: &str = "1.02";
+const VISIONOS_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) \
+     AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
+
+impl ClientIdentity {
+    /// `clientName` in the InnerTube context.
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            Self::VisionOs => "VISIONOS",
+            Self::AndroidVr(_) => "ANDROID_VR",
+        }
+    }
+
+    /// The numeric id for the `X-YouTube-Client-Name` header.
+    pub(crate) fn id(&self) -> &'static str {
+        match self {
+            Self::VisionOs => "101",
+            Self::AndroidVr(_) => "28",
+        }
+    }
+
+    pub(crate) fn version(&self) -> &'static str {
+        match self {
+            Self::VisionOs => VISIONOS_VERSION,
+            Self::AndroidVr(v) => v,
+        }
+    }
+
+    /// The UA presented on the `player` call **and** on the media GET:
+    /// googlevideo checks it against the resolving client when it chooses to,
+    /// so a mismatched one is a way to 403 for free.
+    pub(crate) fn user_agent(&self) -> String {
+        match self {
+            Self::VisionOs => VISIONOS_UA.to_string(),
+            Self::AndroidVr(v) => android_vr_ua(v),
+        }
+    }
+
+    /// The `context.client` object. The device fields are not decoration — an
+    /// identity YouTube cannot place is answered exactly like a bot.
+    fn context(&self) -> Value {
+        match self {
+            Self::VisionOs => serde_json::json!({
+                "clientName": self.name(),
+                "clientVersion": VISIONOS_VERSION,
+                "userAgent": VISIONOS_UA,
+                "deviceMake": "Apple",
+                "deviceModel": "RealityDevice17,1",
+                "osName": "visionOS",
+                "osVersion": "26.5.23O471",
+                "hl": "en",
+                "gl": "US",
+            }),
+            Self::AndroidVr(v) => serde_json::json!({
+                "clientName": self.name(),
+                "clientVersion": v,
+                "androidSdkVersion": 32,
+                "userAgent": android_vr_ua(v),
+                "deviceMake": "Oculus",
+                "deviceModel": "Quest 3",
+                "osName": "Android",
+                "osVersion": "12L",
+                "hl": "en",
+                "gl": "US",
+            }),
+        }
+    }
+}
 
 /// How long the whole rotation may run before the yt-dlp floor is the better
 /// bet. This path exists to beat a ~5 s process; a rotation that outlives that
@@ -140,8 +229,8 @@ pub(crate) fn resolve_native(
 ) -> Result<StreamTarget, NativeMiss> {
     let started = std::time::Instant::now();
     let mut last = NativeMiss::Http("no identity tried".to_string());
-    for version in ANDROID_VR_VERSIONS {
-        match ask_presenting(client, video_id, version) {
+    for identity in IDENTITIES {
+        match ask_presenting(client, video_id, *identity) {
             Ok(target) => return Ok(target),
             Err(miss) => last = miss,
         }
@@ -168,11 +257,11 @@ pub(crate) fn resolve_native(
 fn ask_presenting(
     client: &reqwest::blocking::Client,
     video_id: &str,
-    version: &str,
+    identity: ClientIdentity,
 ) -> Result<StreamTarget, NativeMiss> {
     let presented = visitor_data();
-    let json = player_once(client, video_id, version, presented.as_deref())?;
-    let miss = match parse_player_response(&json, version) {
+    let json = player_once(client, video_id, identity, presented.as_deref())?;
+    let miss = match parse_player_response(&json, identity) {
         Ok(target) => return Ok(target),
         Err(miss) => miss,
     };
@@ -182,8 +271,8 @@ fn ask_presenting(
 
     let learned = visitor_data();
     if learned.is_some() && learned != presented {
-        let json = player_once(client, video_id, version, learned.as_deref())?;
-        return parse_player_response(&json, version);
+        let json = player_once(client, video_id, identity, learned.as_deref())?;
+        return parse_player_response(&json, identity);
     }
     // Nothing new came back and we presented nothing, so there is no second
     // request to make that differs from the first.
@@ -191,35 +280,24 @@ fn ask_presenting(
         return Err(miss);
     }
     set_visitor_data(None);
-    let json = player_once(client, video_id, version, None)?;
-    parse_player_response(&json, version)
+    let json = player_once(client, video_id, identity, None)?;
+    parse_player_response(&json, identity)
 }
 
 /// One `player` POST, exactly as presented to YouTube.
 fn player_once(
     client: &reqwest::blocking::Client,
     video_id: &str,
-    version: &str,
+    identity: ClientIdentity,
     visitor: Option<&str>,
 ) -> Result<Value, NativeMiss> {
-    let ua = android_vr_ua(version);
-    let mut identity = serde_json::json!({
-        "clientName": CLIENT_NAME,
-        "clientVersion": version,
-        "androidSdkVersion": 32,
-        "userAgent": ua,
-        "deviceMake": "Oculus",
-        "deviceModel": "Quest 3",
-        "osName": "Android",
-        "osVersion": "12L",
-        "hl": "en",
-        "gl": "US",
-    });
+    let ua = identity.user_agent();
+    let mut context = identity.context();
     if let Some(v) = visitor {
-        identity["visitorData"] = Value::String(v.to_string());
+        context["visitorData"] = Value::String(v.to_string());
     }
     let body = serde_json::json!({
-        "context": { "client": identity },
+        "context": { "client": context },
         "videoId": video_id,
         "cpn": cpn(),
         "contentCheckOk": true,
@@ -229,8 +307,8 @@ fn player_once(
     let mut req = client
         .post("https://youtubei.googleapis.com/youtubei/v1/player?prettyPrint=false")
         .header("User-Agent", ua.as_str())
-        .header("X-YouTube-Client-Name", CLIENT_ID)
-        .header("X-YouTube-Client-Version", version)
+        .header("X-YouTube-Client-Name", identity.id())
+        .header("X-YouTube-Client-Version", identity.version())
         .header("Content-Type", "application/json")
         .timeout(std::time::Duration::from_secs(3));
     if let Some(v) = visitor {
@@ -271,7 +349,7 @@ fn cpn() -> String {
 /// returns `Ok` or one of [`NativeMiss`]'s variants.
 pub(crate) fn parse_player_response(
     json: &Value,
-    version: &str,
+    identity: ClientIdentity,
 ) -> Result<StreamTarget, NativeMiss> {
     let status = json
         .pointer("/playabilityStatus/status")
@@ -296,7 +374,7 @@ pub(crate) fn parse_player_response(
     };
     Ok(StreamTarget {
         url: url.to_string(),
-        headers: vec![("User-Agent".into(), android_vr_ua(version))],
+        headers: vec![("User-Agent".into(), identity.user_agent())],
         ext: "m4a".into(),
         format_id: "140".into(),
         abr_kbps: m4a
@@ -327,7 +405,7 @@ mod tests {
     #[test]
     fn a_healthy_response_builds_the_exact_target() {
         let url = "https://rr3.googlevideo.com/videoplayback?expire=1790000000&c=ANDROID_VR&itag=140";
-        let t = parse_player_response(&player_ok(url), "1.62.20").expect("itag 140 with a url must resolve");
+        let t = parse_player_response(&player_ok(url), ClientIdentity::AndroidVr("1.62.20")).expect("itag 140 with a url must resolve");
         assert_eq!(t.url, url);
         assert_eq!(t.ext, "m4a");
         assert_eq!(t.format_id, "140");
@@ -348,7 +426,7 @@ mod tests {
             .as_array_mut()
             .unwrap()
             .retain(|f| f["itag"] != 140);
-        assert!(matches!(parse_player_response(&v, "1.62.20"), Err(NativeMiss::NoItag140)));
+        assert!(matches!(parse_player_response(&v, ClientIdentity::AndroidVr("1.62.20")), Err(NativeMiss::NoItag140)));
     }
 
     /// The SABR canary: a ciphered 140 means the exempt-client era is ending
@@ -359,14 +437,14 @@ mod tests {
         let f = &mut v["streamingData"]["adaptiveFormats"][1];
         f.as_object_mut().unwrap().remove("url");
         f["signatureCipher"] = serde_json::json!("s=abc&sp=sig&url=https%3A%2F%2F...");
-        assert!(matches!(parse_player_response(&v, "1.62.20"), Err(NativeMiss::Ciphered)));
+        assert!(matches!(parse_player_response(&v, ClientIdentity::AndroidVr("1.62.20")), Err(NativeMiss::Ciphered)));
     }
 
     #[test]
     fn a_non_ok_playability_carries_its_status() {
         let mut v = player_ok("unused");
         v["playabilityStatus"] = serde_json::json!({ "status": "UNPLAYABLE", "reason": "made for kids" });
-        match parse_player_response(&v, "1.62.20") {
+        match parse_player_response(&v, ClientIdentity::AndroidVr("1.62.20")) {
             Err(NativeMiss::Unplayable(s)) => assert_eq!(s, "UNPLAYABLE"),
             other => panic!("expected Unplayable, got {other:?}"),
         }
@@ -389,25 +467,78 @@ mod tests {
     /// apart from a good url — which is why `probe_ok` reading two bytes could
     /// not catch it, and why this assertion exists instead.
     #[test]
-    fn every_identity_is_below_the_gate_at_1_64() {
-        for version in ANDROID_VR_VERSIONS {
-            assert!(
-                ordinal(version) < ordinal("1.64.0"),
-                "{version} resolves OK and then plays nothing at all"
-            );
+    fn every_android_vr_identity_is_below_the_gate_at_1_64() {
+        for identity in IDENTITIES {
+            if let ClientIdentity::AndroidVr(version) = identity {
+                assert!(
+                    ordinal(version) < ordinal("1.64.0"),
+                    "{version} resolves OK and then plays nothing at all"
+                );
+            }
         }
     }
 
-    /// One version is a single point of failure against a bot check whose
+    /// One identity is a single point of failure against a bot check whose
     /// verdict moves between sessions.
     #[test]
     fn there_is_more_than_one_identity_to_fall_back_on() {
-        assert!(ANDROID_VR_VERSIONS.len() > 1);
+        assert!(IDENTITIES.len() > 1);
+    }
+
+    /// The 2026-08-20 outage. ANDROID_VR is refused on *both* sides of the
+    /// 1.64 wall now — bot-checked below it, gated at and above it — so it
+    /// cannot lead. Asking it first costs the user two refusals per track
+    /// before anything that plays is even tried.
+    #[test]
+    fn visionos_is_asked_first() {
+        assert_eq!(IDENTITIES.first(), Some(&ClientIdentity::VisionOs));
+    }
+
+    /// Every field was measured rather than guessed: an identity YouTube
+    /// cannot place is answered exactly like a bot.
+    #[test]
+    fn the_visionos_identity_is_the_one_that_was_measured() {
+        let ctx = ClientIdentity::VisionOs.context();
+        assert_eq!(ctx["clientName"], "VISIONOS");
+        assert_eq!(ctx["clientVersion"], "1.02");
+        assert_eq!(ctx["deviceMake"], "Apple");
+        assert_eq!(ctx["deviceModel"], "RealityDevice17,1");
+        assert_eq!(ctx["osName"], "visionOS");
+        assert_eq!(ClientIdentity::VisionOs.id(), "101");
+        // Not an Android client: sending an Android field marks it as forged.
+        assert!(ctx.get("androidSdkVersion").is_none());
+    }
+
+    /// The UA travels with the url to the media GET, so it must be the one
+    /// VISIONOS presented — not an Oculus UA left over from the old client.
+    #[test]
+    fn a_visionos_target_carries_the_visionos_user_agent() {
+        let t = parse_player_response(&player_ok("https://cdn/x"), ClientIdentity::VisionOs)
+            .expect("itag 140 with a url must resolve");
+        assert_eq!(
+            t.headers,
+            vec![("User-Agent".to_string(), VISIONOS_UA.to_string())]
+        );
+        assert!(!VISIONOS_UA.contains("oculus"));
+    }
+
+    /// Comparing `VISIONOS_UA` to itself proves nothing about its *text*, and
+    /// a Rust `\` line-continuation swallows the next line's indentation — a
+    /// UA in this crate has silently gained ten spaces that way before. So
+    /// pin the exact string YouTube was measured accepting.
+    #[test]
+    fn the_visionos_user_agent_survived_its_line_continuation() {
+        assert_eq!(
+            VISIONOS_UA,
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 \
+             (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+        );
+        assert!(!VISIONOS_UA.contains("  "), "collapsed whitespace, not doubled");
     }
 
     #[test]
     fn the_user_agent_names_the_version_that_minted_the_url() {
-        let t = parse_player_response(&player_ok("https://cdn/x"), "1.61.48")
+        let t = parse_player_response(&player_ok("https://cdn/x"), ClientIdentity::AndroidVr("1.61.48"))
             .expect("itag 140 with a url must resolve");
         assert_eq!(
             t.headers,
@@ -425,11 +556,11 @@ mod tests {
     #[test]
     fn garbage_is_bad_json_not_a_panic() {
         assert!(matches!(
-            parse_player_response(&serde_json::json!("not an object"), "1.62.20"),
+            parse_player_response(&serde_json::json!("not an object"), ClientIdentity::AndroidVr("1.62.20")),
             Err(NativeMiss::BadJson)
         ));
         assert!(matches!(
-            parse_player_response(&serde_json::json!({}), "1.62.20"),
+            parse_player_response(&serde_json::json!({}), ClientIdentity::AndroidVr("1.62.20")),
             Err(NativeMiss::BadJson)
         ));
     }
@@ -439,7 +570,7 @@ mod tests {
     /// "immediately stale" posture; the target itself is still valid.
     #[test]
     fn a_url_without_expiry_resolves_with_none() {
-        let t = parse_player_response(&player_ok("https://cdn/no-expiry"), "1.62.20").unwrap();
+        let t = parse_player_response(&player_ok("https://cdn/no-expiry"), ClientIdentity::AndroidVr("1.62.20")).unwrap();
         assert_eq!(t.expires_at, None);
     }
 }

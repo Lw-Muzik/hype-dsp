@@ -147,14 +147,56 @@ pub struct YtMusicStatus {
     pub ytdlp: YtDlpInfo,
 }
 
+/// How the stored session is reached — one indirection so a test can watch it.
+///
+/// The two properties that matter here are about *when* the keychain is
+/// touched, not about what comes back, and neither is observable through a
+/// return value: "app setup must not read it" and "a lapsed session must not be
+/// deleted behind the user's back". Both were regressions once; both are only
+/// testable if reading and clearing are things a test can count.
+///
+/// Saving is not here. It happens only behind an explicit sign-in, which is the
+/// one moment a credential-store prompt needs no explaining.
+struct SessionStore {
+    read: fn() -> Result<Option<Vec<YtCookie>>, String>,
+    clear: fn() -> Result<(), String>,
+}
+
+impl SessionStore {
+    /// The real one: the OS credential store.
+    const KEYCHAIN: Self = Self {
+        read: cookies::load,
+        clear: cookies::clear,
+    };
+}
+
+/// The stored session, and whether it has been asked for yet.
+///
+/// Three states collapsed into two: *unread*, and *settled* — where settled
+/// covers a live jar, a lapsed one, an absent one and a refused read alike.
+/// Once settled it is never re-read, because on macOS each read is a chance at
+/// a modal password prompt and the honest answer to "ask again?" is no.
+enum Session {
+    Unread,
+    Read(Option<Vec<YtCookie>>),
+}
+
 pub struct YtMusicState {
     /// Cached API handle. Rebuilt whenever the cookies change; `None` when
     /// signed out or not yet built.
     client: tokio::sync::Mutex<Option<Arc<YtMusic<BrowserToken>>>>,
-    /// Cookies mirrored in memory so `stream_target` (sync, on the decode
-    /// thread) never has to touch the keychain — that can block on a user
-    /// prompt, which would stall audio.
-    cookies: RwLock<Option<Vec<YtCookie>>>,
+    /// The session, mirrored in memory so `stream_target` (sync, on the decode
+    /// thread) doesn't touch the keychain per resolve — that can block on a
+    /// user prompt, which would stall audio.
+    ///
+    /// Read lazily, and *never* during app setup: see [`SessionStore`]. The
+    /// residual risk is that the decode thread is the first caller and pays for
+    /// the read — but that path only reaches here after the native resolve has
+    /// missed, i.e. on its way to a yt-dlp process start, and in practice the
+    /// account is asked about far earlier by whichever view mounts first.
+    session: RwLock<Session>,
+    /// Where [`Self::session`] is read from, and what a sign-out clears.
+    session_store: SessionStore,
     /// Whether the session is worth trying *first* when resolving a stream.
     ///
     /// Starts true and flips to whatever last worked. Where accounts exist that
@@ -372,7 +414,8 @@ impl YtMusicState {
     pub fn new() -> Self {
         Self {
             client: tokio::sync::Mutex::new(None),
-            cookies: RwLock::new(None),
+            session: RwLock::new(Session::Unread),
+            session_store: SessionStore::KEYCHAIN,
             session_first: std::sync::atomic::AtomicBool::new(true),
             resolved: RwLock::new(std::collections::HashMap::new()),
             restored: RwLock::new(std::collections::HashMap::new()),
@@ -384,28 +427,34 @@ impl YtMusicState {
         }
     }
 
-    /// Builds the state, restoring any stored session.
+    /// Builds the state app setup manages. **Reads nothing**: the stored
+    /// session is fetched the first time something actually needs the account.
     ///
-    /// A keychain read failure is downgraded to "signed out" rather than
-    /// propagated: a locked or unavailable keyring shouldn't stop the app from
-    /// starting, and the user can always sign in again.
+    /// It used to restore the session here, which is one keychain read (nine,
+    /// really — the jar is chunked) before the window is even up. On macOS a
+    /// keychain item's ACL is bound to the *build* that wrote it, so the moment
+    /// the app the user runs isn't the one that stored the jar — a release
+    /// replacing a local build, say — that read is a modal password prompt on
+    /// the splash screen, once per entry, every single launch. Nothing on that
+    /// path wants the answer: playback resolves anonymously now, and the two
+    /// views that show the account ask for it on mount.
     pub fn load() -> Self {
-        let state = Self::new();
-        if let Ok(Some(stored)) = cookies::load() {
-            let live = cookies::prune_expired(stored, cookies::now_secs());
-            if cookies::is_signed_in(&live) {
-                *state.cookies.write().unwrap() = Some(live);
-            } else {
-                // Session lapsed — clear it so the UI shows a clean signed-out
-                // state instead of failing on first use.
-                let _ = cookies::clear();
-            }
-        }
-        state
+        Self::with_session_store(SessionStore::KEYCHAIN)
     }
 
+    fn with_session_store(session_store: SessionStore) -> Self {
+        Self {
+            session_store,
+            ..Self::new()
+        }
+    }
+
+    /// Whether there is a usable session — reading the stored one if nothing
+    /// has yet. Called by the status command, so this is usually what pays for
+    /// the read: the user opened YouTube Music or Explore, which is the one
+    /// moment asking about their account explains itself.
     pub fn signed_in(&self) -> bool {
-        self.cookies.read().unwrap().is_some()
+        self.cookies_snapshot().is_some()
     }
 
     pub fn status(&self) -> YtMusicStatus {
@@ -430,7 +479,7 @@ impl YtMusicState {
             return Err("Sign-in didn't complete — no YouTube session cookies were found.".into());
         }
         cookies::save(&live)?;
-        *self.cookies.write().unwrap() = Some(live);
+        *self.session.write().unwrap() = Session::Read(Some(live));
         // A new session earns a fresh chance at going first.
         self.session_first
             .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -442,16 +491,44 @@ impl YtMusicState {
     }
 
     pub async fn sign_out(&self) -> Result<(), String> {
-        cookies::clear()?;
-        *self.cookies.write().unwrap() = None;
+        (self.session_store.clear)()?;
+        *self.session.write().unwrap() = Session::Read(None);
         self.session_first
             .store(true, std::sync::atomic::Ordering::Relaxed);
         *self.client.lock().await = None;
         Ok(())
     }
 
+    /// The stored session, fetched once if nothing has asked yet.
+    ///
+    /// Every outcome settles, including failure: lapsed, absent, and refused
+    /// all mean "signed out" for the life of the process. Retrying a refusal
+    /// would just raise the same dialog again on the next status call, and the
+    /// way back from a mis-clicked Deny is the Sign in button.
+    ///
+    /// A lapsed jar is left in the credential store rather than deleted. The
+    /// delete was a *write*, i.e. a second prompt behind the read, and denying
+    /// it left the entries in place — so the app asked again on every launch,
+    /// forever. The next sign-in overwrites them; an explicit sign-out clears
+    /// them.
     fn cookies_snapshot(&self) -> Option<Vec<YtCookie>> {
-        self.cookies.read().unwrap().clone()
+        if let Session::Read(jar) = &*self.session.read().unwrap() {
+            return jar.clone();
+        }
+        let mut slot = self.session.write().unwrap();
+        if let Session::Read(jar) = &*slot {
+            // Someone else settled it while we waited for the lock.
+            return jar.clone();
+        }
+        let jar = match (self.session_store.read)() {
+            Ok(Some(stored)) => {
+                let live = cookies::prune_expired(stored, cookies::now_secs());
+                cookies::is_signed_in(&live).then_some(live)
+            }
+            Ok(None) | Err(_) => None,
+        };
+        *slot = Session::Read(jar.clone());
+        jar
     }
 
     /// The API handle, built on first use and cached.
@@ -1467,7 +1544,7 @@ mod tests {
 
     /// The signed-in session, read once for the whole suite.
     ///
-    /// [`YtMusicState::load`] downgrades an unreadable keychain to "signed out",
+    /// [`YtMusicState::cookies_snapshot`] downgrades an unreadable keychain to "signed out",
     /// which is right for the app — it should start regardless — but ruinous
     /// here: every live test below reads "signed out" as "nothing to prove" and
     /// returns green. Measured under `cargo test`'s default parallelism, tests
@@ -1534,6 +1611,127 @@ mod tests {
     #[test]
     fn a_url_without_a_stated_expiry_is_never_fresh() {
         assert!(!is_fresh(&target(None), NOW));
+    }
+
+    /* ---- when the stored session is read ---- */
+
+    /// A jar as the credential store would hand it back. `expires` is the only
+    /// axis these tests care about: `None` is a session cookie, so it is live.
+    fn stored_session(expires: Option<i64>) -> Vec<YtCookie> {
+        ["SAPISID", "SID"]
+            .iter()
+            .map(|name| YtCookie {
+                name: (*name).into(),
+                value: "not-a-real-credential".into(),
+                domain: ".youtube.com".into(),
+                path: "/".into(),
+                expires,
+                secure: true,
+                http_only: false,
+            })
+            .collect()
+    }
+
+    fn uncleared() -> Result<(), String> {
+        panic!("this test must never clear the credential store")
+    }
+
+    /// App setup builds this state, and on macOS reading the jar can raise a
+    /// modal password prompt: keychain ACLs are bound to the *build* that wrote
+    /// the items, so a release reading what a local build stored asks — every
+    /// launch, once per chunk entry (2026-08-21). Wherever that question
+    /// belongs, it is not the splash screen: nothing the user has asked for yet
+    /// needs the answer, and the whole playback path is anonymous now.
+    #[test]
+    fn building_the_state_never_reads_the_stored_session() {
+        static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        fn read() -> Result<Option<Vec<YtCookie>>, String> {
+            READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok(Some(stored_session(None)))
+        }
+        let _state = YtMusicState::with_session_store(SessionStore { read, clear: uncleared });
+        assert_eq!(
+            READS.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "app setup read the credential store — that is a modal prompt in \
+             front of the splash screen"
+        );
+    }
+
+    /// Once the session *is* wanted, it is fetched once and remembered: every
+    /// read is another chance at that prompt, and `signed_in` is called by two
+    /// separate views on mount.
+    #[test]
+    fn the_stored_session_is_read_once_on_first_demand() {
+        static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        fn read() -> Result<Option<Vec<YtCookie>>, String> {
+            READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok(Some(stored_session(None)))
+        }
+        let state = YtMusicState::with_session_store(SessionStore { read, clear: uncleared });
+        assert_eq!(
+            READS.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "nothing has asked about the account yet"
+        );
+        assert!(state.signed_in(), "a live jar is a signed-in session");
+        assert!(state.signed_in());
+        assert_eq!(READS.load(std::sync::atomic::Ordering::Relaxed), 1, "asked twice");
+    }
+
+    /// A lapsed session used to be **deleted** during setup — a keychain
+    /// *write*, and so a second prompt right behind the read. Deny it and the
+    /// entries survive, so the next launch asks all over again, forever. That
+    /// the session expired is a fact about this process; it is not a licence to
+    /// edit the user's keychain unasked. The next sign-in rewrites the entries
+    /// anyway, and an explicit sign-out still clears them.
+    #[test]
+    fn a_lapsed_session_reads_as_signed_out_and_is_left_alone() {
+        static CLEARS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        fn read() -> Result<Option<Vec<YtCookie>>, String> {
+            Ok(Some(stored_session(Some(1))))
+        }
+        fn clear() -> Result<(), String> {
+            CLEARS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }
+        let state = YtMusicState::with_session_store(SessionStore { read, clear });
+        assert!(!state.signed_in(), "every cookie in that jar expired in 1970");
+        assert_eq!(
+            CLEARS.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "a lapsed session was deleted from the keychain without being asked"
+        );
+    }
+
+    /// The user is allowed to say no. A refused read settles as signed out for
+    /// the life of the process rather than being retried: a retry is another
+    /// modal prompt, and the way out of a mis-click is the Sign in button, not
+    /// a dialog on every status call.
+    #[test]
+    fn a_refused_read_settles_as_signed_out_without_asking_again() {
+        static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        fn read() -> Result<Option<Vec<YtCookie>>, String> {
+            READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Err("User canceled the operation.".into())
+        }
+        let state = YtMusicState::with_session_store(SessionStore { read, clear: uncleared });
+        assert_eq!(READS.load(std::sync::atomic::Ordering::Relaxed), 0);
+        assert!(!state.signed_in());
+        assert!(!state.signed_in());
+        assert_eq!(READS.load(std::sync::atomic::Ordering::Relaxed), 1, "asked twice");
+    }
+
+    /// The decode thread reads this too. Nothing above may make it *the* caller
+    /// that pays for the first read — but when it is, it must still get the
+    /// session, or a Premium-only track resolves anonymously and fails.
+    #[test]
+    fn the_resolve_path_sees_the_session_too() {
+        let state = YtMusicState::with_session_store(SessionStore {
+            read: || Ok(Some(stored_session(None))),
+            clear: uncleared,
+        });
+        assert_eq!(state.cookies_snapshot().map(|c| c.len()), Some(2));
     }
 
     #[test]

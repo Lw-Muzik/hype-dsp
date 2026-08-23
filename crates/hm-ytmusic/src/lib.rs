@@ -364,6 +364,20 @@ const GATED_STREAM_MESSAGE: &str =
     "YouTube refused to stream this track to an anonymous client. Signing in to \
      YouTube in Settings usually restores playback.";
 
+/// What to say when the *picture* resolved to a url the CDN will not serve.
+///
+/// Deliberately not [`GATED_STREAM_MESSAGE`]: that one advises signing in, which
+/// for video is the opposite of the fix — cookies move yt-dlp onto its
+/// authenticated clients, and those don't serve the video-only rendition at all.
+/// A gated video url means the anonymous client yt-dlp picked sits behind
+/// YouTube's proof-of-origin wall, and what walks past it is a newer yt-dlp:
+/// 2026.08.19 moved its default clients to VISIONOS, whose urls serve whole
+/// files. Measured 2026-08-23 on the same video, minutes apart — 2026.07.04
+/// (ANDROID_VR) refused `bytes=0-`, 2026.08.19 (VISIONOS) served it.
+const GATED_VIDEO_MESSAGE: &str =
+    "YouTube refused to stream this video — the url it offered is proof-of-origin \
+     gated. Updating yt-dlp usually fixes this.";
+
 /// The dev escape hatch: HM_NATIVE_RESOLVE=0 turns the native fast path off
 /// for a session (read once). The automatic fallback is the user-facing
 /// safety mechanism; this exists for A/B-ing a misbehaving resolve in the
@@ -1072,11 +1086,11 @@ impl YtMusicState {
     /// resolved, which is why this can't be handed to a `<video>` element
     /// directly and goes through the loopback proxy instead.
     ///
-    /// Uses the same session ordering as audio, and reports failure as an error
-    /// for the caller to turn into "no video". Nothing here may affect playback:
-    /// the picture is optional, the sound is not.
+    /// Ordered by [`resolve_video_with_fallback`] — anonymous first, the
+    /// inverse of audio — and reports failure as an error for the caller to turn
+    /// into "no video". Nothing here may affect playback: the picture is
+    /// optional, the sound is not.
     pub fn video_target(&self, video_id: &str) -> Result<(String, Vec<(String, String)>), String> {
-        use std::sync::atomic::Ordering;
         // Same bargain as the audio path, and for a sharper reason: this resolve
         // is on demand, so its ~5s process start is time the user spends looking
         // at a spinner. Re-opening the Video tab, or re-mounting the element,
@@ -1087,29 +1101,17 @@ impl YtMusicState {
         let runner = self.runner()?;
         let cookies = self.cookies_snapshot();
         let file = cookie_file(cookies.as_deref())?;
-        let session = file.as_ref().map(CookieFile::path);
-        let session_first = self.session_first.load(Ordering::Relaxed);
-
-        let target = ytdlp::resolve_video(
-            &runner,
-            video_id,
-            if session_first { session } else { None },
-        )
-        .or_else(|first| {
-            // Same fallback shape as audio: whichever attempt the session hint
-            // didn't lead with is still worth asking.
-            match (first, session) {
-                (YtDlpError::NoCompatibleFormat(_), Some(s)) if !session_first => {
-                    ytdlp::resolve_video(&runner, video_id, Some(s))
-                }
-                (YtDlpError::NoCompatibleFormat(e), Some(_)) => {
-                    let _ = e;
-                    ytdlp::resolve_video(&runner, video_id, None)
-                }
-                (e, _) => Err(e),
-            }
-        })
-        .map_err(|e| e.to_string())?;
+        let target =
+            resolve_video_with_fallback(&runner, video_id, file.as_ref().map(CookieFile::path))?;
+        // The same check the audio path pays, for the same reason: a resolve
+        // that succeeds proves nothing about whether the url serves bytes. A
+        // gated one plays roughly a mebibyte and then stops — which reaches the
+        // user as a picture that freezes a few seconds in, with no error
+        // anywhere. Only a settled refusal fails: an inconclusive probe is the
+        // network, and failing on it would blank a video that would have played.
+        if probe(&target) == ProbeVerdict::Refused {
+            return Err(GATED_VIDEO_MESSAGE.to_string());
+        }
         remember_in(&self.resolved_video, video_id, &target);
         Ok((target.url, target.headers))
     }
@@ -1249,10 +1251,22 @@ fn resolve_with_fallback(
             target,
             used_session: first.is_some(),
         }),
-        // Only a format failure alternates. "Unavailable" and "Blocked" mean the
-        // session is the point — dropping it there would trade a clear error for
-        // a worse one.
-        Err(YtDlpError::NoCompatibleFormat(first_said)) => {
+        // Alternates only on a failure that makes no claim about the session.
+        // A format miss says "this identity sees no playable rendition"; an
+        // unclassified failure says yt-dlp fell over somewhere on the client
+        // ladder that identity selected — and the ladder *is* selected by the
+        // identity: `--cookies` switches yt-dlp from its anonymous default
+        // clients to `_DEFAULT_AUTHED_CLIENTS`, so the other attempt is a
+        // genuinely different request rather than a retry of the same one.
+        // That is how "The page needs to be reloaded" (`tv_downgraded`'s
+        // playability status) used to end a resolve the anonymous attempt
+        // would have completed.
+        //
+        // "Unavailable" and "Blocked" do make that claim, so they still stop
+        // here: dropping the session for those trades a clear error for a
+        // worse one.
+        Err(first_err @ (YtDlpError::NoCompatibleFormat(_) | YtDlpError::Failed(_))) => {
+            let first_said = first_err.to_string();
             ytdlp::resolve(runner, video_id, second)
                 .map(|target| Resolved {
                     target,
@@ -1267,6 +1281,44 @@ fn resolve_with_fallback(
         }
         Err(e) => Err(e.to_string()),
     }
+}
+
+/// Resolves the *picture* — anonymous first, session only as a fallback.
+///
+/// The opposite order to [`resolve_with_fallback`], for a reason measured on
+/// 2026-08-23. Passing `--cookies` does not merely add credentials to the same
+/// request: it changes which InnerTube clients yt-dlp asks. Signed out it uses
+/// `_DEFAULT_CLIENTS` (`android_vr`, and `visionos` from 2026.08.19), which
+/// serve the video-only DASH renditions the video selector asks for. Signed in
+/// it uses `_DEFAULT_AUTHED_CLIENTS` — `tv_downgraded`, plus `web_music` for a
+/// `music.youtube.com` watch url — and for a public music video those offer
+/// only muxed HLS and itag 18, which a video-*only* selector can never match.
+///
+/// So the session attempt could not succeed here; it could only fail. And it
+/// failed loudly: YouTube answered `tv_downgraded` with "The page needs to be
+/// reloaded", which is not a format error, so the old ladder — it alternated on
+/// a format miss alone — never reached the anonymous attempt that works, and the
+/// Video tab showed yt-dlp's refusal while the audio played on beside it.
+///
+/// The session is still tried second, because a private or members-only video is
+/// exactly what it is for. Every first failure alternates: with anonymous
+/// leading, "unavailable" and "blocked" are the *reasons* to reach for the
+/// session rather than reasons to stop, which is precisely the inverse of the
+/// audio ladder's rule and why this is a separate function rather than a flag.
+fn resolve_video_with_fallback(
+    runner: &dyn ytdlp::YtDlpRunner,
+    video_id: &str,
+    session: Option<&Path>,
+) -> Result<ytdlp::StreamTarget, String> {
+    let anonymous_said = match ytdlp::resolve_video(runner, video_id, None) {
+        Ok(target) => return Ok(target),
+        Err(e) => e,
+    };
+    let Some(session) = session else {
+        return Err(anonymous_said.to_string());
+    };
+    ytdlp::resolve_video(runner, video_id, Some(session))
+        .map_err(|with_session| format!("{anonymous_said} (signed in it also failed: {with_session})"))
 }
 
 /// Materialises cookies for yt-dlp, if we have any. Signed-out use still works
@@ -2170,6 +2222,24 @@ mod tests {
         assert_eq!(*runner.calls.lock().unwrap(), [false, true]);
     }
 
+    /// The failure that reached the user as a dead Video tab on 2026-08-23:
+    /// yt-dlp fell over on the client ladder the *session* selected ("The page
+    /// needs to be reloaded" — `tv_downgraded`'s playability status), which is
+    /// neither a format miss nor a claim that the session is the point. It used
+    /// to be terminal, because only a format miss alternated.
+    #[test]
+    fn an_unclassified_failure_alternates_identities() {
+        let runner = SessionSensitive {
+            signed_in: Err(YtDlpError::Failed("The page needs to be reloaded".into())),
+            anonymous: Ok(ok_stdout()),
+            calls: std::sync::Mutex::new(Vec::new()),
+        };
+        let got = resolve_with_fallback(&runner, "vid", Some(session_path()), true)
+            .expect("the anonymous retry should succeed");
+        assert!(!got.used_session, "the anonymous attempt is what worked");
+        assert_eq!(*runner.calls.lock().unwrap(), [true, false]);
+    }
+
     /// Both failed: say so, and keep both reasons — the second is usually the
     /// one that explains the first.
     #[test]
@@ -2183,6 +2253,107 @@ mod tests {
         assert!(err.contains("signed-in reason"), "got {err:?}");
         assert!(err.contains("anonymous reason"), "got {err:?}");
         assert_eq!(*runner.calls.lock().unwrap(), [true, false]);
+    }
+
+    /* ---- the video ladder ---- */
+
+    /// Signed in, the *picture* is still resolved signed out. Cookies don't
+    /// merely add credentials: they switch yt-dlp to its authenticated clients,
+    /// and for a public music video those serve no video-only rendition at all.
+    /// Leading with the session could therefore only fail — and on 2026-08-23
+    /// it failed loudly enough to kill the whole resolve.
+    #[test]
+    fn video_leads_with_anonymous_even_when_signed_in() {
+        let runner = SessionSensitive {
+            signed_in: Err(YtDlpError::Failed("The page needs to be reloaded".into())),
+            anonymous: Ok(ok_stdout()),
+            calls: std::sync::Mutex::new(Vec::new()),
+        };
+        resolve_video_with_fallback(&runner, "ZQliCRDaTvo", Some(session_path()))
+            .expect("anonymous resolves the picture");
+        assert_eq!(
+            *runner.calls.lock().unwrap(),
+            [false],
+            "no doomed signed-in attempt in front of it"
+        );
+    }
+
+    /// …but a video anonymous genuinely cannot see still reaches the session.
+    /// With anonymous leading, "unavailable" is the *reason* to try the
+    /// session, not a reason to stop — the opposite of the audio ladder.
+    #[test]
+    fn video_falls_back_to_the_session_when_anonymous_cannot_see_it() {
+        let runner = SessionSensitive {
+            signed_in: Ok(ok_stdout()),
+            anonymous: Err(YtDlpError::Unavailable("Private video".into())),
+            calls: std::sync::Mutex::new(Vec::new()),
+        };
+        resolve_video_with_fallback(&runner, "vid", Some(session_path()))
+            .expect("the session should still be reached");
+        assert_eq!(*runner.calls.lock().unwrap(), [false, true]);
+    }
+
+    /// Signed out already — one attempt, and the reason is yt-dlp's own.
+    #[test]
+    fn video_does_not_retry_when_there_was_no_session() {
+        let runner = SessionSensitive {
+            signed_in: Ok(ok_stdout()),
+            anonymous: Err(YtDlpError::Unavailable("Video unavailable".into())),
+            calls: std::sync::Mutex::new(Vec::new()),
+        };
+        let err = resolve_video_with_fallback(&runner, "vid", None).unwrap_err();
+        assert!(err.contains("Video unavailable"), "got {err:?}");
+        assert_eq!(*runner.calls.lock().unwrap(), [false]);
+    }
+
+    /// Both failed: keep both reasons, for the same purpose as the audio
+    /// ladder's — one message would hide the half that explains the other.
+    #[test]
+    fn video_reports_both_reasons_when_both_fail() {
+        let runner = SessionSensitive {
+            signed_in: Err(YtDlpError::Failed("signed-in reason".into())),
+            anonymous: Err(YtDlpError::Unavailable("anonymous reason".into())),
+            calls: std::sync::Mutex::new(Vec::new()),
+        };
+        let err = resolve_video_with_fallback(&runner, "vid", Some(session_path())).unwrap_err();
+        assert!(err.contains("anonymous reason"), "got {err:?}");
+        assert!(err.contains("signed-in reason"), "got {err:?}");
+        assert_eq!(*runner.calls.lock().unwrap(), [false, true]);
+    }
+
+    /// The live canary for the picture, against the video whose Video tab
+    /// showed "The page needs to be reloaded" on 2026-08-23.
+    ///
+    /// Asserts what the selector is *for*: a video-only avc1 mp4. The bug it
+    /// guards is not "no url" but "the wrong identity asked" — signed in,
+    /// yt-dlp's authenticated clients answer a music watch url with muxed HLS
+    /// and itag 18 only, so a run that comes back with an itag carrying audio
+    /// means the ladder led with the session again.
+    #[test]
+    #[ignore = "requires yt-dlp on PATH and network access"]
+    fn live_resolves_the_picture_anonymously() {
+        let runner = ytdlp::ProcessRunner::detect().expect("yt-dlp not installed");
+        let target = resolve_video_with_fallback(&runner, "ZQliCRDaTvo", None)
+            .expect("the picture should resolve signed out");
+        assert_eq!(target.ext, "mp4", "got {target:?}");
+        // Video-only: yt-dlp reports a zero audio bitrate for these (not `NA`),
+        // and itag 18 — the muxed 360p rendition — is precisely what the
+        // authenticated ladder hands back instead. Either would mean the
+        // session led.
+        assert_eq!(target.abr_kbps.unwrap_or(0), 0, "got {target:?}");
+        assert_ne!(target.format_id, "18", "muxed rendition — got {target:?}");
+        assert!(!target.url.is_empty());
+        // The half that actually matters, and the half three separate
+        // investigations here have gone without: a url that resolves is not a
+        // url that plays. This is the open-ended read the picture opens with,
+        // so it fails on a proof-of-origin gated url — which is what a yt-dlp
+        // older than 2026.08.19 hands back, its anonymous client still being
+        // ANDROID_VR rather than VISIONOS.
+        assert_eq!(
+            probe(&target),
+            ProbeVerdict::Serves,
+            "gated url — is yt-dlp older than 2026.08.19? got {target:?}"
+        );
     }
 
     /// A response that isn't the library grid must not panic or be mangled.

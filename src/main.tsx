@@ -20,5 +20,5 @@ createRoot(rootEl).render(
         </SessionGate>
       </OnboardingGate>
     </Providers>
-  </StrictMode>,
+  </StrictMode>
 );

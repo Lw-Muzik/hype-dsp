@@ -7,7 +7,12 @@ import { useEngineStore } from "@/stores/engine";
 import { createInboundHandler } from "./bridge";
 import { appRpcPort, enginePlayerPort } from "./ports";
 import { QueueUidTracker } from "./queueUids";
-import { buildPlayerState, createStatePublisher, type EngineView } from "./statePublisher";
+import {
+  buildPlayerState,
+  createStatePublisher,
+  localStorageSeqStore,
+  type EngineView,
+} from "./statePublisher";
 import { useConnectStore } from "./store";
 
 /** Store changes a controller could see. Meters and spectrum (30 fps) and
@@ -52,6 +57,7 @@ export function useHypeConnect(): void {
         }),
       send: (state) => connectSend({ t: "state", state }),
       now: () => Date.now(),
+      seqStore: localStorageSeqStore(),
     });
 
     const handleInbound = createInboundHandler({

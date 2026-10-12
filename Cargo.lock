@@ -2828,6 +2828,7 @@ dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",
  "hm-audio",
+ "hm-connect",
  "hm-core",
  "hm-link",
  "hm-media",

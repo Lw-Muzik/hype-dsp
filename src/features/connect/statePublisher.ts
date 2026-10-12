@@ -72,9 +72,48 @@ export interface PublisherDeps {
   subscribe(onChange: () => void): () => void;
   send(state: PlayerState): Promise<void>;
   now(): number;
-  /** First `seq` is this + 1. Defaults to `now()`, so a restarted app keeps
-   *  counting up instead of starting below what controllers last saw. */
-  initialSeq?: number;
+  /** Where the last `seq` survives a restart. Without it `seq` starts from
+   *  the clock alone. */
+  seqStore?: SeqStore;
+}
+
+/** Persistence for the last `seq` sent. Implementations must not throw. */
+export interface SeqStore {
+  load(): number | null;
+  save(seq: number): void;
+}
+
+/** First `seq` of a run: the epoch in SECONDS (monotonic across restarts and
+ *  inside 32-bit range), or one past the last persisted value if that is
+ *  higher (a clock that stepped back, or a restart within the same second). */
+export function firstSeq(nowMs: number, persisted: number | null): number {
+  const fromClock = Math.floor(nowMs / 1000);
+  return persisted !== null && Number.isFinite(persisted) ? Math.max(fromClock, persisted + 1) : fromClock;
+}
+
+const SEQ_KEY = "hm.connect.seq";
+
+/** `seq` persisted in localStorage; every access is guarded (private mode,
+ *  blocked storage, tests without a DOM). */
+export function localStorageSeqStore(): SeqStore {
+  return {
+    load() {
+      try {
+        const raw = globalThis.localStorage?.getItem(SEQ_KEY);
+        const n = raw === null || raw === undefined ? NaN : Number(raw);
+        return Number.isSafeInteger(n) && n >= 0 ? n : null;
+      } catch {
+        return null;
+      }
+    },
+    save(seq) {
+      try {
+        globalThis.localStorage?.setItem(SEQ_KEY, String(seq));
+      } catch {
+        // Best effort: the clock alone still keeps seq climbing.
+      }
+    },
+  };
 }
 
 export interface StatePublisher {
@@ -99,7 +138,8 @@ function significant(s: StateBody): string {
 }
 
 export function createStatePublisher(deps: PublisherDeps): StatePublisher {
-  let seq = deps.initialSeq ?? deps.now();
+  // `seq` is the last one sent; the first send uses `firstSeq`.
+  let seq = firstSeq(deps.now(), deps.seqStore?.load() ?? null) - 1;
   let running = false;
   let unsubscribe: (() => void) | null = null;
   let debounce: ReturnType<typeof setTimeout> | null = null;
@@ -118,6 +158,7 @@ export function createStatePublisher(deps: PublisherDeps): StatePublisher {
     if (!running) return;
     const body = deps.build();
     seq += 1;
+    deps.seqStore?.save(seq);
     last = { key: significant(body), positionMs: body.positionMs, playing: body.playing, at: deps.now() };
     void deps.send({ seq, ...body }).catch(() => {});
     if (heartbeat !== null) clearTimeout(heartbeat);

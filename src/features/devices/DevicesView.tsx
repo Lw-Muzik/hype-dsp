@@ -14,6 +14,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { ConnectCard } from "@/features/connect/ConnectCard";
 import { useEngineStore } from "@/stores/engine";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
 import {
@@ -388,6 +389,8 @@ export function DevicesView() {
     />
   ) : (
         <div className="flex flex-col gap-4">
+          <ConnectCard />
+
           <Card
             title="Phones on your network"
             icon={Smartphone}

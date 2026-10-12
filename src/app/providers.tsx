@@ -19,6 +19,7 @@ import { useUiStore } from "@/stores/ui";
 import { useEngineStore, localItem } from "@/stores/engine";
 import { useLibraryStore } from "@/stores/library";
 import { useThemeStore, watchPrefersDark } from "@/stores/theme";
+import { useHypeConnect } from "@/features/connect/useHypeConnect";
 
 /**
  * App-wide startup effects. Loads `AppInfo` and the engine state, then
@@ -40,6 +41,9 @@ export function Providers({ children }: { children: ReactNode }) {
   const resolved = useThemeStore((s) => s.resolved);
   const blur = useThemeStore((s) => s.blur);
   const setPrefersDark = useThemeStore((s) => s.setPrefersDark);
+
+  // Hype Connect: obey the hub's commands and publish this player's state.
+  useHypeConnect();
 
   useEffect(() => {
     let cancelled = false;

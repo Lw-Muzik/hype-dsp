@@ -362,6 +362,35 @@ pub fn run() {
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_account.json"));
             app.manage(commands::account::AccountState::open(account_path));
 
+            // Hype Connect: this desktop as a player a browser can drive. The
+            // client (its own small runtime + one socket to the hub) starts
+            // off the main thread; it waits for an account session by itself,
+            // so it can start before SessionGate's anonymous bootstrap lands.
+            let connect_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| {
+                    let _ = std::fs::create_dir_all(&d);
+                    d.join("connect.json")
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("hm_connect.json"));
+            app.manage(commands::connect::ConnectState::new(
+                app.handle().clone(),
+                connect_path,
+            ));
+            let connect_app = app.handle().clone();
+            std::thread::Builder::new()
+                .name("hm-connect-start".into())
+                .spawn(move || {
+                    let state = connect_app.state::<commands::connect::ConnectState>();
+                    if state.is_enabled() {
+                        if let Err(e) = state.start() {
+                            eprintln!("hype connect didn't start: {e}");
+                        }
+                    }
+                })
+                .ok();
+
             // Stem separation (htdemucs ONNX, CoreML-accelerated). The model
             // (htdemucs.onnx + sidecar .json) and the ONNX Runtime dylib are
             // placed under <app data>/stems by scripts/get_stems_model.sh;
@@ -881,6 +910,17 @@ pub fn run() {
             commands::account::account_support_checkout,
             commands::account::account_support_restore,
             commands::account::open_external_url,
+            commands::connect::connect_status,
+            commands::connect::connect_set_enabled,
+            commands::connect::connect_send,
+            commands::connect::connect_link_start,
+            commands::connect::connect_link_poll,
+            commands::connect::connect_link_cancel,
+            commands::connect::connect_link_preview,
+            commands::connect::connect_link_approve,
+            commands::connect::connect_link_deny,
+            commands::connect::connect_devices,
+            commands::connect::connect_revoke,
             commands::stems::stems_status,
             commands::stems::stems_arm,
             commands::stems::stems_set_gain,

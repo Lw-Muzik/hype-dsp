@@ -65,6 +65,11 @@ import type {
   TrackMeta,
   TransportProgress,
 } from "./types";
+import type {
+  DeviceInfo as ConnectDeviceInfo,
+  DeviceKind as ConnectDeviceKind,
+  Frame as ConnectFrame,
+} from "@/features/connect/protocol";
 
 /* ----------------------------------------------------------------- commands */
 
@@ -1586,6 +1591,110 @@ export function chainPresetExport(id: string, path: string): Promise<void> {
 /** Import a whole-chain preset from a JSON file at `path`; returns the stored preset. */
 export function chainPresetImport(path: string): Promise<ChainPreset> {
   return invoke<ChainPreset>("chain_preset_import", { path });
+}
+
+/* ------------------------------------------------------------ hype connect */
+
+/** The hub connection (`connect_status` / `connect:status`). `stopped` with
+ *  `unlinked` means this desktop was revoked; `replaced` means another copy of
+ *  the app took over this device id. Neither reconnects until turned on again. */
+export type ConnectConnection =
+  | { state: "connecting"; attempt: number }
+  | { state: "connected"; deviceId: string }
+  | { state: "waiting"; attempt: number; retryInMs: number; reason: string }
+  | { state: "no_session" }
+  | { state: "stopped"; reason: "unlinked" | "replaced" | "shutdown" | "tls_unavailable" };
+
+export interface ConnectStatus {
+  enabled: boolean;
+  /** This desktop's Connect device id (its install id). */
+  deviceId: string;
+  /** Null while no client runs (off, or not started yet). */
+  connection: ConnectConnection | null;
+}
+
+/** "Link with your phone": the QR (`hypemuzik://link?c=…`) and its code. */
+export interface ConnectLinkTicket {
+  linkId: string;
+  code: string;
+  qr: string;
+  expiresAt: string;
+}
+
+export type ConnectLinkPollStatus = "pending" | "approved" | "denied" | "expired";
+
+/** Who is asking to link with a code ("Link Chrome on macOS?"). */
+export interface ConnectLinkPreview {
+  kind: ConnectDeviceKind;
+  name: string;
+  platform: string | null;
+  createdAt: string;
+}
+
+export interface ConnectDevices {
+  devices: ConnectDeviceInfo[];
+  activeDeviceId: string | null;
+}
+
+export function connectStatus(): Promise<ConnectStatus> {
+  return invoke<ConnectStatus>("connect_status");
+}
+
+/** Turn Hype Connect on/off (persisted); on also restarts a stopped client. */
+export function connectSetEnabled(enabled: boolean): Promise<ConnectStatus> {
+  return invoke<ConnectStatus>("connect_set_enabled", { enabled });
+}
+
+/** Send this player's `ack` / `state` / `rpc_result` to the hub. */
+export function connectSend(frame: ConnectFrame): Promise<void> {
+  return invoke<void>("connect_send", { frame });
+}
+
+/** Start linking this desktop to a phone; show the QR, then poll. */
+export function connectLinkStart(): Promise<ConnectLinkTicket> {
+  return invoke<ConnectLinkTicket>("connect_link_start");
+}
+
+/** Where the pending phone link stands. On `approved` the desktop has already
+ *  switched to the linked account and reconnected. */
+export function connectLinkPoll(): Promise<{ status: ConnectLinkPollStatus }> {
+  return invoke<{ status: ConnectLinkPollStatus }>("connect_link_poll");
+}
+
+export function connectLinkCancel(): Promise<void> {
+  return invoke<void>("connect_link_cancel");
+}
+
+/** Look up a browser's 6-digit link code. Rejects when it's wrong/expired. */
+export function connectLinkPreview(code: string): Promise<ConnectLinkPreview> {
+  return invoke<ConnectLinkPreview>("connect_link_preview", { code });
+}
+
+export function connectLinkApprove(code: string): Promise<void> {
+  return invoke<void>("connect_link_approve", { code });
+}
+
+export function connectLinkDeny(code: string): Promise<void> {
+  return invoke<void>("connect_link_deny", { code });
+}
+
+/** Every device linked to this account, online or not. */
+export function connectDevices(): Promise<ConnectDevices> {
+  return invoke<ConnectDevices>("connect_devices");
+}
+
+export function connectRevoke(id: string): Promise<void> {
+  return invoke<void>("connect_revoke", { id });
+}
+
+/** Frames from the hub (`welcome`/`devices`/`state`/`cmd`/`rpc`/`error`), as
+ *  protocol JSON — decode with `decodeFrame` before trusting the shape. */
+export function onConnectInbound(handler: (frame: unknown) => void): Promise<UnlistenFn> {
+  return listen<unknown>("connect:inbound", (e) => handler(e.payload));
+}
+
+export function onConnectStatus(handler: (status: ConnectStatus) => void): Promise<UnlistenFn> {
+  return listen<ConnectStatus>("connect:status", (e) => handler(e.payload));
 }
 
 /* ------------------------------------------------------------------- errors */

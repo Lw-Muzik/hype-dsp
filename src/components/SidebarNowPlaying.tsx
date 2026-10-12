@@ -62,7 +62,7 @@ export function SidebarNowPlaying({ collapsed }: { collapsed: boolean }) {
           Now playing
         </span>
       </div>
-      <p className="mt-2 truncate text-sm font-medium">{title}</p>
+      <p className="mt-2 truncate font-display text-sm font-medium">{title}</p>
       {subtitle && (
         <p className="truncate text-xs text-text-muted">{subtitle}</p>
       )}

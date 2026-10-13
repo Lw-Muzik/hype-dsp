@@ -34,7 +34,6 @@ import { ConvolverCard } from "./ConvolverCard";
 import { CompanderCard } from "./CompanderCard";
 import { SaturationCard } from "./SaturationCard";
 import { ScriptCard } from "./ScriptCard";
-import { ScriptCard } from "./ScriptCard";
 import { PresetsCard } from "./PresetsCard";
 
 export function EnhancerView() {

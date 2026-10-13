@@ -177,7 +177,6 @@ export interface EngineState {
   compander: CompanderState;
   saturation: SaturationState;
   script: ScriptState;
-  script: ScriptState;
   headphone: HeadphoneCorrectionState;
   output: OutputState;
   playback: PlaybackState;

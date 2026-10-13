@@ -179,7 +179,8 @@ describe("cmd", () => {
   });
   it("times out after 11 s", async () => {
     const p = r.s.cmd("phone", { type: "next" });
-    r.tick(CMD_TIMEOUT_MS - 1);
+    expect(CMD_TIMEOUT_MS).toBe(11_000);
+    r.tick(10_999);
     r.tick(1);
     await expect(p).resolves.toEqual({ ok: false, error: "timeout" });
     // A late ack is harmless.

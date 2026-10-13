@@ -1117,39 +1117,66 @@ export function openExternalUrl(url: string): Promise<void> {
 
 /* ----------------------------------------------------------------- stems */
 
+/** What to separate: a local file, or a YouTube Music track. */
+export type StemSource =
+  | { kind: "file"; path: string }
+  | { kind: "ytmusic"; videoId: string };
+
 export interface StemStatus {
-  /** The separator (htdemucs model + ONNX Runtime) is installed. */
+  /** The ONNX Runtime and the Spleeter nets are installed — separation can run. */
   available: boolean;
+  /** Bytes the in-app install would still download (0 when installed). */
+  downloadBytes: number;
   /** This track is already separated (cached) — arming is instant. */
   separated: boolean;
-  /** CoreML (Neural Engine / GPU) is driving inference, vs. CPU fallback. */
-  accelerated: boolean;
 }
 
-export function stemsStatus(trackPath: string): Promise<StemStatus> {
-  return invoke<StemStatus>("stems_status", { trackPath });
+export function stemsStatus(source: StemSource | null): Promise<StemStatus> {
+  return invoke<StemStatus>("stems_status", { source });
 }
-/** Arm stems for the current track: separate it (cached if available) and swap
- *  the stems in at the live playhead. Emits `stems:progress` while it runs. */
-export function stemsArm(trackPath: string): Promise<void> {
-  return invoke<void>("stems_arm", { trackPath });
+/** Download the runtime + nets (hash-verified). Emits `stems:download`. */
+export function stemsInstall(): Promise<void> {
+  return invoke<void>("stems_install");
 }
-/** Set a stem's gain live (0 = muted). Stem order: 0 vocals, 1 drums, 2 bass, 3 other. */
+export function stemsInstallCancel(): Promise<void> {
+  return invoke<void>("stems_install_cancel");
+}
+/** Arm stems for the playing track: separate around the playhead, swap the
+ *  stem mixer in there, and keep filling in the rest in the background. Resolves
+ *  once the stems are live; `stems:progress` keeps reporting the rest. */
+export function stemsArm(source: StemSource): Promise<void> {
+  return invoke<void>("stems_arm", { source });
+}
+/** Set a control's gain live (0 = muted, 1 = unity). 0 vocals, 1 drums, 2 instruments. */
 export function stemsSetGain(stem: number, gain: number): Promise<void> {
   return invoke<void>("stems_set_gain", { stem, gain });
 }
-/** Reset every stem to unity — the mix sounds like the original track again. */
+/** Back to the original mix; stops any separation still running. */
 export function stemsReset(): Promise<void> {
   return invoke<void>("stems_reset");
 }
 export function stemsGains(): Promise<number[]> {
   return invoke<number[]>("stems_gains");
 }
-/** Separation progress, 0..1. */
+/** Share of the track separated so far, 0..1. */
 export function onStemsProgress(
   handler: (value: number) => void,
 ): Promise<UnlistenFn> {
   return listen<number>("stems:progress", (e) => handler(e.payload));
+}
+/** A separation failed after it started (the swap had already happened or not). */
+export function onStemsError(
+  handler: (message: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>("stems:error", (e) => handler(e.payload));
+}
+/** First-use download progress, in bytes. */
+export function onStemsDownload(
+  handler: (p: { done: number; total: number }) => void,
+): Promise<UnlistenFn> {
+  return listen<{ done: number; total: number }>("stems:download", (e) =>
+    handler(e.payload),
+  );
 }
 
 /* --------------------------------------------------------------- library */

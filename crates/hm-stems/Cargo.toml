@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Real-time stem separation (htdemucs ONNX, CoreML-accelerated) — separates a track into vocals/drums/bass/other in-process so the player's faders feel instant."
+description = "Live stem separation (Vocals / Drums / Instruments) with Deezer's MIT-licensed Spleeter nets on ONNX Runtime — a port of the HypeMuzik mobile engine."
 
 [dependencies]
 serde = { workspace = true }
@@ -13,3 +13,11 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 ort = { workspace = true }
 hound = { workspace = true }
+realfft = { workspace = true }
+reqwest = { workspace = true }
+sha2 = "0.10"
+flate2 = "1"
+tar = "0.4"
+zip = { version = "4", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]

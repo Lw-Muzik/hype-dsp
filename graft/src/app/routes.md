@@ -1,4 +1,4 @@
 # src/app/routes.ts
 
-- NavRoute · interface · L17-L28 — interface NavRoute
-- routeById · function · L103-L108 — routeById = (id: Route): NavRoute
+- NavRoute · interface · L16-L27 — interface NavRoute
+- routeById · function · L95-L100 — routeById = (id: Route): NavRoute

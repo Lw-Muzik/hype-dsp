@@ -10,7 +10,8 @@
 - id_file · function · L35-L37 — fn id_file(app: &AppHandle) -> Option<PathBuf>
 - read_file_id · function · L39-L44 — fn read_file_id(app: &AppHandle) -> Option<String>
 - write_file_id · function · L46-L53 — fn write_file_id(app: &AppHandle, id: &str)
-- keychain_id · function · L55-L61 — fn keychain_id() -> Option<String>
-- write_keychain_id · function · L63-L67 — fn write_keychain_id(id: &str)
-- resolve_install_id · function · L76-L90 — pub fn resolve_install_id(app: &AppHandle) -> String
-- spawn_tracking · function · L94-L128 — pub fn spawn_tracking(app: AppHandle)
+- kc_service · function · L58-L63 — fn kc_service() -> String
+- keychain_id · function · L65-L71 — fn keychain_id() -> Option<String>
+- write_keychain_id · function · L73-L77 — fn write_keychain_id(id: &str)
+- resolve_install_id · function · L86-L100 — pub fn resolve_install_id(app: &AppHandle) -> String
+- spawn_tracking · function · L104-L138 — pub fn spawn_tracking(app: AppHandle)

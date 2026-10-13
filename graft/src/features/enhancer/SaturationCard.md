@@ -1,4 +1,4 @@
 # src/features/enhancer/SaturationCard.tsx
 
-- pct · function · L9-L9 — pct = (v: number)
-- SaturationCard · function · L14-L84 — function SaturationCard()
+- pct · function · L10-L10 — pct = (v: number)
+- SaturationCard · function · L15-L86 — function SaturationCard()

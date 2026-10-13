@@ -1,8 +1,8 @@
 # src/features/enhancer/CompanderCard.tsx
 
-- Key · type · L9-L17 — type Key = | "thresholdDb" | "ratio" | "kneeDb" | "attackMs" | "releaseMs" | "makeupDb" | "gateDb" | "expanderRatio";
-- Def · interface · L19-L26 — interface Def
-- db · function · L28-L28 — db = (v: number)
-- ms · function · L29-L29 — ms = (v: number)
-- x · function · L30-L30 — x = (v: number)
-- CompanderCard · function · L58-L133 — function CompanderCard()
+- Key · type · L10-L18 — type Key = | "thresholdDb" | "ratio" | "kneeDb" | "attackMs" | "releaseMs" | "makeupDb" | "gateDb" | "expanderRatio";
+- Def · interface · L20-L27 — interface Def
+- db · function · L29-L29 — db = (v: number)
+- ms · function · L30-L30 — ms = (v: number)
+- x · function · L31-L31 — x = (v: number)
+- CompanderCard · function · L59-L135 — function CompanderCard()

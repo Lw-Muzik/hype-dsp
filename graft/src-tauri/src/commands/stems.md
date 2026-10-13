@@ -1,15 +1,25 @@
 # src-tauri/src/commands/stems.rs
 
-- StemState · struct · L23-L25 — pub struct StemState
-- InFlight · struct · L33-L36 — struct InFlight
-- in_flight · function · L38-L41 — fn in_flight() -> &'static Mutex<Option<InFlight>>
-- IN_FLIGHT · constant · L39-L39 — static IN_FLIGHT: OnceLock<Mutex<Option<InFlight>>> = OnceLock::new();
-- arm_in_flight · function · L46-L62 — fn arm_in_flight(track: &str) -> Arc<AtomicBool>
-- finish_in_flight · function · L66-L74 — fn finish_in_flight(cancel: &Arc<AtomicBool>)
-- cancel_in_flight · function · L77-L85 — fn cancel_in_flight()
-- StemStatus · struct · L89-L96 — pub struct StemStatus
-- stems_status · function · L99-L106 — pub fn stems_status(stems: State<'_, StemState>, track_path: String) -> StemStatus
-- stems_arm · function · L112-L166 — pub fn stems_arm(
-- stems_set_gain · function · L171-L173 — pub fn stems_set_gain(engine: State<'_, AudioEngine>, stem: usize, gain: f32)
-- stems_reset · function · L178-L185 — pub fn stems_reset(engine: State<'_, AudioEngine>)
-- stems_gains · function · L189-L192 — pub fn stems_gains(engine: State<'_, AudioEngine>) -> Vec<f32>
+- LEAD_SECS · constant · L25-L25 — const LEAD_SECS: f64 = 30.0;
+- StemState · struct · L29-L35 — pub struct StemState
+- Session · struct · L38-L40 — struct Session
+- new · function · L43-L56 — pub fn new(root: PathBuf) -> Self
+- remove_legacy_stems_data · function · L60-L82 — pub fn remove_legacy_stems_data(&self)
+- models_root · function · L84-L86 — fn models_root(&self) -> PathBuf
+- cancel_session · function · L88-L92 — fn cancel_session(&self)
+- begin · function · L95-L103 — fn begin(&self) -> Arc<AtomicBool>
+- StemSource · enum · L109-L114 — pub enum StemSource
+- key · function · L117-L122 — fn key(&self) -> String
+- StemStatus · struct · L127-L134 — pub struct StemStatus
+- models_missing_bytes · function · L136-L142 — fn models_missing_bytes(state: &StemState) -> u64
+- stems_status · function · L145-L152 — pub fn stems_status(stems: State<'_, StemState>, source: Option<StemSource>) -> StemStatus
+- DownloadProgress · struct · L155-L158 — struct DownloadProgress
+- stems_install · function · L164-L193 — pub fn stems_install(app: AppHandle, stems: State<'_, StemState>) -> Result<(), IpcError>
+- stems_install_cancel · function · L197-L201 — pub fn stems_install_cancel(stems: State<'_, StemState>)
+- fetch_ranged · function · L205-L246 — fn fetch_ranged(url: &str, headers: &[(String, String)], cancel: &AtomicBool) -> Result<Vec<u8>, String>
+- RANGE · constant · L206-L206 — const RANGE: u64 = 256 * 1024;
+- load_mix · function · L249-L263 — fn load_mix(
+- stems_arm · function · L269-L352 — pub fn stems_arm(
+- stems_set_gain · function · L357-L359 — pub fn stems_set_gain(engine: State<'_, AudioEngine>, stem: usize, gain: f32)
+- stems_reset · function · L364-L369 — pub fn stems_reset(engine: State<'_, AudioEngine>, stems: State<'_, StemState>)
+- stems_gains · function · L373-L376 — pub fn stems_gains(engine: State<'_, AudioEngine>) -> Vec<f32>

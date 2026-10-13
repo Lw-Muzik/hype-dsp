@@ -449,6 +449,13 @@ interface EngineStore {
   stop: () => Promise<void>;
   toggleShuffle: () => void;
   cycleRepeat: () => void;
+  /** Turn shuffle on or off — an explicit target, unlike `toggleShuffle`. */
+  setShuffle: (on: boolean) => void;
+  /** Set the repeat mode — an explicit target, unlike `cycleRepeat`. */
+  setRepeat: (mode: RepeatMode) => void;
+  /** Add items to the live queue: right after the current track (`next`) or
+   *  after everything else (`end`). With nothing loaded, they start playing. */
+  enqueueItems: (items: QueueItem[], mode: "next" | "end") => void;
   /** Apply a transport action from the OS media controls. */
   handleMediaCommand: (action: string, secs: number | null) => void;
   /** Fingerprint the current local track and fill any missing tags in place,
@@ -476,6 +483,12 @@ export const useEngineStore = create<EngineStore>((set, get) => {
   // How many order positions the engine's gapless queue was handed — appended
   // radio tracks beyond this are invisible to it (see advanceOnEnd).
   let gaplessQueueLen = 0;
+  // Items were slotted in right after the current track while the engine ran
+  // its own gapless list. The engine can't take an insertion mid-queue, so its
+  // list is stale from the next track on: at the next track change the store
+  // re-issues playback from its own order instead (see applyQueueIndex and
+  // advanceOnEnd) rather than restarting the track that's playing now.
+  let gaplessStale = false;
   // The queue finished on its own (nothing left), as opposed to the user
   // stopping it. Only then may a late-arriving radio batch resume playback.
   let endedNaturally = false;
@@ -574,6 +587,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     gaplessQueueRunning =
       useEngineQueue || useCloudQueue || usePhoneQueue || useYtMusicQueue;
     gaplessQueueLen = gaplessQueueRunning ? order.length : 0;
+    gaplessStale = false;
 
     switch (item.source) {
       case "local":
@@ -928,6 +942,12 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       return;
     }
     if (gaplessQueueRunning) {
+      // Items were inserted after the current track: the engine's list is
+      // stale, so continue from the store's own order.
+      if (gaplessStale && orderPos + 1 < order.length) {
+        startPlayback(orderPos + 1);
+        return;
+      }
       // Radio appended past the list the engine was handed — the engine never
       // knew those tracks. Continue at the first one.
       if (order.length > gaplessQueueLen) {
@@ -1269,7 +1289,16 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       // Only the engine's gapless queue emits this; map its absolute index back
       // to our order position. Ignored for single-track / streamed playback.
       if (!gaplessQueueRunning) return;
-      const { order, queue } = get();
+      const { order, queue, orderPos } = get();
+      if (gaplessStale) {
+        // The engine moved on through its old list, which no longer matches
+        // the order (items were inserted after the current track). Play what
+        // the order says comes next instead, handing the engine the new list.
+        if (absPos !== orderPos && orderPos + 1 < order.length) {
+          startPlayback(orderPos + 1);
+        }
+        return;
+      }
       const qi = order[absPos];
       const item = qi != null ? queue[qi] : undefined;
       if (!item) return;
@@ -1482,12 +1511,47 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     cycleRepeat: () => {
       const order: RepeatMode[] = ["off", "all", "one"];
       const next = order[(order.indexOf(get().repeat) + 1) % order.length]!;
-      set({ repeat: next });
+      get().setRepeat(next);
+    },
+
+    setShuffle: (on) => {
+      if (get().shuffle !== on) get().toggleShuffle();
+    },
+
+    setRepeat: (mode) => {
+      if (get().repeat === mode) return;
+      set({ repeat: mode });
       // Repeat-one vs multi changes whether the engine owns the queue, so a
       // local track must be re-issued to switch modes cleanly.
       const { queue, orderPos } = get();
       const cur = orderPos >= 0 ? queue[get().order[orderPos]!] : undefined;
       if (cur?.source === "local" && get().playing) startPlayback(orderPos);
+    },
+
+    enqueueItems: (items, mode) => {
+      if (items.length === 0) return;
+      const { queue, order, orderPos } = get();
+      if (queue.length === 0 || orderPos < 0) {
+        setQueueAndPlay(items, 0);
+        return;
+      }
+      if (mode === "end") {
+        // Same path as a radio page: the engine's gapless list never saw
+        // these, and advanceOnEnd continues into them.
+        appendQueueItems(items);
+        return;
+      }
+      const base = queue.length;
+      const inserted = items.map((_, i) => base + i);
+      set({
+        queue: [...queue, ...items],
+        order: [
+          ...order.slice(0, orderPos + 1),
+          ...inserted,
+          ...order.slice(orderPos + 1),
+        ],
+      });
+      if (gaplessQueueRunning) gaplessStale = true;
     },
 
     handleMediaCommand: (action, secs) => {

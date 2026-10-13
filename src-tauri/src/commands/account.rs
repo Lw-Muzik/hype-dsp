@@ -175,7 +175,11 @@ impl AccountState {
         self.save(&s);
     }
 
-    fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::blocking::Response, String> {
+    pub(crate) fn post(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<reqwest::blocking::Response, String> {
         self.client
             .post(self.url(path))
             .json(&body)
@@ -275,6 +279,100 @@ impl AccountState {
                 .ok();
         }
         Some(resp)
+    }
+
+    /// Authenticated request of any method (Hype Connect's link/device REST),
+    /// retrying once after a token refresh on 401 — the `auth_get` pattern.
+    /// `Err` means there's no session, or the server couldn't be reached.
+    pub(crate) fn auth_send(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<reqwest::blocking::Response, String> {
+        let send = |access: &str| {
+            let mut req = self
+                .client
+                .request(method.clone(), self.url(path))
+                .bearer_auth(access);
+            if let Some(body) = body {
+                req = req.json(body);
+            }
+            req.send()
+                .map_err(|e| format!("couldn't reach the server: {e}"))
+        };
+        let no_session = || "Not signed in yet — try again in a moment".to_string();
+        let access = self.access_token().ok_or_else(no_session)?;
+        let resp = send(&access)?;
+        if resp.status().as_u16() == 401 && self.refresh_after_401(&access) {
+            let access = self.access_token().ok_or_else(no_session)?;
+            return send(&access);
+        }
+        Ok(resp)
+    }
+
+    /// The Management API base (`HM_MANAGEMENT_API` or the default) — Hype
+    /// Connect derives its WebSocket URL from it.
+    pub fn api_base(&self) -> &str {
+        &self.api
+    }
+
+    /// The current access token, if a session exists.
+    pub fn access_token(&self) -> Option<String> {
+        self.inner.lock().expect("account poisoned").access.clone()
+    }
+
+    /// Renew the access token for a long-lived consumer (the Hype Connect
+    /// socket) after the hub rejected `rejected` (close 4001/4005) or it is
+    /// about to expire. Same single-flight refresh as a 401, so it can't race
+    /// the status check or heartbeat into spending the refresh token twice.
+    pub fn renew_access(&self, rejected: &str) -> hm_connect::Renewal {
+        let refreshed = self.refresh_after_401(rejected);
+        match (refreshed, self.access_token()) {
+            (true, Some(token)) => hm_connect::Renewal::Renewed(token),
+            // The refresh token was rejected and the session cleared.
+            (_, None) => hm_connect::Renewal::SessionGone,
+            // Offline / 5xx: the session is intact, try again later.
+            (false, Some(_)) => hm_connect::Renewal::Unavailable,
+        }
+    }
+
+    /// Take over the session a Hype Connect link claim handed back — the
+    /// account that survived linking this desktop to a phone — then load its
+    /// profile from `GET /me` (the claim carries tokens only). The old
+    /// account's email/name are dropped first so a failed `/me` can't leave
+    /// them labelling the new account.
+    pub fn adopt_session(&self, access: String, refresh: String) {
+        {
+            let mut s = self.inner.lock().expect("account poisoned");
+            *s = Stored {
+                access: Some(access),
+                refresh: Some(refresh),
+                ..Stored::default()
+            };
+            self.save(&s);
+        }
+        let user = self
+            .auth_get("/me")
+            .filter(|r| r.status().is_success())
+            .and_then(|r| r.json::<UserDto>().ok());
+        if let Some(user) = user {
+            let mut s = self.inner.lock().expect("account poisoned");
+            if s.access.is_some() {
+                s.email = Some(user.email);
+                s.name = user.name;
+                s.email_verified = user.email_verified;
+                self.save(&s);
+            }
+        }
+    }
+
+    /// Forget the local session without calling the server: the Connect hub
+    /// closed with 4003 (this device was unlinked), so the tokens are dead
+    /// weight. The front end then bootstraps a fresh anonymous session the
+    /// way `SessionGate` always does when there is none.
+    pub fn drop_session(&self) {
+        self.clear();
     }
 
     /// Create a passwordless account (with details) — the server emails a code.

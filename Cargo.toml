@@ -7,6 +7,7 @@ members = [
     "crates/hm-platform",
     "crates/hm-link",
     "crates/hm-remote",
+    "crates/hm-connect",
     "crates/hm-stems",
     "crates/hm-core",
     "crates/hm-visualizer",
@@ -87,6 +88,7 @@ hm-media = { path = "crates/hm-media" }
 hm-platform = { path = "crates/hm-platform" }
 hm-link = { path = "crates/hm-link" }
 hm-remote = { path = "crates/hm-remote" }
+hm-connect = { path = "crates/hm-connect" }
 hm-stems = { path = "crates/hm-stems" }
 hm-core = { path = "crates/hm-core" }
 hm-ytmusic = { path = "crates/hm-ytmusic" }

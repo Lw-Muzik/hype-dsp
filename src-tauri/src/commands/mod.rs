@@ -13,6 +13,7 @@ pub mod autoeq;
 pub mod cable;
 pub mod chain_presets;
 pub mod cloud;
+pub mod connect;
 pub mod engine;
 pub mod identify;
 pub mod install;

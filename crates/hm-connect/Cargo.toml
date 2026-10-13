@@ -1,0 +1,38 @@
+[package]
+name = "hm-connect"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Hype Connect — protocol v1 types and the player-side hub client that lets a browser drive this desktop."
+
+# Deliberately free of Tauri, reqwest and the audio stack: the crate builds and
+# tests on its own (`cargo test -p hm-connect`) in a small target dir. The app
+# (`src-tauri`) owns HTTP, tokens and the UI events; this crate owns the wire.
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# `rustls-tls-native-roots` only switches tokio-tungstenite's rustls support on;
+# the connector itself is built in `tls.rs` (ring + the OS verifier), so the
+# process-wide CryptoProvider ambiguity (ring via iroh, aws-lc via reqwest)
+# can never panic here.
+tokio-tungstenite = { version = "0.30", default-features = false, features = [
+    "connect",
+    "handshake",
+    "rustls-tls-native-roots",
+] }
+# Same rustls/ring pairing hm-remote uses; no aws-lc-rs build in this crate.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+# Already in the tree through reqwest: verify the hub's certificate the way
+# the OS (and reqwest) does.
+rustls-platform-verifier = "0.7"
+fastrand = "2"
+base64 = "0.22"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["net", "rt-multi-thread", "macros", "time"] }

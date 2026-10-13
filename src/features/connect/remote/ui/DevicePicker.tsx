@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Cast, Globe, Laptop, Smartphone } from "lucide-react";
-import { barIconBtn } from "@/components/BarParts";
 import { cn } from "@/lib/cn";
 import { useConnectStore } from "../../store";
 import type { DeviceKind } from "../../protocol";
@@ -73,7 +72,11 @@ export function DevicePicker({ className }: { className?: string }) {
         aria-expanded={open}
         title="Play on a device"
         onClick={() => setOpen((o) => !o)}
-        className={cn(barIconBtn, remote && "text-success hover:text-success")}
+        className={cn(
+          // No `text-text-muted` alongside the green: classes aren't merged.
+          "flex size-8 items-center justify-center rounded-full transition-colors",
+          remote ? "text-success" : "text-text-muted hover:text-text",
+        )}
       >
         <Cast className="size-4" aria-hidden="true" />
       </button>

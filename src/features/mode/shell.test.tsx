@@ -33,6 +33,7 @@ vi.mock("@/components/SidebarNowPlaying", () => ({
   SidebarNowPlaying: () => <div data-testid="snp" />,
 }));
 vi.mock("@/app/router", () => ({ Router: () => null }));
+vi.mock("@/features/tray/useTray", () => ({ useTray: () => {} }));
 vi.mock("@/stores/musicLibrary", () => ({
   useMusicLibraryStore: Object.assign(
     (sel: (s: unknown) => unknown) => sel({ revalidateLocal: () => {} }),

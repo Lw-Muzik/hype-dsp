@@ -16,6 +16,7 @@ import { useUiStore } from "@/stores/ui";
 import { modeFromSystemEq, routeForMode } from "@/features/mode/appMode";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
 import { useUpdateStore } from "@/stores/update";
+import { useTray } from "@/features/tray/useTray";
 import {
   linkDiscoverStart,
   onPairedOnline,
@@ -24,6 +25,9 @@ import {
 
 /** The application shell: sidebar + top bar + the active view + now-playing. */
 export function App() {
+  // Keep the system tray menu in sync and run its clicks.
+  useTray();
+
   // Mirror the updater's status for the banner and top-bar pill. Idempotent.
   useEffect(() => {
     useUpdateStore.getState().init();

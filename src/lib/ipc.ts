@@ -1776,3 +1776,31 @@ export function onSettingsSection(
 ): Promise<UnlistenFn> {
   return listen<string>("settings://section", (e) => handler(e.payload));
 }
+
+/* ---- system tray ---------------------------------------------------------- */
+
+/** What the tray menu shows. The main window is the source of truth and pushes
+ *  a fresh model whenever any of it changes. */
+export interface TrayModel {
+  nowPlaying: string | null;
+  playing: boolean;
+  canControl: boolean;
+  mode: "player" | "equalizer";
+  modeSupported: boolean;
+  power: boolean;
+  effects: { id: string; label: string; on: boolean; enabled: boolean }[];
+  presets: { id: string; name: string; active: boolean }[];
+  routes: { id: string; label: string }[];
+  visualizer: boolean | null;
+  updateVersion: string | null;
+}
+
+/** Replace the tray menu's contents. */
+export function trayUpdate(model: TrayModel): Promise<void> {
+  return invoke<void>("tray_update", { model });
+}
+
+/** Subscribe to tray menu clicks (payload = action id). */
+export function onTrayAction(handler: (action: string) => void): Promise<UnlistenFn> {
+  return listen<string>("tray://action", (e) => handler(e.payload));
+}

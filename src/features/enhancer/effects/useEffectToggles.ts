@@ -77,7 +77,7 @@ export interface EffectToggle extends EffectDescriptor {
 }
 
 /** Whether `id` is on in `state`. Presets has no on/off state. */
-function enabledOf(id: EffectId, state: EngineState): boolean {
+export function enabledOf(id: EffectId, state: EngineState): boolean {
   switch (id) {
     case "equalizer":
       return state.eq.enabled;
@@ -111,7 +111,7 @@ function enabledOf(id: EffectId, state: EngineState): boolean {
  * turning ON) the cards have always made. Reads the store when it runs, not
  * when a component rendered, so a toggle never sends a stale sibling value.
  */
-function toggleEffect(id: EffectId, on: boolean): void {
+export function toggleEffect(id: EffectId, on: boolean): void {
   const s = useEngineStore.getState();
   const st = s.state;
   switch (id) {

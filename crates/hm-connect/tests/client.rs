@@ -428,6 +428,44 @@ async fn oversized_frames_are_refused() {
     assert!(matches!(handle.send(&big), Err(SendError::TooLarge(_))));
 }
 
+#[tokio::test]
+async fn the_handle_remembers_the_hubs_visualiser_subscription() {
+    let hub = Hub::start().await;
+    let (handle, mut rx, mut conn) = connected(&hub, FakeTokens::with("t")).await;
+    assert!(matches!(frame(&mut rx).await, Frame::Welcome { .. }));
+    assert!(!handle.viz_subscribed(), "nobody subscribed yet");
+
+    conn.send(fixture("viz_sub.player.on.json")).await;
+    assert_eq!(frame(&mut rx).await, frame_of("viz_sub.player.on.json"));
+    assert!(handle.viz_subscribed());
+
+    conn.send(fixture("viz_sub.player.off.json")).await;
+    assert_eq!(frame(&mut rx).await, frame_of("viz_sub.player.off.json"));
+    assert!(!handle.viz_subscribed());
+
+    // A standing subscription does not survive its socket: a new one starts
+    // clean, and only the hub's post-welcome `viz_sub` brings it back.
+    conn.send(fixture("viz_sub.player.on.json")).await;
+    assert_eq!(frame(&mut rx).await, frame_of("viz_sub.player.on.json"));
+    conn.close(4000).await;
+    drop(conn);
+    let mut conn = hub.accept().await;
+    conn.hello().await;
+    assert!(
+        !handle.viz_subscribed(),
+        "the old socket's subscription is gone"
+    );
+    conn.welcome().await;
+    conn.send(fixture("viz_sub.player.on.json")).await;
+    for _ in 0..200 {
+        if handle.viz_subscribed() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("the repeated subscription was never remembered");
+}
+
 fn viz_frame() -> Frame {
     frame_of("viz.player.json")
 }

@@ -63,6 +63,10 @@ pub struct ConnectStatusDto {
     pub device_id: String,
     /// `None` while no client runs (disabled, or not started yet).
     pub connection: Option<ConnectionStatus>,
+    /// A controller is watching this player's visualiser right now (the hub's
+    /// last `viz_sub`). Lets a webview that attached after the hub's
+    /// post-`welcome` `viz_sub` still start streaming.
+    pub viz_subscribed: bool,
 }
 
 /// A "Link with your phone" ticket for the UI. The claim secret stays here.
@@ -195,6 +199,9 @@ impl ConnectState {
             enabled: self.is_enabled(),
             device_id: self.install_id().to_string(),
             connection,
+            viz_subscribed: lock(&self.client)
+                .as_ref()
+                .is_some_and(ConnectHandle::viz_subscribed),
         }
     }
 

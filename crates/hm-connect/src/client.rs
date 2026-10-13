@@ -10,6 +10,7 @@
 //! itself while the read half is polled; nothing here has to do it.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime};
 
@@ -127,6 +128,11 @@ struct Shared {
     status: Mutex<ConnectionStatus>,
     /// When the last `viz` frames were queued — the hub's per-socket budget.
     viz_budget: Mutex<SlidingWindow>,
+    /// Whether the hub last said `viz_sub on` on the live socket. Kept here as
+    /// well as forwarded, so an app that attaches its listener after the
+    /// subscription arrived (the hub sends it right after `welcome`, which can
+    /// beat the webview at launch) can still ask.
+    viz_on: AtomicBool,
 }
 
 /// At most `max` events inside any `span`: the shape of the hub's `viz`
@@ -241,6 +247,12 @@ impl ConnectHandle {
         lock(&self.shared.status).clone()
     }
 
+    /// Whether a controller is subscribed to this player's visualiser right
+    /// now (the hub's last `viz_sub` on this socket; `false` between sockets).
+    pub fn viz_subscribed(&self) -> bool {
+        self.shared.viz_on.load(Ordering::SeqCst)
+    }
+
     /// Ask the client to close its socket (code 1000) and stop.
     pub fn stop(&self) {
         let _ = self.shutdown.send(true);
@@ -286,6 +298,7 @@ pub fn spawn(
             MAX_VIZ_PER_SECOND,
             Duration::from_secs(1),
         )),
+        viz_on: AtomicBool::new(false),
     });
     let supervisor = Supervisor {
         config,
@@ -537,6 +550,9 @@ impl Supervisor {
                         Some(Ok(Message::Text(text))) => {
                             match serde_json::from_str::<Frame>(&text) {
                                 Ok(frame) => {
+                                    if let Frame::VizSub { on, .. } = &frame {
+                                        self.shared.viz_on.store(*on, Ordering::SeqCst);
+                                    }
                                     if let Frame::Welcome { device_id, .. } = &frame {
                                         welcomed = true;
                                         *lock(&self.shared.outbound) = Some(tx.clone());
@@ -570,6 +586,9 @@ impl Supervisor {
             }
         };
         *lock(&self.shared.outbound) = None;
+        // A subscription belongs to its socket; the hub repeats it after the
+        // next socket's `welcome`.
+        self.shared.viz_on.store(false, Ordering::SeqCst);
         (welcomed, end)
     }
 }

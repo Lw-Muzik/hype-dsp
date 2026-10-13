@@ -4,6 +4,7 @@
 //! the floor: `ort` rc.10 asks for API version 22, and an older runtime makes
 //! the load fail.
 
+use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -78,10 +79,23 @@ pub fn lib_path(root: &Path) -> Option<PathBuf> {
     spec().map(|s| root.join("runtime").join(s.lib_name))
 }
 
+/// `ORT_DYLIB_PATH`, but only when it names a file that exists. A developer
+/// sets it to try their own build; a stale value must not win. The Demucs-era
+/// app set it on itself at startup, the updater's restart hands that
+/// environment to the new version, and the legacy clean-up has since moved the
+/// file — trusting it made every load fail.
+fn env_override() -> Option<PathBuf> {
+    usable_override(std::env::var_os("ORT_DYLIB_PATH"))
+}
+
+fn usable_override(value: Option<OsString>) -> Option<PathBuf> {
+    value.map(PathBuf::from).filter(|p| p.is_file())
+}
+
 /// Is a runtime available — either one the developer pointed `ORT_DYLIB_PATH`
 /// at, or the one we installed?
 pub fn is_ready(root: &Path) -> bool {
-    std::env::var_os("ORT_DYLIB_PATH").is_some() || lib_path(root).is_some_and(|p| p.is_file())
+    env_override().is_some() || lib_path(root).is_some_and(|p| p.is_file())
 }
 
 /// Download size of the runtime for this platform (0 if unsupported/ready).
@@ -92,15 +106,20 @@ pub fn download_bytes(root: &Path) -> u64 {
     spec().map_or(0, |s| s.size)
 }
 
-/// Point `ort` at the installed library. A no-op when `ORT_DYLIB_PATH` is set
-/// (it wins) or nothing is installed; harmless to call repeatedly.
-pub fn activate(root: &Path) {
-    if std::env::var_os("ORT_DYLIB_PATH").is_some() {
-        return;
-    }
-    if let Some(p) = lib_path(root).filter(|p| p.is_file()) {
-        let _ = ort::init_from(p.to_string_lossy().to_string()).commit();
-    }
+/// Point `ort` at the library — a usable `ORT_DYLIB_PATH` first, else the one
+/// we installed — and load it. Call it before any other `ort` API: the first
+/// path `ort` sees sticks for the life of the process. Harmless to call
+/// repeatedly; a no-op when nothing is installed.
+pub fn activate(root: &Path) -> Result<(), StemError> {
+    let Some(path) = env_override().or_else(|| lib_path(root).filter(|p| p.is_file())) else {
+        return Ok(());
+    };
+    crate::nets::catch_ort(|| {
+        ort::init_from(path.to_string_lossy().to_string())
+            .commit()
+            .map(|_| ())
+            .map_err(|e| StemError::Engine(e.to_string()))
+    })
 }
 
 /// Fetch, verify and unpack the runtime. `progress` gets `(done, total)` bytes.
@@ -212,6 +231,17 @@ mod tests {
         assert_eq!(std::fs::read(&out).unwrap(), b"the library");
         assert!(extract(&archive, Archive::TarGz, "lib/missing", &dir.join("o2")).is_err());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn ort_dylib_path_counts_only_when_the_file_exists() {
+        assert_eq!(usable_override(None), None);
+        let stale = std::env::temp_dir().join(format!("hm_stems_no_such_lib_{}", std::process::id()));
+        assert_eq!(usable_override(Some(stale.into_os_string())), None);
+        let real = std::env::temp_dir().join(format!("hm_stems_lib_{}", std::process::id()));
+        std::fs::write(&real, b"lib").unwrap();
+        assert_eq!(usable_override(Some(real.clone().into_os_string())), Some(real.clone()));
+        let _ = std::fs::remove_file(real);
     }
 
     #[test]

@@ -151,7 +151,7 @@ impl Separator {
                 if !runtime::is_ready(root) {
                     return Err(StemError::Unavailable);
                 }
-                runtime::activate(root);
+                runtime::activate(root)?;
             }
             *guard = Some(OrtNets::load(&self.model_dir)?);
         }

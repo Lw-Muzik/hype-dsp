@@ -19,8 +19,8 @@ const KC_SERVICE: &str = "com.hypemuzik.desktop.install";
 const KC_ACCOUNT: &str = "install-id";
 const FILE_NAME: &str = "install-id";
 
-/// Management API base (same env override as `account.rs`).
-const DEFAULT_API: &str = "http://37.60.225.220:9400/api";
+// Management API base: the same default and env override as `account.rs`.
+use super::account::DEFAULT_API;
 /// How often to heartbeat while running (the server rolls these up per-day).
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 

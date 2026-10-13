@@ -40,10 +40,7 @@ impl OrtNets {
     /// pattern (four arenas each held at their peak) — about 400 MB resident
     /// instead of ~1 GB, at the same speed.
     pub fn load(dir: &Path) -> Result<Self, StemError> {
-        // With `load-dynamic`, `ort` panics when it can't find the runtime
-        // library; turn that into an error the UI can show.
-        std::panic::catch_unwind(|| Self::load_inner(dir))
-            .unwrap_or_else(|_| Err(StemError::Engine("the ONNX Runtime library could not be loaded".into())))
+        catch_ort(|| Self::load_inner(dir))
     }
 
     fn load_inner(dir: &Path) -> Result<Self, StemError> {
@@ -91,6 +88,36 @@ impl NetRunner for OrtNets {
     }
 }
 
+/// Run `f`, turning a panic inside `ort` into an error the UI can show. With
+/// `load-dynamic`, `ort` panics when it can't load the runtime library; keep
+/// its message, which names the path and the loader's reason.
+pub(crate) fn catch_ort<T>(
+    f: impl FnOnce() -> Result<T, StemError> + std::panic::UnwindSafe,
+) -> Result<T, StemError> {
+    std::panic::catch_unwind(f).unwrap_or_else(|payload| {
+        let why = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| payload.downcast_ref::<&str>().copied())
+            .unwrap_or("unknown error");
+        Err(StemError::Engine(format!("the ONNX Runtime library could not be loaded: {why}")))
+    })
+}
+
 fn ort_err(e: impl std::fmt::Display) -> StemError {
     StemError::Engine(e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_panic_inside_ort_becomes_an_error_that_keeps_the_reason() {
+        let r: Result<(), StemError> = catch_ort(|| panic!("dlopen(/gone/libonnxruntime.dylib): no such file"));
+        let msg = r.unwrap_err().to_string();
+        assert!(msg.contains("could not be loaded"), "{msg}");
+        assert!(msg.contains("/gone/libonnxruntime.dylib): no such file"), "{msg}");
+        assert_eq!(catch_ort(|| Ok(7)).unwrap(), 7);
+    }
 }

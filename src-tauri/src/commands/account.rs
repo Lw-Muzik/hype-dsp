@@ -17,8 +17,10 @@ use tauri::{AppHandle, State};
 use super::install::resolve_install_id;
 
 /// Management API base, overridable at runtime via `HM_MANAGEMENT_API`
-/// (e.g. `http://localhost:4000/api` for local dev).
-const DEFAULT_API: &str = "http://37.60.225.220:9400/api";
+/// (e.g. `http://localhost:4000/api` for local dev). The production backend
+/// (anonymous sign-in, Hype Connect's hub); the old `37.60.225.220:9400` box
+/// has neither, so the app could never sign in there.
+pub(crate) const DEFAULT_API: &str = "https://api.hypemuzik.com/api";
 
 #[derive(Default, Serialize, Deserialize)]
 struct Stored {

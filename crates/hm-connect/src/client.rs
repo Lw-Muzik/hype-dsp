@@ -171,8 +171,9 @@ impl SlidingWindow {
 }
 
 /// Whether an inbound frame is addressed to a player and so reaches the app.
-/// Everything else (`pong` aside, which the app needs for the hub clock) is
-/// controller-bound chatter — acks, `viz`, `select` … — and is dropped.
+/// `ack` is included since v1.2: this desktop can be a remote, and the acks
+/// of the commands it sent come back to it. Everything else (`viz`, `select`
+/// …) is controller-bound chatter and is dropped.
 pub fn is_for_player(frame: &Frame) -> bool {
     matches!(
         frame,
@@ -184,6 +185,7 @@ pub fn is_for_player(frame: &Frame) -> bool {
             | Frame::Error { .. }
             | Frame::VizSub { .. }
             | Frame::Pong { .. }
+            | Frame::Ack { .. }
     )
 }
 
@@ -201,11 +203,20 @@ pub struct ConnectHandle {
 impl ConnectHandle {
     /// Queue a frame for the hub. Only what a player legitimately sends is
     /// accepted (`ack`, `rpc_result`, its own `state` and `viz`, and `ping`
-    /// for the clock), so a bug on the app side can't speak for a controller
-    /// or re-`hello`.
+    /// for the clock). Since v1.2 a player may also act as a remote: `select`
+    /// and an outbound `cmd` (addressed with `to`, never `from`, which is the
+    /// hub's). A bug on the app side still can't re-`hello` or forge a sender.
     pub fn send(&self, frame: &Frame) -> Result<(), SendError> {
         let viz = match frame {
-            Frame::Ack { .. } | Frame::RpcResult { .. } | Frame::Ping { .. } => false,
+            Frame::Ack { .. }
+            | Frame::RpcResult { .. }
+            | Frame::Ping { .. }
+            | Frame::Select { .. } => false,
+            Frame::Cmd {
+                to: Some(_),
+                from: None,
+                ..
+            } => false,
             Frame::State {
                 device_id: None,
                 state,
@@ -651,7 +662,7 @@ mod tests {
         assert!(pass(r#"{"t":"pong","id":"p","serverTime":1}"#));
         assert!(pass(r#"{"t":"error","code":"x","message":"y"}"#));
         assert!(!pass(r#"{"t":"ping","id":"p"}"#));
-        assert!(!pass(r#"{"t":"ack","id":"a","ok":true}"#));
+        assert!(pass(r#"{"t":"ack","id":"a","ok":true}"#), "acks of our remote cmds");
         assert!(!pass(r#"{"t":"select","deviceId":null}"#));
         let viz = Frame::Viz {
             device_id: Some("p".into()),

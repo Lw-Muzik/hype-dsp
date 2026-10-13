@@ -303,9 +303,11 @@ async fn inbound_frames_are_forwarded_in_order() {
 
     conn.send(fixture("cmd.play.from.json")).await;
     conn.send(fixture("rpc.search.from.json")).await;
-    // Not addressed to a player: dropped, never forwarded.
+    // Not addressed to a player: dropped, never forwarded. (An `ack` is
+    // forwarded since v1.2: it answers a cmd this desktop sent as a remote.)
     conn.send(fixture("ack.ok.json")).await;
     conn.send(fixture("viz.stamped.json")).await;
+    conn.send(fixture("select.json")).await;
     // v1.1: the hub's subscriber edge and the clock's answer are the app's.
     conn.send(fixture("viz_sub.player.on.json")).await;
     conn.send(fixture("pong.json")).await;
@@ -317,6 +319,7 @@ async fn inbound_frames_are_forwarded_in_order() {
 
     assert_eq!(frame(&mut rx).await, frame_of("cmd.play.from.json"));
     assert_eq!(frame(&mut rx).await, frame_of("rpc.search.from.json"));
+    assert_eq!(frame(&mut rx).await, frame_of("ack.ok.json"));
     assert_eq!(frame(&mut rx).await, frame_of("viz_sub.player.on.json"));
     assert_eq!(frame(&mut rx).await, frame_of("pong.json"));
     assert_eq!(frame(&mut rx).await, frame_of("viz_sub.player.off.json"));
@@ -334,6 +337,9 @@ async fn outbound_frames_reach_the_hub_verbatim() {
     for name in [
         "ack.ok.json",
         "ack.error.json",
+        // v1.2: a player acting as a remote.
+        "cmd.play.to.json",
+        "select.json",
         "state.player.json",
         "rpc_result.search.json",
         "rpc_result.lyrics.json",
@@ -353,9 +359,9 @@ async fn a_player_cannot_send_controller_or_hub_frames() {
     let (handle, _rx, _conn) = connected(&hub, FakeTokens::with("t")).await;
     for (name, tag) in [
         ("hello.mobile.json", "hello"),
-        ("cmd.play.to.json", "cmd"),
+        // A `cmd` carries `to` outbound; one with the hub's `from` is forged.
+        ("cmd.play.from.json", "cmd"),
         ("rpc.search.to.json", "rpc"),
-        ("select.json", "select"),
         ("pong.json", "pong"),
         // A player is told `viz_sub`, never sends it; `viz` fans out from the hub.
         ("viz_sub.player.on.json", "viz_sub"),

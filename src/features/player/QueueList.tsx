@@ -180,7 +180,7 @@ export function QueueList() {
       {/* Now playing — static. */}
       {current && (
         <div className="shrink-0 px-2 pt-3">
-          <h3 className="mb-2 px-1 text-base font-bold tracking-tight">
+          <h3 className="mb-2 px-1 text-base font-semibold tracking-tight">
             Now playing
           </h3>
           <div style={{ height: ROW_H }}>
@@ -196,7 +196,7 @@ export function QueueList() {
 
       {/* Next up — header static, list scrolls. */}
       <div className="flex shrink-0 items-center justify-between px-3 pb-2 pt-4">
-        <h3 className="text-base font-bold tracking-tight">Next up</h3>
+        <h3 className="text-base font-semibold tracking-tight">Next up</h3>
         <label className="flex items-center gap-2 text-[13px] text-text-muted">
           Autoplay
           <Switch checked={autoplay} onChange={setAutoplay} label="Autoplay — keep similar tracks coming" />

@@ -170,7 +170,7 @@ export function NowPlayingBar() {
         <div className="min-w-0">
           <p
             className={cn(
-              "truncate text-sm font-medium",
+              "truncate font-display text-sm font-medium",
               !active && "text-text-faint",
             )}
           >

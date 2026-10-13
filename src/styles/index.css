@@ -1,5 +1,43 @@
 @import "tailwindcss";
 
+/* Bundled locally (ITF Free Font License, src/assets/fonts/LICENSE-ITF-FFL.txt):
+   the CSP is default-src 'self' and the app must work offline. */
+@font-face {
+  font-family: "Satoshi";
+  src: url("../assets/fonts/Satoshi-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("../assets/fonts/Satoshi-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("../assets/fonts/Satoshi-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Clash Display";
+  src: url("../assets/fonts/ClashDisplay-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Clash Display";
+  src: url("../assets/fonts/ClashDisplay-Semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 /*
  * Design tokens (Tailwind v4, CSS-first via @theme).
  * Dark-first. Components reference these as utilities — bg-surface,
@@ -30,7 +68,13 @@
   --color-danger: #e5564b;
 
   --font-sans:
-    -apple-system, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    "Satoshi", -apple-system, system-ui, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  /* Display face (Tailwind `font-display`): headings and the player title.
+     Only 500/600 are bundled — keep display text at font-medium/semibold. */
+  --font-display:
+    "Clash Display", "Satoshi", -apple-system, system-ui, "Segoe UI", Roboto,
+    sans-serif;
 
   --radius-card: 14px;
   --radius-control: 10px;
@@ -137,6 +181,18 @@ body {
   /* The shell owns scrolling; prevent the whole window rubber-banding. */
   overflow: hidden;
   user-select: none;
+}
+
+/* View titles and headings share the display face. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+}
+
+/* Times and counters keep fixed-width digits. */
+time {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Visible focus for every interactive control. */

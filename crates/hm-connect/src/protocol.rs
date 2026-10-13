@@ -1,4 +1,5 @@
-//! Hype Connect protocol v1 — every WebSocket frame, REST body and RPC payload
+//! Hype Connect protocol v1 (+ the v1.1 `lyrics` rpc and visualiser stream) —
+//! every WebSocket frame, REST body and RPC payload
 //! from `hypemuzik-management/backend/docs/hype-connect.md`, as serde types.
 //!
 //! The JSON these produce is the contract, so the shapes follow it literally:
@@ -41,14 +42,40 @@ pub enum DeviceKind {
     Desktop,
 }
 
+/// Most `viz` frames a player may send per second (§3.11); the hub drops the
+/// excess silently, so [`crate::ConnectHandle::send`] refuses them instead.
+pub const MAX_VIZ_PER_SECOND: usize = 30;
+
+/// Largest `viz` frame the hub accepts (§3.11).
+pub const MAX_VIZ_FRAME_BYTES: usize = 1024;
+
+/// Bands in a [`VizFrame`] — fixed by the contract.
+pub const VIZ_BANDS: usize = 32;
+
 /// What a device can do. `player` obeys commands and publishes state, `yt`
-/// plays/searches YouTube Music, `local` answers the `library` rpc.
+/// plays/searches YouTube Music, `local` answers the `library` rpc, `lyrics`
+/// answers the `lyrics` rpc and `viz` streams `viz` frames (both v1.1).
+///
+/// Receivers ignore caps they don't know (§3.1) — see [`lenient_caps`] — so a
+/// newer peer's capability never makes a `welcome` or `devices` frame fail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Cap {
     Player,
     Yt,
     Local,
+    Lyrics,
+    Viz,
+}
+
+/// Deserialize a `caps` array, dropping entries this build doesn't know
+/// instead of rejecting the frame.
+fn lenient_caps<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Cap>, D::Error> {
+    let raw = Vec::<Value>::deserialize(d)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<Cap>(v).ok())
+        .collect())
 }
 
 /// The device block of `hello`.
@@ -60,6 +87,7 @@ pub struct DeviceHello {
     pub name: String,
     pub platform: String,
     pub app_version: String,
+    #[serde(deserialize_with = "lenient_caps")]
     pub caps: Vec<Cap>,
 }
 
@@ -72,6 +100,7 @@ pub struct DeviceInfo {
     pub name: String,
     pub platform: Option<String>,
     pub app_version: Option<String>,
+    #[serde(deserialize_with = "lenient_caps")]
     pub caps: Vec<Cap>,
     pub online: bool,
     pub last_seen_at: String,
@@ -269,6 +298,8 @@ pub enum RpcMethod {
     Open,
     Artist,
     Library,
+    /// v1.1: the lyrics of the track playing now (needs cap `lyrics`).
+    Lyrics,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -331,6 +362,8 @@ pub enum RpcCall {
     Open(OpenParams),
     Artist(ArtistParams),
     Library(LibraryParams),
+    /// `lyrics` takes `{}`; anything an object carries is ignored.
+    Lyrics,
 }
 
 impl RpcCall {
@@ -343,6 +376,10 @@ impl RpcCall {
             RpcMethod::Open => Self::Open(serde_json::from_value(p)?),
             RpcMethod::Artist => Self::Artist(serde_json::from_value(p)?),
             RpcMethod::Library => Self::Library(serde_json::from_value(p)?),
+            RpcMethod::Lyrics => {
+                serde_json::from_value::<serde_json::Map<String, Value>>(p)?;
+                Self::Lyrics
+            }
         })
     }
 }
@@ -401,6 +438,73 @@ pub struct LibraryResult {
     #[serde(with = "lenient::u64")]
     pub total: u64,
     pub tracks: Vec<TrackRef>,
+}
+
+/// One timed word of a lyric line.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LyricWord {
+    #[serde(with = "lenient::u64")]
+    pub start_ms: u64,
+    #[serde(with = "lenient::u64")]
+    pub end_ms: u64,
+    pub text: String,
+}
+
+/// One line of lyrics. `start_ms` is `null` when the lyrics aren't synced;
+/// `text` may be `""` for an instrumental gap; `words` is `null` unless the
+/// source has word timing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LyricLine {
+    #[serde(with = "lenient::opt_u64")]
+    pub start_ms: Option<u64>,
+    pub text: String,
+    pub words: Option<Vec<LyricWord>>,
+}
+
+/// The `lyrics` rpc result (§3.8): the lyrics of `track`, the player's
+/// current track when it answered.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Lyrics {
+    pub track: Option<TrackRef>,
+    pub found: bool,
+    pub synced: bool,
+    pub source: Option<String>,
+    pub lines: Vec<LyricLine>,
+}
+
+// ---------------------------------------------------------------------- viz
+
+/// What a player's audio looks like right now (§3.11).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VizFrame {
+    /// HUB-clock epoch ms at which this frame's audio is heard.
+    #[serde(with = "lenient::u64")]
+    pub heard_at: u64,
+    /// The playback position the frame describes.
+    #[serde(with = "lenient::u64")]
+    pub position_ms: u64,
+    /// Exactly [`VIZ_BANDS`] values in `0..1`, log-spaced ~30 Hz → 16 kHz,
+    /// low first.
+    pub bands: Vec<f64>,
+    /// Overall loudness `0..1`.
+    pub level: f64,
+    /// Bass-onset strength `0..1` (`0` = no onset this frame).
+    pub beat: f64,
+}
+
+impl VizFrame {
+    /// Whether the frame obeys the contract's shape: 32 bands, every number
+    /// finite and inside `0..=1`.
+    pub fn is_valid(&self) -> bool {
+        let unit = |v: &f64| v.is_finite() && (0.0..=1.0).contains(v);
+        self.bands.len() == VIZ_BANDS
+            && self.bands.iter().all(unit)
+            && unit(&self.level)
+            && unit(&self.beat)
+    }
 }
 
 // ------------------------------------------------------------------ frames
@@ -484,6 +588,20 @@ pub enum Frame {
         #[serde(with = "lenient::u64")]
         server_time: u64,
     },
+    /// controller → hub (`to`) and hub → player (no `to`; the hub's 0 ↔ 1
+    /// subscriber edge). v1.1.
+    VizSub {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to: Option<String>,
+        on: bool,
+    },
+    /// player → hub (no `deviceId`) and hub → each subscribed controller
+    /// (`deviceId` = the player). v1.1.
+    Viz {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        device_id: Option<String>,
+        frame: VizFrame,
+    },
 }
 
 impl Frame {
@@ -502,6 +620,8 @@ impl Frame {
             Frame::RpcResult { .. } => "rpc_result",
             Frame::Ping { .. } => "ping",
             Frame::Pong { .. } => "pong",
+            Frame::VizSub { .. } => "viz_sub",
+            Frame::Viz { .. } => "viz",
         }
     }
 

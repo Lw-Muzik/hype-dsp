@@ -9,6 +9,7 @@
 //! Protocol-level WebSocket pings from the hub are answered by tungstenite
 //! itself while the read half is polled; nothing here has to do it.
 
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime};
 
@@ -24,7 +25,9 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::Connector;
 
 use crate::policy::{classify_close, Backoff, CloseAction, StopReason};
-use crate::protocol::{AckError, DeviceHello, Frame, RpcError, MAX_FRAME_BYTES, PROTOCOL_VERSION};
+use crate::protocol::{
+    AckError, DeviceHello, Frame, RpcError, MAX_FRAME_BYTES, MAX_VIZ_PER_SECOND, PROTOCOL_VERSION,
+};
 use crate::token::{expires_within, Renewal, TokenProvider};
 
 /// Everything the client needs besides tokens.
@@ -95,7 +98,7 @@ pub enum ConnectionStatus {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientEvent {
     Status(ConnectionStatus),
-    /// An inbound `welcome`, `devices`, `state`, `cmd`, `rpc` or `error`.
+    /// An inbound frame addressed to a player — see [`is_for_player`].
     Frame(Box<Frame>),
 }
 
@@ -109,6 +112,10 @@ pub enum SendError {
     TooLarge(usize),
     #[error("too many frames waiting to be sent")]
     Busy,
+    #[error("a `viz` frame must carry exactly 32 bands, all in 0..1")]
+    BadViz,
+    #[error("more than {MAX_VIZ_PER_SECOND} `viz` frames in a second")]
+    VizRateLimited,
     #[error("couldn't encode the frame: {0}")]
     Encode(String),
 }
@@ -118,6 +125,60 @@ struct Shared {
     /// end of that socket.
     outbound: Mutex<Option<mpsc::Sender<String>>>,
     status: Mutex<ConnectionStatus>,
+    /// When the last `viz` frames were queued — the hub's per-socket budget.
+    viz_budget: Mutex<SlidingWindow>,
+}
+
+/// At most `max` events inside any `span`: the shape of the hub's `viz`
+/// budget (§3.11), which drops the excess silently.
+#[derive(Debug)]
+struct SlidingWindow {
+    max: usize,
+    span: Duration,
+    events: VecDeque<std::time::Instant>,
+}
+
+impl SlidingWindow {
+    fn new(max: usize, span: Duration) -> Self {
+        Self {
+            max,
+            span,
+            events: VecDeque::with_capacity(max),
+        }
+    }
+
+    /// Record an event at `now` unless that would exceed the budget.
+    fn try_acquire(&mut self, now: std::time::Instant) -> bool {
+        while let Some(&oldest) = self.events.front() {
+            if now.saturating_duration_since(oldest) >= self.span {
+                self.events.pop_front();
+            } else {
+                break;
+            }
+        }
+        if self.events.len() >= self.max {
+            return false;
+        }
+        self.events.push_back(now);
+        true
+    }
+}
+
+/// Whether an inbound frame is addressed to a player and so reaches the app.
+/// Everything else (`pong` aside, which the app needs for the hub clock) is
+/// controller-bound chatter — acks, `viz`, `select` … — and is dropped.
+pub fn is_for_player(frame: &Frame) -> bool {
+    matches!(
+        frame,
+        Frame::Welcome { .. }
+            | Frame::Cmd { .. }
+            | Frame::Rpc { .. }
+            | Frame::Devices { .. }
+            | Frame::State { .. }
+            | Frame::Error { .. }
+            | Frame::VizSub { .. }
+            | Frame::Pong { .. }
+    )
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -133,23 +194,43 @@ pub struct ConnectHandle {
 
 impl ConnectHandle {
     /// Queue a frame for the hub. Only what a player legitimately sends is
-    /// accepted (`ack`, `rpc_result`, and its own `state`), so a bug on the
-    /// app side can't speak for a controller or re-`hello`.
+    /// accepted (`ack`, `rpc_result`, its own `state` and `viz`, and `ping`
+    /// for the clock), so a bug on the app side can't speak for a controller
+    /// or re-`hello`.
     pub fn send(&self, frame: &Frame) -> Result<(), SendError> {
-        match frame {
-            Frame::Ack { .. } | Frame::RpcResult { .. } => {}
+        let viz = match frame {
+            Frame::Ack { .. } | Frame::RpcResult { .. } | Frame::Ping { .. } => false,
             Frame::State {
                 device_id: None,
                 state,
-            } if state.at.is_none() => {}
+            } if state.at.is_none() => false,
+            Frame::Viz {
+                device_id: None,
+                frame,
+            } => {
+                if !frame.is_valid() {
+                    return Err(SendError::BadViz);
+                }
+                true
+            }
             other => return Err(SendError::NotAllowed(other.tag())),
-        }
+        };
         let text = serde_json::to_string(frame).map_err(|e| SendError::Encode(e.to_string()))?;
+        // A valid `viz` frame (32 finite numbers in 0..1) serializes to well
+        // under the hub's 1 KiB cap (`MAX_VIZ_FRAME_BYTES`) by construction —
+        // pinned in `tests/client.rs` — so only the general limit is checked.
         if text.len() > MAX_FRAME_BYTES {
             return Err(SendError::TooLarge(text.len()));
         }
         let guard = lock(&self.shared.outbound);
         let tx = guard.as_ref().ok_or(SendError::NotConnected)?;
+        // Spend the budget only for a frame that will really be queued.
+        if viz
+            && tx.capacity() > 0
+            && !lock(&self.shared.viz_budget).try_acquire(std::time::Instant::now())
+        {
+            return Err(SendError::VizRateLimited);
+        }
         tx.try_send(text).map_err(|e| match e {
             mpsc::error::TrySendError::Full(_) => SendError::Busy,
             mpsc::error::TrySendError::Closed(_) => SendError::NotConnected,
@@ -201,6 +282,10 @@ pub fn spawn(
     let shared = Arc::new(Shared {
         outbound: Mutex::new(None),
         status: Mutex::new(ConnectionStatus::Connecting { attempt: 0 }),
+        viz_budget: Mutex::new(SlidingWindow::new(
+            MAX_VIZ_PER_SECOND,
+            Duration::from_secs(1),
+        )),
     });
     let supervisor = Supervisor {
         config,
@@ -459,16 +544,8 @@ impl Supervisor {
                                             device_id: device_id.clone(),
                                         });
                                     }
-                                    // pong/ack/… are not addressed to a player.
-                                    if matches!(
-                                        frame,
-                                        Frame::Welcome { .. }
-                                            | Frame::Cmd { .. }
-                                            | Frame::Rpc { .. }
-                                            | Frame::Devices { .. }
-                                            | Frame::State { .. }
-                                            | Frame::Error { .. }
-                                    ) {
+                                    // ack/viz/… are not addressed to a player.
+                                    if is_for_player(&frame) {
                                         self.emit(frame);
                                     }
                                 }
@@ -533,7 +610,7 @@ mod tests {
             unsupported_reply(cmd),
             Some(Frame::ack_error("c-9", AckError::Unsupported))
         );
-        let rpc = r#"{"t":"rpc","id":"r-9","from":"w","method":"lyrics","params":{}}"#;
+        let rpc = r#"{"t":"rpc","id":"r-9","from":"w","method":"karaoke","params":{}}"#;
         assert_eq!(
             unsupported_reply(rpc),
             Some(Frame::rpc_error("r-9", RpcError::Unsupported))
@@ -545,5 +622,48 @@ mod tests {
             "no id, nothing to answer"
         );
         assert_eq!(unsupported_reply("not json"), None);
+    }
+
+    #[test]
+    fn only_player_bound_frames_pass_the_filter() {
+        use crate::protocol::VizFrame;
+        let pass = |json: &str| is_for_player(&serde_json::from_str::<Frame>(json).unwrap());
+        assert!(pass(r#"{"t":"viz_sub","on":true}"#));
+        assert!(pass(r#"{"t":"pong","id":"p","serverTime":1}"#));
+        assert!(pass(r#"{"t":"error","code":"x","message":"y"}"#));
+        assert!(!pass(r#"{"t":"ping","id":"p"}"#));
+        assert!(!pass(r#"{"t":"ack","id":"a","ok":true}"#));
+        assert!(!pass(r#"{"t":"select","deviceId":null}"#));
+        let viz = Frame::Viz {
+            device_id: Some("p".into()),
+            frame: VizFrame {
+                heard_at: 1,
+                position_ms: 1,
+                bands: vec![0.0; 32],
+                level: 0.0,
+                beat: 0.0,
+            },
+        };
+        assert!(!is_for_player(&viz), "viz fans out to controllers only");
+    }
+
+    #[test]
+    fn the_sliding_window_allows_max_per_span_and_recovers() {
+        use std::time::Instant;
+        let t0 = Instant::now();
+        let mut w = SlidingWindow::new(3, Duration::from_secs(1));
+        assert!(w.try_acquire(t0));
+        assert!(w.try_acquire(t0 + Duration::from_millis(100)));
+        assert!(w.try_acquire(t0 + Duration::from_millis(200)));
+        assert!(
+            !w.try_acquire(t0 + Duration::from_millis(999)),
+            "4th inside a second"
+        );
+        assert!(
+            w.try_acquire(t0 + Duration::from_millis(1000)),
+            "the first aged out exactly a span later"
+        );
+        assert!(!w.try_acquire(t0 + Duration::from_millis(1001)));
+        assert!(w.try_acquire(t0 + Duration::from_millis(1100)));
     }
 }

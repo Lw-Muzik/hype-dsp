@@ -40,7 +40,7 @@ fn device() -> DeviceHello {
         name: "Bruno's MacBook".into(),
         platform: "macos".into(),
         app_version: "0.1.26".into(),
-        caps: vec![Cap::Player, Cap::Yt, Cap::Local],
+        caps: vec![Cap::Player, Cap::Yt, Cap::Local, Cap::Lyrics, Cap::Viz],
     }
 }
 
@@ -289,7 +289,10 @@ async fn hello_announces_this_desktop_as_a_player() {
     assert_eq!(token, "token-0");
     assert_eq!(dev, device());
     assert_eq!(dev.kind, DeviceKind::Desktop);
-    assert_eq!(dev.caps, vec![Cap::Player, Cap::Yt, Cap::Local]);
+    assert_eq!(
+        dev.caps,
+        vec![Cap::Player, Cap::Yt, Cap::Local, Cap::Lyrics, Cap::Viz]
+    );
 }
 
 #[tokio::test]
@@ -301,13 +304,23 @@ async fn inbound_frames_are_forwarded_in_order() {
     conn.send(fixture("cmd.play.from.json")).await;
     conn.send(fixture("rpc.search.from.json")).await;
     // Not addressed to a player: dropped, never forwarded.
+    conn.send(fixture("ack.ok.json")).await;
+    conn.send(fixture("viz.stamped.json")).await;
+    // v1.1: the hub's subscriber edge and the clock's answer are the app's.
+    conn.send(fixture("viz_sub.player.on.json")).await;
     conn.send(fixture("pong.json")).await;
+    conn.send(fixture("viz_sub.player.off.json")).await;
+    conn.send(fixture("rpc.lyrics.from.json")).await;
     conn.send(fixture("devices.json")).await;
     conn.send(fixture("state.stamped.json")).await;
     conn.send(fixture("error.json")).await;
 
     assert_eq!(frame(&mut rx).await, frame_of("cmd.play.from.json"));
     assert_eq!(frame(&mut rx).await, frame_of("rpc.search.from.json"));
+    assert_eq!(frame(&mut rx).await, frame_of("viz_sub.player.on.json"));
+    assert_eq!(frame(&mut rx).await, frame_of("pong.json"));
+    assert_eq!(frame(&mut rx).await, frame_of("viz_sub.player.off.json"));
+    assert_eq!(frame(&mut rx).await, frame_of("rpc.lyrics.from.json"));
     assert_eq!(frame(&mut rx).await, frame_of("devices.json"));
     assert_eq!(frame(&mut rx).await, frame_of("state.stamped.json"));
     assert_eq!(frame(&mut rx).await, frame_of("error.json"));
@@ -323,6 +336,11 @@ async fn outbound_frames_reach_the_hub_verbatim() {
         "ack.error.json",
         "state.player.json",
         "rpc_result.search.json",
+        "rpc_result.lyrics.json",
+        "rpc_result.lyrics.none.json",
+        // v1.1: the clock probe and the visualiser stream.
+        "ping.json",
+        "viz.player.json",
     ] {
         handle.send(&frame_of(name)).unwrap();
         assert_eq!(conn.json().await, fixture(name), "{name}");
@@ -338,7 +356,11 @@ async fn a_player_cannot_send_controller_or_hub_frames() {
         ("cmd.play.to.json", "cmd"),
         ("rpc.search.to.json", "rpc"),
         ("select.json", "select"),
-        ("ping.json", "ping"),
+        ("pong.json", "pong"),
+        // A player is told `viz_sub`, never sends it; `viz` fans out from the hub.
+        ("viz_sub.player.on.json", "viz_sub"),
+        ("viz_sub.to.json", "viz_sub"),
+        ("viz.stamped.json", "viz"),
         // A stamped state is the hub's; a player never names itself or stamps.
         ("state.stamped.json", "state"),
     ] {
@@ -404,6 +426,90 @@ async fn oversized_frames_are_refused() {
         error: None,
     };
     assert!(matches!(handle.send(&big), Err(SendError::TooLarge(_))));
+}
+
+fn viz_frame() -> Frame {
+    frame_of("viz.player.json")
+}
+
+#[tokio::test]
+async fn a_viz_frame_off_contract_is_refused_before_it_is_sent() {
+    let hub = Hub::start().await;
+    let (handle, _rx, _conn) = connected(&hub, FakeTokens::with("t")).await;
+    let Frame::Viz { frame, .. } = viz_frame() else {
+        unreachable!()
+    };
+    let mut short = frame.clone();
+    short.bands.truncate(31);
+    assert_eq!(
+        handle.send(&Frame::Viz {
+            device_id: None,
+            frame: short
+        }),
+        Err(SendError::BadViz)
+    );
+    let mut loud = frame;
+    loud.level = 1.5;
+    assert_eq!(
+        handle.send(&Frame::Viz {
+            device_id: None,
+            frame: loud
+        }),
+        Err(SendError::BadViz)
+    );
+}
+
+#[tokio::test]
+async fn the_longest_valid_viz_frame_still_fits_one_kib() {
+    let hub = Hub::start().await;
+    let (handle, _rx, mut conn) = connected(&hub, FakeTokens::with("t")).await;
+    let Frame::Viz { mut frame, .. } = viz_frame() else {
+        unreachable!()
+    };
+    // Unrounded f64s in scientific notation are the longest a band can print.
+    frame.bands = vec![1.234_567_890_123_456_7e-5; 32];
+    frame.level = 1.234_567_890_123_456_7e-5;
+    frame.beat = 1.234_567_890_123_456_7e-5;
+    frame.heard_at = u64::MAX;
+    frame.position_ms = u64::MAX;
+    let frame = Frame::Viz {
+        device_id: None,
+        frame,
+    };
+    let text = serde_json::to_string(&frame).unwrap();
+    assert!(
+        text.len() <= MAX_VIZ_FRAME_BYTES,
+        "{} bytes > 1 KiB",
+        text.len()
+    );
+    handle.send(&frame).unwrap();
+    assert_eq!(conn.json().await["t"], "viz");
+}
+
+#[tokio::test]
+async fn viz_frames_beyond_thirty_a_second_are_refused() {
+    let hub = Hub::start().await;
+    let (handle, _rx, _conn) = connected(&hub, FakeTokens::with("t")).await;
+    let start = std::time::Instant::now();
+    let mut accepted = 0;
+    let mut limited = 0;
+    for _ in 0..45 {
+        match handle.send(&viz_frame()) {
+            Ok(()) => accepted += 1,
+            Err(SendError::VizRateLimited) => limited += 1,
+            Err(other) => panic!("{other:?}"),
+        }
+    }
+    assert!(
+        start.elapsed() < Duration::from_millis(900),
+        "the burst must fit one window for this assertion"
+    );
+    assert_eq!(
+        (accepted, limited),
+        (MAX_VIZ_PER_SECOND, 45 - MAX_VIZ_PER_SECOND)
+    );
+    // Other frames have their own budget: an ack still goes.
+    handle.send(&frame_of("ack.ok.json")).unwrap();
 }
 
 #[tokio::test]
@@ -575,7 +681,7 @@ async fn an_unknown_command_or_method_is_answered_unsupported() {
         conn.json().await,
         json!({"t": "ack", "id": "c-77", "ok": false, "error": "unsupported"})
     );
-    conn.send(json!({"t": "rpc", "id": "r-77", "from": "w", "method": "lyrics", "params": {}}))
+    conn.send(json!({"t": "rpc", "id": "r-77", "from": "w", "method": "karaoke", "params": {}}))
         .await;
     assert_eq!(
         conn.json().await,

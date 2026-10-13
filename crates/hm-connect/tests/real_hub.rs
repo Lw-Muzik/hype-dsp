@@ -4,18 +4,23 @@
 //! ```sh
 //! HM_CONNECT_REAL_API=http://localhost:4000/api \
 //!   cargo test -p hm-connect --test real_hub -- --ignored --nocapture
+//! # or the production hub (every run mints one throw-away anonymous account):
+//! HM_CONNECT_REAL_API=https://api.hypemuzik.com/api \
+//!   cargo test -p hm-connect --test real_hub -- --ignored --nocapture
 //! ```
 //!
 //! The desktop is the crate's client; the "web controller" is a hand-driven
 //! socket that links the way a browser does (create link, desktop approves the
-//! code, claim), then commands the desktop. Plain `http://` / `ws://` only —
-//! this is a local-development check, so the test carries its own tiny HTTP
-//! client instead of pulling one into the crate.
+//! code, claim), then commands the desktop, asks it for lyrics and subscribes
+//! to its visualiser (v1.1). `http://`/`ws://` for a local hub and
+//! `https://`/`wss://` for production; the test carries its own tiny HTTP
+//! client (rustls with the OS verifier, like the crate) instead of pulling one
+//! into the crate.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::{SinkExt, StreamExt};
 use hm_connect::protocol::*;
@@ -23,31 +28,51 @@ use hm_connect::rest::ws_url;
 use hm_connect::{
     spawn, Cap, ClientConfig, ClientEvent, ConnectionStatus, DeviceKind, Renewal, TokenProvider,
 };
+use rustls_platform_verifier::BuilderVerifierExt;
 use serde_json::{json, Value};
 use tokio::net::TcpStream as TokioTcp;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{Connector, MaybeTlsStream, WebSocketStream};
 
 const STEP: Duration = Duration::from_secs(10);
 
 // ------------------------------------------------------------- tiny HTTP
 
 struct Http {
+    tls: bool,
     host: String,
     port: u16,
     prefix: String,
 }
 
+fn tls_config() -> Arc<rustls::ClientConfig> {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    Arc::new(
+        rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_platform_verifier()
+            .unwrap()
+            .with_no_client_auth(),
+    )
+}
+
 impl Http {
     fn new(api: &str) -> Self {
-        let rest = api
-            .strip_prefix("http://")
-            .expect("HM_CONNECT_REAL_API must be a plain http:// URL");
+        let (tls, rest) = match (api.strip_prefix("https://"), api.strip_prefix("http://")) {
+            (Some(r), _) => (true, r),
+            (None, Some(r)) => (false, r),
+            _ => panic!("HM_CONNECT_REAL_API must be an http:// or https:// URL"),
+        };
         let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
-        let (host, port) = authority.split_once(':').unwrap_or((authority, "80"));
+        let default_port = if tls { "443" } else { "80" };
+        let (host, port) = authority
+            .split_once(':')
+            .unwrap_or((authority, default_port));
         Self {
+            tls,
             host: host.into(),
             port: port.parse().unwrap(),
             prefix: format!("/{}", path.trim_matches('/')),
@@ -64,8 +89,8 @@ impl Http {
     ) -> (u16, Value) {
         let body = body.map(|b| b.to_string());
         let mut req = format!(
-            "{method} {}{path} HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\nAccept: application/json\r\n",
-            self.prefix, self.host, self.port
+            "{method} {}{path} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nAccept: application/json\r\n",
+            self.prefix, self.host
         );
         if let Some(t) = token {
             req += &format!("Authorization: Bearer {t}\r\n");
@@ -80,11 +105,23 @@ impl Http {
         if let Some(b) = &body {
             req += b;
         }
-        let mut s = TcpStream::connect((self.host.as_str(), self.port)).expect("hub unreachable");
-        s.set_read_timeout(Some(STEP)).unwrap();
-        s.write_all(req.as_bytes()).unwrap();
+        let tcp = TcpStream::connect((self.host.as_str(), self.port)).expect("hub unreachable");
+        tcp.set_read_timeout(Some(STEP)).unwrap();
+        tcp.set_write_timeout(Some(STEP)).unwrap();
         let mut raw = Vec::new();
-        s.read_to_end(&mut raw).unwrap();
+        if self.tls {
+            let name = rustls::pki_types::ServerName::try_from(self.host.clone()).unwrap();
+            let conn = rustls::ClientConnection::new(tls_config(), name).unwrap();
+            let mut s = rustls::StreamOwned::new(conn, tcp);
+            s.write_all(req.as_bytes()).unwrap();
+            // A server that closes without close_notify surfaces as an error
+            // after the body; what was read until then is the response.
+            let _ = s.read_to_end(&mut raw);
+        } else {
+            let mut s = tcp;
+            s.write_all(req.as_bytes()).unwrap();
+            s.read_to_end(&mut raw).unwrap();
+        }
         let split = raw
             .windows(4)
             .position(|w| w == b"\r\n\r\n")
@@ -159,6 +196,24 @@ impl TokenProvider for Tokens {
 // ------------------------------------------------------------- web side
 
 type Ws = WebSocketStream<MaybeTlsStream<TokioTcp>>;
+
+/// A browser-like socket to `url` (TLS for `wss://`).
+async fn open_ws(url: &str) -> Ws {
+    let connector = url
+        .starts_with("wss://")
+        .then(|| Connector::Rustls(tls_config()));
+    tokio_tungstenite::connect_async_tls_with_config(url, None, true, connector)
+        .await
+        .expect("web ws")
+        .0
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
 
 async fn next_json(ws: &mut Ws) -> Value {
     loop {
@@ -235,11 +290,11 @@ async fn desktop_is_commanded_from_a_linked_web_controller() {
         name: "hm-connect real-hub test".into(),
         platform: "macos".into(),
         app_version: "0.1.26-test".into(),
-        caps: vec![Cap::Player, Cap::Yt, Cap::Local],
+        caps: vec![Cap::Player, Cap::Yt, Cap::Local, Cap::Lyrics, Cap::Viz],
     };
     let url = ws_url(&api).unwrap();
     let (handle, mut rx) = spawn(
-        ClientConfig::new(&url, device),
+        ClientConfig::new(&url, device.clone()),
         Arc::new(Tokens(Mutex::new(desktop_token.clone()))),
         &tokio::runtime::Handle::current(),
     );
@@ -301,9 +356,7 @@ async fn desktop_is_commanded_from_a_linked_web_controller() {
     let web_id = claim["deviceId"].as_str().unwrap().to_string();
 
     // 4. The browser connects and sees the desktop online.
-    let (mut web, _): (Ws, _) = tokio_tungstenite::connect_async(&url)
-        .await
-        .expect("web ws");
+    let mut web = open_ws(&url).await;
     web.send(Message::text(
         json!({"t":"hello","v":1,"token":web_token,"device":{
             "id": web_id, "kind":"web","name":"Test","platform":"macos","appVersion":"0.1.0","caps":[]}})
@@ -320,6 +373,11 @@ async fn desktop_is_commanded_from_a_linked_web_controller() {
         .expect("desktop in the web's device list");
     assert_eq!(me["kind"], "desktop");
     assert_eq!(me["online"], true);
+    assert_eq!(
+        me["caps"],
+        json!(["player", "yt", "local", "lyrics", "viz"]),
+        "the hub relays the v1.1 caps"
+    );
 
     // 5. cmd play → the crate surfaces it with the controller's id and `from`.
     web.send(Message::text(
@@ -429,6 +487,168 @@ async fn desktop_is_commanded_from_a_linked_web_controller() {
     assert_eq!(st["deviceId"], install_id.as_str());
     assert_eq!(st["state"]["seq"], 1_760_000_000u64);
     assert!(st["state"]["at"].is_number(), "the hub stamps `at`: {st}");
+
+    // 10. v1.1 clock: ping → pong carries the hub's epoch time.
+    let sent = now_ms();
+    handle
+        .send(&Frame::Ping {
+            id: "clock-1".into(),
+        })
+        .unwrap();
+    let Frame::Pong { id, server_time } =
+        desktop_frame(&mut rx, |f| matches!(f, Frame::Pong { .. })).await
+    else {
+        unreachable!()
+    };
+    let received = now_ms();
+    assert_eq!(id, "clock-1");
+    let offset = server_time as i64 - ((sent + received) / 2) as i64;
+    println!(
+        "hub clock: offset {offset} ms, round trip {} ms",
+        received - sent
+    );
+    assert!(
+        offset.abs() < 5 * 60_000,
+        "the hub's clock is minutes away from this machine's: {offset} ms"
+    );
+
+    // 11. v1.1 lyrics rpc: the desktop's answer — including a miss — reaches
+    //     the browser intact.
+    let lyrics_json = |name: &str| -> Value {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../connect-protocol/fixtures")
+            .join(name);
+        let frame: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        frame["result"].clone()
+    };
+    for (rpc_id, fixture) in [
+        ("real-4", "rpc_result.lyrics.json"),
+        ("real-5", "rpc_result.lyrics.none.json"),
+    ] {
+        web.send(Message::text(
+            json!({"t":"rpc","id":rpc_id,"to":install_id,"method":"lyrics","params":{}})
+                .to_string(),
+        ))
+        .await
+        .unwrap();
+        let Frame::Rpc {
+            id,
+            method,
+            from,
+            params,
+            ..
+        } = desktop_frame(&mut rx, |f| matches!(f, Frame::Rpc { .. })).await
+        else {
+            unreachable!()
+        };
+        assert_eq!((id.as_str(), method), (rpc_id, RpcMethod::Lyrics));
+        assert_eq!(from.as_deref(), Some(web_id.as_str()));
+        assert_eq!(RpcCall::parse(method, &params).unwrap(), RpcCall::Lyrics);
+        let result = lyrics_json(fixture);
+        handle
+            .send(&Frame::RpcResult {
+                id,
+                ok: true,
+                result: Some(result.clone()),
+                error: None,
+            })
+            .unwrap();
+        let r = next_of(&mut web, "rpc_result").await;
+        assert_eq!(r["id"], rpc_id);
+        assert_eq!(r["ok"], true);
+        assert_eq!(r["result"], result, "{fixture} changed on the way");
+    }
+
+    // 12. v1.1 visualiser: the browser subscribes, the hub tells the desktop
+    //     once (0 → 1), and the desktop's frames reach the browser.
+    web.send(Message::text(
+        json!({"t":"viz_sub","to":install_id,"on":true}).to_string(),
+    ))
+    .await
+    .unwrap();
+    let on = desktop_frame(&mut rx, |f| matches!(f, Frame::VizSub { .. })).await;
+    assert_eq!(on, Frame::VizSub { to: None, on: true });
+
+    let template = {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../connect-protocol/fixtures/viz.player.json");
+        let Frame::Viz { frame, .. } =
+            serde_json::from_str::<Frame>(&std::fs::read_to_string(path).unwrap()).unwrap()
+        else {
+            unreachable!()
+        };
+        frame
+    };
+    let mut sent_frames = Vec::new();
+    for i in 0..6u64 {
+        let mut frame = template.clone();
+        frame.heard_at = now_ms() + 200;
+        frame.position_ms = 61_400 + i * 50;
+        frame.beat = if i == 2 { 0.9 } else { 0.0 };
+        handle
+            .send(&Frame::Viz {
+                device_id: None,
+                frame: frame.clone(),
+            })
+            .unwrap();
+        sent_frames.push(frame);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    for expected in &sent_frames {
+        let v = next_of(&mut web, "viz").await;
+        assert_eq!(
+            v["deviceId"],
+            install_id.as_str(),
+            "the hub stamps the player"
+        );
+        // Compared as numbers, not text: the hub's JSON writes `0.0` as `0`.
+        let got: VizFrame = serde_json::from_value(v["frame"].clone()).unwrap();
+        assert_eq!(&got, expected, "a viz frame is relayed verbatim, in order");
+        assert_eq!(v["frame"]["bands"].as_array().unwrap().len(), 32);
+    }
+
+    // 12b. The hub repeats the subscription when the player comes back: a
+    //      subscription belongs to the controller's socket, not the player's.
+    handle.shutdown().await;
+    let (handle, mut rx) = spawn(
+        ClientConfig::new(&url, device),
+        Arc::new(Tokens(Mutex::new(desktop_token.clone()))),
+        &tokio::runtime::Handle::current(),
+    );
+    let mut seen = Vec::new();
+    let again = timeout(STEP, async {
+        loop {
+            match rx.recv().await.expect("client ended") {
+                ClientEvent::Frame(f) => {
+                    let done = matches!(*f, Frame::VizSub { .. });
+                    seen.push(f.tag());
+                    if done {
+                        return *f;
+                    }
+                }
+                ClientEvent::Status(_) => {}
+            }
+        }
+    })
+    .await
+    .expect("no viz_sub after reconnecting");
+    assert_eq!(again, Frame::VizSub { to: None, on: true });
+    assert_eq!(seen.first(), Some(&"welcome"), "welcome first: {seen:?}");
+
+    // 12c. 1 → 0: the browser unsubscribes and the desktop is told.
+    web.send(Message::text(
+        json!({"t":"viz_sub","to":install_id,"on":false}).to_string(),
+    ))
+    .await
+    .unwrap();
+    let off = desktop_frame(&mut rx, |f| matches!(f, Frame::VizSub { .. })).await;
+    assert_eq!(
+        off,
+        Frame::VizSub {
+            to: None,
+            on: false
+        }
+    );
 
     handle.shutdown().await;
 }

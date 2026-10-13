@@ -6,9 +6,11 @@
 //! exposes the REST side (linking, devices) as commands:
 //!
 //! * `connect:inbound` — every `welcome`/`devices`/`state`/`cmd`/`rpc`/`error`
-//!   frame, as protocol JSON (`src/features/connect/` executes them);
+//!   (and, v1.1, `viz_sub`/`pong`) frame, as protocol JSON
+//!   (`src/features/connect/` executes them);
 //! * `connect:status` — [`ConnectStatusDto`] whenever the connection changes;
-//! * `connect_send(frame)` — the player's `ack` / `state` / `rpc_result`.
+//! * `connect_send(frame)` — the player's `ack` / `state` / `rpc_result`, and
+//!   (v1.1) its `ping` / `viz`.
 //!
 //! The webview doesn't open the socket itself: a `tauri://` page opening
 //! `ws://` is mixed content, and the tokens already live here.
@@ -217,7 +219,7 @@ impl ConnectState {
             name: self.device_name().to_string(),
             platform: std::env::consts::OS.to_string(),
             app_version: self.app.package_info().version.to_string(),
-            caps: vec![Cap::Player, Cap::Yt, Cap::Local],
+            caps: vec![Cap::Player, Cap::Yt, Cap::Local, Cap::Lyrics, Cap::Viz],
         };
         let tokens = Arc::new(AccountTokens {
             app: self.app.clone(),
@@ -334,7 +336,7 @@ pub fn connect_set_enabled(
     Ok(state.status())
 }
 
-/// Send the player's `ack`, `state` or `rpc_result` to the hub. Sync on
+/// Send the player's `ack`, `state`, `rpc_result`, `ping` or `viz` to the hub. Sync on
 /// purpose: commands run on the main thread in call order, so a state's
 /// `seq` order is the order frames reach the socket.
 #[tauri::command]

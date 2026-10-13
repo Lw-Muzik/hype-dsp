@@ -12,6 +12,8 @@ import { RightSidebar } from "@/components/RightSidebar";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import { Router } from "@/app/router";
 import { useSystemEqStore } from "@/stores/systemEq";
+import { useUiStore } from "@/stores/ui";
+import { modeFromSystemEq, routeForMode } from "@/features/mode/appMode";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
 import { useUpdateStore } from "@/stores/update";
 import {
@@ -32,6 +34,17 @@ export function App() {
   useEffect(() => {
     void resumeSystemEq();
   }, [resumeSystemEq]);
+
+  // Equalizer mode (= system-wide EQ on) shows only the audio-tuning views and
+  // hides the app's own player chrome. Keep the route valid for the mode — this
+  // also covers launching with EQ resumed and EQ turned on from Settings.
+  const mode = modeFromSystemEq(useSystemEqStore((s) => s.enabled));
+  const route = useUiStore((s) => s.route);
+  const setRoute = useUiStore((s) => s.setRoute);
+  useEffect(() => {
+    const next = routeForMode(mode, route);
+    if (next !== route) setRoute(next);
+  }, [mode, route, setRoute]);
 
   // Linux: when the launch-time system-audio setup can't auto-install (a sandbox,
   // an unknown distro, or a declined/failed prompt), it emits the exact command
@@ -108,10 +121,14 @@ export function App() {
           <main className="min-h-0 flex-1 overflow-y-auto p-6">
             <Router />
           </main>
-          <ResizeHandle side="right" />
-          <RightSidebar />
+          {mode === "player" && (
+            <>
+              <ResizeHandle side="right" />
+              <RightSidebar />
+            </>
+          )}
         </div>
-        <NowPlayingBar />
+        {mode === "player" && <NowPlayingBar />}
       </div>
       <Toaster />
       <SupporterUpsellModal />

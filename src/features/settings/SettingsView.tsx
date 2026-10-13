@@ -59,6 +59,10 @@ import {
 } from "@/lib/ipc";
 import { listen } from "@tauri-apps/api/event";
 import { systemAudioAffordance } from "./systemAudioCard";
+import {
+  setScopeMode as applyScopeMode,
+  toggleScopeApp as applyToggleApp,
+} from "@/features/mode/systemEqScope";
 
 /** Set once the routing setup installed VB-CABLE but Windows still needs a
  *  restart before the device enumerates; cleared when the device appears. */
@@ -530,7 +534,6 @@ export function SettingsView() {
   // Linux/Windows re-route the whole output, so the scope picker is hidden there.
   const isMacos = navigator.userAgent.toLowerCase().includes("mac");
   const systemEqScope = useEngineStore((s) => s.state.systemEqScope);
-  const setSystemEqScope = useEngineStore((s) => s.setSystemEqScope);
   const [scopeApps, setScopeApps] = useState<AppSession[]>([]);
 
   const refreshScopeApps = useCallback(() => {
@@ -673,36 +676,20 @@ export function SettingsView() {
     }
   };
 
-  // Apply a scope change. The scope is committed to the backend FIRST (awaited),
-  // then — if the tap is running — rebuilt so the new scope takes effect.
-  //
-  // The rebuild goes through the system-EQ store rather than calling
-  // `playerPlaySystemAudio` directly, because that store is now what owns the
-  // on/off state. It already does what this needed doing by hand: on a failed
-  // rebuild — an empty allowlist because the picked apps went idle — it stops,
-  // records the error and clears `enabled`, so the toggle matches the stopped
-  // tap instead of re-erroring.
-  const applyScope = async (next: { mode: SystemEqScopeMode; apps: string[] }) => {
+  // Scope changes share one implementation with the Equalizer-mode sidebar
+  // panel (`features/mode/systemEqScope.ts`): commit first, then rebuild the tap
+  // if system EQ is on; the resolved value is an error message or null.
+  const runScope = async (p: Promise<string | null>) => {
     setCaptureError(null);
-    try {
-      await setSystemEqScope(next);
-    } catch (e) {
-      setCaptureError(ipcErrorMessage(e));
-      return;
-    }
-    if (systemEqOn) await enableSystemEq();
+    const message = await p;
+    if (message) setCaptureError(message);
   };
   const setScopeMode = (mode: SystemEqScopeMode) => {
-    if (!requirePremium("PER_APP_EQ")) return;
     refreshScopeApps();
-    void applyScope({ mode, apps: systemEqScope.apps });
+    void runScope(applyScopeMode(mode)); // premium-gated inside
   };
   const toggleScopeApp = (id: string) => {
-    if (!requirePremium("PER_APP_EQ")) return;
-    const apps = systemEqScope.apps.includes(id)
-      ? systemEqScope.apps.filter((a) => a !== id)
-      : [...systemEqScope.apps, id];
-    void applyScope({ mode: systemEqScope.mode, apps });
+    void runScope(applyToggleApp(id)); // premium-gated inside
   };
 
   return (

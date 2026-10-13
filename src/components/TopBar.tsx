@@ -10,6 +10,7 @@ import { ScrollingWaveform } from "@/features/player/ScrollingWaveform";
 import { TITLEBAR_INSET, isMac } from "@/lib/platform";
 import { openSettings } from "@/lib/ipc";
 import { UpdatePill } from "@/features/update/UpdatePill";
+import { ModeSwitch } from "@/features/mode/ModeSwitch";
 
 /**
  * Top bar: current view, master volume, live output meters, and the global
@@ -55,6 +56,8 @@ export function TopBar() {
         <Icon className="size-4 text-text-muted" aria-hidden="true" />
         <h1 className="truncate text-sm font-medium">{current.label}</h1>
       </div>
+
+      <ModeSwitch />
 
       {/* Live scrolling stereo waveform fills the space between title and
           controls (renders nothing when no track is playing). */}

@@ -1,9 +1,11 @@
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { ROUTES } from "@/app/routes";
 import { useUiStore } from "@/stores/ui";
 import { NavItem } from "@/components/NavItem";
 import { Logo } from "@/components/Logo";
 import { SidebarNowPlaying } from "@/components/SidebarNowPlaying";
+import { useSystemEqStore } from "@/stores/systemEq";
+import { modeFromSystemEq, visibleRoutes } from "@/features/mode/appMode";
+import { SystemAudioPanel } from "@/features/mode/SystemAudioPanel";
 import { cn } from "@/lib/cn";
 import { TITLEBAR_INSET } from "@/lib/platform";
 
@@ -18,7 +20,8 @@ export function Sidebar() {
   const leftWidth = useUiStore((s) => s.leftWidth);
   const resizing = useUiStore((s) => s.resizing);
 
-  const main = ROUTES.filter((r) => r.group === "main" && !r.hidden);
+  const mode = modeFromSystemEq(useSystemEqStore((s) => s.enabled));
+  const main = visibleRoutes(mode);
 
   return (
     <aside
@@ -67,7 +70,11 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <SidebarNowPlaying collapsed={collapsed} />
+      {mode === "equalizer" ? (
+        <SystemAudioPanel collapsed={collapsed} />
+      ) : (
+        <SidebarNowPlaying collapsed={collapsed} />
+      )}
 
       <div className="px-3 pb-3 pt-1">
         <button

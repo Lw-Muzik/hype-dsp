@@ -64,8 +64,10 @@ pub fn link_discover_stop(disc: State<'_, DiscoveryState>) {
 /// Browse the LAN (~2.5 s) for phones sharing their library.
 #[tauri::command(async)]
 pub fn link_discover(link: State<'_, LinkState>) -> Result<Vec<PhoneDevice>, IpcError> {
-    link.discover(Duration::from_millis(2500))
-        .map_err(|e| IpcError::new("link", e))
+    crate::blocking::io(|| {
+        link.discover(Duration::from_millis(2500))
+            .map_err(|e| IpcError::new("link", e))
+    })
 }
 
 /// Phones we've already paired with (silent reconnect — no PIN needed).
@@ -90,9 +92,11 @@ pub fn link_pair(
     device_id: String,
     pin: String,
 ) -> Result<PhoneDevice, IpcError> {
-    let _ = (name, device_id);
-    link.pair_by_address(&host, port, &pin)
-        .map_err(|e| IpcError::new("link", e))
+    crate::blocking::io(|| {
+        let _ = (name, device_id);
+        link.pair_by_address(&host, port, &pin)
+            .map_err(|e| IpcError::new("link", e))
+    })
 }
 
 /// Pair with a phone by typing its address (`host:port`) + PIN — no mDNS
@@ -105,8 +109,10 @@ pub fn link_pair_address(
     port: u16,
     pin: String,
 ) -> Result<PhoneDevice, IpcError> {
-    link.pair_by_address(&host, port, &pin)
-        .map_err(|e| IpcError::new("link", e))
+    crate::blocking::io(|| {
+        link.pair_by_address(&host, port, &pin)
+            .map_err(|e| IpcError::new("link", e))
+    })
 }
 
 /// Forget a paired phone.
@@ -231,10 +237,12 @@ impl RemoteState {
 pub fn link_remote_qr(
     remote: State<'_, RemoteState>,
 ) -> Result<hm_remote::PairingInfo, IpcError> {
-    Ok(remote
-        .manager()
-        .map_err(|e| IpcError::new("remote", e))?
-        .start_pairing(Duration::from_secs(300)))
+    crate::blocking::io(|| {
+        Ok(remote
+            .manager()
+            .map_err(|e| IpcError::new("remote", e))?
+            .start_pairing(Duration::from_secs(300)))
+    })
 }
 
 /// Close any open remote pairing session.
@@ -251,15 +259,17 @@ pub fn link_remote_cancel(remote: State<'_, RemoteState>) {
 // `(async)`: may wait on (or trigger) the endpoint build when peers exist.
 #[tauri::command(async)]
 pub fn link_remote_status(remote: State<'_, RemoteState>) -> Vec<hm_remote::RemotePhoneStatus> {
-    // Nothing built and nothing ever paired → the answer is an empty list;
-    // don't build a relay-connected endpoint just to say so.
-    if remote.built().is_none() && !remote.has_known_peers() {
-        return Vec::new();
-    }
-    remote
-        .manager()
-        .map(|m| m.remote_phones())
-        .unwrap_or_default()
+    crate::blocking::io(|| {
+        // Nothing built and nothing ever paired → the answer is an empty list;
+        // don't build a relay-connected endpoint just to say so.
+        if remote.built().is_none() && !remote.has_known_peers() {
+            return Vec::new();
+        }
+        remote
+            .manager()
+            .map(|m| m.remote_phones())
+            .unwrap_or_default()
+    })
 }
 
 /// (Re)dial every known remote phone and register the connected ones into the
@@ -270,19 +280,21 @@ pub fn link_remote_connect(
     link: State<'_, LinkState>,
     app: AppHandle,
 ) -> Vec<hm_remote::RemotePhoneStatus> {
-    // No peers on disk and nothing built → there is nothing to dial; keep the
-    // endpoint unbuilt (same empty result either way).
-    if remote.built().is_none() && !remote.has_known_peers() {
-        return Vec::new();
-    }
-    let Ok(remote) = remote.manager() else {
-        return Vec::new();
-    };
-    for phone in remote.connect_known() {
-        link.register_remote(phone.id.clone(), phone.name, phone.port, phone.token);
-        let _ = app.emit("link:remote_connected", &phone.id);
-    }
-    remote.remote_phones()
+    crate::blocking::io(|| {
+        // No peers on disk and nothing built → there is nothing to dial; keep the
+        // endpoint unbuilt (same empty result either way).
+        if remote.built().is_none() && !remote.has_known_peers() {
+            return Vec::new();
+        }
+        let Ok(remote) = remote.manager() else {
+            return Vec::new();
+        };
+        for phone in remote.connect_known() {
+            link.register_remote(phone.id.clone(), phone.name, phone.port, phone.token);
+            let _ = app.emit("link:remote_connected", &phone.id);
+        }
+        remote.remote_phones()
+    })
 }
 
 /// Forget a remote phone: drop its tunnel and remove it from both stores.
@@ -294,15 +306,17 @@ pub fn link_remote_forget(
     link: State<'_, LinkState>,
     device_id: String,
 ) {
-    // Forgetting must reach the manager's persisted peer store. If any peer
-    // exists the startup thread already built (or is building) the manager, so
-    // this doesn't construct a fresh endpoint in practice.
-    if remote.built().is_some() || remote.has_known_peers() {
-        if let Ok(manager) = remote.manager() {
-            manager.forget(&device_id);
+    crate::blocking::io(|| {
+        // Forgetting must reach the manager's persisted peer store. If any peer
+        // exists the startup thread already built (or is building) the manager, so
+        // this doesn't construct a fresh endpoint in practice.
+        if remote.built().is_some() || remote.has_known_peers() {
+            if let Ok(manager) = remote.manager() {
+                manager.forget(&device_id);
+            }
         }
-    }
-    link.unpair(&device_id);
+        link.unpair(&device_id);
+    })
 }
 
 /// Fetch a paired phone's track list.
@@ -311,7 +325,9 @@ pub fn link_library(
     link: State<'_, LinkState>,
     device_id: String,
 ) -> Result<Vec<PhoneTrack>, IpcError> {
-    link.library(&device_id).map_err(|e| IpcError::new("link", e))
+    crate::blocking::io(|| {
+        link.library(&device_id).map_err(|e| IpcError::new("link", e))
+    })
 }
 
 /// Fetch a track's embedded artwork as a `data:` URI, or `None` if it has none.
@@ -322,7 +338,9 @@ pub fn link_artwork(
     device_id: String,
     track_id: String,
 ) -> Option<String> {
-    link.artwork_data_uri(&device_id, &track_id)
+    crate::blocking::io(|| {
+        link.artwork_data_uri(&device_id, &track_id)
+    })
 }
 
 /// Fetch a phone track's lyrics (a `.lrc` sidecar the user downloaded next to
@@ -334,7 +352,9 @@ pub fn link_lyrics(
     device_id: String,
     track_id: String,
 ) -> Option<String> {
-    link.lyrics(&device_id, &track_id)
+    crate::blocking::io(|| {
+        link.lyrics(&device_id, &track_id)
+    })
 }
 
 /// Stream one track from the phone through the enhancement chain.
@@ -349,12 +369,14 @@ pub fn link_play(
     ext: String,
     duration_secs: Option<f64>,
 ) -> Result<(), IpcError> {
-    let (url, headers) = link
-        .stream_target(&device_id, &track_id, &ext)
-        .map_err(|e| IpcError::new("link", e))?;
-    engine
-        .play_stream(url, headers, duration_secs)
-        .map_err(Into::into)
+    crate::blocking::io(|| {
+        let (url, headers) = link
+            .stream_target(&device_id, &track_id, &ext)
+            .map_err(|e| IpcError::new("link", e))?;
+        engine
+            .play_stream(url, headers, duration_secs)
+            .map_err(Into::into)
+    })
 }
 
 /// One track in a phone crossfade/gapless queue.
@@ -431,50 +453,52 @@ pub fn link_upload(
     device_id: String,
     path: String,
 ) -> Result<(), IpcError> {
-    let source = PathBuf::from(&path);
-    let progress_app = app.clone();
-    let progress_path = path.clone();
-    let result = link.upload(&device_id, &source, move |sent, total| {
-        let _ = progress_app.emit(
-            "link:upload",
-            UploadProgress {
-                path: progress_path.clone(),
-                sent,
-                total,
-                done: false,
-                error: None,
-            },
-        );
-    });
-
-    match result {
-        Ok(_) => {
-            let _ = app.emit(
+    crate::blocking::io(|| {
+        let source = PathBuf::from(&path);
+        let progress_app = app.clone();
+        let progress_path = path.clone();
+        let result = link.upload(&device_id, &source, move |sent, total| {
+            let _ = progress_app.emit(
                 "link:upload",
                 UploadProgress {
-                    path,
-                    sent: 0,
-                    total: 0,
-                    done: true,
+                    path: progress_path.clone(),
+                    sent,
+                    total,
+                    done: false,
                     error: None,
                 },
             );
-            Ok(())
+        });
+
+        match result {
+            Ok(_) => {
+                let _ = app.emit(
+                    "link:upload",
+                    UploadProgress {
+                        path,
+                        sent: 0,
+                        total: 0,
+                        done: true,
+                        error: None,
+                    },
+                );
+                Ok(())
+            }
+            Err(e) => {
+                let _ = app.emit(
+                    "link:upload",
+                    UploadProgress {
+                        path,
+                        sent: 0,
+                        total: 0,
+                        done: true,
+                        error: Some(e.clone()),
+                    },
+                );
+                Err(IpcError::new("link", e))
+            }
         }
-        Err(e) => {
-            let _ = app.emit(
-                "link:upload",
-                UploadProgress {
-                    path,
-                    sent: 0,
-                    total: 0,
-                    done: true,
-                    error: Some(e.clone()),
-                },
-            );
-            Err(IpcError::new("link", e))
-        }
-    }
+    })
 }
 
 #[cfg(test)]

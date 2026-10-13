@@ -63,14 +63,16 @@ pub fn take_pending_open(pending: State<'_, PendingOpen>) -> Vec<String> {
 /// dropped entries) so the caller can play the first and queue the rest.
 #[tauri::command(async)]
 pub fn open_files(store: State<'_, MediaStore>, paths: Vec<String>) -> Vec<LibraryTrack> {
-    let tracks: Vec<LibraryTrack> = paths
-        .into_iter()
-        .map(PathBuf::from)
-        .filter(|p| is_audio(p) && p.is_file())
-        .map(|p| track_from_path(&p))
-        .collect();
-    // Persist so opened files show up under Local next time; a failed write
-    // shouldn't stop playback, so the result is intentionally ignored.
-    let _ = store.upsert_tracks(&tracks);
-    tracks
+    crate::blocking::io(|| {
+        let tracks: Vec<LibraryTrack> = paths
+            .into_iter()
+            .map(PathBuf::from)
+            .filter(|p| is_audio(p) && p.is_file())
+            .map(|p| track_from_path(&p))
+            .collect();
+        // Persist so opened files show up under Local next time; a failed write
+        // shouldn't stop playback, so the result is intentionally ignored.
+        let _ = store.upsert_tracks(&tracks);
+        tracks
+    })
 }

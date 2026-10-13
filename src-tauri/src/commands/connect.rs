@@ -329,7 +329,9 @@ fn platform_name() -> String {
 
 #[tauri::command(async)]
 pub fn connect_status(state: State<'_, ConnectState>) -> ConnectStatusDto {
-    state.status()
+    crate::blocking::io(|| {
+        state.status()
+    })
 }
 
 /// Turn Hype Connect on/off (persisted). Turning it on also restarts a client
@@ -339,8 +341,10 @@ pub fn connect_set_enabled(
     state: State<'_, ConnectState>,
     enabled: bool,
 ) -> Result<ConnectStatusDto, IpcError> {
-    state.set_enabled(enabled).map_err(connect_err)?;
-    Ok(state.status())
+    crate::blocking::io(|| {
+        state.set_enabled(enabled).map_err(connect_err)?;
+        Ok(state.status())
+    })
 }
 
 /// Send the player's `ack`, `state`, `rpc_result`, `ping` or `viz` to the hub. Sync on
@@ -358,35 +362,37 @@ pub fn connect_link_start(
     state: State<'_, ConnectState>,
     account: State<'_, AccountState>,
 ) -> Result<LinkTicketDto, IpcError> {
-    let body = serde_json::to_value(DeviceLinkRequest {
-        kind: DeviceKind::Desktop,
-        name: state.device_name().to_string(),
-        platform: Some(platform_name()),
-        install_id: state.install_id().to_string(),
-    })
-    .map_err(|e| connect_err(e.to_string()))?;
-    let resp = account
-        .auth_send(
-            reqwest::Method::POST,
-            hm_connect::rest::LINK_DEVICE,
-            Some(&body),
-        )
-        .map_err(connect_err)?;
-    if resp.status().as_u16() == 403 {
-        return Err(connect_err(
-            "The server doesn't know this install yet — restart the app and try again",
-        ));
-    }
-    let ticket: LinkTicket = json_body(resp, "Starting the link")?;
-    *lock(&state.pending_link) = Some(PendingLink {
-        link_id: ticket.link_id.clone(),
-        secret: ticket.secret,
-    });
-    Ok(LinkTicketDto {
-        link_id: ticket.link_id,
-        code: ticket.code,
-        qr: ticket.qr,
-        expires_at: ticket.expires_at,
+    crate::blocking::io(|| {
+        let body = serde_json::to_value(DeviceLinkRequest {
+            kind: DeviceKind::Desktop,
+            name: state.device_name().to_string(),
+            platform: Some(platform_name()),
+            install_id: state.install_id().to_string(),
+        })
+        .map_err(|e| connect_err(e.to_string()))?;
+        let resp = account
+            .auth_send(
+                reqwest::Method::POST,
+                hm_connect::rest::LINK_DEVICE,
+                Some(&body),
+            )
+            .map_err(connect_err)?;
+        if resp.status().as_u16() == 403 {
+            return Err(connect_err(
+                "The server doesn't know this install yet — restart the app and try again",
+            ));
+        }
+        let ticket: LinkTicket = json_body(resp, "Starting the link")?;
+        *lock(&state.pending_link) = Some(PendingLink {
+            link_id: ticket.link_id.clone(),
+            secret: ticket.secret,
+        });
+        Ok(LinkTicketDto {
+            link_id: ticket.link_id,
+            code: ticket.code,
+            qr: ticket.qr,
+            expires_at: ticket.expires_at,
+        })
     })
 }
 
@@ -397,33 +403,35 @@ pub fn connect_link_poll(
     state: State<'_, ConnectState>,
     account: State<'_, AccountState>,
 ) -> Result<LinkPollDto, IpcError> {
-    let (link_id, secret) = match lock(&state.pending_link).as_ref() {
-        Some(p) => (p.link_id.clone(), p.secret.clone()),
-        None => return Ok(LinkPollDto { status: "expired" }),
-    };
-    let path = hm_connect::rest::link_claim(&link_id).map_err(|e| connect_err(e.to_string()))?;
-    let resp = account
-        .post(&path, serde_json::json!({ "secret": secret }))
-        .map_err(connect_err)?;
-    let claim: LinkClaim = json_body(resp, "Checking the link")?;
-    let status = match claim {
-        LinkClaim::Pending => return Ok(LinkPollDto { status: "pending" }),
-        LinkClaim::Denied => "denied",
-        LinkClaim::Expired => "expired",
-        LinkClaim::Approved {
-            access_token,
-            refresh_token,
-            ..
-        } => {
-            account.adopt_session(access_token, refresh_token);
-            if state.is_enabled() {
-                state.start().map_err(connect_err)?;
+    crate::blocking::io(|| {
+        let (link_id, secret) = match lock(&state.pending_link).as_ref() {
+            Some(p) => (p.link_id.clone(), p.secret.clone()),
+            None => return Ok(LinkPollDto { status: "expired" }),
+        };
+        let path = hm_connect::rest::link_claim(&link_id).map_err(|e| connect_err(e.to_string()))?;
+        let resp = account
+            .post(&path, serde_json::json!({ "secret": secret }))
+            .map_err(connect_err)?;
+        let claim: LinkClaim = json_body(resp, "Checking the link")?;
+        let status = match claim {
+            LinkClaim::Pending => return Ok(LinkPollDto { status: "pending" }),
+            LinkClaim::Denied => "denied",
+            LinkClaim::Expired => "expired",
+            LinkClaim::Approved {
+                access_token,
+                refresh_token,
+                ..
+            } => {
+                account.adopt_session(access_token, refresh_token);
+                if state.is_enabled() {
+                    state.start().map_err(connect_err)?;
+                }
+                "approved"
             }
-            "approved"
-        }
-    };
-    *lock(&state.pending_link) = None;
-    Ok(LinkPollDto { status })
+        };
+        *lock(&state.pending_link) = None;
+        Ok(LinkPollDto { status })
+    })
 }
 
 /// Abandon a pending phone link (the dialog was closed).
@@ -438,17 +446,19 @@ pub fn connect_link_preview(
     account: State<'_, AccountState>,
     code: String,
 ) -> Result<LinkPreview, IpcError> {
-    let path = hm_connect::rest::link_preview(&code)
-        .map_err(|_| connect_err("Enter the 6-digit code shown in your browser"))?;
-    let resp = account
-        .auth_send(reqwest::Method::GET, &path, None)
-        .map_err(connect_err)?;
-    if resp.status().as_u16() == 404 {
-        return Err(connect_err(
-            "That code is wrong or has expired — get a new one",
-        ));
-    }
-    json_body(resp, "Looking up the code")
+    crate::blocking::io(|| {
+        let path = hm_connect::rest::link_preview(&code)
+            .map_err(|_| connect_err("Enter the 6-digit code shown in your browser"))?;
+        let resp = account
+            .auth_send(reqwest::Method::GET, &path, None)
+            .map_err(connect_err)?;
+        if resp.status().as_u16() == 404 {
+            return Err(connect_err(
+                "That code is wrong or has expired — get a new one",
+            ));
+        }
+        json_body(resp, "Looking up the code")
+    })
 }
 
 /// Approve a pending link (this desktop's account is the one it joins).
@@ -457,65 +467,73 @@ pub fn connect_link_approve(
     account: State<'_, AccountState>,
     code: String,
 ) -> Result<(), IpcError> {
-    let path = hm_connect::rest::link_approve(&code)
-        .map_err(|_| connect_err("Enter the 6-digit code shown in your browser"))?;
-    let resp = account
-        .auth_send(reqwest::Method::POST, &path, None)
-        .map_err(connect_err)?;
-    match resp.status().as_u16() {
-        200 | 201 => Ok(()),
-        404 => Err(connect_err(
-            "That code is wrong or has expired — get a new one",
-        )),
-        409 => {
-            let code = resp
-                .json::<ConflictBody>()
-                .map(|b| b.code)
-                .unwrap_or_default();
-            Err(connect_err(if code == "BOTH_HAVE_ACCOUNTS" {
-                "Both devices are signed in to different accounts — sign one out first"
-            } else {
-                "That link can't be approved"
-            }))
+    crate::blocking::io(|| {
+        let path = hm_connect::rest::link_approve(&code)
+            .map_err(|_| connect_err("Enter the 6-digit code shown in your browser"))?;
+        let resp = account
+            .auth_send(reqwest::Method::POST, &path, None)
+            .map_err(connect_err)?;
+        match resp.status().as_u16() {
+            200 | 201 => Ok(()),
+            404 => Err(connect_err(
+                "That code is wrong or has expired — get a new one",
+            )),
+            409 => {
+                let code = resp
+                    .json::<ConflictBody>()
+                    .map(|b| b.code)
+                    .unwrap_or_default();
+                Err(connect_err(if code == "BOTH_HAVE_ACCOUNTS" {
+                    "Both devices are signed in to different accounts — sign one out first"
+                } else {
+                    "That link can't be approved"
+                }))
+            }
+            code => Err(connect_err(format!("Approving failed ({code})"))),
         }
-        code => Err(connect_err(format!("Approving failed ({code})"))),
-    }
+    })
 }
 
 /// Refuse a pending link.
 #[tauri::command(async)]
 pub fn connect_link_deny(account: State<'_, AccountState>, code: String) -> Result<(), IpcError> {
-    let path = hm_connect::rest::link_deny(&code)
-        .map_err(|_| connect_err("Enter the 6-digit code shown in your browser"))?;
-    let resp = account
-        .auth_send(reqwest::Method::POST, &path, None)
-        .map_err(connect_err)?;
-    match resp.status().as_u16() {
-        200 | 201 | 404 => Ok(()), // already gone is as good as denied
-        code => Err(connect_err(format!("Denying failed ({code})"))),
-    }
+    crate::blocking::io(|| {
+        let path = hm_connect::rest::link_deny(&code)
+            .map_err(|_| connect_err("Enter the 6-digit code shown in your browser"))?;
+        let resp = account
+            .auth_send(reqwest::Method::POST, &path, None)
+            .map_err(connect_err)?;
+        match resp.status().as_u16() {
+            200 | 201 | 404 => Ok(()), // already gone is as good as denied
+            code => Err(connect_err(format!("Denying failed ({code})"))),
+        }
+    })
 }
 
 /// Every linked device of this account, online or not.
 #[tauri::command(async)]
 pub fn connect_devices(account: State<'_, AccountState>) -> Result<DevicesResponse, IpcError> {
-    let resp = account
-        .auth_send(reqwest::Method::GET, hm_connect::rest::DEVICES, None)
-        .map_err(connect_err)?;
-    json_body(resp, "Loading devices")
+    crate::blocking::io(|| {
+        let resp = account
+            .auth_send(reqwest::Method::GET, hm_connect::rest::DEVICES, None)
+            .map_err(connect_err)?;
+        json_body(resp, "Loading devices")
+    })
 }
 
 /// Unlink a device from this account.
 #[tauri::command(async)]
 pub fn connect_revoke(account: State<'_, AccountState>, id: String) -> Result<(), IpcError> {
-    let path = hm_connect::rest::device(&id).map_err(|e| connect_err(e.to_string()))?;
-    let resp = account
-        .auth_send(reqwest::Method::DELETE, &path, None)
-        .map_err(connect_err)?;
-    match resp.status().as_u16() {
-        200 | 201 | 204 | 404 => Ok(()),
-        code => Err(connect_err(format!("Unlinking failed ({code})"))),
-    }
+    crate::blocking::io(|| {
+        let path = hm_connect::rest::device(&id).map_err(|e| connect_err(e.to_string()))?;
+        let resp = account
+            .auth_send(reqwest::Method::DELETE, &path, None)
+            .map_err(connect_err)?;
+        match resp.status().as_u16() {
+            200 | 201 | 204 | 404 => Ok(()),
+            code => Err(connect_err(format!("Unlinking failed ({code})"))),
+        }
+    })
 }
 
 #[cfg(test)]

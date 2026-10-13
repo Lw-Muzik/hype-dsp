@@ -36,9 +36,11 @@ pub fn autoeq_fetch_apply(
     engine: State<'_, AudioEngine>,
     url: String,
 ) -> Result<EqImportResult, IpcError> {
-    validate_url(&url)?;
-    let curve = fetch_curve(&url)?;
-    apply_graphic_curve(&engine, &curve)
+    crate::blocking::io(|| {
+        validate_url(&url)?;
+        let curve = fetch_curve(&url)?;
+        apply_graphic_curve(&engine, &curve)
+    })
 }
 
 /// Reject any URL that is not an AutoEq raw-content curve (SSRF guard).

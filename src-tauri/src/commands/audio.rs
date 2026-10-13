@@ -12,7 +12,9 @@ use hm_core::IpcError;
 /// list is async) — opening Settings never stalls the UI.
 #[tauri::command(async)]
 pub fn audio_output_devices() -> Result<Vec<OutputDevice>, IpcError> {
-    Ok(hm_audio::output_device::list_output_devices()?)
+    crate::blocking::io(|| {
+        Ok(hm_audio::output_device::list_output_devices()?)
+    })
 }
 
 /// Make the given device (by UID) the **system default** output device.
@@ -23,11 +25,15 @@ pub fn audio_output_devices() -> Result<Vec<OutputDevice>, IpcError> {
 /// the change not sticking) so the UI can surface it in a toast.
 #[tauri::command(async)]
 pub fn audio_set_default_output(uid: String) -> Result<(), String> {
-    hm_audio::output_device::set_default_output(&uid).map_err(|e| e.to_string())
+    crate::blocking::io(|| {
+        hm_audio::output_device::set_default_output(&uid).map_err(|e| e.to_string())
+    })
 }
 
 /// List the system's input (capture) devices.
 #[tauri::command(async)]
 pub fn audio_list_input_devices() -> Result<Vec<DeviceInfo>, IpcError> {
-    Ok(hm_audio::list_input_devices()?)
+    crate::blocking::io(|| {
+        Ok(hm_audio::list_input_devices()?)
+    })
 }

@@ -425,16 +425,18 @@ pub fn ytmusic_setup(
     app: AppHandle,
     state: tauri::State<'_, hm_ytmusic::YtMusicState>,
 ) -> Result<hm_ytmusic::YtMusicStatus, IpcError> {
-    let wrap = |e: String| IpcError::new("ytmusic-setup", e);
-    if ytdlp::find_binary().is_none() {
-        install_ytdlp(&app).map_err(wrap)?;
-        // A fresh install is current by definition — start the update clock.
-        stamp_update_check();
-    }
-    if !ytdlp::have_ffmpeg() {
-        install_ffmpeg(&app).map_err(wrap)?;
-    }
-    Ok(state.status())
+    crate::blocking::io(|| {
+        let wrap = |e: String| IpcError::new("ytmusic-setup", e);
+        if ytdlp::find_binary().is_none() {
+            install_ytdlp(&app).map_err(wrap)?;
+            // A fresh install is current by definition — start the update clock.
+            stamp_update_check();
+        }
+        if !ytdlp::have_ffmpeg() {
+            install_ffmpeg(&app).map_err(wrap)?;
+        }
+        Ok(state.status())
+    })
 }
 
 /* ---- keeping the managed copy current ---- */

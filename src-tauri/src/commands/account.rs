@@ -610,7 +610,9 @@ impl AccountState {
 
 #[tauri::command(async)]
 pub fn account_status(account: State<'_, AccountState>) -> AccountStatus {
-    account.status()
+    crate::blocking::io(|| {
+        account.status()
+    })
 }
 
 #[tauri::command(async)]
@@ -619,9 +621,11 @@ pub fn account_signup(
     email: String,
     name: Option<String>,
 ) -> Result<(), IpcError> {
-    account
-        .signup(&email, name.as_deref())
-        .map_err(|e| IpcError::new("account", e))
+    crate::blocking::io(|| {
+        account
+            .signup(&email, name.as_deref())
+            .map_err(|e| IpcError::new("account", e))
+    })
 }
 
 #[tauri::command(async)]
@@ -629,9 +633,11 @@ pub fn account_request_otp(
     account: State<'_, AccountState>,
     email: String,
 ) -> Result<(), IpcError> {
-    account
-        .request_otp(&email)
-        .map_err(|e| IpcError::new("account", e))
+    crate::blocking::io(|| {
+        account
+            .request_otp(&email)
+            .map_err(|e| IpcError::new("account", e))
+    })
 }
 
 #[tauri::command(async)]
@@ -640,15 +646,19 @@ pub fn account_verify(
     email: String,
     code: String,
 ) -> Result<AccountStatus, IpcError> {
-    account
-        .verify(&email, &code)
-        .map_err(|e| IpcError::new("account", e))?;
-    Ok(account.status())
+    crate::blocking::io(|| {
+        account
+            .verify(&email, &code)
+            .map_err(|e| IpcError::new("account", e))?;
+        Ok(account.status())
+    })
 }
 
 #[tauri::command(async)]
 pub fn account_logout(account: State<'_, AccountState>) {
-    account.logout();
+    crate::blocking::io(|| {
+        account.logout();
+    })
 }
 
 #[tauri::command(async)]
@@ -657,7 +667,9 @@ pub fn account_heartbeat(
     platform: String,
     app_version: String,
 ) {
-    account.heartbeat(&platform, &app_version);
+    crate::blocking::io(|| {
+        account.heartbeat(&platform, &app_version);
+    })
 }
 
 /// Silently provision the free-tier session on first launch (or whenever no
@@ -670,12 +682,14 @@ pub fn account_bootstrap_anonymous(
     app: AppHandle,
     account: State<'_, AccountState>,
 ) -> Result<AccountStatus, IpcError> {
-    let install_id = resolve_install_id(&app);
-    let version = app.package_info().version.to_string();
-    account
-        .bootstrap_anonymous(&install_id, std::env::consts::OS, std::env::consts::ARCH, &version)
-        .map_err(|e| IpcError::new("account", e))?;
-    Ok(account.status())
+    crate::blocking::io(|| {
+        let install_id = resolve_install_id(&app);
+        let version = app.package_info().version.to_string();
+        account
+            .bootstrap_anonymous(&install_id, std::env::consts::OS, std::env::consts::ARCH, &version)
+            .map_err(|e| IpcError::new("account", e))?;
+        Ok(account.status())
+    })
 }
 
 /// Start attaching a real email to the current account (Settings → "Sign in /
@@ -685,9 +699,11 @@ pub fn account_claim_request(
     account: State<'_, AccountState>,
     email: String,
 ) -> Result<(), IpcError> {
-    account
-        .claim_request(&email)
-        .map_err(|e| IpcError::new("account", e))
+    crate::blocking::io(|| {
+        account
+            .claim_request(&email)
+            .map_err(|e| IpcError::new("account", e))
+    })
 }
 
 /// Verify the emailed code and attach it to the current account in place.
@@ -698,10 +714,12 @@ pub fn account_claim_verify(
     code: String,
     name: Option<String>,
 ) -> Result<AccountStatus, IpcError> {
-    account
-        .claim_verify(&email, &code, name.as_deref())
-        .map_err(|e| IpcError::new("account", e))?;
-    Ok(account.status())
+    crate::blocking::io(|| {
+        account
+            .claim_verify(&email, &code, name.as_deref())
+            .map_err(|e| IpcError::new("account", e))?;
+        Ok(account.status())
+    })
 }
 
 /// Whether the account is entitled to Supporter/premium features. Rejects
@@ -710,9 +728,11 @@ pub fn account_claim_verify(
 /// value instead of wrongly downgrading a supporter who is offline.
 #[tauri::command(async)]
 pub fn account_entitlements(account: State<'_, AccountState>) -> Result<bool, IpcError> {
-    account
-        .entitlements()
-        .map_err(|e| IpcError::new("account", e))
+    crate::blocking::io(|| {
+        account
+            .entitlements()
+            .map_err(|e| IpcError::new("account", e))
+    })
 }
 
 /// Start a Paddle "Supporter" checkout for this install and return the
@@ -729,10 +749,12 @@ pub fn account_support_checkout(
     amount: f64,
     currency: Option<String>,
 ) -> Result<String, IpcError> {
-    let install_id = resolve_install_id(&app);
-    account
-        .support_checkout(&install_id, amount, currency.as_deref())
-        .map_err(|e| IpcError::new("account", e))
+    crate::blocking::io(|| {
+        let install_id = resolve_install_id(&app);
+        account
+            .support_checkout(&install_id, amount, currency.as_deref())
+            .map_err(|e| IpcError::new("account", e))
+    })
 }
 
 /// Restore a Supporter entitlement onto this install from a past checkout's
@@ -745,10 +767,12 @@ pub fn account_support_restore(
     account: State<'_, AccountState>,
     email: String,
 ) -> Result<bool, IpcError> {
-    let install_id = resolve_install_id(&app);
-    account
-        .support_restore(&install_id, &email)
-        .map_err(|e| IpcError::new("account", e))
+    crate::blocking::io(|| {
+        let install_id = resolve_install_id(&app);
+        account
+            .support_restore(&install_id, &email)
+            .map_err(|e| IpcError::new("account", e))
+    })
 }
 
 /// Open a URL in the OS's default browser. Exposed so the front end can open
@@ -757,7 +781,9 @@ pub fn account_support_restore(
 /// rather than embedding a new way to leave the webview.
 #[tauri::command(async)]
 pub fn open_external_url(url: String) {
-    crate::cloud::open_url(&url);
+    crate::blocking::io(|| {
+        crate::cloud::open_url(&url);
+    })
 }
 
 #[cfg(test)]

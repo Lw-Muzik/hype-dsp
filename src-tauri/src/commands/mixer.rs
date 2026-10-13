@@ -27,12 +27,14 @@ pub struct MixerSnapshot {
 /// until enumeration finished. `(async)` runs it on a worker thread instead.
 #[tauri::command(async)]
 pub fn mixer_list_sessions(mixer: State<'_, Mixer>) -> MixerSnapshot {
-    let ctrl = mixer.lock().expect("mixer poisoned");
-    MixerSnapshot {
-        supported: ctrl.supported(),
-        unavailable_reason: ctrl.unavailable_reason(),
-        sessions: ctrl.list_sessions(),
-    }
+    crate::blocking::io(|| {
+        let ctrl = mixer.lock().expect("mixer poisoned");
+        MixerSnapshot {
+            supported: ctrl.supported(),
+            unavailable_reason: ctrl.unavailable_reason(),
+            sessions: ctrl.list_sessions(),
+        }
+    })
 }
 
 // `mixer_set_volume`/`mixer_set_muted` stay synchronous on purpose: a dragged

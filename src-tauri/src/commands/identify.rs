@@ -328,7 +328,9 @@ fn needs_identify(t: &LibraryTrack) -> bool {
 /// Identify one local track by audio fingerprint and fill in any missing tags.
 #[tauri::command(async)]
 pub fn identify_track(store: State<'_, MediaStore>, path: String) -> Option<RecognitionResult> {
-    identify_local(&store, &path)
+    crate::blocking::io(|| {
+        identify_local(&store, &path)
+    })
 }
 
 /// Full single-track identify chain — Chromaprint fingerprint → AcoustID →
@@ -361,25 +363,27 @@ pub fn library_identify_missing(
     app: tauri::AppHandle,
     store: State<'_, MediaStore>,
 ) -> Result<usize, IpcError> {
-    let missing: Vec<LibraryTrack> = store
-        .list_tracks()
-        .map_err(IpcError::from)?
-        .into_iter()
-        .filter(needs_identify)
-        .collect();
+    crate::blocking::io(|| {
+        let missing: Vec<LibraryTrack> = store
+            .list_tracks()
+            .map_err(IpcError::from)?
+            .into_iter()
+            .filter(needs_identify)
+            .collect();
 
-    let total = missing.len();
-    let _ = app.emit("library:scan_progress", Progress { done: 0, total });
+        let total = missing.len();
+        let _ = app.emit("library:scan_progress", Progress { done: 0, total });
 
-    let mut tagged = 0;
-    for (i, track) in missing.iter().enumerate() {
-        if identify_local(&store, &track.path).is_some_and(|r| r.written) {
-            tagged += 1;
+        let mut tagged = 0;
+        for (i, track) in missing.iter().enumerate() {
+            if identify_local(&store, &track.path).is_some_and(|r| r.written) {
+                tagged += 1;
+            }
+            let _ = app.emit("library:scan_progress", Progress { done: i + 1, total });
+            if i + 1 < total {
+                std::thread::sleep(ACOUSTID_GAP);
+            }
         }
-        let _ = app.emit("library:scan_progress", Progress { done: i + 1, total });
-        if i + 1 < total {
-            std::thread::sleep(ACOUSTID_GAP);
-        }
-    }
-    Ok(tagged)
+        Ok(tagged)
+    })
 }

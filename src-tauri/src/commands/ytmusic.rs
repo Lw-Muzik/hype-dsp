@@ -104,7 +104,9 @@ impl DownloadProgress {
 // `(async)`: probing yt-dlp shells out for `--version`.
 #[tauri::command(async)]
 pub fn ytmusic_status(state: State<'_, YtMusicState>) -> YtMusicStatus {
-    state.status()
+    crate::blocking::io(|| {
+        state.status()
+    })
 }
 
 /// Open a window on Google's sign-in and wait for a YouTube session to appear.
@@ -417,14 +419,16 @@ pub fn ytmusic_video_url(
     proxy: State<'_, TvProxy>,
     video_id: String,
 ) -> Result<String, IpcError> {
-    let (url, headers) = state
-        .video_target(&video_id)
-        .map_err(|e| IpcError::new("ytmusic", e))?;
-    let ua = headers
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
-        .map(|(_, v)| v.as_str());
-    Ok(proxy.video_url(&url, ua))
+    crate::blocking::io(|| {
+        let (url, headers) = state
+            .video_target(&video_id)
+            .map_err(|e| IpcError::new("ytmusic", e))?;
+        let ua = headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+            .map(|(_, v)| v.as_str());
+        Ok(proxy.video_url(&url, ua))
+    })
 }
 
 /* ---- playback ---- */
@@ -443,7 +447,9 @@ pub fn ytmusic_video_url(
 // `(async)`: shells out to yt-dlp and waits on the network.
 #[tauri::command(async)]
 pub fn ytmusic_prefetch(state: State<'_, YtMusicState>, video_id: String) {
-    let _ = state.prefetch(&video_id);
+    crate::blocking::io(|| {
+        let _ = state.prefetch(&video_id);
+    })
 }
 
 /// Warm several upcoming tracks' urls (sequentially — see `prefetch_batch`).
@@ -451,7 +457,9 @@ pub fn ytmusic_prefetch(state: State<'_, YtMusicState>, video_id: String) {
 // `(async)`: shells out to yt-dlp and waits on the network.
 #[tauri::command(async)]
 pub fn ytmusic_prefetch_batch(state: State<'_, YtMusicState>, video_ids: Vec<String>) {
-    state.prefetch_batch(&video_ids);
+    crate::blocking::io(|| {
+        state.prefetch_batch(&video_ids);
+    })
 }
 
 /// Warm the *video* rendition's url so the Video tab opens instantly. Same
@@ -460,7 +468,9 @@ pub fn ytmusic_prefetch_batch(state: State<'_, YtMusicState>, video_ids: Vec<Str
 // `(async)`: shells out to yt-dlp and waits on the network.
 #[tauri::command(async)]
 pub fn ytmusic_video_prefetch(state: State<'_, YtMusicState>, video_id: String) {
-    let _ = state.prefetch_video(&video_id);
+    crate::blocking::io(|| {
+        let _ = state.prefetch_video(&video_id);
+    })
 }
 
 /// Resolve a track and play it through the chain.
@@ -472,14 +482,16 @@ pub fn ytmusic_play(
     video_id: String,
     duration_secs: Option<f64>,
 ) -> Result<(), IpcError> {
-    let (url, headers) = state
-        .stream_target(&video_id)
-        .map_err(|e| IpcError::new("ytmusic", e))?;
-    // Unlike cloud files, we have a duration from the API — pass it so the seek
-    // bar is right from the first frame instead of waiting on the container.
-    engine
-        .play_stream(url, headers, duration_secs)
-        .map_err(Into::into)
+    crate::blocking::io(|| {
+        let (url, headers) = state
+            .stream_target(&video_id)
+            .map_err(|e| IpcError::new("ytmusic", e))?;
+        // Unlike cloud files, we have a duration from the API — pass it so the seek
+        // bar is right from the first frame instead of waiting on the container.
+        engine
+            .play_stream(url, headers, duration_secs)
+            .map_err(Into::into)
+    })
 }
 
 /// One track in a YT Music gapless/crossfade queue. Carries the display metadata
@@ -579,13 +591,15 @@ pub fn ytmusic_download(
     store: State<'_, hm_core::MediaStore>,
     video_id: String,
 ) -> Result<String, IpcError> {
-    let dir = settings.download_dir();
-    let path = fetch_to_disk(&app, &state, &dir, &video_id)?;
+    crate::blocking::io(|| {
+        let dir = settings.download_dir();
+        let path = fetch_to_disk(&app, &state, &dir, &video_id)?;
 
-    crate::commands::library::index_paths(&app, &store, std::slice::from_ref(&path));
+        crate::commands::library::index_paths(&app, &store, std::slice::from_ref(&path));
 
-    emit(&app, DownloadProgress::new(&video_id, "done"));
-    Ok(path.to_string_lossy().into_owned())
+        emit(&app, DownloadProgress::new(&video_id, "done"));
+        Ok(path.to_string_lossy().into_owned())
+    })
 }
 
 /// Download a track and send it to a paired phone.
@@ -606,33 +620,35 @@ pub fn ytmusic_download_to_phone(
     video_id: String,
     device_id: String,
 ) -> Result<(), IpcError> {
-    let dir = settings.download_dir();
-    let path = fetch_to_disk(&app, &state, &dir, &video_id)?;
+    crate::blocking::io(|| {
+        let dir = settings.download_dir();
+        let path = fetch_to_disk(&app, &state, &dir, &video_id)?;
 
-    // The laptop copy is a real download, so let the library have it too.
-    crate::commands::library::index_paths(&app, &store, std::slice::from_ref(&path));
+        // The laptop copy is a real download, so let the library have it too.
+        crate::commands::library::index_paths(&app, &store, std::slice::from_ref(&path));
 
-    let progress_app = app.clone();
-    let progress_id = video_id.clone();
-    link.upload(&device_id, &path, move |sent, total| {
-        emit(
-            &progress_app,
-            DownloadProgress {
-                video_id: progress_id.clone(),
-                phase: "sending".into(),
-                bytes: sent,
-                total: Some(total),
-                message: None,
-            },
-        );
+        let progress_app = app.clone();
+        let progress_id = video_id.clone();
+        link.upload(&device_id, &path, move |sent, total| {
+            emit(
+                &progress_app,
+                DownloadProgress {
+                    video_id: progress_id.clone(),
+                    phase: "sending".into(),
+                    bytes: sent,
+                    total: Some(total),
+                    message: None,
+                },
+            );
+        })
+        .map_err(|e| {
+            emit_error(&app, &video_id, &e);
+            IpcError::new("link", e)
+        })?;
+
+        emit(&app, DownloadProgress::new(&video_id, "done"));
+        Ok(())
     })
-    .map_err(|e| {
-        emit_error(&app, &video_id, &e);
-        IpcError::new("link", e)
-    })?;
-
-    emit(&app, DownloadProgress::new(&video_id, "done"));
-    Ok(())
 }
 
 /// Shared first leg: yt-dlp writes the track into `dir`, reporting progress.

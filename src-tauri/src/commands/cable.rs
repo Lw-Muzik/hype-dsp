@@ -77,18 +77,20 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 // `(async)`: network download + elevated installer — never main-thread work.
 #[tauri::command(async)]
 pub fn system_audio_setup_routing(app: tauri::AppHandle) -> Result<RoutingSetupOutcome, IpcError> {
-    #[cfg(target_os = "windows")]
-    {
-        setup_routing_windows(&app).map_err(|e| IpcError::new("cable", e))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = app;
-        Err(IpcError::new(
-            "cable",
-            "system-EQ routing setup is only needed on Windows",
-        ))
-    }
+    crate::blocking::io(|| {
+        #[cfg(target_os = "windows")]
+        {
+            setup_routing_windows(&app).map_err(|e| IpcError::new("cable", e))
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = app;
+            Err(IpcError::new(
+                "cable",
+                "system-EQ routing setup is only needed on Windows",
+            ))
+        }
+    })
 }
 
 #[cfg(target_os = "windows")]

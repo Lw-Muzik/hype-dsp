@@ -220,9 +220,11 @@ pub fn engine_convolver_load_ir(
     engine: State<'_, AudioEngine>,
     path: String,
 ) -> Result<hm_audio::ConvolverIrInfo, IpcError> {
-    engine
-        .load_convolver_ir(&PathBuf::from(path))
-        .map_err(Into::into)
+    crate::blocking::io(|| {
+        engine
+            .load_convolver_ir(&PathBuf::from(path))
+            .map_err(Into::into)
+    })
 }
 
 /// Decode and play a local file through the enhancement chain.
@@ -231,7 +233,9 @@ pub fn engine_convolver_load_ir(
 // freeze the UI.
 #[tauri::command(async)]
 pub fn player_play_file(engine: State<'_, AudioEngine>, path: String) -> Result<(), IpcError> {
-    engine.play_file(&PathBuf::from(path)).map_err(Into::into)
+    crate::blocking::io(|| {
+        engine.play_file(&PathBuf::from(path)).map_err(Into::into)
+    })
 }
 
 /// Stream and play an internet radio URL through the chain.
@@ -276,16 +280,18 @@ pub fn player_play_queue(
 // the Tauri main thread.
 #[tauri::command(async)]
 pub fn player_play_capture(engine: State<'_, AudioEngine>) -> Result<(), IpcError> {
-    if hm_audio::list_input_devices()
-        .map(|d| d.is_empty())
-        .unwrap_or(true)
-    {
-        return Err(IpcError::new(
-            "unavailable",
-            "No audio input device available.",
-        ));
-    }
-    engine.play_capture().map_err(Into::into)
+    crate::blocking::io(|| {
+        if hm_audio::list_input_devices()
+            .map(|d| d.is_empty())
+            .unwrap_or(true)
+        {
+            return Err(IpcError::new(
+                "unavailable",
+                "No audio input device available.",
+            ));
+        }
+        engine.play_capture().map_err(Into::into)
+    })
 }
 
 /// Whether true system-wide capture (a signed virtual device) is installed.
@@ -317,22 +323,24 @@ pub fn system_audio_available() -> bool {
 // Tauri main thread so the UI doesn't freeze while it's set up.
 #[tauri::command(async)]
 pub fn player_play_system_audio(engine: State<'_, AudioEngine>) -> Result<(), IpcError> {
-    #[cfg(target_os = "macos")]
-    {
-        engine.play_system_tap().map_err(Into::into)
-    }
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    {
-        engine.start_system_eq().map_err(Into::into)
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    {
-        let _ = engine;
-        Err(IpcError::new(
-            "unsupported",
-            "System-wide equalization isn't supported on this platform.",
-        ))
-    }
+    crate::blocking::io(|| {
+        #[cfg(target_os = "macos")]
+        {
+            engine.play_system_tap().map_err(Into::into)
+        }
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        {
+            engine.start_system_eq().map_err(Into::into)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+        {
+            let _ = engine;
+            Err(IpcError::new(
+                "unsupported",
+                "System-wide equalization isn't supported on this platform.",
+            ))
+        }
+    })
 }
 
 /// Set which apps the system-wide EQ tap processes (macOS). The change is stored
@@ -350,14 +358,16 @@ pub fn system_eq_set_scope(engine: State<'_, AudioEngine>, scope: hm_core::Syste
 // counterpart.
 #[tauri::command(async)]
 pub fn stop_system_audio(engine: State<'_, AudioEngine>) {
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    {
-        engine.stop_system_eq();
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    {
-        engine.stop();
-    }
+    crate::blocking::io(|| {
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        {
+            engine.stop_system_eq();
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        {
+            engine.stop();
+        }
+    })
 }
 
 /// Per-OS readiness of system-wide equalization, so the Settings card can show the
@@ -393,68 +403,70 @@ pub struct SystemAudioStatus {
 // macOS asks Core Audio) — not main-thread work.
 #[tauri::command(async)]
 pub fn system_audio_status(app: tauri::AppHandle) -> SystemAudioStatus {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = app;
-        SystemAudioStatus {
-            supported: true,
-            available: hm_audio::system_tap::available(),
-            driver_installed: true,
-            needs_driver: false,
-            driver_bundled: true,
-            apo_installed: false,
+    crate::blocking::io(|| {
+        #[cfg(target_os = "macos")]
+        {
+            let _ = app;
+            SystemAudioStatus {
+                supported: true,
+                available: hm_audio::system_tap::available(),
+                driver_installed: true,
+                needs_driver: false,
+                driver_bundled: true,
+                apo_installed: false,
+            }
         }
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let _ = app;
-        let available = hm_audio::system_eq_available();
-        SystemAudioStatus {
-            supported: true,
-            available,
-            driver_installed: true,
-            needs_driver: false,
-            driver_bundled: true,
-            apo_installed: false,
+        #[cfg(target_os = "linux")]
+        {
+            let _ = app;
+            let available = hm_audio::system_eq_available();
+            SystemAudioStatus {
+                supported: true,
+                available,
+                driver_installed: true,
+                needs_driver: false,
+                driver_bundled: true,
+                apo_installed: false,
+            }
         }
-    }
-    #[cfg(target_os = "windows")]
-    {
-        use tauri::Manager;
-        let installed = hm_audio::win_driver::routing_device_available();
-        // Only offer "Install audio driver" when there is actually a signed
-        // package in this build's resources — a driverless build showing the
-        // button could only dead-end in an error (the .inf glob would miss).
-        let bundled = app
-            .path()
-            .resource_dir()
-            .ok()
-            .map(|dir| dir.join("drivers").join("HypeMuzikAudio"))
-            .and_then(|dir| hm_audio::win_driver::find_driver_inf(&dir))
-            .is_some();
-        // The free APO backend is usable even without the signed driver.
-        let apo = hm_audio::system_eq_windows_apo::apo_installed();
-        SystemAudioStatus {
-            supported: true,
-            available: installed || apo,
-            driver_installed: installed,
-            needs_driver: !installed && !apo && bundled,
-            driver_bundled: bundled,
-            apo_installed: apo,
+        #[cfg(target_os = "windows")]
+        {
+            use tauri::Manager;
+            let installed = hm_audio::win_driver::routing_device_available();
+            // Only offer "Install audio driver" when there is actually a signed
+            // package in this build's resources — a driverless build showing the
+            // button could only dead-end in an error (the .inf glob would miss).
+            let bundled = app
+                .path()
+                .resource_dir()
+                .ok()
+                .map(|dir| dir.join("drivers").join("HypeMuzikAudio"))
+                .and_then(|dir| hm_audio::win_driver::find_driver_inf(&dir))
+                .is_some();
+            // The free APO backend is usable even without the signed driver.
+            let apo = hm_audio::system_eq_windows_apo::apo_installed();
+            SystemAudioStatus {
+                supported: true,
+                available: installed || apo,
+                driver_installed: installed,
+                needs_driver: !installed && !apo && bundled,
+                driver_bundled: bundled,
+                apo_installed: apo,
+            }
         }
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    {
-        let _ = app;
-        SystemAudioStatus {
-            supported: false,
-            available: false,
-            driver_installed: false,
-            needs_driver: false,
-            driver_bundled: false,
-            apo_installed: false,
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+        {
+            let _ = app;
+            SystemAudioStatus {
+                supported: false,
+                available: false,
+                driver_installed: false,
+                needs_driver: false,
+                driver_bundled: false,
+                apo_installed: false,
+            }
         }
-    }
+    })
 }
 
 /// Current runtime state of system-wide EQ: `"active"`, `"recovering"`, or
@@ -473,20 +485,22 @@ pub fn system_eq_status(engine: State<'_, AudioEngine>) -> hm_audio::SystemEqSta
 // thread so the whole webview isn't frozen for the elevation + install.
 #[tauri::command(async)]
 pub fn system_audio_install_driver(app: tauri::AppHandle) -> Result<(), IpcError> {
-    #[cfg(target_os = "windows")]
-    {
-        use tauri::Manager;
-        let dir = app.path().resource_dir().map_err(|e| {
-            IpcError::new("driver", format!("could not resolve app resources: {e}"))
-        })?;
-        let package_dir = dir.join("drivers").join("HypeMuzikAudio");
-        hm_audio::win_driver::install_driver(&package_dir).map_err(Into::into)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = app;
-        Ok(())
-    }
+    crate::blocking::io(|| {
+        #[cfg(target_os = "windows")]
+        {
+            use tauri::Manager;
+            let dir = app.path().resource_dir().map_err(|e| {
+                IpcError::new("driver", format!("could not resolve app resources: {e}"))
+            })?;
+            let package_dir = dir.join("drivers").join("HypeMuzikAudio");
+            hm_audio::win_driver::install_driver(&package_dir).map_err(Into::into)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = app;
+            Ok(())
+        }
+    })
 }
 
 /// Stop playback.

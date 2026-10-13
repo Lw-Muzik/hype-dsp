@@ -60,58 +60,60 @@ pub fn lyrics_fetch(
     duration_secs: Option<f64>,
     path: Option<String>,
 ) -> Option<String> {
-    let mut title = title;
-    let mut artist = artist.unwrap_or_default();
-    let local_path = path.as_deref().filter(|p| !p.starts_with("http"));
+    crate::blocking::io(|| {
+        let mut title = title;
+        let mut artist = artist.unwrap_or_default();
+        let local_path = path.as_deref().filter(|p| !p.starts_with("http"));
 
-    // 1–2. Local file: .lrc sidecar, then embedded lyrics.
-    if let Some(p) = local_path {
-        if let Some(lrc) = read_lrc_sidecar(p) {
-            return Some(lrc);
-        }
-        if let Some(embedded) = probe_lyrics(Path::new(p)) {
-            return Some(embedded);
-        }
-    }
-
-    // 3. Weak local tags can't match online lyrics — identify the track first
-    //    (fingerprint → AcoustID/MusicBrainz) so we search with real metadata.
-    let mut identified = false;
-    if let Some(p) = local_path {
-        if metadata_is_weak(&title, &artist, p) {
-            if let Some(r) = identify_local(&store, p) {
-                apply_recognition(&mut title, &mut artist, &r);
-                identified = true;
-            }
-        }
-    }
-
-    // 4. LRCLIB (best source of synced lyrics), then the HypeMuzik backend.
-    if let Some(text) = lrclib_resolve(&title, &artist, duration_secs) {
-        return Some(text);
-    }
-    if let Some(text) = backend_lyrics(&title, &artist) {
-        return Some(text);
-    }
-
-    // 5. Last resort: a track with seemingly-fine tags that still missed may be
-    //    mistagged — identify (if we haven't yet) and retry once with the result.
-    if !identified {
+        // 1–2. Local file: .lrc sidecar, then embedded lyrics.
         if let Some(p) = local_path {
-            if let Some(r) = identify_local(&store, p) {
-                apply_recognition(&mut title, &mut artist, &r);
-                if let Some(text) = lrclib_resolve(&title, &artist, duration_secs) {
-                    return Some(text);
-                }
-                if let Some(text) = backend_lyrics(&title, &artist) {
-                    return Some(text);
+            if let Some(lrc) = read_lrc_sidecar(p) {
+                return Some(lrc);
+            }
+            if let Some(embedded) = probe_lyrics(Path::new(p)) {
+                return Some(embedded);
+            }
+        }
+
+        // 3. Weak local tags can't match online lyrics — identify the track first
+        //    (fingerprint → AcoustID/MusicBrainz) so we search with real metadata.
+        let mut identified = false;
+        if let Some(p) = local_path {
+            if metadata_is_weak(&title, &artist, p) {
+                if let Some(r) = identify_local(&store, p) {
+                    apply_recognition(&mut title, &mut artist, &r);
+                    identified = true;
                 }
             }
         }
-    }
 
-    eprintln!("lyrics: none found for {title:?} / {artist:?}");
-    None
+        // 4. LRCLIB (best source of synced lyrics), then the HypeMuzik backend.
+        if let Some(text) = lrclib_resolve(&title, &artist, duration_secs) {
+            return Some(text);
+        }
+        if let Some(text) = backend_lyrics(&title, &artist) {
+            return Some(text);
+        }
+
+        // 5. Last resort: a track with seemingly-fine tags that still missed may be
+        //    mistagged — identify (if we haven't yet) and retry once with the result.
+        if !identified {
+            if let Some(p) = local_path {
+                if let Some(r) = identify_local(&store, p) {
+                    apply_recognition(&mut title, &mut artist, &r);
+                    if let Some(text) = lrclib_resolve(&title, &artist, duration_secs) {
+                        return Some(text);
+                    }
+                    if let Some(text) = backend_lyrics(&title, &artist) {
+                        return Some(text);
+                    }
+                }
+            }
+        }
+
+        eprintln!("lyrics: none found for {title:?} / {artist:?}");
+        None
+    })
 }
 
 /// A local file's tags are too weak to search online lyrics when it has no

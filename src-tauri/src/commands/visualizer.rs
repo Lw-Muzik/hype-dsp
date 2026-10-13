@@ -100,22 +100,24 @@ pub fn visualizer_available() -> bool {
 /// ~550-file preset directory runs on a worker thread, not the webview thread.
 #[tauri::command(async)]
 pub fn visualizer_preset_names(app: AppHandle) -> Vec<String> {
-    let dir = preset_dir(&app);
-    let mut names = Vec::new();
-    if !dir.is_empty() {
-        if let Ok(entries) = std::fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("milk") {
-                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                        names.push(stem.to_owned());
+    crate::blocking::io(|| {
+        let dir = preset_dir(&app);
+        let mut names = Vec::new();
+        if !dir.is_empty() {
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("milk") {
+                        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                            names.push(stem.to_owned());
+                        }
                     }
                 }
             }
         }
-    }
-    names.sort_by_key(|s| s.to_lowercase());
-    names
+        names.sort_by_key(|s| s.to_lowercase());
+        names
+    })
 }
 
 /// Open the MilkDrop visualizer window, streaming audio to it and starting on

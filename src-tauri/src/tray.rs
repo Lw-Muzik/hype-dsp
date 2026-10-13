@@ -109,21 +109,23 @@ fn try_init(app: &AppHandle) -> tauri::Result<()> {
 /// Rebuild the menu from the frontend's model (a no-op when nothing changed).
 #[tauri::command(async)]
 pub fn tray_update(app: AppHandle, state: State<'_, TrayState>, model: TrayModel) -> Result<(), IpcError> {
-    let fail = |e: tauri::Error| IpcError::new("tray", e.to_string());
-    {
-        let mut last = state.0.lock().unwrap_or_else(|e| e.into_inner());
-        if last.as_ref() == Some(&model) {
-            return Ok(());
+    crate::blocking::io(|| {
+        let fail = |e: tauri::Error| IpcError::new("tray", e.to_string());
+        {
+            let mut last = state.0.lock().unwrap_or_else(|e| e.into_inner());
+            if last.as_ref() == Some(&model) {
+                return Ok(());
+            }
+            *last = Some(model.clone());
         }
-        *last = Some(model.clone());
-    }
-    let Some(tray) = app.tray_by_id(TRAY_ID) else {
-        return Ok(()); // no tray on this desktop
-    };
-    let menu = build_menu(&app, &model).map_err(fail)?;
-    tray.set_menu(Some(menu)).map_err(fail)?;
-    tray.set_tooltip(Some(tooltip(&model))).map_err(fail)?;
-    Ok(())
+        let Some(tray) = app.tray_by_id(TRAY_ID) else {
+            return Ok(()); // no tray on this desktop
+        };
+        let menu = build_menu(&app, &model).map_err(fail)?;
+        tray.set_menu(Some(menu)).map_err(fail)?;
+        tray.set_tooltip(Some(tooltip(&model))).map_err(fail)?;
+        Ok(())
+    })
 }
 
 fn tooltip(model: &TrayModel) -> String {

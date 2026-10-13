@@ -40,9 +40,11 @@ pub fn cloud_connect(
     cloud: State<'_, CloudState>,
     provider: CloudProvider,
 ) -> Result<CloudAccount, IpcError> {
-    cloud
-        .connect(provider)
-        .map_err(|e| IpcError::new("cloud", e))
+    crate::blocking::io(|| {
+        cloud
+            .connect(provider)
+            .map_err(|e| IpcError::new("cloud", e))
+    })
 }
 
 /// Forget the stored tokens for one account, and drop its cached listing so a
@@ -55,8 +57,10 @@ pub fn cloud_disconnect(
     list_cache: State<'_, CloudListCache>,
     account_id: String,
 ) {
-    cloud.disconnect(&account_id);
-    list_cache.clear(&account_id);
+    crate::blocking::io(|| {
+        cloud.disconnect(&account_id);
+        list_cache.clear(&account_id);
+    })
 }
 
 /// List the contents of one cloud folder (subfolders + audio files) of one
@@ -67,9 +71,11 @@ pub fn cloud_list(
     account_id: String,
     folder: String,
 ) -> Result<Vec<CloudEntry>, IpcError> {
-    cloud
-        .list(&account_id, &folder)
-        .map_err(|e| IpcError::new("cloud", e))
+    crate::blocking::io(|| {
+        cloud
+            .list(&account_id, &folder)
+            .map_err(|e| IpcError::new("cloud", e))
+    })
 }
 
 /// Every audio file in the account, flat (all folders) — for the Player's
@@ -86,21 +92,23 @@ pub fn cloud_all_audio(
     account_id: String,
     refresh: bool,
 ) -> Result<CloudAudioPage, IpcError> {
-    if !refresh {
-        if let Some(entries) = list_cache.get(&account_id) {
-            return Ok(CloudAudioPage {
-                entries,
-                from_cache: true,
-            });
+    crate::blocking::io(|| {
+        if !refresh {
+            if let Some(entries) = list_cache.get(&account_id) {
+                return Ok(CloudAudioPage {
+                    entries,
+                    from_cache: true,
+                });
+            }
         }
-    }
-    let entries = cloud
-        .all_audio(&account_id)
-        .map_err(|e| IpcError::new("cloud", e))?;
-    list_cache.put(&account_id, entries.clone());
-    Ok(CloudAudioPage {
-        entries,
-        from_cache: false,
+        let entries = cloud
+            .all_audio(&account_id)
+            .map_err(|e| IpcError::new("cloud", e))?;
+        list_cache.put(&account_id, entries.clone());
+        Ok(CloudAudioPage {
+            entries,
+            from_cache: false,
+        })
     })
 }
 
@@ -116,7 +124,9 @@ pub fn cloud_cached_tags(
     cache: State<'_, CloudMetaCache>,
     account_id: String,
 ) -> HashMap<String, CloudTrackMeta> {
-    cache.snapshot_tags_for(&account_id)
+    crate::blocking::io(|| {
+        cache.snapshot_tags_for(&account_id)
+    })
 }
 
 /// Fetch + cache one cloud track's full metadata (tags + cover), reading only
@@ -160,11 +170,13 @@ pub fn cloud_track_metadata(
     file_id: String,
     name: Option<String>,
 ) -> Option<CloudTrackMeta> {
-    let key = format!("{account_id}:{file_id}");
-    if let Some(hit) = cache.get(&key) {
-        return Some(hit);
-    }
-    fetch_and_cache_meta(&cloud, &cache, &account_id, &file_id, name.as_deref())
+    crate::blocking::io(|| {
+        let key = format!("{account_id}:{file_id}");
+        if let Some(hit) = cache.get(&key) {
+            return Some(hit);
+        }
+        fetch_and_cache_meta(&cloud, &cache, &account_id, &file_id, name.as_deref())
+    })
 }
 
 /// Read a cloud track's text tags only (no cover). Backs the background library
@@ -179,12 +191,14 @@ pub fn cloud_track_tags(
     file_id: String,
     name: Option<String>,
 ) -> Option<CloudTrackMeta> {
-    let key = format!("{account_id}:{file_id}");
-    if let Some(hit) = cache.get(&key) {
-        return Some(hit.tags_only());
-    }
-    fetch_and_cache_meta(&cloud, &cache, &account_id, &file_id, name.as_deref())
-        .map(|m| m.tags_only())
+    crate::blocking::io(|| {
+        let key = format!("{account_id}:{file_id}");
+        if let Some(hit) = cache.get(&key) {
+            return Some(hit.tags_only());
+        }
+        fetch_and_cache_meta(&cloud, &cache, &account_id, &file_id, name.as_deref())
+            .map(|m| m.tags_only())
+    })
 }
 
 /// Resolve just the cover art (a `data:` URI) for one cloud track — a warm
@@ -199,12 +213,14 @@ pub fn cloud_track_cover(
     file_id: String,
     name: Option<String>,
 ) -> Option<String> {
-    let key = format!("{account_id}:{file_id}");
-    if let Some(cover) = cache.cover_for(&key) {
-        return Some(cover);
-    }
-    fetch_and_cache_meta(&cloud, &cache, &account_id, &file_id, name.as_deref())
-        .and_then(|m| m.cover)
+    crate::blocking::io(|| {
+        let key = format!("{account_id}:{file_id}");
+        if let Some(cover) = cache.cover_for(&key) {
+            return Some(cover);
+        }
+        fetch_and_cache_meta(&cloud, &cache, &account_id, &file_id, name.as_deref())
+            .and_then(|m| m.cover)
+    })
 }
 
 /// Resolve a streamable URL for the file and play it through the chain.
@@ -215,12 +231,14 @@ pub fn cloud_play(
     account_id: String,
     file_id: String,
 ) -> Result<(), IpcError> {
-    let (url, headers) = cloud
-        .stream_target(&account_id, &file_id)
-        .map_err(|e| IpcError::new("cloud", e))?;
-    // Cloud files carry no duration hint; the source learns it from the
-    // container (Content-Length + Range) when the server supports it.
-    engine.play_stream(url, headers, None).map_err(Into::into)
+    crate::blocking::io(|| {
+        let (url, headers) = cloud
+            .stream_target(&account_id, &file_id)
+            .map_err(|e| IpcError::new("cloud", e))?;
+        // Cloud files carry no duration hint; the source learns it from the
+        // container (Content-Length + Range) when the server supports it.
+        engine.play_stream(url, headers, None).map_err(Into::into)
+    })
 }
 
 /// One track in a cloud crossfade/gapless queue.

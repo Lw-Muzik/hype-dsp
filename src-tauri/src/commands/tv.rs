@@ -24,7 +24,9 @@ fn cache_dir(app: &AppHandle) -> Option<PathBuf> {
 /// Search the global TV directory (falls back to the bundled seed offline).
 #[tauri::command(async)]
 pub fn tv_search(app: AppHandle, query: String) -> Vec<TvChannel> {
-    tv::search(&query, cache_dir(&app).as_deref())
+    crate::blocking::io(|| {
+        tv::search(&query, cache_dir(&app).as_deref())
+    })
 }
 
 /// Probe a batch of channels and return the ids whose stream is currently
@@ -38,19 +40,25 @@ pub fn tv_check_alive(
     cache: State<'_, tv::TvHealthCache>,
     channels: Vec<TvChannel>,
 ) -> Vec<String> {
-    tv::check_alive(&channels, &cache)
+    crate::blocking::io(|| {
+        tv::check_alive(&channels, &cache)
+    })
 }
 
 /// Every channel for a country (ISO 3166-1 alpha-2 code).
 #[tauri::command(async)]
 pub fn tv_by_country(app: AppHandle, code: String) -> Vec<TvChannel> {
-    tv::by_country(&code, cache_dir(&app).as_deref())
+    crate::blocking::io(|| {
+        tv::by_country(&code, cache_dir(&app).as_deref())
+    })
 }
 
 /// Every channel for a category (iptv-org slug, e.g. "news").
 #[tauri::command(async)]
 pub fn tv_by_category(app: AppHandle, id: String) -> Vec<TvChannel> {
-    tv::by_category(&id, cache_dir(&app).as_deref())
+    crate::blocking::io(|| {
+        tv::by_category(&id, cache_dir(&app).as_deref())
+    })
 }
 
 /// The browsable TV categories.
@@ -70,17 +78,23 @@ pub fn tv_countries() -> Vec<TvCountry> {
 // same discipline as the radio favorites commands.
 #[tauri::command(async)]
 pub fn tv_favorites_list(store: State<'_, MediaStore>) -> Result<Vec<TvChannel>, IpcError> {
-    store.list_tv_favorites().map_err(Into::into)
+    crate::blocking::io(|| {
+        store.list_tv_favorites().map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
 pub fn tv_favorite_add(store: State<'_, MediaStore>, channel: TvChannel) -> Result<(), IpcError> {
-    store.add_tv_favorite(&channel).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.add_tv_favorite(&channel).map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
 pub fn tv_favorite_remove(store: State<'_, MediaStore>, id: String) -> Result<(), IpcError> {
-    store.remove_tv_favorite(&id).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.remove_tv_favorite(&id).map_err(Into::into)
+    })
 }
 
 /// The in-app playback URL for a channel: a loopback HLS-proxy URL the embedded

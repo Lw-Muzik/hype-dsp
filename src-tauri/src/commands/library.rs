@@ -99,13 +99,15 @@ pub fn library_scan(
     store: State<'_, MediaStore>,
     dir: String,
 ) -> Result<usize, IpcError> {
-    let path = Path::new(&dir);
-    if !path.is_dir() {
-        return Err(IpcError::new("invalid", "not a directory"));
-    }
-    let mut paths = Vec::new();
-    collect_audio_paths(path, &mut paths, 0);
-    Ok(index_paths(&app, &store, &paths))
+    crate::blocking::io(|| {
+        let path = Path::new(&dir);
+        if !path.is_dir() {
+            return Err(IpcError::new("invalid", "not a directory"));
+        }
+        let mut paths = Vec::new();
+        collect_audio_paths(path, &mut paths, 0);
+        Ok(index_paths(&app, &store, &paths))
+    })
 }
 
 /// Re-read tags + duration for every track already in the library, updating
@@ -117,13 +119,15 @@ pub fn library_refresh_tags(
     app: tauri::AppHandle,
     store: State<'_, MediaStore>,
 ) -> Result<usize, IpcError> {
-    let paths: Vec<PathBuf> = store
-        .list_tracks()
-        .map_err(IpcError::from)?
-        .into_iter()
-        .map(|t| PathBuf::from(t.path))
-        .collect();
-    Ok(index_paths(&app, &store, &paths))
+    crate::blocking::io(|| {
+        let paths: Vec<PathBuf> = store
+            .list_tracks()
+            .map_err(IpcError::from)?
+            .into_iter()
+            .map(|t| PathBuf::from(t.path))
+            .collect();
+        Ok(index_paths(&app, &store, &paths))
+    })
 }
 
 /// List all library tracks at once. Kept for back-compat; the Library UI uses
@@ -131,13 +135,17 @@ pub fn library_refresh_tags(
 /// task. `async` so even this whole-library read runs off Tauri's main thread.
 #[tauri::command(async)]
 pub fn library_list(store: State<'_, MediaStore>) -> Result<Vec<LibraryTrack>, IpcError> {
-    store.list_tracks().map_err(Into::into)
+    crate::blocking::io(|| {
+        store.list_tracks().map_err(Into::into)
+    })
 }
 
 /// Total track count, so the UI can show a load-progress fraction.
 #[tauri::command(async)]
 pub fn library_count(store: State<'_, MediaStore>) -> Result<i64, IpcError> {
-    store.count_tracks().map_err(Into::into)
+    crate::blocking::io(|| {
+        store.count_tracks().map_err(Into::into)
+    })
 }
 
 /// Count of tracks whose file is currently reachable. The UI probes this on
@@ -145,7 +153,9 @@ pub fn library_count(store: State<'_, MediaStore>) -> Result<i64, IpcError> {
 /// in or ejecting a drive updates the library without a needless full reload.
 #[tauri::command(async)]
 pub fn library_available_count(store: State<'_, MediaStore>) -> Result<i64, IpcError> {
-    store.count_available_tracks().map_err(Into::into)
+    crate::blocking::io(|| {
+        store.count_available_tracks().map_err(Into::into)
+    })
 }
 
 /// One ordered page of the library (reachable tracks only). The UI pages these
@@ -158,7 +168,9 @@ pub fn library_list_page(
     offset: i64,
     limit: i64,
 ) -> Result<LibraryPage, IpcError> {
-    store.list_tracks_page(offset, limit).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.list_tracks_page(offset, limit).map_err(Into::into)
+    })
 }
 
 // `(async)` (here and on every playlist command below): all of these take the
@@ -167,7 +179,9 @@ pub fn library_list_page(
 // lock. The worker pool can wait; the UI can't.
 #[tauri::command(async)]
 pub fn library_remove(store: State<'_, MediaStore>, path: String) -> Result<(), IpcError> {
-    store.remove_track(&path).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.remove_track(&path).map_err(Into::into)
+    })
 }
 
 /// A track's embedded cover art as a `data:` URI, or `None` if it has none.
@@ -175,17 +189,23 @@ pub fn library_remove(store: State<'_, MediaStore>, path: String) -> Result<(), 
 /// covers only for the rows/cards it actually shows. Never errors.
 #[tauri::command(async)]
 pub fn library_artwork(path: String) -> Option<String> {
-    probe_artwork(Path::new(&path))
+    crate::blocking::io(|| {
+        probe_artwork(Path::new(&path))
+    })
 }
 
 #[tauri::command(async)]
 pub fn playlist_list(store: State<'_, MediaStore>) -> Result<Vec<Playlist>, IpcError> {
-    store.list_playlists().map_err(Into::into)
+    crate::blocking::io(|| {
+        store.list_playlists().map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
 pub fn playlist_create(store: State<'_, MediaStore>, name: String) -> Result<Playlist, IpcError> {
-    store.create_playlist(&name).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.create_playlist(&name).map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
@@ -194,12 +214,16 @@ pub fn playlist_rename(
     id: String,
     name: String,
 ) -> Result<(), IpcError> {
-    store.rename_playlist(&id, &name).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.rename_playlist(&id, &name).map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
 pub fn playlist_delete(store: State<'_, MediaStore>, id: String) -> Result<(), IpcError> {
-    store.delete_playlist(&id).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.delete_playlist(&id).map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
@@ -207,7 +231,9 @@ pub fn playlist_tracks(
     store: State<'_, MediaStore>,
     id: String,
 ) -> Result<Vec<LibraryTrack>, IpcError> {
-    store.playlist_tracks(&id).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.playlist_tracks(&id).map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
@@ -216,7 +242,9 @@ pub fn playlist_add(
     id: String,
     path: String,
 ) -> Result<(), IpcError> {
-    store.add_to_playlist(&id, &path).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.add_to_playlist(&id, &path).map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
@@ -225,7 +253,9 @@ pub fn playlist_remove(
     id: String,
     path: String,
 ) -> Result<(), IpcError> {
-    store.remove_from_playlist(&id, &path).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.remove_from_playlist(&id, &path).map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
@@ -234,5 +264,7 @@ pub fn playlist_reorder(
     id: String,
     paths: Vec<String>,
 ) -> Result<(), IpcError> {
-    store.reorder_playlist(&id, &paths).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.reorder_playlist(&id, &paths).map_err(Into::into)
+    })
 }

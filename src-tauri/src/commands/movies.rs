@@ -361,25 +361,29 @@ fn decode_entities(s: &str) -> String {
 /// One collection's popular films, most-downloaded first.
 #[tauri::command(async)]
 pub fn movies_browse(collection: String, page: u32) -> Result<Vec<MovieCard>, IpcError> {
-    if collection.trim().is_empty() {
-        return Err(IpcError::new("invalid", "collection is required"));
-    }
-    let q = format!("collection:({collection}) AND mediatype:(movies)");
-    search_movies(&q, page, DEFAULT_ROWS)
+    crate::blocking::io(|| {
+        if collection.trim().is_empty() {
+            return Err(IpcError::new("invalid", "collection is required"));
+        }
+        let q = format!("collection:({collection}) AND mediatype:(movies)");
+        search_movies(&q, page, DEFAULT_ROWS)
+    })
 }
 
 /// Search across the whitelisted collections (the ones known to hold films).
 #[tauri::command(async)]
 pub fn movies_search(query: String, page: u32) -> Result<Vec<MovieCard>, IpcError> {
-    let terms = query.trim();
-    if terms.is_empty() {
-        return Ok(Vec::new());
-    }
-    let q = format!(
-        "({terms}) AND mediatype:(movies) AND {}",
-        whitelisted_collections_clause()
-    );
-    search_movies(&q, page, DEFAULT_ROWS)
+    crate::blocking::io(|| {
+        let terms = query.trim();
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
+        let q = format!(
+            "({terms}) AND mediatype:(movies) AND {}",
+            whitelisted_collections_clause()
+        );
+        search_movies(&q, page, DEFAULT_ROWS)
+    })
 }
 
 /// An identifier's full metadata, mapped to playable SD/HD streams (SD first).
@@ -388,38 +392,40 @@ pub fn movies_search(query: String, page: u32) -> Result<Vec<MovieCard>, IpcErro
 /// a network failure.
 #[tauri::command(async)]
 pub fn movies_resolve(identifier: String) -> Result<MovieDetail, IpcError> {
-    let resp = client()
-        .get(metadata_url(&identifier))
-        .send()
-        .map_err(|e| IpcError::new("network", format!("Couldn't reach the Internet Archive: {e}")))?;
-    if !resp.status().is_success() {
-        return Err(IpcError::new(
-            "network",
-            format!("Internet Archive returned HTTP {}", resp.status().as_u16()),
-        ));
-    }
-    let body: MetadataResponse = resp
-        .json()
-        .map_err(|e| IpcError::new("parse", format!("Unexpected metadata response: {e}")))?;
-    let meta = body.metadata.unwrap_or_default();
-    let title = meta
-        .title
-        .filter(|t| !t.trim().is_empty())
-        .unwrap_or_else(|| identifier.clone());
-    let year = meta.year.or_else(|| meta.date.as_deref().and_then(year_from_date));
-    let description = meta
-        .description
-        .map(|d| strip_html_tags(&d.into_string()))
-        .filter(|s| !s.is_empty());
-    let streams = pick_streams(&identifier, &body.files);
+    crate::blocking::io(|| {
+        let resp = client()
+            .get(metadata_url(&identifier))
+            .send()
+            .map_err(|e| IpcError::new("network", format!("Couldn't reach the Internet Archive: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(IpcError::new(
+                "network",
+                format!("Internet Archive returned HTTP {}", resp.status().as_u16()),
+            ));
+        }
+        let body: MetadataResponse = resp
+            .json()
+            .map_err(|e| IpcError::new("parse", format!("Unexpected metadata response: {e}")))?;
+        let meta = body.metadata.unwrap_or_default();
+        let title = meta
+            .title
+            .filter(|t| !t.trim().is_empty())
+            .unwrap_or_else(|| identifier.clone());
+        let year = meta.year.or_else(|| meta.date.as_deref().and_then(year_from_date));
+        let description = meta
+            .description
+            .map(|d| strip_html_tags(&d.into_string()))
+            .filter(|s| !s.is_empty());
+        let streams = pick_streams(&identifier, &body.files);
 
-    Ok(MovieDetail {
-        poster_url: poster_url(&identifier),
-        identifier,
-        title,
-        year,
-        description,
-        streams,
+        Ok(MovieDetail {
+            poster_url: poster_url(&identifier),
+            identifier,
+            title,
+            year,
+            description,
+            streams,
+        })
     })
 }
 

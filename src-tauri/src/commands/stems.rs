@@ -162,34 +162,36 @@ struct DownloadProgress {
 /// already installed.
 #[tauri::command(async)]
 pub fn stems_install(app: AppHandle, stems: State<'_, StemState>) -> Result<(), IpcError> {
-    let cancel = Arc::new(AtomicBool::new(false));
-    *stems.install_cancel.lock().expect("stems install poisoned") = Some(cancel.clone());
-    let rt_bytes = runtime::download_bytes(&stems.root);
-    let manifest = spleeter_manifest();
-    let model_bytes = if stems.separator.available() { 0 } else { manifest.total_bytes() };
-    let total = rt_bytes + model_bytes;
-    let emit = |done: u64| {
-        let _ = app.emit("stems:download", DownloadProgress { done, total });
-    };
-    emit(0);
-    let result = (|| {
-        if rt_bytes > 0 {
-            runtime::install(&stems.root, &|d, _| emit(d), &cancel)?;
+    crate::blocking::io(|| {
+        let cancel = Arc::new(AtomicBool::new(false));
+        *stems.install_cancel.lock().expect("stems install poisoned") = Some(cancel.clone());
+        let rt_bytes = runtime::download_bytes(&stems.root);
+        let manifest = spleeter_manifest();
+        let model_bytes = if stems.separator.available() { 0 } else { manifest.total_bytes() };
+        let total = rt_bytes + model_bytes;
+        let emit = |done: u64| {
+            let _ = app.emit("stems:download", DownloadProgress { done, total });
+        };
+        emit(0);
+        let result = (|| {
+            if rt_bytes > 0 {
+                runtime::install(&stems.root, &|d, _| emit(d), &cancel)?;
+            }
+            if model_bytes > 0 {
+                download::download(&stems.models_root(), &manifest, &|d, _| emit(rt_bytes + d), &cancel)?;
+            }
+            Ok::<(), StemError>(())
+        })();
+        *stems.install_cancel.lock().expect("stems install poisoned") = None;
+        match result {
+            Ok(()) => {
+                emit(total);
+                Ok(())
+            }
+            Err(StemError::Aborted) => Ok(()),
+            Err(e) => Err(IpcError::new("stems", e.to_string())),
         }
-        if model_bytes > 0 {
-            download::download(&stems.models_root(), &manifest, &|d, _| emit(rt_bytes + d), &cancel)?;
-        }
-        Ok::<(), StemError>(())
-    })();
-    *stems.install_cancel.lock().expect("stems install poisoned") = None;
-    match result {
-        Ok(()) => {
-            emit(total);
-            Ok(())
-        }
-        Err(StemError::Aborted) => Ok(()),
-        Err(e) => Err(IpcError::new("stems", e.to_string())),
-    }
+    })
 }
 
 /// Stop a running [`stems_install`].
@@ -273,77 +275,79 @@ pub fn stems_arm(
     yt: State<'_, YtMusicState>,
     source: StemSource,
 ) -> Result<(), IpcError> {
-    let key = source.key();
-    let cancel = stems.begin();
-    let fail = |m: String| IpcError::new("stems", m);
+    crate::blocking::io(|| {
+        let key = source.key();
+        let cancel = stems.begin();
+        let fail = |m: String| IpcError::new("stems", m);
 
-    let _ = app.emit("stems:progress", 0.0_f32);
-    let mix = match load_mix(&source, &yt, &cancel) {
-        Ok(m) => m,
-        Err(_) if cancel.load(Ordering::Relaxed) => return Ok(()),
-        Err(e) => return Err(fail(e)),
-    };
-    if cancel.load(Ordering::Relaxed) {
-        return Ok(());
-    }
-    let store = StemStore::new(mix);
-    if store.frames() == 0 {
-        return Err(fail("this track has no audio to separate".into()));
-    }
-
-    let cached = stems.separator.load_cached(&key, &store);
-    let playhead = || engine.pos().position_secs();
-    store.set_wanted((playhead() * f64::from(RATE)) as usize);
-
-    if !cached {
-        if !stems.separator.available() {
-            return Err(fail(StemError::Unavailable.to_string()));
-        }
-        let separator = stems.separator.clone();
-        let worker_store = store.clone();
-        let worker_cancel = cancel.clone();
-        let progress_app = app.clone();
-        let worker_key = key.clone();
-        let worker = std::thread::Builder::new()
-            .name("hm-stems".into())
-            .spawn(move || {
-                let result = separator.fill(&worker_store, &worker_cancel, |ready, total| {
-                    let _ = progress_app.emit("stems:progress", ready as f32 / total.max(1) as f32);
-                });
-                match result {
-                    Ok(()) => {
-                        separator.save_cached(&worker_key, &worker_store);
-                        let _ = progress_app.emit("stems:progress", 1.0_f32);
-                        Ok(())
-                    }
-                    Err(StemError::Aborted) => {
-                        separator.unload();
-                        Ok(())
-                    }
-                    Err(e) => {
-                        let message = e.to_string();
-                        let _ = progress_app.emit("stems:error", message.clone());
-                        Err(message)
-                    }
-                }
-            })
-            .map_err(|e| fail(e.to_string()))?;
-
-        match wait_for_lead(&store, &cancel, &playhead, worker) {
-            Ok(LeadWait::Ready) => {}
-            Ok(LeadWait::Cancelled) => return Ok(()),
+        let _ = app.emit("stems:progress", 0.0_f32);
+        let mix = match load_mix(&source, &yt, &cancel) {
+            Ok(m) => m,
+            Err(_) if cancel.load(Ordering::Relaxed) => return Ok(()),
             Err(e) => return Err(fail(e)),
+        };
+        if cancel.load(Ordering::Relaxed) {
+            return Ok(());
         }
-    } else {
-        let _ = app.emit("stems:progress", 1.0_f32);
-    }
+        let store = StemStore::new(mix);
+        if store.frames() == 0 {
+            return Err(fail("this track has no audio to separate".into()));
+        }
 
-    if cancel.load(Ordering::Relaxed) {
-        return Ok(());
-    }
-    // Swap in at the live playhead; unity gains reproduce the original mix.
-    engine.play_stems(store, playhead()).map_err(|e| fail(e.to_string()))?;
-    Ok(())
+        let cached = stems.separator.load_cached(&key, &store);
+        let playhead = || engine.pos().position_secs();
+        store.set_wanted((playhead() * f64::from(RATE)) as usize);
+
+        if !cached {
+            if !stems.separator.available() {
+                return Err(fail(StemError::Unavailable.to_string()));
+            }
+            let separator = stems.separator.clone();
+            let worker_store = store.clone();
+            let worker_cancel = cancel.clone();
+            let progress_app = app.clone();
+            let worker_key = key.clone();
+            let worker = std::thread::Builder::new()
+                .name("hm-stems".into())
+                .spawn(move || {
+                    let result = separator.fill(&worker_store, &worker_cancel, |ready, total| {
+                        let _ = progress_app.emit("stems:progress", ready as f32 / total.max(1) as f32);
+                    });
+                    match result {
+                        Ok(()) => {
+                            separator.save_cached(&worker_key, &worker_store);
+                            let _ = progress_app.emit("stems:progress", 1.0_f32);
+                            Ok(())
+                        }
+                        Err(StemError::Aborted) => {
+                            separator.unload();
+                            Ok(())
+                        }
+                        Err(e) => {
+                            let message = e.to_string();
+                            let _ = progress_app.emit("stems:error", message.clone());
+                            Err(message)
+                        }
+                    }
+                })
+                .map_err(|e| fail(e.to_string()))?;
+
+            match wait_for_lead(&store, &cancel, &playhead, worker) {
+                Ok(LeadWait::Ready) => {}
+                Ok(LeadWait::Cancelled) => return Ok(()),
+                Err(e) => return Err(fail(e)),
+            }
+        } else {
+            let _ = app.emit("stems:progress", 1.0_f32);
+        }
+
+        if cancel.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        // Swap in at the live playhead; unity gains reproduce the original mix.
+        engine.play_stems(store, playhead()).map_err(|e| fail(e.to_string()))?;
+        Ok(())
+    })
 }
 
 /// How the wait for the stretch around the playhead ended.

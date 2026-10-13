@@ -214,39 +214,41 @@ fn cache() -> &'static Mutex<HashMap<String, CacheEntry>> {
 // other yt-dlp-backed command in this app.
 #[tauri::command(async)]
 pub fn yt_movies_channel(channel_id: String, limit: u32) -> Result<Vec<YtMovie>, IpcError> {
-    let channel_id = channel_id.trim().to_string();
-    if channel_id.is_empty() {
-        return Err(IpcError::new("invalid", "channelId is required"));
-    }
-    let limit = limit.clamp(1, DISCOVERY_FETCH_CAP) as usize;
-
-    if let Some(entry) = cache().lock().unwrap().get(&channel_id) {
-        if entry.fetched_at.elapsed() < CACHE_TTL {
-            let mut movies = entry.movies.clone();
-            movies.truncate(limit);
-            return Ok(movies);
+    crate::blocking::io(|| {
+        let channel_id = channel_id.trim().to_string();
+        if channel_id.is_empty() {
+            return Err(IpcError::new("invalid", "channelId is required"));
         }
-    }
+        let limit = limit.clamp(1, DISCOVERY_FETCH_CAP) as usize;
 
-    let runner = ProcessRunner::detect().ok_or_else(|| {
-        IpcError::new(
-            "not_installed",
-            "yt-dlp isn't installed — it's needed to list this channel's movies.",
-        )
-    })?;
+        if let Some(entry) = cache().lock().unwrap().get(&channel_id) {
+            if entry.fetched_at.elapsed() < CACHE_TTL {
+                let mut movies = entry.movies.clone();
+                movies.truncate(limit);
+                return Ok(movies);
+            }
+        }
 
-    let movies = discover(&runner, &channel_id)?;
-    cache().lock().unwrap().insert(
-        channel_id,
-        CacheEntry {
-            movies: movies.clone(),
-            fetched_at: Instant::now(),
-        },
-    );
+        let runner = ProcessRunner::detect().ok_or_else(|| {
+            IpcError::new(
+                "not_installed",
+                "yt-dlp isn't installed — it's needed to list this channel's movies.",
+            )
+        })?;
 
-    let mut result = movies;
-    result.truncate(limit);
-    Ok(result)
+        let movies = discover(&runner, &channel_id)?;
+        cache().lock().unwrap().insert(
+            channel_id,
+            CacheEntry {
+                movies: movies.clone(),
+                fetched_at: Instant::now(),
+            },
+        );
+
+        let mut result = movies;
+        result.truncate(limit);
+        Ok(result)
+    })
 }
 
 #[cfg(test)]

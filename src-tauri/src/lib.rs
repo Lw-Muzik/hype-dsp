@@ -6,6 +6,7 @@
 //! audio engine, media, persistence) lives in the workspace crates; this layer
 //! is the thin, well-documented bridge between Rust and React.
 
+mod blocking;
 mod cloud;
 mod cloud_list;
 mod cloud_meta;

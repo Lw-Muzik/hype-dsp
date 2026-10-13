@@ -8,7 +8,9 @@ use tauri::State;
 /// Search the radio directory (falls back to the bundled seed when offline).
 #[tauri::command(async)]
 pub fn radio_search(query: String) -> Vec<RadioStation> {
-    radio::search(&query)
+    crate::blocking::io(|| {
+        radio::search(&query)
+    })
 }
 
 /// A country in the Africa browser (ISO 3166-1 alpha-2 code + English name).
@@ -86,7 +88,9 @@ pub fn radio_african_countries() -> Vec<RadioCountry> {
 /// Every station for a country (ISO alpha-2 code), most-popular first.
 #[tauri::command(async)]
 pub fn radio_by_country(code: String) -> Vec<RadioStation> {
-    radio::by_country(&code)
+    crate::blocking::io(|| {
+        radio::by_country(&code)
+    })
 }
 
 /// Favorited stations (persisted).
@@ -95,7 +99,9 @@ pub fn radio_by_country(code: String) -> Vec<RadioStation> {
 // — run them on the worker pool so the webview main thread never waits on it.
 #[tauri::command(async)]
 pub fn radio_favorites_list(store: State<'_, MediaStore>) -> Result<Vec<RadioStation>, IpcError> {
-    store.list_favorites().map_err(Into::into)
+    crate::blocking::io(|| {
+        store.list_favorites().map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
@@ -103,10 +109,14 @@ pub fn radio_favorite_add(
     store: State<'_, MediaStore>,
     station: RadioStation,
 ) -> Result<(), IpcError> {
-    store.add_favorite(&station).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.add_favorite(&station).map_err(Into::into)
+    })
 }
 
 #[tauri::command(async)]
 pub fn radio_favorite_remove(store: State<'_, MediaStore>, id: String) -> Result<(), IpcError> {
-    store.remove_favorite(&id).map_err(Into::into)
+    crate::blocking::io(|| {
+        store.remove_favorite(&id).map_err(Into::into)
+    })
 }

@@ -18,6 +18,8 @@ import {
   type StemSource,
 } from "@/lib/ipc";
 import { cn } from "@/lib/cn";
+import { useSystemEqStore } from "@/stores/systemEq";
+import { switchMode } from "@/features/mode/switchMode";
 import {
   effectiveGains,
   initialControls,
@@ -70,6 +72,7 @@ export function StemsPanel() {
  *  YouTube Music track). The song separates in the background — the stretch
  *  around the playhead first — and each control goes live as its part is ready. */
 function StemsPanelBody() {
+  const equalizerMode = useSystemEqStore((s) => s.enabled);
   const trackPath = useEngineStore((s) => s.currentTrackPath);
   const ytVideoId = useEngineStore((s) => s.currentYtVideoId);
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
@@ -228,6 +231,17 @@ function StemsPanelBody() {
             Play a track from your library or YouTube Music — you can then mix its vocals,
             drums and instruments live.
           </p>
+          {equalizerMode && (
+            <>
+              <p className="max-w-sm text-xs text-text-faint">
+                Stems separate tracks HypeMuzik itself plays — audio from other apps
+                can't be split.
+              </p>
+              <Button variant="secondary" onClick={() => void switchMode("player")}>
+                Switch to Player
+              </Button>
+            </>
+          )}
         </div>
       </Shell>
     );

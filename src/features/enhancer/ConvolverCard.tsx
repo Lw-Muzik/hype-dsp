@@ -9,6 +9,7 @@ import { useEngineStore } from "@/stores/engine";
 import { toast } from "@/stores/toast";
 import { ipcErrorMessage } from "@/lib/ipc";
 import { cn } from "@/lib/cn";
+import { useEffectToggle } from "./effects/useEffectToggles";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const db = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)} dB`;
@@ -18,6 +19,7 @@ export function ConvolverCard() {
   const convolver = useEngineStore((s) => s.state.convolver);
   const setConvolver = useEngineStore((s) => s.setConvolver);
   const loadConvolverIr = useEngineStore((s) => s.loadConvolverIr);
+  const { toggle } = useEffectToggle("convolver");
   const [loading, setLoading] = useState(false);
 
   const pickIr = async () => {
@@ -44,10 +46,7 @@ export function ConvolverCard() {
       actions={
         <Switch
           checked={convolver.enabled}
-          onChange={(v) => {
-            if (v && !requirePremium("CONVOLVER")) return;
-            setConvolver({ ...convolver, enabled: v });
-          }}
+          onChange={toggle}
           label="Enable convolver"
         />
       }

@@ -7,7 +7,6 @@ import { ExploreView } from "@/features/explore/ExploreView";
 import { MixerView } from "@/features/mixer/MixerView";
 import { MoviesView } from "@/features/movies/MoviesView";
 import { PlayerView } from "@/features/player/PlayerView";
-import { SettingsView } from "@/features/settings/SettingsView";
 import { StationsView } from "@/features/stations/StationsView";
 import { StemsPanel } from "@/features/stems/StemsPanel";
 import { VisualsView } from "@/features/visuals/VisualsView";
@@ -26,7 +25,6 @@ const VIEWS: Record<Route, FC> = {
   player: PlayerView,
   stations: StationsView,
   visuals: VisualsView,
-  settings: SettingsView,
 };
 
 /** Renders the active view from the UI store. */

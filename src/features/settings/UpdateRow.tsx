@@ -10,6 +10,10 @@ import {
 } from "@/lib/ipc";
 import type { UpdaterStatus } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
+import { downloadPercent } from "@/features/update/updateNotice";
+
+// Re-exported so existing imports (and its test) keep working.
+export { downloadPercent };
 
 /** A byte count at the only precision that means anything here. */
 function mb(bytes: number): string {
@@ -17,24 +21,12 @@ function mb(bytes: number): string {
 }
 
 /**
- * Progress as a percentage, or `null` when the server sent no length.
- *
- * Split out and exported because the distinction is the whole point: a chunked
- * response has no total, and rendering that as 0% gives a bar that sits still
- * for the entire download and looks stuck. `null` means "show indeterminate".
- */
-export function downloadPercent(received: number, total: number | null): number | null {
-  if (total === null || total <= 0) return null;
-  return Math.min(100, Math.round((received / total) * 100));
-}
-
-/**
  * The update line in Settings → About.
  *
- * Deliberately not a dialog, a toast, or a badge that follows you around.
- * Updates install when the app quits, so there is nothing the user has to act on
- * — this row exists to answer "am I up to date?" when someone thinks to ask, and
- * to offer the shortcut if they would rather not wait.
+ * The unmissable notice now lives in the shell (`UpdateBanner` under the top bar
+ * and `UpdatePill` in it, see `features/update`). This row stays as the
+ * detailed view: it answers "am I up to date?", offers a manual check, and
+ * shows download progress. Updates still install on quit either way.
  *
  * The backend owns all of it: checking, downloading and staging happen on a
  * cadence in Rust whether or not this component is mounted. This only renders
@@ -104,7 +96,7 @@ export function UpdateRow() {
       <div className="flex items-center gap-3 rounded-control border border-border bg-surface px-3 py-2.5">
         <Download className="size-4 shrink-0 text-text-faint" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm">Downloading update…</p>
+          <p className="text-sm">Downloading {status.version}…</p>
           <div
             className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-overlay"
             role="progressbar"

@@ -1,13 +1,15 @@
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { ROUTES } from "@/app/routes";
 import { useUiStore } from "@/stores/ui";
 import { NavItem } from "@/components/NavItem";
 import { Logo } from "@/components/Logo";
 import { SidebarNowPlaying } from "@/components/SidebarNowPlaying";
+import { useSystemEqStore } from "@/stores/systemEq";
+import { modeFromSystemEq, visibleRoutes } from "@/features/mode/appMode";
+import { SystemAudioPanel } from "@/features/mode/SystemAudioPanel";
 import { cn } from "@/lib/cn";
 import { TITLEBAR_INSET } from "@/lib/platform";
 
-/** Persistent left navigation: brand, primary destinations, system, collapse. */
+/** Persistent left navigation: brand, primary destinations, collapse. */
 const COLLAPSED_WIDTH = 68;
 
 export function Sidebar() {
@@ -18,8 +20,8 @@ export function Sidebar() {
   const leftWidth = useUiStore((s) => s.leftWidth);
   const resizing = useUiStore((s) => s.resizing);
 
-  const main = ROUTES.filter((r) => r.group === "main" && !r.hidden);
-  const system = ROUTES.filter((r) => r.group === "system" && !r.hidden);
+  const mode = modeFromSystemEq(useSystemEqStore((s) => s.enabled));
+  const main = visibleRoutes(mode);
 
   return (
     <aside
@@ -68,20 +70,11 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <SidebarNowPlaying collapsed={collapsed} />
-
-      <div className="flex flex-col gap-1 px-3 pb-1">
-        {system.map((r) => (
-          <NavItem
-            key={r.id}
-            icon={r.icon}
-            label={r.label}
-            active={route === r.id}
-            collapsed={collapsed}
-            onClick={() => setRoute(r.id)}
-          />
-        ))}
-      </div>
+      {mode === "equalizer" ? (
+        <SystemAudioPanel collapsed={collapsed} />
+      ) : (
+        <SidebarNowPlaying collapsed={collapsed} />
+      )}
 
       <div className="px-3 pb-3 pt-1">
         <button

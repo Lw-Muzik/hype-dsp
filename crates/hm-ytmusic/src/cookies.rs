@@ -158,8 +158,18 @@ pub fn now_secs() -> i64 {
 /// everywhere means the path Windows depends on is the one exercised daily.
 const CHUNK_UTF16_UNITS: usize = 1024;
 
+/// The keychain service, namespaced by `HM_KEYCHAIN_NAMESPACE` when set: a dev
+/// or test instance can then run beside the installed app without reading, or
+/// clearing, the user's real YouTube Music session. Unset = the real service.
+fn service() -> String {
+    match std::env::var("HM_KEYCHAIN_NAMESPACE") {
+        Ok(ns) if !ns.is_empty() => format!("{SERVICE}.{ns}"),
+        _ => SERVICE.to_string(),
+    }
+}
+
 fn entry_at(account: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, account).map_err(|e| format!("keychain unavailable: {e}"))
+    keyring::Entry::new(&service(), account).map_err(|e| format!("keychain unavailable: {e}"))
 }
 
 /// The account name of chunk `i` of `base`'s stored value.

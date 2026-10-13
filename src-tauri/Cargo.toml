@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2.11.3", features = [] }
+tauri = { version = "2.11.3", features = ["tray-icon", "image-png"] }
 libc = "0.2"
 tauri-plugin-opener = "2.5.4"
 tauri-plugin-store = "2.4.3"
@@ -75,7 +75,7 @@ tauri-plugin-process = "2.3.1"
 
 
 [target."cfg(target_os = \"macos\")".dependencies]
-objc2-app-kit = { version = "0.3.2", features = ["NSColor", "NSWindow", "objc2-core-foundation"] }
+objc2-app-kit = { version = "0.3.2", features = ["NSButton", "NSColor", "NSControl", "NSResponder", "NSView", "NSWindow", "objc2-core-foundation"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2.10.1"

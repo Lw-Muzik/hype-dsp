@@ -4,7 +4,7 @@ import { toast } from "@/stores/toast";
 import ThemeBackdrop from "@/features/theme/ThemeBackdrop";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
-import { TrialBanner } from "@/components/TrialBanner";
+import { UpdateBanner } from "@/features/update/UpdateBanner";
 import { Toaster } from "@/components/Toaster";
 import { SupporterUpsellModal } from "@/components/PremiumGate";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
@@ -12,7 +12,11 @@ import { RightSidebar } from "@/components/RightSidebar";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import { Router } from "@/app/router";
 import { useSystemEqStore } from "@/stores/systemEq";
+import { useUiStore } from "@/stores/ui";
+import { modeFromSystemEq, routeForMode } from "@/features/mode/appMode";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
+import { useUpdateStore } from "@/stores/update";
+import { useTray } from "@/features/tray/useTray";
 import {
   linkDiscoverStart,
   onPairedOnline,
@@ -21,11 +25,30 @@ import {
 
 /** The application shell: sidebar + top bar + the active view + now-playing. */
 export function App() {
+  // Keep the system tray menu in sync and run its clicks.
+  useTray();
+
+  // Mirror the updater's status for the banner and top-bar pill. Idempotent.
+  useEffect(() => {
+    useUpdateStore.getState().init();
+  }, []);
+
   // If the user left system-wide EQ on last session, re-engage it on launch.
   const resumeSystemEq = useSystemEqStore((s) => s.resume);
   useEffect(() => {
     void resumeSystemEq();
   }, [resumeSystemEq]);
+
+  // Equalizer mode (= system-wide EQ on) shows only the audio-tuning views and
+  // hides the app's own player chrome. Keep the route valid for the mode — this
+  // also covers launching with EQ resumed and EQ turned on from Settings.
+  const mode = modeFromSystemEq(useSystemEqStore((s) => s.enabled));
+  const route = useUiStore((s) => s.route);
+  const setRoute = useUiStore((s) => s.setRoute);
+  useEffect(() => {
+    const next = routeForMode(mode, route);
+    if (next !== route) setRoute(next);
+  }, [mode, route, setRoute]);
 
   // Linux: when the launch-time system-audio setup can't auto-install (a sandbox,
   // an unknown distro, or a declined/failed prompt), it emits the exact command
@@ -97,15 +120,19 @@ export function App() {
       <ResizeHandle side="left" />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <TrialBanner />
+        <UpdateBanner />
         <div className="flex min-h-0 flex-1">
           <main className="min-h-0 flex-1 overflow-y-auto p-6">
             <Router />
           </main>
-          <ResizeHandle side="right" />
-          <RightSidebar />
+          {mode === "player" && (
+            <>
+              <ResizeHandle side="right" />
+              <RightSidebar />
+            </>
+          )}
         </div>
-        <NowPlayingBar />
+        {mode === "player" && <NowPlayingBar />}
       </div>
       <Toaster />
       <SupporterUpsellModal />

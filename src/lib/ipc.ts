@@ -1498,7 +1498,7 @@ export type UpdaterStatus =
   | { state: "idle" }
   | { state: "checking" }
   /** `total` is null for a chunked response — show indeterminate, not 0%. */
-  | { state: "downloading"; received: number; total: number | null }
+  | { state: "downloading"; version: string; received: number; total: number | null }
   | { state: "ready"; version: string; notes: string | null }
   | { state: "failed"; message: string };
 
@@ -1746,4 +1746,61 @@ export function ipcErrorMessage(value: unknown): string {
   if (value instanceof Error) return value.message;
   if (typeof value === "string") return value;
   return "Unexpected error";
+}
+
+/* ---- Settings window ---------------------------------------------------- */
+
+/** Anchors in the Settings window. Keep identical to `SECTIONS` in
+ *  `src-tauri/src/commands/settings_window.rs` (pinned by a test). */
+export type SettingsSection =
+  | "about"
+  | "appearance"
+  | "library"
+  | "devices"
+  | "cloud"
+  | "youtube-music"
+  | "playback"
+  | "output"
+  | "account"
+  | "system-audio"
+  | "visualizer";
+
+/** Open the Settings window (or focus it), optionally scrolled to a section. */
+export function openSettings(section?: SettingsSection): Promise<void> {
+  return invoke<void>("settings_open", { section: section ?? null });
+}
+
+/** An already-open Settings window was asked to show another section. */
+export function onSettingsSection(
+  handler: (section: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>("settings://section", (e) => handler(e.payload));
+}
+
+/* ---- system tray ---------------------------------------------------------- */
+
+/** What the tray menu shows. The main window is the source of truth and pushes
+ *  a fresh model whenever any of it changes. */
+export interface TrayModel {
+  nowPlaying: string | null;
+  playing: boolean;
+  canControl: boolean;
+  mode: "player" | "equalizer";
+  modeSupported: boolean;
+  power: boolean;
+  effects: { id: string; label: string; on: boolean; enabled: boolean }[];
+  presets: { id: string; name: string; active: boolean }[];
+  routes: { id: string; label: string }[];
+  visualizer: boolean | null;
+  updateVersion: string | null;
+}
+
+/** Replace the tray menu's contents. */
+export function trayUpdate(model: TrayModel): Promise<void> {
+  return invoke<void>("tray_update", { model });
+}
+
+/** Subscribe to tray menu clicks (payload = action id). */
+export function onTrayAction(handler: (action: string) => void): Promise<UnlistenFn> {
+  return listen<string>("tray://action", (e) => handler(e.payload));
 }

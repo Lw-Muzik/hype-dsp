@@ -5,7 +5,6 @@ import {
   Gauge,
   Layers,
   LibraryBig,
-  Settings,
   SlidersHorizontal,
   SlidersVertical,
   Tv,
@@ -18,8 +17,8 @@ export interface NavRoute {
   id: Route;
   label: string;
   icon: LucideIcon;
-  /** Sidebar grouping: primary destinations vs. system. */
-  group: "main" | "system";
+  /** Sidebar grouping. Settings is a separate window, not a route. */
+  group: "main";
   /** One-line summary shown in the view header and empty state. */
   tagline: string;
   /** Hidden from the sidebar (reachable only inside another view, e.g. the
@@ -90,13 +89,6 @@ export const ROUTES: readonly NavRoute[] = [
     icon: AudioLines,
     group: "main",
     tagline: "MilkDrop presets that dance to whatever's playing.",
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    icon: Settings,
-    group: "system",
-    tagline: "Audio devices, appearance, and about.",
   },
 ];
 

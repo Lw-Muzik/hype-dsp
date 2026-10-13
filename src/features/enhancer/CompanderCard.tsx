@@ -4,6 +4,7 @@ import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
 import { useEngineStore } from "@/stores/engine";
 import { cn } from "@/lib/cn";
+import { useEffectToggle } from "./effects/useEffectToggles";
 import type { CompanderState } from "@/lib/types";
 
 type Key =
@@ -58,6 +59,7 @@ const GR_RANGE_DB = 18;
 export function CompanderCard() {
   const c = useEngineStore((s) => s.state.compander);
   const setCompander = useEngineStore((s) => s.setCompander);
+  const { toggle } = useEffectToggle("compander");
   const companderGr = useEngineStore((s) => s.companderGr);
 
   return (
@@ -67,7 +69,7 @@ export function CompanderCard() {
       actions={
         <Switch
           checked={c.enabled}
-          onChange={(enabled) => setCompander({ ...c, enabled })}
+          onChange={toggle}
           label="Enable multiband compander"
         />
       }

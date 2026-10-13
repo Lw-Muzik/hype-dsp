@@ -4,6 +4,7 @@ import { Switch } from "@/components/Switch";
 import { Slider } from "@/components/Slider";
 import { useEngineStore } from "@/stores/engine";
 import { cn } from "@/lib/cn";
+import { useEffectToggle } from "./effects/useEffectToggles";
 import type { SaturationState } from "@/lib/types";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -14,6 +15,7 @@ const HOT: Partial<SaturationState> = { drive: 0.6, enabled: true };
 export function SaturationCard() {
   const s = useEngineStore((st) => st.state.saturation);
   const setSaturation = useEngineStore((st) => st.setSaturation);
+  const { toggle } = useEffectToggle("saturation");
 
   return (
     <Card
@@ -22,7 +24,7 @@ export function SaturationCard() {
       actions={
         <Switch
           checked={s.enabled}
-          onChange={(enabled) => setSaturation({ ...s, enabled })}
+          onChange={toggle}
           label="Enable tube saturation"
         />
       }

@@ -12,6 +12,7 @@ mod cloud_meta;
 mod commands;
 mod control;
 mod media;
+mod tray;
 mod tv_proxy;
 mod updater;
 mod ytmusic;
@@ -26,7 +27,7 @@ use arc_swap::ArcSwap;
 use hm_audio::{AudioEngine, CompanderMeter, EngineMeters, PlaybackPos, SpectrumTap, SPECTRUM_BANDS};
 use hm_core::{ChainPresetStore, EngineFrame, EngineState, LicenseMock, MediaStore, MeterFrame, PresetStore, TrackMeta};
 use serde::Serialize;
-use tauri::menu::{Menu, PredefinedMenuItem, Submenu};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
 
 /// Transport progress payload (`engine:progress`).
@@ -255,6 +256,8 @@ pub fn run() {
                 &[
                     &PredefinedMenuItem::about(handle, None, None)?,
                     &PredefinedMenuItem::separator(handle)?,
+                    &MenuItem::with_id(handle, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?,
+                    &PredefinedMenuItem::separator(handle)?,
                     &PredefinedMenuItem::hide(handle, None)?,
                     &PredefinedMenuItem::quit(handle, None)?,
                 ],
@@ -266,7 +269,22 @@ pub fn run() {
         // running in the background. It comes back via the dock icon (macOS,
         // see `RunEvent::Reopen` below), relaunching the app, or "Open With".
         // ⌘Q (the Quit menu item) still exits normally.
+        .on_menu_event(|app, event| {
+            if event.id() == "settings" {
+                // Off the event-loop thread: building a window from it can
+                // deadlock on Windows (the reason `settings_open` is async).
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = commands::settings_window::open(&app, None);
+                });
+            }
+        })
         .on_window_event(|window, event| {
+            // Only the main window follows the hide/quit conventions; Settings
+            // is an ordinary child window that really closes.
+            if window.label() != "main" {
+                return;
+            }
             // macOS convention: closing the window HIDES the app so playback (and
             // the audio engine) keep running in the background — the dock icon
             // reopens it (see `RunEvent::Reopen`), ⌘Q quits. Windows/Linux follow
@@ -275,12 +293,17 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+                commands::settings_window::close(window.app_handle());
             }
-            #[cfg(not(target_os = "macos"))]
-            let _ = (window, event);
+            // Whenever main goes away, Settings must not outlive it (on
+            // Windows/Linux the app would keep running with only Settings open).
+            if let tauri::WindowEvent::Destroyed = event {
+                commands::settings_window::close(window.app_handle());
+            }
         })
         .manage(engine)
         .manage(updater::UpdaterState::default())
+        .manage(tray::TrayState::default())
         .manage(commands::open_with::PendingOpen::default())
         .setup(move |app| {
             // Audio files passed on the command line (Windows/Linux cold launch,
@@ -634,6 +657,10 @@ pub fn run() {
                 // to see, and delayed further inside `spawn_cadence`.
                 updater::spawn_cadence(app.handle().clone());
 
+                // Tray / menu-bar shortcut menu. Never fatal: some Linux
+                // desktops have no tray host.
+                tray::init(app.handle());
+
                 let snapshot = engine.state_handle();
                 std::thread::Builder::new()
                     .name("hm-autosave".into())
@@ -811,6 +838,8 @@ pub fn run() {
             commands::engine::system_eq_status,
             commands::engine::system_audio_install_driver,
             commands::cable::system_audio_setup_routing,
+            commands::settings_window::settings_open,
+            tray::tray_update,
             commands::apo_setup::apo_setup,
             commands::apo_setup::apo_uninstall,
             commands::apo_setup::apo_repair,

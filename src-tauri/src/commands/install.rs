@@ -52,8 +52,18 @@ fn write_file_id(app: &AppHandle, id: &str) {
     }
 }
 
+/// The keychain service, namespaced by `HM_KEYCHAIN_NAMESPACE` when set (see
+/// `hm_ytmusic::cookies`): a dev instance must never read or overwrite the
+/// installed app's install id. Unset = the real service.
+fn kc_service() -> String {
+    match std::env::var("HM_KEYCHAIN_NAMESPACE") {
+        Ok(ns) if !ns.is_empty() => format!("{KC_SERVICE}.{ns}"),
+        _ => KC_SERVICE.to_string(),
+    }
+}
+
 fn keychain_id() -> Option<String> {
-    let entry = keyring::Entry::new(KC_SERVICE, KC_ACCOUNT).ok()?;
+    let entry = keyring::Entry::new(&kc_service(), KC_ACCOUNT).ok()?;
     match entry.get_password() {
         Ok(v) if is_uuid(&v) => Some(v.trim().to_string()),
         _ => None,
@@ -61,7 +71,7 @@ fn keychain_id() -> Option<String> {
 }
 
 fn write_keychain_id(id: &str) {
-    if let Ok(entry) = keyring::Entry::new(KC_SERVICE, KC_ACCOUNT) {
+    if let Ok(entry) = keyring::Entry::new(&kc_service(), KC_ACCOUNT) {
         let _ = entry.set_password(id);
     }
 }

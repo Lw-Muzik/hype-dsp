@@ -93,19 +93,14 @@ fn try_init(app: &AppHandle) -> tauri::Result<()> {
             }
         });
 
-    #[cfg(target_os = "macos")]
-    {
-        // A monochrome template image, so macOS tints it for light and dark menu bars.
-        builder = builder
-            .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?)
-            .icon_as_template(true);
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        if let Some(icon) = app.default_window_icon() {
-            builder = builder.icon(icon.clone());
-        }
-    }
+    // The HypeMuzik brand mark (gold disc + green note, transparent), on every
+    // platform: the tray is the app's identity in the menu bar / notification
+    // area. Not a template image, so macOS keeps its colours. (The bundled app
+    // icons carry an opaque black square, which reads as a tile in a light
+    // menu bar; `icons/tray-icon.png` is cut from `src/assets/logo.png`.)
+    builder = builder
+        .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?)
+        .icon_as_template(false);
 
     builder.build(app)?;
     Ok(())

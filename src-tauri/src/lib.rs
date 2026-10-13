@@ -391,37 +391,19 @@ pub fn run() {
                 })
                 .ok();
 
-            // Stem separation (htdemucs ONNX, CoreML-accelerated). The model
-            // (htdemucs.onnx + sidecar .json) and the ONNX Runtime dylib are
-            // placed under <app data>/stems by scripts/get_stems_model.sh;
-            // separated stems cache per track.
+            // Live stems (Spleeter, MIT): the ONNX Runtime library, the four
+            // nets and the per-track cache all live under <app data>/stems and
+            // are fetched in-app on first use (scripts/get_stems_model.sh is
+            // the developer shortcut for the same layout).
             let stem_root = app
                 .path()
                 .app_data_dir()
                 .map(|d| d.join("stems"))
                 .unwrap_or_else(|_| std::env::temp_dir().join("hm_stems"));
-            let _ = std::fs::create_dir_all(stem_root.join("cache"));
-            // Point `ort` (load-dynamic) at a libonnxruntime placed next to the
-            // model; otherwise it searches the system library path.
-            let dylib_name = if cfg!(windows) {
-                "onnxruntime.dll"
-            } else if cfg!(target_os = "macos") {
-                "libonnxruntime.dylib"
-            } else {
-                "libonnxruntime.so"
-            };
-            let dylib = stem_root.join(dylib_name);
-            if dylib.is_file() {
-                // Set once during single-threaded setup, before any separator
-                // session is created.
-                std::env::set_var("ORT_DYLIB_PATH", &dylib);
-            }
-            app.manage(commands::stems::StemState {
-                separator: hm_stems::Separator::new(
-                    stem_root.join("model"),
-                    stem_root.join("cache"),
-                ),
-            });
+            let _ = std::fs::create_dir_all(&stem_root);
+            let stem_state = commands::stems::StemState::new(stem_root);
+            stem_state.remove_legacy_stems_data();
+            app.manage(stem_state);
 
             // Per-app mixer controller (real on Windows; unsupported stub on macOS).
             app.manage::<commands::mixer::Mixer>(Mutex::new(hm_platform::default_controller()));
@@ -926,6 +908,8 @@ pub fn run() {
             commands::stems::stems_set_gain,
             commands::stems::stems_reset,
             commands::stems::stems_gains,
+            commands::stems::stems_install,
+            commands::stems::stems_install_cancel,
             commands::open_with::open_files,
             commands::open_with::take_pending_open,
         ])

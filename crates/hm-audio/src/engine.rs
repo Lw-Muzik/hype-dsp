@@ -42,7 +42,8 @@ use crate::queue::QueuePlaybackSource;
 use crate::stream_queue::{StreamQueueSource, StreamResolver};
 use crate::sources::FilePlaybackSource;
 use crate::spectrum::{Analyzer, SpectrumTap};
-use crate::stems::{StemGains, StemPlaybackSource, STEM_COUNT};
+use crate::stems::{StemGains, StemPlaybackSource};
+use hm_stems::StemStore;
 use crate::streaming::{RadioStreamSource, StreamTuning};
 #[cfg(target_os = "macos")]
 use crate::system_tap::SystemTapSource;
@@ -543,11 +544,11 @@ enum EngineCommand {
         metas: Vec<TrackMeta>,
     },
     PlayCapture,
-    /// Play four separated stems together, mixed live by the engine's stem gains,
-    /// starting at `start_secs` (so we can swap in stems at the live playhead
-    /// without interrupting the track). Boxed — four decoded buffers are large.
+    /// Play a progressively separated track, mixed live by the engine's stem
+    /// gains, starting at `start_secs` (so stems swap in at the live playhead
+    /// without interrupting the track).
     PlayStems {
-        stems: Box<[DecodedAudio; STEM_COUNT]>,
+        store: Arc<StemStore>,
         start_secs: f64,
     },
     /// Play an already-constructed live source (e.g. the macOS system tap).
@@ -1231,29 +1232,23 @@ impl AudioEngine {
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
-    /// Play four separated stems (decoded; any rate) together, mixed live by the
-    /// shared [`StemGains`], beginning at `start_secs`. Each is resampled to the
-    /// device rate on the engine thread; the DSP chain still applies to the mix.
+    /// Play a track from a [`StemStore`] (the decoded mix plus whatever
+    /// vocals/drums have been separated so far), mixed live by the shared
+    /// [`StemGains`], beginning at `start_secs`. Where a chunk isn't separated
+    /// yet the original mix plays.
     ///
     /// Passing the current transport position as `start_secs` lets the caller
-    /// swap stems in seamlessly while a track plays: at unity gain the stems sum
-    /// back to the original mix, so playback continues without a gap.
-    pub fn play_stems(
-        &self,
-        stems: [DecodedAudio; STEM_COUNT],
-        start_secs: f64,
-    ) -> Result<(), AudioError> {
+    /// swap stems in seamlessly while a track plays: at unity gain the mix is
+    /// the original, so playback continues without a gap.
+    pub fn play_stems(&self, store: Arc<StemStore>, start_secs: f64) -> Result<(), AudioError> {
         self.ctrl
             .lock()
             .expect("engine ctrl poisoned")
-            .send(EngineCommand::PlayStems {
-                stems: Box::new(stems),
-                start_secs,
-            })
+            .send(EngineCommand::PlayStems { store, start_secs })
             .map_err(|_| AudioError::Stream("engine thread stopped".into()))
     }
 
-    /// Set a stem's gain (0 = muted, 1 = unity), applied live + smoothed.
+    /// Set a control's gain (0 = muted, 1 = unity), applied live + smoothed.
     pub fn set_stem_gain(&self, stem: usize, gain: f32) {
         self.stem_gains.set(stem, gain);
     }
@@ -1692,7 +1687,7 @@ fn control_loop(ctx: ControlCtx) {
                     _ => playing.store(false, Ordering::Relaxed),
                 }
             }
-            EngineCommand::PlayStems { stems, start_secs } => {
+            EngineCommand::PlayStems { store, start_secs } => {
                 drop(active.take());
                 meters.zero();
                 spectrum.zero();
@@ -1703,14 +1698,8 @@ fn control_loop(ctx: ControlCtx) {
                 };
                 let sample_rate = config.sample_rate;
                 let channels = config.channels as usize;
-                // Resample each stem to the device rate (empty stems stay empty).
-                let stems = *stems;
-                let resampled: [Vec<f32>; STEM_COUNT] = stems
-                    .map(|s| resample_stereo(&s.samples, s.sample_rate, sample_rate));
-                let frames = resampled.iter().map(|s| s.len() / 2).max().unwrap_or(0);
-                pos.prepare(sample_rate, frames);
-                let mut stem_source =
-                    StemPlaybackSource::new(resampled, stem_gains.clone(), sample_rate as f32);
+                let mut stem_source = StemPlaybackSource::new(store, stem_gains.clone(), sample_rate);
+                pos.prepare(sample_rate, stem_source.total_frames());
                 // Start at the live playhead so swapping stems in mid-track is gapless.
                 let start_frame =
                     ((start_secs.max(0.0)) * sample_rate as f64).round() as usize;

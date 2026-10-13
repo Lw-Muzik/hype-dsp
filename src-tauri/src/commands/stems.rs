@@ -1,190 +1,374 @@
-//! Stem-separation commands. Separates the **currently playing** track into four
-//! stems in-process (htdemucs on CoreML, cached), then swaps them in at the live
-//! playhead so the UI's faders mix them instantly — VirtualDJ-style.
+//! Live stem commands: **Vocals / Drums / Instruments** (Spleeter, MIT).
 //!
-//! There's no manual "separate" step: the Stems view *arms* the current track
-//! automatically, the track keeps playing while htdemucs runs (a few seconds on
-//! Apple Silicon), then the stems swap in seamlessly (at unity gain they sum
-//! back to the original mix). "2-stem" vs "4-stem" is a pure UI regrouping of
-//! the same one-pass result, so switching modes is free. See `hm_stems` +
+//! Arming a track decodes it, separates the stretch around the playhead first,
+//! swaps the stem mixer in at the live playhead as soon as that is ready, and
+//! keeps separating the rest on a worker thread (cached per track once whole).
+//! Where a part isn't separated yet the original plays, so the swap is gapless
+//! and the controls simply take effect region by region. See `hm_stems` and
 //! `hm_audio::stems`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use hm_audio::{decode_file, resample_stereo, AudioEngine, DecodedAudio, ELEMENT_COUNT, STEM_COUNT};
-use hm_core::{IpcError, TrackMeta};
-use hm_stems::{Separator, StemError, StemSet, STEM_SR};
-use serde::Serialize;
+use hm_audio::{decode_bytes, decode_file, resample_stereo, AudioEngine, ELEMENT_COUNT};
+use hm_core::IpcError;
+use hm_stems::config::{chunk_containing, MODEL_RATE as RATE};
+use hm_stems::download::{self, spleeter_manifest};
+use hm_stems::{cache, runtime, Separator, StemError, StemStore};
+use hm_ytmusic::YtMusicState;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
-/// Managed state: the configured htdemucs separator (model + on-disk cache).
+/// How far past the playhead is separated before the stems swap in.
+const LEAD_SECS: f64 = 30.0;
+
+/// Managed state: the separator plus the bookkeeping for the running session
+/// and in-app install.
 pub struct StemState {
-    pub separator: Separator,
+    pub separator: Arc<Separator>,
+    /// `<app data>/stems` — models, runtime library and cache live below it.
+    root: PathBuf,
+    session: Mutex<Option<Session>>,
+    install_cancel: Mutex<Option<Arc<AtomicBool>>>,
 }
 
-/// The separation currently in flight, if any: which track it's for and the
-/// flag that aborts it. Arming a *different* track (or leaving the Stems view
-/// via [`stems_reset`]) trips the flag so an abandoned separation stops burning
-/// CPU instead of grinding to completion. This is process-wide state like the
-/// separator itself; it lives in a static because `StemState` is constructed
-/// with a struct literal during app setup.
-struct InFlight {
-    track: String,
+/// The separation currently running and the flag that stops it.
+struct Session {
     cancel: Arc<AtomicBool>,
 }
 
-fn in_flight() -> &'static Mutex<Option<InFlight>> {
-    static IN_FLIGHT: OnceLock<Mutex<Option<InFlight>>> = OnceLock::new();
-    IN_FLIGHT.get_or_init(|| Mutex::new(None))
-}
-
-/// Register `track` as the armed separation, cancelling any in-flight run for a
-/// *different* track. Re-arming the same track shares the existing flag so one
-/// later cancel stops every pass for it.
-fn arm_in_flight(track: &str) -> Arc<AtomicBool> {
-    let mut guard = in_flight().lock().expect("stems in-flight poisoned");
-    if let Some(prev) = guard.take() {
-        if prev.track == track {
-            let cancel = prev.cancel.clone();
-            *guard = Some(prev);
-            return cancel;
+impl StemState {
+    pub fn new(root: PathBuf) -> Self {
+        let manifest = spleeter_manifest();
+        let separator = Separator::new(
+            download::model_dir(&root.join("models"), &manifest),
+            root.join("cache-spleeter-v1"),
+        )
+        .with_runtime_root(root.clone());
+        Self {
+            separator: Arc::new(separator),
+            root,
+            session: Mutex::new(None),
+            install_cancel: Mutex::new(None),
         }
-        prev.cancel.store(true, Ordering::Relaxed);
     }
-    let cancel = Arc::new(AtomicBool::new(false));
-    *guard = Some(InFlight {
-        track: track.to_owned(),
-        cancel: cancel.clone(),
-    });
-    cancel
+
+    /// Drop everything the previous stems engine left behind (about 1.3 GB of
+    /// models plus their caches) — those weights were research-only licensed.
+    pub fn remove_legacy_stems_data(&self) {
+        let _ = std::fs::remove_dir_all(self.root.join("cache"));
+        let _ = std::fs::remove_dir_all(self.root.join("tmp"));
+        // The old sidecar launcher script (`hm-<engine>`), if any.
+        if let Ok(rd) = std::fs::read_dir(&self.root) {
+            for e in rd.flatten() {
+                if e.file_name().to_string_lossy().starts_with("hm-") && e.path().is_file() {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(self.root.join("model"));
+        // The runtime used to sit directly in the stems folder.
+        if let Some(p) = runtime::lib_path(&self.root) {
+            if let Some(name) = p.file_name() {
+                let old = self.root.join(name);
+                if old.is_file() && !p.is_file() {
+                    let _ = std::fs::create_dir_all(self.root.join("runtime"));
+                    let _ = std::fs::rename(&old, &p);
+                }
+            }
+        }
+    }
+
+    fn models_root(&self) -> PathBuf {
+        self.root.join("models")
+    }
+
+    fn cancel_session(&self) {
+        if let Some(s) = self.session.lock().expect("stems session poisoned").take() {
+            s.cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Start a session, cancelling whatever ran before.
+    fn begin(&self) -> Arc<AtomicBool> {
+        let mut guard = self.session.lock().expect("stems session poisoned");
+        if let Some(prev) = guard.take() {
+            prev.cancel.store(true, Ordering::Relaxed);
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        *guard = Some(Session { cancel: cancel.clone() });
+        cancel
+    }
 }
 
-/// Clear the in-flight slot if it still belongs to `cancel`'s arm (a newer arm
-/// may have replaced it already).
-fn finish_in_flight(cancel: &Arc<AtomicBool>) {
-    let mut guard = in_flight().lock().expect("stems in-flight poisoned");
-    if guard
-        .as_ref()
-        .is_some_and(|f| Arc::ptr_eq(&f.cancel, cancel))
-    {
-        *guard = None;
-    }
+/// What to separate: a file on disk, or a YouTube Music track.
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum StemSource {
+    #[serde(rename_all = "camelCase")]
+    File { path: String },
+    #[serde(rename_all = "camelCase")]
+    Ytmusic { video_id: String },
 }
 
-/// Cancel whatever separation is in flight (used on disarm/close).
-fn cancel_in_flight() {
-    if let Some(prev) = in_flight()
-        .lock()
-        .expect("stems in-flight poisoned")
-        .take()
-    {
-        prev.cancel.store(true, Ordering::Relaxed);
+impl StemSource {
+    fn key(&self) -> String {
+        match self {
+            StemSource::File { path } => cache::file_key(Path::new(path)),
+            StemSource::Ytmusic { video_id } => cache::id_key("yt", video_id),
+        }
     }
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StemStatus {
-    /// The model (and ONNX Runtime) are installed — separation can run.
+    /// Models and runtime are installed: separation can run.
     available: bool,
-    /// This track is already separated (cached) — arming is instant.
+    /// Bytes the in-app install would still download (0 when installed).
+    download_bytes: u64,
+    /// This track was separated before; arming is instant.
     separated: bool,
-    /// CoreML (Neural Engine / GPU) is driving inference, vs. the CPU fallback.
-    accelerated: bool,
 }
 
-#[tauri::command]
-pub fn stems_status(stems: State<'_, StemState>, track_path: String) -> StemStatus {
-    let available = stems.separator.available();
-    StemStatus {
-        available,
-        separated: stems.separator.cached(Path::new(&track_path)).is_some(),
-        accelerated: available && stems.separator.accelerated(),
+fn models_missing_bytes(state: &StemState) -> u64 {
+    if state.separator.available() {
+        0
+    } else {
+        spleeter_manifest().total_bytes()
     }
 }
 
-/// Arm stems for `track_path`: separate it (using the cache if present) and swap
-/// the stems in at the live playhead. Emits `stems:progress` (0.0..=1.0) while
-/// htdemucs runs — the track keeps playing throughout.
+#[tauri::command]
+pub fn stems_status(stems: State<'_, StemState>, source: Option<StemSource>) -> StemStatus {
+    let download_bytes = models_missing_bytes(&stems) + runtime::download_bytes(&stems.root);
+    StemStatus {
+        available: download_bytes == 0,
+        download_bytes,
+        separated: source.is_some_and(|s| stems.separator.is_cached(&s.key())),
+    }
+}
+
+#[derive(Serialize, Clone)]
+struct DownloadProgress {
+    done: u64,
+    total: u64,
+}
+
+/// Download the ONNX Runtime and the four nets (hash-verified) into the app
+/// data folder, emitting `stems:download` `{done,total}`. Safe to call when
+/// already installed.
+#[tauri::command(async)]
+pub fn stems_install(app: AppHandle, stems: State<'_, StemState>) -> Result<(), IpcError> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    *stems.install_cancel.lock().expect("stems install poisoned") = Some(cancel.clone());
+    let rt_bytes = runtime::download_bytes(&stems.root);
+    let manifest = spleeter_manifest();
+    let model_bytes = if stems.separator.available() { 0 } else { manifest.total_bytes() };
+    let total = rt_bytes + model_bytes;
+    let emit = |done: u64| {
+        let _ = app.emit("stems:download", DownloadProgress { done, total });
+    };
+    emit(0);
+    let result = (|| {
+        if rt_bytes > 0 {
+            runtime::install(&stems.root, &|d, _| emit(d), &cancel)?;
+        }
+        if model_bytes > 0 {
+            download::download(&stems.models_root(), &manifest, &|d, _| emit(rt_bytes + d), &cancel)?;
+        }
+        Ok::<(), StemError>(())
+    })();
+    *stems.install_cancel.lock().expect("stems install poisoned") = None;
+    match result {
+        Ok(()) => {
+            emit(total);
+            Ok(())
+        }
+        Err(StemError::Aborted) => Ok(()),
+        Err(e) => Err(IpcError::new("stems", e.to_string())),
+    }
+}
+
+/// Stop a running [`stems_install`].
+#[tauri::command]
+pub fn stems_install_cancel(stems: State<'_, StemState>) {
+    if let Some(c) = stems.install_cancel.lock().expect("stems install poisoned").as_ref() {
+        c.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Download a stream with 256 KB range requests. googlevideo throttles one
+/// plain GET to a crawl but serves ranged ones at full speed.
+fn fetch_ranged(url: &str, headers: &[(String, String)], cancel: &AtomicBool) -> Result<Vec<u8>, String> {
+    const RANGE: u64 = 256 * 1024;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut out: Vec<u8> = Vec::new();
+    let mut total: Option<u64> = None;
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("cancelled".into());
+        }
+        let start = out.len() as u64;
+        let mut req = client.get(url).header("Range", format!("bytes={start}-{}", start + RANGE - 1));
+        for (k, v) in headers {
+            req = req.header(k.as_str(), v.as_str());
+        }
+        let resp = req.send().and_then(|r| r.error_for_status()).map_err(|e| e.to_string())?;
+        if total.is_none() {
+            total = resp
+                .headers()
+                .get("content-range")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.rsplit('/').next())
+                .and_then(|n| n.parse().ok());
+        }
+        let status = resp.status().as_u16();
+        let bytes = resp.bytes().map_err(|e| e.to_string())?;
+        if status == 200 {
+            // The server ignored Range and sent everything.
+            return Ok(bytes.to_vec());
+        }
+        if bytes.is_empty() {
+            break;
+        }
+        out.extend_from_slice(&bytes);
+        if total.is_some_and(|t| out.len() as u64 >= t) {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// Decode the source to interleaved stereo at 44.1 kHz.
+fn load_mix(
+    source: &StemSource,
+    yt: &YtMusicState,
+    cancel: &AtomicBool,
+) -> Result<Vec<f32>, String> {
+    let decoded = match source {
+        StemSource::File { path } => decode_file(Path::new(path)).map_err(|e| e.to_string())?,
+        StemSource::Ytmusic { video_id } => {
+            let (url, headers) = yt.stream_target(video_id)?;
+            let bytes = fetch_ranged(&url, &headers, cancel)?;
+            decode_bytes(bytes, Some("m4a")).map_err(|e| e.to_string())?
+        }
+    };
+    Ok(resample_stereo(&decoded.samples, decoded.sample_rate, RATE))
+}
+
+/// Arm stems for `source`: decode, separate around the playhead, swap in at the
+/// live playhead. Returns once the stems are live (the rest keeps separating in
+/// the background); emits `stems:progress` (0..1, share of the track separated).
 #[tauri::command(async)]
 pub fn stems_arm(
     app: AppHandle,
     stems: State<'_, StemState>,
     engine: State<'_, AudioEngine>,
-    track_path: String,
+    yt: State<'_, YtMusicState>,
+    source: StemSource,
 ) -> Result<(), IpcError> {
-    let track = Path::new(&track_path);
-    // Arming supersedes any separation still running for another track.
-    let cancel = arm_in_flight(&track_path);
+    let key = source.key();
+    let cancel = stems.begin();
+    let fail = |m: String| IpcError::new("stems", m);
 
-    let set: StemSet = if let Some(cached) = stems.separator.cached(track) {
-        finish_in_flight(&cancel);
-        let _ = app.emit("stems:progress", 1.0_f32);
-        cached
-    } else {
-        let decoded = match decode_file(track) {
-            Ok(d) => d,
-            Err(e) => {
-                finish_in_flight(&cancel);
-                return Err(IpcError::new("stems", e.to_string()));
-            }
-        };
-        // htdemucs runs at 44.1 kHz; resample the mixture up front.
-        let mix = resample_stereo(&decoded.samples, decoded.sample_rate, STEM_SR);
-        let progress_app = app.clone();
-        let result = stems.separator.separate_cancellable(
-            &mix,
-            track,
-            move |p| {
-                let _ = progress_app.emit("stems:progress", p);
-            },
-            &cancel,
-        );
-        finish_in_flight(&cancel);
-        match result {
-            Ok(set) => set,
-            // Superseded by a newer arm (or a disarm) — silently step aside.
-            Err(StemError::Aborted) => return Ok(()),
-            Err(e) => return Err(IpcError::new("stems", e.to_string())),
-        }
+    let _ = app.emit("stems:progress", 0.0_f32);
+    let mix = match load_mix(&source, &yt, &cancel) {
+        Ok(m) => m,
+        Err(_) if cancel.load(Ordering::Relaxed) => return Ok(()),
+        Err(e) => return Err(fail(e)),
     };
+    if cancel.load(Ordering::Relaxed) {
+        return Ok(());
+    }
+    let store = StemStore::new(mix);
+    if store.frames() == 0 {
+        return Err(fail("this track has no audio to separate".into()));
+    }
 
-    let buffers: [DecodedAudio; STEM_COUNT] = set.map(|samples| DecodedAudio {
-        samples,
-        sample_rate: STEM_SR,
-        meta: TrackMeta::default(),
-    });
+    let cached = stems.separator.load_cached(&key, &store);
+    let playhead = || engine.pos().position_secs();
+    store.set_wanted((playhead() * f64::from(RATE)) as usize);
 
-    // Swap in at the live playhead so the track continues without a gap.
-    let start = engine.pos().position_secs();
-    engine
-        .play_stems(buffers, start)
-        .map_err(|e| IpcError::new("stems", e.to_string()))?;
+    if !cached {
+        if !stems.separator.available() {
+            return Err(fail(StemError::Unavailable.to_string()));
+        }
+        let separator = stems.separator.clone();
+        let worker_store = store.clone();
+        let worker_cancel = cancel.clone();
+        let progress_app = app.clone();
+        let worker_key = key.clone();
+        std::thread::Builder::new()
+            .name("hm-stems".into())
+            .spawn(move || {
+                let result = separator.fill(&worker_store, &worker_cancel, |ready, total| {
+                    let _ = progress_app.emit("stems:progress", ready as f32 / total.max(1) as f32);
+                });
+                match result {
+                    Ok(()) => {
+                        separator.save_cached(&worker_key, &worker_store);
+                        let _ = progress_app.emit("stems:progress", 1.0_f32);
+                    }
+                    Err(StemError::Aborted) => separator.unload(),
+                    Err(e) => {
+                        let _ = progress_app.emit("stems:error", e.to_string());
+                    }
+                }
+            })
+            .map_err(|e| fail(e.to_string()))?;
+
+        // Wait for the stretch around the playhead.
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+            let here = (playhead() * f64::from(RATE)) as usize;
+            let last = ((here + (LEAD_SECS * f64::from(RATE)) as usize).min(store.frames() - 1)).max(here.min(store.frames() - 1));
+            let (from, to) = (chunk_containing(here.min(store.frames() - 1)), chunk_containing(last));
+            if (from..=to).all(|c| store.is_ready(c)) {
+                break;
+            }
+            if store.is_complete() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(40));
+        }
+    } else {
+        let _ = app.emit("stems:progress", 1.0_f32);
+    }
+
+    if cancel.load(Ordering::Relaxed) {
+        return Ok(());
+    }
+    // Swap in at the live playhead; unity gains reproduce the original mix.
+    engine.play_stems(store, playhead()).map_err(|e| fail(e.to_string()))?;
     Ok(())
 }
 
-/// Set an element's gain live (0 = muted, 1 = unity). Elements: 0 vocals,
-/// 1 kick, 2 hihat, 3 bass, 4 melody.
+/// Set a control's gain live (0 = muted, 1 = unity). 0 vocals, 1 drums,
+/// 2 instruments.
 #[tauri::command]
 pub fn stems_set_gain(engine: State<'_, AudioEngine>, stem: usize, gain: f32) {
     engine.set_stem_gain(stem, gain);
 }
 
-/// Reset every element to unity so the mix sounds like the original track again
-/// (used when leaving the Stems view).
+/// Back to the original mix (leaving the Stems view): every control to unity,
+/// and any separation still running stops and frees its memory.
 #[tauri::command]
-pub fn stems_reset(engine: State<'_, AudioEngine>) {
-    // Leaving the view also abandons any separation still running — stop it
-    // rather than let it grind on for a result nobody will hear.
-    cancel_in_flight();
+pub fn stems_reset(engine: State<'_, AudioEngine>, stems: State<'_, StemState>) {
+    stems.cancel_session();
     for e in 0..ELEMENT_COUNT {
         engine.set_stem_gain(e, 1.0);
     }
 }
 
-/// Current per-element gains (vocals, kick, hihat, bass, melody).
+/// Current gains (vocals, drums, instruments).
 #[tauri::command]
 pub fn stems_gains(engine: State<'_, AudioEngine>) -> Vec<f32> {
     let gains = engine.stem_gains();

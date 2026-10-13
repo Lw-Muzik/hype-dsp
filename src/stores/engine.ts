@@ -168,7 +168,6 @@ const defaultEngineState: EngineState = {
   },
   saturation: { enabled: false, drive: 0.3, mix: 1.0 },
   script: { enabled: false, source: "" },
-  script: { enabled: false, source: "" },
   headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
   playback: { gapless: true, crossfadeSecs: 0, dataSaver: false, autoplay: true },
@@ -352,6 +351,9 @@ interface EngineStore {
   nowPlayingMeta: TrackMeta | null;
   /** The current track's local file path (null for phone/cloud/radio). */
   currentTrackPath: string | null;
+  /** The current YouTube Music track's video id (null otherwise) — stems can
+   *  separate it too. */
+  currentYtVideoId: string | null;
   positionSecs: number;
   durationSecs: number | null;
   /** Whether the active source can be scrubbed (false for live radio). */
@@ -520,6 +522,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     nowPlaying: null,
     nowPlayingMeta: null,
     currentTrackPath: null,
+    currentYtVideoId: null,
     positionSecs: 0,
     durationSecs: null,
     seekable: false,
@@ -542,8 +545,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       orderPos: pos,
       nowPlaying: item.title,
       nowPlayingMeta: itemMeta(item),
-      // Only local files can be stem-separated.
+      // Local files and YouTube Music tracks can be stem-separated.
       currentTrackPath: item.source === "local" ? (item.track?.path ?? null) : null,
+      currentYtVideoId: item.source === "ytmusic" ? (item.ytTrack?.videoId ?? null) : null,
       playing: true,
       paused: false,
       positionSecs: 0,
@@ -989,6 +993,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     nowPlaying: null,
     nowPlayingMeta: null,
     currentTrackPath: null,
+    currentYtVideoId: null,
     positionSecs: 0,
     durationSecs: null,
     seekable: false,

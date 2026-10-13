@@ -168,6 +168,7 @@ const defaultEngineState: EngineState = {
   },
   saturation: { enabled: false, drive: 0.3, mix: 1.0 },
   script: { enabled: false, source: "" },
+  script: { enabled: false, source: "" },
   headphone: { enabled: false, preamp: 0, bands: [] },
   output: { gainDb: 0, limiterEnabled: true, ceilingDb: -0.3 },
   playback: { gapless: true, crossfadeSecs: 0, dataSaver: false, autoplay: true },
@@ -507,7 +508,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
   const WARMUP_DEPTH = 3;
 
   const pushEq = (eq: EngineState["eq"]) => {
-    void engineSetEq(eq.bands, eq.preGain, eq.enabled).catch(() => {});
+    void engineSetEq(eq.bands, eq.preGain, eq.enabled).catch(() => { });
   };
 
   /** Reset all transport/queue state to idle. */
@@ -634,7 +635,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           // the seconds the audio resolve is fighting for the network.
           const vid = item.ytTrack!.videoId;
           scheduleWarmup("video", WARMUP_DELAY_MS, () => {
-            void ytmusicVideoPrefetch(vid).catch(() => {});
+            void ytmusicVideoPrefetch(vid).catch(() => { });
           });
         }
         if (useYtMusicQueue) {
@@ -659,7 +660,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
             .filter((v): v is string => typeof v === "string");
           if (ahead.length > 0) {
             scheduleWarmup("batch", WARMUP_DELAY_MS, () => {
-              void ytmusicPrefetchBatch(ahead).catch(() => {});
+              void ytmusicPrefetchBatch(ahead).catch(() => { });
             });
           }
         } else {
@@ -678,7 +679,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           }
           if (aheadSingle.length > 0) {
             scheduleWarmup("batch", WARMUP_DELAY_MS, () => {
-              void ytmusicPrefetchBatch(aheadSingle).catch(() => {});
+              void ytmusicPrefetchBatch(aheadSingle).catch(() => { });
             });
           }
         }
@@ -724,7 +725,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           return { nowPlayingMeta: { ...s.nowPlayingMeta, cover } };
         });
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   /** How often resolved cloud tags are flushed into the queue (one store
@@ -899,7 +900,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         const warm = fresh.slice(0, WARMUP_DEPTH).map((t) => t.videoId);
         if (warm.length > 0) {
           scheduleWarmup("radio-batch", WARMUP_DELAY_MS, () => {
-            void ytmusicPrefetchBatch(warm).catch(() => {});
+            void ytmusicPrefetchBatch(warm).catch(() => { });
           });
         }
         resumeIfEndedNaturally();
@@ -1003,11 +1004,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
 
     setPower: (power) => {
       set((s) => ({ state: { ...s.state, power } }));
-      void engineSetPower(power).catch(() => {});
+      void engineSetPower(power).catch(() => { });
     },
     setMasterVolume: (masterVolume) => {
       set((s) => ({ state: { ...s.state, masterVolume } }));
-      void engineSetMasterVolume(masterVolume).catch(() => {});
+      void engineSetMasterVolume(masterVolume).catch(() => { });
     },
     setBand: (index, valueDb) => {
       const bands = get().state.eq.bands.slice();
@@ -1041,11 +1042,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       })),
     setBass: (enabled, amount, harmonics, adaptive) => {
       set((s) => ({ state: { ...s.state, bass: { enabled, amount, harmonics, adaptive } } }));
-      void engineSetBass(enabled, amount, harmonics, adaptive).catch(() => {});
+      void engineSetBass(enabled, amount, harmonics, adaptive).catch(() => { });
     },
     setSpatializer: (enabled, amount, mode) => {
       set((s) => ({ state: { ...s.state, spatializer: { enabled, amount, mode } } }));
-      void engineSetSpatializer(enabled, amount, mode).catch(() => {});
+      void engineSetSpatializer(enabled, amount, mode).catch(() => { });
     },
     setSurround3d: (next) => {
       set((s) => ({ state: { ...s.state, surround3d: next } }));
@@ -1054,31 +1055,31 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         next.intensity,
         next.subwoofer,
         next.speakers,
-      ).catch(() => {});
+      ).catch(() => { });
     },
     setRoom: (next) => {
       set((s) => ({ state: { ...s.state, room: next } }));
-      void engineSetRoom(next).catch(() => {});
+      void engineSetRoom(next).catch(() => { });
     },
     setConvolver: (next) => {
       set((s) => ({ state: { ...s.state, convolver: next } }));
-      void engineSetConvolver(next).catch(() => {});
+      void engineSetConvolver(next).catch(() => { });
     },
     setCompander: (next) => {
       set((s) => ({ state: { ...s.state, compander: next } }));
-      void engineSetCompander(next).catch(() => {});
+      void engineSetCompander(next).catch(() => { });
     },
     setSaturation: (next) => {
       set((s) => ({ state: { ...s.state, saturation: next } }));
-      void engineSetSaturation(next).catch(() => {});
+      void engineSetSaturation(next).catch(() => { });
     },
     setOutput: (next) => {
       set((s) => ({ state: { ...s.state, output: next } }));
-      void engineSetOutput(next).catch(() => {});
+      void engineSetOutput(next).catch(() => { });
     },
     setScriptEnabled: (enabled) => {
       set((s) => ({ state: { ...s.state, script: { ...s.state.script, enabled } } }));
-      void engineSetScript(enabled).catch(() => {});
+      void engineSetScript(enabled).catch(() => { });
     },
     compileScript: async (source) => {
       // The source is only mirrored into the store *after* the backend accepts
@@ -1162,22 +1163,22 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           activeProfileId: null,
         },
       }));
-      void profileClear().catch(() => {});
+      void profileClear().catch(() => { });
     },
 
     setPlayback: (gapless, crossfadeSecs) => {
       set((s) => ({ state: { ...s.state, playback: { ...s.state.playback, gapless, crossfadeSecs } } }));
-      void engineSetPlayback(gapless, crossfadeSecs).catch(() => {});
+      void engineSetPlayback(gapless, crossfadeSecs).catch(() => { });
     },
 
     setDataSaver: (on) => {
       set((s) => ({ state: { ...s.state, playback: { ...s.state.playback, dataSaver: on } } }));
-      void engineSetDataSaver(on).catch(() => {});
+      void engineSetDataSaver(on).catch(() => { });
     },
 
     setAutoplay: (on) => {
       set((s) => ({ state: { ...s.state, playback: { ...s.state.playback, autoplay: on } } }));
-      void engineSetAutoplay(on).catch(() => {});
+      void engineSetAutoplay(on).catch(() => { });
     },
 
     applyFrame: (frame) =>
@@ -1463,17 +1464,17 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       if (!playing) return;
       if (paused) {
         set({ paused: false });
-        void playerResume().catch(() => {});
+        void playerResume().catch(() => { });
       } else {
         set({ paused: true });
-        void playerPause().catch(() => {});
+        void playerPause().catch(() => { });
       }
     },
 
     seek: (secs) => {
       if (!get().seekable) return;
       set({ positionSecs: secs });
-      void playerSeek(secs).catch(() => {});
+      void playerSeek(secs).catch(() => { });
     },
 
     stop: async () => {

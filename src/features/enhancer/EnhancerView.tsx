@@ -34,6 +34,7 @@ import { ConvolverCard } from "./ConvolverCard";
 import { CompanderCard } from "./CompanderCard";
 import { SaturationCard } from "./SaturationCard";
 import { ScriptCard } from "./ScriptCard";
+import { ScriptCard } from "./ScriptCard";
 import { PresetsCard } from "./PresetsCard";
 
 export function EnhancerView() {
@@ -67,7 +68,7 @@ export function EnhancerView() {
     let cancelled = false;
     profileList()
       .then((list) => !cancelled && setProfiles(list))
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
     };
@@ -97,7 +98,7 @@ export function EnhancerView() {
   const selectProfile = (id: string) => {
     profileSetActive(id)
       .then((p) => applyProfile(p))
-      .catch(() => {});
+      .catch(() => { });
   };
 
   // 3D Surround is a Supporter feature — gate turning it on (never gate

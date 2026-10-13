@@ -36,19 +36,19 @@
 - year_from_date · function · L326-L328 — fn year_from_date(date: &str) -> Option<u32>
 - strip_html_tags · function · L335-L347 — fn strip_html_tags(input: &str) -> String
 - decode_entities · function · L349-L357 — fn decode_entities(s: &str) -> String
-- movies_browse · function · L363-L369 — pub fn movies_browse(collection: String, page: u32) -> Result<Vec<MovieCard>, IpcError>
-- movies_search · function · L373-L383 — pub fn movies_search(query: String, page: u32) -> Result<Vec<MovieCard>, IpcError>
-- movies_resolve · function · L390-L424 — pub fn movies_resolve(identifier: String) -> Result<MovieDetail, IpcError>
-- tests · module · L427-L599 — mod tests
-- file · function · L430-L432 — fn file(name: &str, format: &str) -> ArchiveFile
-- parses_search_docs_into_movie_cards · function · L435-L468 — fn parses_search_docs_into_movie_cards()
-- tolerates_year_and_downloads_sent_as_strings · function · L471-L483 — fn tolerates_year_and_downloads_sent_as_strings()
-- picks_sd_then_hd_when_both_present · function · L486-L508 — fn picks_sd_then_hd_when_both_present()
-- sd_falls_back_to_hd_file_without_duplicating_it · function · L511-L518 — fn sd_falls_back_to_hd_file_without_duplicating_it()
-- no_playable_file_yields_no_streams · function · L521-L524 — fn no_playable_file_yields_no_streams()
-- file_urls_percent_encode_spaces · function · L527-L531 — fn file_urls_percent_encode_spaces()
-- strips_tags_and_decodes_entities · function · L534-L541 — fn strips_tags_and_decodes_entities()
-- year_from_date_reads_the_leading_four_digits · function · L544-L548 — fn year_from_date_reads_the_leading_four_digits()
-- parses_full_metadata_response_fixture · function · L551-L574 — fn parses_full_metadata_response_fixture()
-- description_array_form_is_joined · function · L577-L589 — fn description_array_form_is_joined()
-- whitelisted_clause_names_every_confirmed_collection · function · L592-L598 — fn whitelisted_clause_names_every_confirmed_collection()
+- movies_browse · function · L363-L371 — pub fn movies_browse(collection: String, page: u32) -> Result<Vec<MovieCard>, IpcError>
+- movies_search · function · L375-L387 — pub fn movies_search(query: String, page: u32) -> Result<Vec<MovieCard>, IpcError>
+- movies_resolve · function · L394-L430 — pub fn movies_resolve(identifier: String) -> Result<MovieDetail, IpcError>
+- tests · module · L433-L605 — mod tests
+- file · function · L436-L438 — fn file(name: &str, format: &str) -> ArchiveFile
+- parses_search_docs_into_movie_cards · function · L441-L474 — fn parses_search_docs_into_movie_cards()
+- tolerates_year_and_downloads_sent_as_strings · function · L477-L489 — fn tolerates_year_and_downloads_sent_as_strings()
+- picks_sd_then_hd_when_both_present · function · L492-L514 — fn picks_sd_then_hd_when_both_present()
+- sd_falls_back_to_hd_file_without_duplicating_it · function · L517-L524 — fn sd_falls_back_to_hd_file_without_duplicating_it()
+- no_playable_file_yields_no_streams · function · L527-L530 — fn no_playable_file_yields_no_streams()
+- file_urls_percent_encode_spaces · function · L533-L537 — fn file_urls_percent_encode_spaces()
+- strips_tags_and_decodes_entities · function · L540-L547 — fn strips_tags_and_decodes_entities()
+- year_from_date_reads_the_leading_four_digits · function · L550-L554 — fn year_from_date_reads_the_leading_four_digits()
+- parses_full_metadata_response_fixture · function · L557-L580 — fn parses_full_metadata_response_fixture()
+- description_array_form_is_joined · function · L583-L595 — fn description_array_form_is_joined()
+- whitelisted_clause_names_every_confirmed_collection · function · L598-L604 — fn whitelisted_clause_names_every_confirmed_collection()

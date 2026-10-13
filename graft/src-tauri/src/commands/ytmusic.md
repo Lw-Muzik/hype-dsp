@@ -10,33 +10,33 @@
 - YtMusicPage · struct · L70-L74 — pub struct YtMusicPage
 - DownloadProgress · struct · L79-L87 — pub struct DownloadProgress
 - new · function · L90-L98 — fn new(video_id: &str, phase: &str) -> Self
-- ytmusic_status · function · L106-L108 — pub fn ytmusic_status(state: State<'_, YtMusicState>) -> YtMusicStatus
-- ytmusic_sign_in · function · L117-L167 — pub async fn ytmusic_sign_in(
-- ytmusic_sign_out · function · L172-L182 — pub async fn ytmusic_sign_out(
-- harvest_cookies · function · L198-L225 — fn harvest_cookies(win: &WebviewWindow) -> Vec<YtCookie>
-- map_cookie · function · L227-L251 — fn map_cookie(c: &tauri::webview::Cookie<'_>) -> YtCookie
-- ytmusic_all_tracks · function · L260-L287 — pub async fn ytmusic_all_tracks(
-- ytmusic_explore_categories · function · L293-L300 — pub async fn ytmusic_explore_categories(
-- ytmusic_explore_page · function · L307-L315 — pub async fn ytmusic_explore_page(
-- ytmusic_explore_tracks · function · L319-L327 — pub async fn ytmusic_explore_tracks(
-- ytmusic_search · function · L337-L346 — pub async fn ytmusic_search(
-- ytmusic_search_suggestions · function · L353-L358 — pub async fn ytmusic_search_suggestions(
-- ytmusic_artist_page · function · L363-L371 — pub async fn ytmusic_artist_page(
-- ytmusic_radio · function · L376-L384 — pub async fn ytmusic_radio(
-- ytmusic_radio_continue · function · L389-L398 — pub async fn ytmusic_radio_continue(
-- ytmusic_video_url · function · L415-L428 — pub fn ytmusic_video_url(
-- ytmusic_prefetch · function · L445-L447 — pub fn ytmusic_prefetch(state: State<'_, YtMusicState>, video_id: String)
-- ytmusic_prefetch_batch · function · L453-L455 — pub fn ytmusic_prefetch_batch(state: State<'_, YtMusicState>, video_ids: Vec<String>)
-- ytmusic_video_prefetch · function · L462-L464 — pub fn ytmusic_video_prefetch(state: State<'_, YtMusicState>, video_id: String)
-- ytmusic_play · function · L469-L483 — pub fn ytmusic_play(
-- YtQueueItem · struct · L490-L498 — pub struct YtQueueItem
-- player_play_ytmusic_queue · function · L507-L551 — pub fn player_play_ytmusic_queue(
-- ytmusic_download_dir · function · L557-L559 — pub fn ytmusic_download_dir(settings: State<'_, YtSettings>) -> String
-- ytmusic_set_download_dir · function · L563-L566 — pub fn ytmusic_set_download_dir(settings: State<'_, YtSettings>, dir: Option<String>) -> String
-- ytmusic_download · function · L575-L589 — pub fn ytmusic_download(
-- ytmusic_download_to_phone · function · L600-L636 — pub fn ytmusic_download_to_phone(
-- fetch_to_disk · function · L639-L675 — fn fetch_to_disk(
-- emit · function · L677-L679 — fn emit(app: &AppHandle, p: DownloadProgress)
-- emit_error · function · L681-L692 — fn emit_error(app: &AppHandle, video_id: &str, message: &str)
-- tests · module · L695-L712 — mod tests
-- progress_serialises_camel_case_for_the_frontend · function · L699-L711 — fn progress_serialises_camel_case_for_the_frontend()
+- ytmusic_status · function · L106-L110 — pub fn ytmusic_status(state: State<'_, YtMusicState>) -> YtMusicStatus
+- ytmusic_sign_in · function · L119-L169 — pub async fn ytmusic_sign_in(
+- ytmusic_sign_out · function · L174-L184 — pub async fn ytmusic_sign_out(
+- harvest_cookies · function · L200-L227 — fn harvest_cookies(win: &WebviewWindow) -> Vec<YtCookie>
+- map_cookie · function · L229-L253 — fn map_cookie(c: &tauri::webview::Cookie<'_>) -> YtCookie
+- ytmusic_all_tracks · function · L262-L289 — pub async fn ytmusic_all_tracks(
+- ytmusic_explore_categories · function · L295-L302 — pub async fn ytmusic_explore_categories(
+- ytmusic_explore_page · function · L309-L317 — pub async fn ytmusic_explore_page(
+- ytmusic_explore_tracks · function · L321-L329 — pub async fn ytmusic_explore_tracks(
+- ytmusic_search · function · L339-L348 — pub async fn ytmusic_search(
+- ytmusic_search_suggestions · function · L355-L360 — pub async fn ytmusic_search_suggestions(
+- ytmusic_artist_page · function · L365-L373 — pub async fn ytmusic_artist_page(
+- ytmusic_radio · function · L378-L386 — pub async fn ytmusic_radio(
+- ytmusic_radio_continue · function · L391-L400 — pub async fn ytmusic_radio_continue(
+- ytmusic_video_url · function · L417-L432 — pub fn ytmusic_video_url(
+- ytmusic_prefetch · function · L449-L453 — pub fn ytmusic_prefetch(state: State<'_, YtMusicState>, video_id: String)
+- ytmusic_prefetch_batch · function · L459-L463 — pub fn ytmusic_prefetch_batch(state: State<'_, YtMusicState>, video_ids: Vec<String>)
+- ytmusic_video_prefetch · function · L470-L474 — pub fn ytmusic_video_prefetch(state: State<'_, YtMusicState>, video_id: String)
+- ytmusic_play · function · L479-L495 — pub fn ytmusic_play(
+- YtQueueItem · struct · L502-L510 — pub struct YtQueueItem
+- player_play_ytmusic_queue · function · L519-L563 — pub fn player_play_ytmusic_queue(
+- ytmusic_download_dir · function · L569-L571 — pub fn ytmusic_download_dir(settings: State<'_, YtSettings>) -> String
+- ytmusic_set_download_dir · function · L575-L578 — pub fn ytmusic_set_download_dir(settings: State<'_, YtSettings>, dir: Option<String>) -> String
+- ytmusic_download · function · L587-L603 — pub fn ytmusic_download(
+- ytmusic_download_to_phone · function · L614-L652 — pub fn ytmusic_download_to_phone(
+- fetch_to_disk · function · L655-L691 — fn fetch_to_disk(
+- emit · function · L693-L695 — fn emit(app: &AppHandle, p: DownloadProgress)
+- emit_error · function · L697-L708 — fn emit_error(app: &AppHandle, video_id: &str, message: &str)
+- tests · module · L711-L728 — mod tests
+- progress_serialises_camel_case_for_the_frontend · function · L715-L727 — fn progress_serialises_camel_case_for_the_frontend()

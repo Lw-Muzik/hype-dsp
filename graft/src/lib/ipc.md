@@ -263,3 +263,5 @@
 - TrayModel · interface · L1784-L1796 — interface TrayModel
 - trayUpdate · function · L1799-L1801 — function trayUpdate(model: TrayModel): Promise<void>
 - onTrayAction · function · L1804-L1806 — function onTrayAction(handler: (action: string) => void): Promise<UnlistenFn>
+- sessionLoad · function · L1811-L1813 — function sessionLoad(): Promise<string | null>
+- sessionSave · function · L1816-L1818 — function sessionSave(json: string | null): Promise<void>

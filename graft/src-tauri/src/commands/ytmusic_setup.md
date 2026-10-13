@@ -20,21 +20,21 @@
 - verify · function · L325-L336 — fn verify(app: &AppHandle, tool: &'static str, bytes: &[u8], expected: &str) -> Result<(), String>
 - install_ytdlp · function · L339-L350 — fn install_ytdlp(app: &AppHandle) -> Result<(), String>
 - install_ffmpeg · function · L355-L415 — fn install_ffmpeg(app: &AppHandle) -> Result<(), String>
-- ytmusic_setup · function · L424-L438 — pub fn ytmusic_setup(
-- UPDATE_EVERY · constant · L443-L443 — const UPDATE_EVERY: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
-- update_due · function · L447-L452 — fn update_due(stamp: Option<&str>, now_secs: u64) -> bool
-- stamp_path · function · L454-L456 — fn stamp_path() -> Option<PathBuf>
-- now_secs · function · L458-L463 — fn now_secs() -> u64
-- stamp_update_check · function · L465-L473 — fn stamp_update_check()
-- spawn_auto_update · function · L481-L516 — pub fn spawn_auto_update()
-- CREATE_NO_WINDOW · constant · L503-L503 — const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-- tests · module · L519-L646 — mod tests
-- checksum_for_named_listing · function · L524-L531 — fn checksum_for_named_listing()
-- checksum_for_binary_marker · function · L535-L542 — fn checksum_for_binary_marker()
-- checksum_for_single_hash_file · function · L546-L552 — fn checksum_for_single_hash_file()
-- checksum_for_missing_entry · function · L556-L559 — fn checksum_for_missing_entry()
-- checksum_for_ignores_garbage · function · L563-L566 — fn checksum_for_ignores_garbage()
-- asset_names_are_release_shaped · function · L570-L581 — fn asset_names_are_release_shaped()
-- url_file_name_strips_query_and_fragment · function · L588-L611 — fn url_file_name_strips_query_and_fragment()
-- update_due_logic · function · L614-L623 — fn update_due_logic()
-- live_release_publishes_our_assets · function · L629-L645 — fn live_release_publishes_our_assets()
+- ytmusic_setup · function · L424-L440 — pub fn ytmusic_setup(
+- UPDATE_EVERY · constant · L445-L445 — const UPDATE_EVERY: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
+- update_due · function · L449-L454 — fn update_due(stamp: Option<&str>, now_secs: u64) -> bool
+- stamp_path · function · L456-L458 — fn stamp_path() -> Option<PathBuf>
+- now_secs · function · L460-L465 — fn now_secs() -> u64
+- stamp_update_check · function · L467-L475 — fn stamp_update_check()
+- spawn_auto_update · function · L483-L518 — pub fn spawn_auto_update()
+- CREATE_NO_WINDOW · constant · L505-L505 — const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+- tests · module · L521-L648 — mod tests
+- checksum_for_named_listing · function · L526-L533 — fn checksum_for_named_listing()
+- checksum_for_binary_marker · function · L537-L544 — fn checksum_for_binary_marker()
+- checksum_for_single_hash_file · function · L548-L554 — fn checksum_for_single_hash_file()
+- checksum_for_missing_entry · function · L558-L561 — fn checksum_for_missing_entry()
+- checksum_for_ignores_garbage · function · L565-L568 — fn checksum_for_ignores_garbage()
+- asset_names_are_release_shaped · function · L572-L583 — fn asset_names_are_release_shaped()
+- url_file_name_strips_query_and_fragment · function · L590-L613 — fn url_file_name_strips_query_and_fragment()
+- update_due_logic · function · L616-L625 — fn update_due_logic()
+- live_release_publishes_our_assets · function · L631-L647 — fn live_release_publishes_our_assets()

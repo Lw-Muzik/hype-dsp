@@ -3,7 +3,6 @@
 - KC_SERVICE · constant · L18-L18 — const KC_SERVICE: &str = "com.hypemuzik.desktop.install";
 - KC_ACCOUNT · constant · L19-L19 — const KC_ACCOUNT: &str = "install-id";
 - FILE_NAME · constant · L20-L20 — const FILE_NAME: &str = "install-id";
-- DEFAULT_API · constant · L23-L23 — const DEFAULT_API: &str = "http://37.60.225.220:9400/api";
 - HEARTBEAT_INTERVAL · constant · L25-L25 — const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 - api_base · function · L27-L29 — fn api_base() -> String
 - is_uuid · function · L31-L33 — fn is_uuid(s: &str) -> bool

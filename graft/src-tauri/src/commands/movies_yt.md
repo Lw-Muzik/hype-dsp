@@ -17,16 +17,16 @@
 - CacheEntry · struct · L191-L194 — struct CacheEntry
 - cache · function · L196-L199 — fn cache() -> &'static Mutex<HashMap<String, CacheEntry>>
 - CACHE · constant · L197-L197 — static CACHE: std::sync::OnceLock<Mutex<HashMap<String, CacheEntry>>> = std::sync::OnceLock::new();
-- yt_movies_channel · function · L216-L250 — pub fn yt_movies_channel(channel_id: String, limit: u32) -> Result<Vec<YtMovie>, IpcError>
-- tests · module · L253-L383 — mod tests
-- entry · function · L256-L262 — fn entry(id: &str, title: &str, duration: f64) -> FlatEntry
-- keeps_only_hour_plus_entries · function · L265-L272 — fn keeps_only_hour_plus_entries()
-- accepts_a_shorter_edit_only_when_the_title_says_full_movie · function · L275-L284 — fn accepts_a_shorter_edit_only_when_the_title_says_full_movie()
-- missing_duration_is_excluded_not_zero · function · L287-L290 — fn missing_duration_is_excluded_not_zero()
-- tolerates_duration_sent_as_a_string · function · L293-L298 — fn tolerates_duration_sent_as_a_string()
-- strips_marketing_suffix_but_keeps_punctuation_before_it · function · L301-L308 — fn strips_marketing_suffix_but_keeps_punctuation_before_it()
-- builds_the_documented_thumbnail_shape · function · L311-L316 — fn builds_the_documented_thumbnail_shape()
-- maps_a_full_channel_listing_fixture · function · L319-L345 — fn maps_a_full_channel_listing_fixture()
-- falls_back_to_uploader_when_channel_is_absent · function · L348-L361 — fn falls_back_to_uploader_when_channel_is_absent()
-- empty_id_is_rejected_before_any_yt_dlp_spawn · function · L364-L367 — fn empty_id_is_rejected_before_any_yt_dlp_spawn()
-- serialises_camel_case_for_the_frontend · function · L370-L382 — fn serialises_camel_case_for_the_frontend()
+- yt_movies_channel · function · L216-L252 — pub fn yt_movies_channel(channel_id: String, limit: u32) -> Result<Vec<YtMovie>, IpcError>
+- tests · module · L255-L385 — mod tests
+- entry · function · L258-L264 — fn entry(id: &str, title: &str, duration: f64) -> FlatEntry
+- keeps_only_hour_plus_entries · function · L267-L274 — fn keeps_only_hour_plus_entries()
+- accepts_a_shorter_edit_only_when_the_title_says_full_movie · function · L277-L286 — fn accepts_a_shorter_edit_only_when_the_title_says_full_movie()
+- missing_duration_is_excluded_not_zero · function · L289-L292 — fn missing_duration_is_excluded_not_zero()
+- tolerates_duration_sent_as_a_string · function · L295-L300 — fn tolerates_duration_sent_as_a_string()
+- strips_marketing_suffix_but_keeps_punctuation_before_it · function · L303-L310 — fn strips_marketing_suffix_but_keeps_punctuation_before_it()
+- builds_the_documented_thumbnail_shape · function · L313-L318 — fn builds_the_documented_thumbnail_shape()
+- maps_a_full_channel_listing_fixture · function · L321-L347 — fn maps_a_full_channel_listing_fixture()
+- falls_back_to_uploader_when_channel_is_absent · function · L350-L363 — fn falls_back_to_uploader_when_channel_is_absent()
+- empty_id_is_rejected_before_any_yt_dlp_spawn · function · L366-L369 — fn empty_id_is_rejected_before_any_yt_dlp_spawn()
+- serialises_camel_case_for_the_frontend · function · L372-L384 — fn serialises_camel_case_for_the_frontend()

@@ -24,6 +24,6 @@
 - write_tags_fill_empty · function · L260-L293 — fn write_tags_fill_empty(path: &str, r: &RecognitionResult) -> bool
 - refresh_db · function · L296-L313 — fn refresh_db(store: &MediaStore, path: &str)
 - needs_identify · function · L317-L324 — fn needs_identify(t: &LibraryTrack) -> bool
-- identify_track · function · L330-L332 — pub fn identify_track(store: State<'_, MediaStore>, path: String) -> Option<RecognitionResult>
-- identify_local · function · L339-L353 — pub(crate) fn identify_local(store: &MediaStore, path: &str) -> Option<RecognitionResult>
-- library_identify_missing · function · L360-L385 — pub fn library_identify_missing(
+- identify_track · function · L330-L334 — pub fn identify_track(store: State<'_, MediaStore>, path: String) -> Option<RecognitionResult>
+- identify_local · function · L341-L355 — pub(crate) fn identify_local(store: &MediaStore, path: &str) -> Option<RecognitionResult>
+- library_identify_missing · function · L362-L389 — pub fn library_identify_missing(

@@ -4,26 +4,26 @@
 - api_base · function · L20-L24 — fn api_base() -> String
 - http_client · function · L26-L32 — fn http_client(secs: u64) -> Option<reqwest::blocking::Client>
 - LrclibHit · struct · L36-L47 — struct LrclibHit
-- lyrics_fetch · function · L56-L115 — pub fn lyrics_fetch(
-- metadata_is_weak · function · L119-L128 — fn metadata_is_weak(title: &str, artist: &str, path: &str) -> bool
-- apply_recognition · function · L131-L138 — fn apply_recognition(title: &mut String, artist: &mut String, r: &RecognitionResult)
-- backend_lyrics · function · L142-L160 — fn backend_lyrics(title: &str, artist: &str) -> Option<String>
-- read_lrc_sidecar · function · L163-L167 — fn read_lrc_sidecar(audio: &str) -> Option<String>
-- lrclib_resolve · function · L177-L209 — fn lrclib_resolve(title: &str, artist: &str, duration_secs: Option<f64>) -> Option<String>
-- push_try · function · L212-L224 — fn push_try(tries: &mut Vec<(String, String, bool)>, t: &str, a: &str, require_artist: bool)
-- lrclib_get · function · L228-L254 — fn lrclib_get(title: &str, artist: &str, duration_secs: Option<f64>) -> Option<String>
-- lrclib_search_scored · function · L259-L347 — fn lrclib_search_scored(
-- clean_title · function · L351-L353 — fn clean_title(title: &str) -> String
-- strip_brackets · function · L356-L368 — fn strip_brackets(s: &str) -> String
-- strip_feat · function · L371-L381 — fn strip_feat(s: &str) -> String
-- primary_artist · function · L385-L396 — fn primary_artist(artist: &str) -> String
-- split_artist_title · function · L399-L403 — fn split_artist_title(s: &str) -> Option<(String, String)>
-- collapse_ws · function · L405-L407 — fn collapse_ws(s: &str) -> String
-- tests · module · L410-L469 — mod tests
-- clean_title_strips_decorations · function · L416-L421 — fn clean_title_strips_decorations()
-- strip_brackets_tolerates_unmatched · function · L424-L427 — fn strip_brackets_tolerates_unmatched()
-- primary_artist_takes_first_credit · function · L430-L434 — fn primary_artist_takes_first_credit()
-- split_artist_title_handles_dash · function · L437-L443 — fn split_artist_title_handles_dash()
-- weak_when_artist_missing · function · L446-L449 — fn weak_when_artist_missing()
-- weak_when_title_is_just_the_filename · function · L452-L459 — fn weak_when_title_is_just_the_filename()
-- strong_when_real_title_and_artist · function · L462-L468 — fn strong_when_real_title_and_artist()
+- lyrics_fetch · function · L56-L117 — pub fn lyrics_fetch(
+- metadata_is_weak · function · L121-L130 — fn metadata_is_weak(title: &str, artist: &str, path: &str) -> bool
+- apply_recognition · function · L133-L140 — fn apply_recognition(title: &mut String, artist: &mut String, r: &RecognitionResult)
+- backend_lyrics · function · L144-L162 — fn backend_lyrics(title: &str, artist: &str) -> Option<String>
+- read_lrc_sidecar · function · L165-L169 — fn read_lrc_sidecar(audio: &str) -> Option<String>
+- lrclib_resolve · function · L179-L211 — fn lrclib_resolve(title: &str, artist: &str, duration_secs: Option<f64>) -> Option<String>
+- push_try · function · L214-L226 — fn push_try(tries: &mut Vec<(String, String, bool)>, t: &str, a: &str, require_artist: bool)
+- lrclib_get · function · L230-L256 — fn lrclib_get(title: &str, artist: &str, duration_secs: Option<f64>) -> Option<String>
+- lrclib_search_scored · function · L261-L349 — fn lrclib_search_scored(
+- clean_title · function · L353-L355 — fn clean_title(title: &str) -> String
+- strip_brackets · function · L358-L370 — fn strip_brackets(s: &str) -> String
+- strip_feat · function · L373-L383 — fn strip_feat(s: &str) -> String
+- primary_artist · function · L387-L398 — fn primary_artist(artist: &str) -> String
+- split_artist_title · function · L401-L405 — fn split_artist_title(s: &str) -> Option<(String, String)>
+- collapse_ws · function · L407-L409 — fn collapse_ws(s: &str) -> String
+- tests · module · L412-L471 — mod tests
+- clean_title_strips_decorations · function · L418-L423 — fn clean_title_strips_decorations()
+- strip_brackets_tolerates_unmatched · function · L426-L429 — fn strip_brackets_tolerates_unmatched()
+- primary_artist_takes_first_credit · function · L432-L436 — fn primary_artist_takes_first_credit()
+- split_artist_title_handles_dash · function · L439-L445 — fn split_artist_title_handles_dash()
+- weak_when_artist_missing · function · L448-L451 — fn weak_when_artist_missing()
+- weak_when_title_is_just_the_filename · function · L454-L461 — fn weak_when_title_is_just_the_filename()
+- strong_when_real_title_and_artist · function · L464-L470 — fn strong_when_real_title_and_artist()

@@ -7,9 +7,9 @@
 - sidecar_path · function · L52-L71 — fn sidecar_path() -> Option<PathBuf>
 - preset_dir · function · L75-L90 — fn preset_dir(app: &AppHandle) -> String
 - visualizer_available · function · L94-L96 — pub fn visualizer_available() -> bool
-- visualizer_preset_names · function · L102-L119 — pub fn visualizer_preset_names(app: AppHandle) -> Vec<String>
-- visualizer_start · function · L124-L209 — pub fn visualizer_start(
-- CREATE_NO_WINDOW · constant · L146-L146 — const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-- visualizer_set_preset · function · L214-L230 — pub fn visualizer_set_preset(state: State<'_, VisualizerState>, preset: String)
-- visualizer_stop · function · L234-L238 — pub fn visualizer_stop(state: State<'_, VisualizerState>)
-- visualizer_is_open · function · L242-L244 — pub fn visualizer_is_open(state: State<'_, VisualizerState>) -> bool
+- visualizer_preset_names · function · L102-L121 — pub fn visualizer_preset_names(app: AppHandle) -> Vec<String>
+- visualizer_start · function · L126-L211 — pub fn visualizer_start(
+- CREATE_NO_WINDOW · constant · L148-L148 — const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+- visualizer_set_preset · function · L216-L232 — pub fn visualizer_set_preset(state: State<'_, VisualizerState>, preset: String)
+- visualizer_stop · function · L236-L240 — pub fn visualizer_stop(state: State<'_, VisualizerState>)
+- visualizer_is_open · function · L244-L246 — pub fn visualizer_is_open(state: State<'_, VisualizerState>) -> bool

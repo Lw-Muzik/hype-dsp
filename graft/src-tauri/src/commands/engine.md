@@ -20,25 +20,25 @@
 - engine_script_compile · function · L193-L200 — pub async fn engine_script_compile(
 - engine_set_script · function · L204-L206 — pub fn engine_set_script(engine: State<'_, AudioEngine>, enabled: bool)
 - engine_set_output · function · L211-L213 — pub fn engine_set_output(engine: State<'_, AudioEngine>, output: hm_core::OutputState)
-- engine_convolver_load_ir · function · L219-L226 — pub fn engine_convolver_load_ir(
-- player_play_file · function · L233-L235 — pub fn player_play_file(engine: State<'_, AudioEngine>, path: String) -> Result<(), IpcError>
-- player_play_radio · function · L239-L241 — pub fn player_play_radio(engine: State<'_, AudioEngine>, url: String) -> Result<(), IpcError>
-- engine_set_playback · function · L245-L247 — pub fn engine_set_playback(engine: State<'_, AudioEngine>, gapless: bool, crossfade_secs: f32)
-- engine_set_data_saver · function · L251-L253 — pub fn engine_set_data_saver(engine: State<'_, AudioEngine>, on: bool)
-- engine_set_autoplay · function · L257-L259 — pub fn engine_set_autoplay(engine: State<'_, AudioEngine>, on: bool)
-- player_play_queue · function · L265-L271 — pub fn player_play_queue(
-- player_play_capture · function · L278-L289 — pub fn player_play_capture(engine: State<'_, AudioEngine>) -> Result<(), IpcError>
-- capture_virtual_available · function · L293-L295 — pub fn capture_virtual_available() -> bool
-- system_audio_available · function · L301-L310 — pub fn system_audio_available() -> bool
-- player_play_system_audio · function · L319-L336 — pub fn player_play_system_audio(engine: State<'_, AudioEngine>) -> Result<(), IpcError>
-- system_eq_set_scope · function · L342-L344 — pub fn system_eq_set_scope(engine: State<'_, AudioEngine>, scope: hm_core::SystemEqScope)
-- stop_system_audio · function · L352-L361 — pub fn stop_system_audio(engine: State<'_, AudioEngine>)
-- SystemAudioStatus · struct · L367-L388 — pub struct SystemAudioStatus
-- system_audio_status · function · L395-L458 — pub fn system_audio_status(app: tauri::AppHandle) -> SystemAudioStatus
-- system_eq_status · function · L465-L467 — pub fn system_eq_status(engine: State<'_, AudioEngine>) -> hm_audio::SystemEqStatus
-- system_audio_install_driver · function · L475-L490 — pub fn system_audio_install_driver(app: tauri::AppHandle) -> Result<(), IpcError>
-- player_stop · function · L494-L496 — pub fn player_stop(engine: State<'_, AudioEngine>)
-- player_pause · function · L500-L502 — pub fn player_pause(engine: State<'_, AudioEngine>)
-- player_resume · function · L506-L508 — pub fn player_resume(engine: State<'_, AudioEngine>)
-- player_seek · function · L512-L514 — pub fn player_seek(engine: State<'_, AudioEngine>, secs: f64)
-- player_is_playing · function · L518-L520 — pub fn player_is_playing(engine: State<'_, AudioEngine>) -> bool
+- engine_convolver_load_ir · function · L219-L228 — pub fn engine_convolver_load_ir(
+- player_play_file · function · L235-L239 — pub fn player_play_file(engine: State<'_, AudioEngine>, path: String) -> Result<(), IpcError>
+- player_play_radio · function · L243-L245 — pub fn player_play_radio(engine: State<'_, AudioEngine>, url: String) -> Result<(), IpcError>
+- engine_set_playback · function · L249-L251 — pub fn engine_set_playback(engine: State<'_, AudioEngine>, gapless: bool, crossfade_secs: f32)
+- engine_set_data_saver · function · L255-L257 — pub fn engine_set_data_saver(engine: State<'_, AudioEngine>, on: bool)
+- engine_set_autoplay · function · L261-L263 — pub fn engine_set_autoplay(engine: State<'_, AudioEngine>, on: bool)
+- player_play_queue · function · L269-L275 — pub fn player_play_queue(
+- player_play_capture · function · L282-L295 — pub fn player_play_capture(engine: State<'_, AudioEngine>) -> Result<(), IpcError>
+- capture_virtual_available · function · L299-L301 — pub fn capture_virtual_available() -> bool
+- system_audio_available · function · L307-L316 — pub fn system_audio_available() -> bool
+- player_play_system_audio · function · L325-L344 — pub fn player_play_system_audio(engine: State<'_, AudioEngine>) -> Result<(), IpcError>
+- system_eq_set_scope · function · L350-L352 — pub fn system_eq_set_scope(engine: State<'_, AudioEngine>, scope: hm_core::SystemEqScope)
+- stop_system_audio · function · L360-L371 — pub fn stop_system_audio(engine: State<'_, AudioEngine>)
+- SystemAudioStatus · struct · L377-L398 — pub struct SystemAudioStatus
+- system_audio_status · function · L405-L470 — pub fn system_audio_status(app: tauri::AppHandle) -> SystemAudioStatus
+- system_eq_status · function · L477-L479 — pub fn system_eq_status(engine: State<'_, AudioEngine>) -> hm_audio::SystemEqStatus
+- system_audio_install_driver · function · L487-L504 — pub fn system_audio_install_driver(app: tauri::AppHandle) -> Result<(), IpcError>
+- player_stop · function · L508-L510 — pub fn player_stop(engine: State<'_, AudioEngine>)
+- player_pause · function · L514-L516 — pub fn player_pause(engine: State<'_, AudioEngine>)
+- player_resume · function · L520-L522 — pub fn player_resume(engine: State<'_, AudioEngine>)
+- player_seek · function · L526-L528 — pub fn player_seek(engine: State<'_, AudioEngine>, secs: f64)
+- player_is_playing · function · L532-L534 — pub fn player_is_playing(engine: State<'_, AudioEngine>) -> bool

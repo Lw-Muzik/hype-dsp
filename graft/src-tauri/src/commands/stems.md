@@ -14,12 +14,23 @@
 - models_missing_bytes · function · L136-L142 — fn models_missing_bytes(state: &StemState) -> u64
 - stems_status · function · L145-L152 — pub fn stems_status(stems: State<'_, StemState>, source: Option<StemSource>) -> StemStatus
 - DownloadProgress · struct · L155-L158 — struct DownloadProgress
-- stems_install · function · L164-L193 — pub fn stems_install(app: AppHandle, stems: State<'_, StemState>) -> Result<(), IpcError>
-- stems_install_cancel · function · L197-L201 — pub fn stems_install_cancel(stems: State<'_, StemState>)
-- fetch_ranged · function · L205-L246 — fn fetch_ranged(url: &str, headers: &[(String, String)], cancel: &AtomicBool) -> Result<Vec<u8>, String>
-- RANGE · constant · L206-L206 — const RANGE: u64 = 256 * 1024;
-- load_mix · function · L249-L263 — fn load_mix(
-- stems_arm · function · L269-L352 — pub fn stems_arm(
-- stems_set_gain · function · L357-L359 — pub fn stems_set_gain(engine: State<'_, AudioEngine>, stem: usize, gain: f32)
-- stems_reset · function · L364-L369 — pub fn stems_reset(engine: State<'_, AudioEngine>, stems: State<'_, StemState>)
-- stems_gains · function · L373-L376 — pub fn stems_gains(engine: State<'_, AudioEngine>) -> Vec<f32>
+- stems_install · function · L164-L195 — pub fn stems_install(app: AppHandle, stems: State<'_, StemState>) -> Result<(), IpcError>
+- stems_install_cancel · function · L199-L203 — pub fn stems_install_cancel(stems: State<'_, StemState>)
+- fetch_ranged · function · L207-L248 — fn fetch_ranged(url: &str, headers: &[(String, String)], cancel: &AtomicBool) -> Result<Vec<u8>, String>
+- RANGE · constant · L208-L208 — const RANGE: u64 = 256 * 1024;
+- load_mix · function · L251-L265 — fn load_mix(
+- stems_arm · function · L271-L351 — pub fn stems_arm(
+- LeadWait · enum · L355-L360 — enum LeadWait
+- wait_for_lead · function · L366-L395 — fn wait_for_lead(
+- stems_set_gain · function · L400-L402 — pub fn stems_set_gain(engine: State<'_, AudioEngine>, stem: usize, gain: f32)
+- stems_reset · function · L407-L412 — pub fn stems_reset(engine: State<'_, AudioEngine>, stems: State<'_, StemState>)
+- stems_gains · function · L416-L419 — pub fn stems_gains(engine: State<'_, AudioEngine>) -> Vec<f32>
+- tests · module · L422-L485 — mod tests
+- short_store · function · L426-L428 — fn short_store() -> Arc<StemStore>
+- worker · function · L430-L432 — fn worker(f: impl FnOnce() -> Result<(), String> + Send + 'static) -> std::thread::JoinHandle<Result<(), String>>
+- a_failed_worker_ends_the_wait_with_its_error · function · L435-L439 — fn a_failed_worker_ends_the_wait_with_its_error()
+- a_panicked_worker_ends_the_wait · function · L442-L446 — fn a_panicked_worker_ends_the_wait()
+- a_worker_that_stops_cleanly_early_was_cancelled · function · L449-L453 — fn a_worker_that_stops_cleanly_early_was_cancelled()
+- cancelling_ends_the_wait · function · L456-L460 — fn cancelling_ends_the_wait()
+- a_separated_window_is_ready_even_while_the_worker_runs · function · L463-L472 — fn a_separated_window_is_ready_even_while_the_worker_runs()
+- a_worker_that_finishes_the_track_is_ready · function · L475-L484 — fn a_worker_that_finishes_the_track_is_ready()

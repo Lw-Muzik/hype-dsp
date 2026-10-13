@@ -25,9 +25,10 @@
 - profiles · module · L30-L30 — pub mod profiles;
 - radio · module · L31-L31 — pub mod radio;
 - scenes · module · L32-L32 — pub mod scenes;
-- settings_window · module · L33-L33 — pub mod settings_window;
-- stems · module · L34-L34 — pub mod stems;
-- tv · module · L35-L35 — pub mod tv;
-- visualizer · module · L36-L36 — pub mod visualizer;
-- ytmusic · module · L37-L37 — pub mod ytmusic;
-- ytmusic_setup · module · L38-L38 — pub mod ytmusic_setup;
+- session · module · L33-L33 — pub mod session;
+- settings_window · module · L34-L34 — pub mod settings_window;
+- stems · module · L35-L35 — pub mod stems;
+- tv · module · L36-L36 — pub mod tv;
+- visualizer · module · L37-L37 — pub mod visualizer;
+- ytmusic · module · L38-L38 — pub mod ytmusic;
+- ytmusic_setup · module · L39-L39 — pub mod ytmusic_setup;

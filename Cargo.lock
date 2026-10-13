@@ -2582,7 +2582,7 @@ dependencies = [
 
 [[package]]
 name = "hm-apo"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "hm-core",
  "hm-dsp",
@@ -2592,7 +2592,7 @@ dependencies = [
 
 [[package]]
 name = "hm-audio"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "arc-swap",
  "base64 0.22.1",
@@ -2623,7 +2623,7 @@ dependencies = [
 
 [[package]]
 name = "hm-connect"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "base64 0.22.1",
  "fastrand",
@@ -2639,7 +2639,7 @@ dependencies = [
 
 [[package]]
 name = "hm-core"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "rusqlite",
  "serde",
@@ -2650,7 +2650,7 @@ dependencies = [
 
 [[package]]
 name = "hm-dsp"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "arc-swap",
  "hm-core",
@@ -2660,7 +2660,7 @@ dependencies = [
 
 [[package]]
 name = "hm-link"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",
@@ -2672,7 +2672,7 @@ dependencies = [
 
 [[package]]
 name = "hm-media"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "hm-core",
  "reqwest",
@@ -2683,7 +2683,7 @@ dependencies = [
 
 [[package]]
 name = "hm-platform"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "hm-core",
  "objc2",
@@ -2699,7 +2699,7 @@ dependencies = [
 
 [[package]]
 name = "hm-remote"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "anyhow",
  "getrandom 0.2.17",
@@ -2712,7 +2712,7 @@ dependencies = [
 
 [[package]]
 name = "hm-stems"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "hound",
  "ort",
@@ -2723,7 +2723,7 @@ dependencies = [
 
 [[package]]
 name = "hm-visualizer"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "projectm-sys",
  "sdl2",
@@ -2731,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "hm-ytmusic"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "keyring",
  "reqwest",
@@ -2822,7 +2822,7 @@ dependencies = [
 
 [[package]]
 name = "hypemuzik"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "arc-swap",
  "base64 0.22.1",

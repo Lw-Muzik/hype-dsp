@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
+import { routePlay } from "@/features/connect/remote/router";
 import { openSettings } from "@/lib/ipc";
 import { trackArt, useMusicLibrary } from "@/features/player/useMusicLibrary";
 import type { MusicTrack } from "@/features/player/useMusicLibrary";
@@ -226,13 +227,12 @@ export function MusicLibrary() {
     if (from < 0) return;
     const target = list[from]!;
     const playable = list.filter((t) => !isUnavailable(t));
-    playQueueItems(
-      playable,
-      Math.max(
-        0,
-        playable.findIndex((t) => t.uid === target.uid),
-      ),
+    const start = Math.max(
+      0,
+      playable.findIndex((t) => t.uid === target.uid),
     );
+    // With another device playing (Hype Connect remote mode) this goes there.
+    routePlay({ items: playable, index: start, local: () => playQueueItems(playable, start) });
   };
 
   // Has the active source finished its first load? For "All" we wait on every

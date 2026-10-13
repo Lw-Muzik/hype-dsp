@@ -57,6 +57,17 @@ const KIND_ICON: Record<DeviceKind, typeof Smartphone> = {
 
 type Flow = "none" | "phone" | "browser";
 
+/** The toast for an approved phone link: names the phone when the device list
+ *  knows it (the most recently seen mobile device), else stays generic. */
+export function linkedMessage(devices: DeviceInfo[]): string {
+  const phone = devices
+    .filter((d) => d.kind === "mobile")
+    .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))[0];
+  return phone
+    ? `Linked ${phone.name} — you can now play on it from here, and it can play on this computer.`
+    : "Linked — this desktop now shares your phone's account.";
+}
+
 /** Re-read the device list into the store (the socket keeps it live after). */
 async function refreshDevices(): Promise<void> {
   const { devices, activeDeviceId } = await connectDevices();
@@ -172,10 +183,14 @@ function PhoneLink({ onClose }: { onClose: () => void }) {
         .then(({ status }) => {
           if (!active || status === "pending") return;
           if (status === "approved") {
-            toast.success("Linked — this desktop now shares your phone's account.");
             void useAccountStore.getState().refresh();
-            void refreshDevices().catch(() => {});
             onClose();
+            // Name the phone once the device list shows it. The phone — not
+            // this desktop — asks where music should play; remote mode flips
+            // on by itself when that choice lands.
+            void refreshDevices()
+              .catch(() => {})
+              .then(() => toast.success(linkedMessage(useConnectStore.getState().devices)));
           } else {
             setOutcome(status);
           }
@@ -438,7 +453,7 @@ function LinkedDevices({ selfId }: { selfId: string }) {
                 </span>
                 {d.id === activeId && (
                   <span className="rounded-control bg-success/15 px-2 py-0.5 text-xs text-success">
-                    Playing here
+                    {self ? "Playing here" : "Playing now"}
                   </span>
                 )}
                 {self ? (

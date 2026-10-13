@@ -1,6 +1,7 @@
 import type { FC } from "react";
 import { useUiStore } from "@/stores/ui";
 import type { Route } from "@/stores/ui";
+import { RemoteGate } from "@/features/connect/remote/ui/RemoteNotice";
 import { EnhancerView } from "@/features/enhancer/EnhancerView";
 import { EqualizerView } from "@/features/equalizer/EqualizerView";
 import { ExploreView } from "@/features/explore/ExploreView";
@@ -24,7 +25,11 @@ const VIEWS: Record<Route, FC> = {
   stems: StemsPanel,
   player: PlayerView,
   stations: StationsView,
-  visuals: VisualsView,
+  visuals: () => (
+    <RemoteGate what="The visualiser">
+      <VisualsView />
+    </RemoteGate>
+  ),
 };
 
 /** Renders the active view from the UI store. */

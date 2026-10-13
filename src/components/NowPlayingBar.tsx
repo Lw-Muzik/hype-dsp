@@ -20,34 +20,14 @@ import { clearLyricsCache } from "@/features/player/useLyrics";
 import { Slider } from "@/components/Slider";
 import { VisualizerButton } from "@/components/VisualizerButton";
 import { formatTime } from "@/lib/format";
-import { coverGradient, coverInitials } from "@/lib/cover";
+import { BarCover, barIconBtn } from "@/components/BarParts";
+import { DevicePicker } from "@/features/connect/remote/ui/DevicePicker";
+import { RemoteBar } from "@/features/connect/remote/ui/RemoteBar";
+import { useRemoteStore } from "@/features/connect/remote/store";
 import { cn } from "@/lib/cn";
 
-const iconBtn =
-  "flex size-8 items-center justify-center rounded-full text-text-muted transition-colors hover:text-text disabled:pointer-events-none disabled:opacity-30";
-
-/** The current track's cover: embedded art, else a gradient with initials. */
-function Cover({ cover, seed }: { cover: string | null; seed: string }) {
-  if (cover) {
-    return (
-      <img
-        src={cover}
-        alt=""
-        className="size-12 shrink-0 rounded-lg object-cover shadow-sm"
-        aria-hidden="true"
-      />
-    );
-  }
-  return (
-    <div
-      className="grid size-12 shrink-0 place-items-center rounded-lg text-sm font-semibold text-white/90 shadow-sm"
-      style={{ background: coverGradient(seed) }}
-      aria-hidden="true"
-    >
-      <span className="opacity-80">{coverInitials(seed)}</span>
-    </div>
-  );
-}
+const iconBtn = barIconBtn;
+const Cover = BarCover;
 
 /**
  * Elapsed time + seek slider + duration. Isolated (and memoized) so the ~10Hz
@@ -100,6 +80,13 @@ const SeekRow = memo(function SeekRow({ active }: { active: boolean }) {
  * whatever is playing — local, cloud, or phone.
  */
 export function NowPlayingBar() {
+  // While another device is the player (Hype Connect remote mode) the bar is
+  // that device's remote.
+  const remote = useRemoteStore((s) => s.view);
+  return remote ? <RemoteBar view={remote} /> : <LocalBar />;
+}
+
+function LocalBar() {
   const meta = useEngineStore((s) => s.nowPlayingMeta);
   const playing = useEngineStore((s) => s.playing);
   const paused = useEngineStore((s) => s.paused);
@@ -299,6 +286,7 @@ export function NowPlayingBar() {
           <ListMusic className="size-4" aria-hidden="true" />
         </button>
         <VisualizerButton />
+        <DevicePicker />
         <Volume2 className="size-4 shrink-0 text-text-muted" aria-hidden="true" />
         <Slider
           label="Volume"

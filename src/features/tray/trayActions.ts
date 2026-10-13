@@ -1,3 +1,4 @@
+import { routeMediaCommand } from "@/features/connect/remote/control";
 import { EFFECTS, enabledOf, toggleEffect, type EffectId } from "@/features/enhancer/effects/useEffectToggles";
 import { modeFromSystemEq, visibleRoutes, type AppMode } from "@/features/mode/appMode";
 import { switchMode } from "@/features/mode/switchMode";
@@ -24,7 +25,8 @@ export interface TrayActionDeps {
 }
 
 export const defaultTrayDeps: TrayActionDeps = {
-  mediaCommand: (cmd) => useEngineStore.getState().handleMediaCommand(cmd, null),
+  mediaCommand: (cmd) =>
+    routeMediaCommand(cmd, null, () => useEngineStore.getState().handleMediaCommand(cmd, null)),
   switchMode: (t) => switchMode(t),
   getMode: () => modeFromSystemEq(useSystemEqStore.getState().enabled),
   getPower: () => useEngineStore.getState().state.power,

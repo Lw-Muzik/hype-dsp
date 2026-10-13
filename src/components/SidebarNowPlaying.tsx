@@ -1,5 +1,6 @@
 import { useEngineStore } from "@/stores/engine";
 import { useUiStore } from "@/stores/ui";
+import { useRemoteStore } from "@/features/connect/remote/store";
 import { coverGradient, coverInitials } from "@/lib/cover";
 
 /**
@@ -9,7 +10,14 @@ import { coverGradient, coverInitials } from "@/lib/cover";
  * clicked. Renders nothing when nothing is playing.
  */
 export function SidebarNowPlaying({ collapsed }: { collapsed: boolean }) {
-  const meta = useEngineStore((s) => s.nowPlayingMeta);
+  const localMeta = useEngineStore((s) => s.nowPlayingMeta);
+  // While another device plays (Hype Connect remote mode) show its track.
+  const remote = useRemoteStore((s) => s.view);
+  const meta = remote
+    ? remote.track
+      ? { title: remote.track.title, artist: remote.track.artist, album: remote.track.album, cover: remote.track.artUrl }
+      : null
+    : localMeta;
   const setRoute = useUiStore((s) => s.setRoute);
 
   if (!meta) return null;
@@ -59,7 +67,7 @@ export function SidebarNowPlaying({ collapsed }: { collapsed: boolean }) {
       <div className="relative aspect-square w-full overflow-hidden rounded-card shadow-lg ring-1 ring-white/10">
         {cover}
         <span className="pointer-events-none absolute left-2.5 top-2.5 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/90 backdrop-blur">
-          Now playing
+          {remote ? `On ${remote.device.name}` : "Now playing"}
         </span>
       </div>
       <p className="mt-2 truncate font-display text-sm font-medium">{title}</p>

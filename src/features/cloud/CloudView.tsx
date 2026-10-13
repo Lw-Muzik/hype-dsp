@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
-import { useEngineStore } from "@/stores/engine";
+import { cloudItem, useEngineStore } from "@/stores/engine";
+import { routePlay } from "@/features/connect/remote/router";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
 import {
   cloudConnect,
@@ -75,11 +76,17 @@ export function CloudView() {
   const [error, setError] = useState<string | null>(null);
 
   /** Play `e` within the current folder so next/prev walk its audio files. */
-  const playEntry = (e: CloudEntry) =>
-    playCloudList(
-      entries,
-      entries.findIndex((x) => x.id === e.id),
-    );
+  const playEntry = (e: CloudEntry) => {
+    const index = entries.findIndex((x) => x.id === e.id);
+    // Cloud files live behind this computer's sign-in: with another device
+    // playing (Hype Connect remote mode) this offers to play them here.
+    const audio = entries.filter((x) => !x.isFolder);
+    routePlay({
+      items: audio.map(cloudItem),
+      index: Math.max(0, audio.findIndex((x) => x.id === e.id)),
+      local: () => playCloudList(entries, index),
+    });
+  };
 
   const refreshStatus = useCallback(async () => {
     try {

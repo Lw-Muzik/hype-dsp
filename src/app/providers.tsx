@@ -19,6 +19,7 @@ import { useUiStore } from "@/stores/ui";
 import { useEngineStore, localItem } from "@/stores/engine";
 import { useLibraryStore } from "@/stores/library";
 import { useApplyTheme } from "@/features/theme/useApplyTheme";
+import { routeMediaCommand } from "@/features/connect/remote/control";
 import { useHypeConnect } from "@/features/connect/useHypeConnect";
 
 /**
@@ -104,7 +105,9 @@ export function Providers({ children }: { children: ReactNode }) {
       .then((un) => (cancelled ? un() : unlisteners.push(un)))
       .catch(() => {});
 
-    onMediaCommand((c) => handleMediaCommand(c.action, c.secs))
+    onMediaCommand((c) =>
+      routeMediaCommand(c.action, c.secs, () => handleMediaCommand(c.action, c.secs)),
+    )
       .then((un) => (cancelled ? un() : unlisteners.push(un)))
       .catch(() => {});
 

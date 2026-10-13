@@ -18,6 +18,7 @@ import type {
 } from "@/lib/types";
 import type { LoadStatus } from "@/stores/musicLibrary";
 import { ytmusicItem, useEngineStore } from "@/stores/engine";
+import { routePlay } from "@/features/connect/remote/router";
 
 /**
  * Explore — YouTube's own catalog, browsed lazily.
@@ -203,7 +204,14 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
         // the YT Music client does. This replaces the old "queue the rest of
         // the search page" behaviour: search results are what matched the
         // words; the radio is what matches the taste.
-        useEngineStore.getState().playYtRadio(playable[0]!);
+        // With another device playing (Hype Connect remote mode) it plays there.
+        const seed = playable[0]!;
+        routePlay({
+          items: [ytmusicItem(seed)],
+          index: 0,
+          radio: true,
+          local: () => useEngineStore.getState().playYtRadio(seed),
+        });
         return;
       }
       set({
@@ -318,7 +326,12 @@ export const useExploreStore = create<ExploreStore>((set, get) => ({
     if (from < 0) return;
     // Same queue items the library builds, so Explore rides the existing
     // streaming stack (Range seeking, resume-on-drop, gapless) unchanged.
-    useEngineStore.getState().playQueueItems(playable.map(ytmusicItem), from);
+    const items = playable.map(ytmusicItem);
+    routePlay({
+      items,
+      index: from,
+      local: () => useEngineStore.getState().playQueueItems(items, from),
+    });
   },
 
   retry: () => {

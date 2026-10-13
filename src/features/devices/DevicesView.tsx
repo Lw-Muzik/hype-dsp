@@ -15,7 +15,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConnectCard } from "@/features/connect/ConnectCard";
-import { useEngineStore } from "@/stores/engine";
+import { phoneItem, useEngineStore } from "@/stores/engine";
+import { routePlay } from "@/features/connect/remote/router";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
 import {
   ipcErrorMessage,
@@ -378,13 +379,14 @@ export function DevicesView() {
       loading={loading}
       nowPlaying={nowPlaying}
       onBack={back}
-      onPlay={(t) =>
-        playPhoneList(
-          open,
-          tracks,
-          tracks.findIndex((x) => x.id === t.id),
-        )
-      }
+      onPlay={(t) => {
+        const index = tracks.findIndex((x) => x.id === t.id);
+        routePlay({
+          items: tracks.map((x) => phoneItem(open, x)),
+          index,
+          local: () => playPhoneList(open, tracks, index),
+        });
+      }}
       banner={errorBanner}
     />
   ) : (

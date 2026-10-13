@@ -7,6 +7,8 @@ import { Artwork } from "@/features/player/Artwork";
 import type { ArtSource } from "@/lib/useTrackArtwork";
 import { Switch } from "@/components/Switch";
 import { cn } from "@/lib/cn";
+import { useRemoteStore } from "@/features/connect/remote/store";
+import { RemoteQueue } from "@/features/connect/remote/ui/RemoteQueue";
 
 const ROW_H = 68;
 
@@ -138,7 +140,7 @@ function QueueRow({
  * always reflects what's queued (any mix of local / phone / cloud); the up-next
  * list is virtualized for very long queues.
  */
-export function QueueList() {
+function LocalQueueList() {
   const queue = useEngineStore((s) => s.queue);
   const order = useEngineStore((s) => s.order);
   const orderPos = useEngineStore((s) => s.orderPos);
@@ -220,4 +222,11 @@ export function QueueList() {
       )}
     </div>
   );
+}
+
+/** The play queue: this computer's, or — while another device is the player
+ *  (Hype Connect remote mode) — that device's up-next list. */
+export function QueueList() {
+  const remote = useRemoteStore((s) => s.view);
+  return remote ? <RemoteQueue view={remote} /> : <LocalQueueList />;
 }

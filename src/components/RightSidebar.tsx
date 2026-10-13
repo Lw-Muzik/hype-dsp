@@ -8,6 +8,7 @@ import { LyricsView } from "@/features/player/LyricsView";
 import { SyncedLyrics } from "@/features/player/SyncedLyrics";
 import { VideoStage } from "@/features/player/VideoStage";
 import { cn } from "@/lib/cn";
+import { useRemoteStore } from "@/features/connect/remote/store";
 
 const ANIM_MS = 220;
 
@@ -47,7 +48,9 @@ export function RightSidebar() {
   const current = useEngineStore((s) =>
     s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined,
   );
-  const videoId = current?.ytTrack?.hasVideo ? current.ytTrack.videoId : null;
+  // No video of another device's track (Hype Connect remote mode).
+  const remote = useRemoteStore((s) => s.view !== null);
+  const videoId = !remote && current?.ytTrack?.hasVideo ? current.ytTrack.videoId : null;
 
   // Losing the tab under you (skipping to a song) shouldn't leave the panel on a
   // tab that no longer exists.

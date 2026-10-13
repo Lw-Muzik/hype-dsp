@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Radio, Search, Star } from "lucide-react";
 import { Button } from "@/components/Button";
+import { routePlay } from "@/features/connect/remote/router";
 import { LayoutToggle, type LayoutMode } from "@/components/LayoutToggle";
 import { useEngineStore } from "@/stores/engine";
 import {
@@ -47,7 +48,15 @@ const FALLBACK_COUNTRIES: RadioCountry[] = (
 
 /** The Radio kind of the Stations hub — internet radio through the DSP engine. */
 export function RadioPanel() {
-  const playRadio = useEngineStore((s) => s.playRadio);
+  const playRadioLocal = useEngineStore((s) => s.playRadio);
+  // Internet radio only plays on this computer: with another device playing
+  // (Hype Connect remote mode) the user is asked before it takes over.
+  const playRadio = (station: RadioStation) =>
+    routePlay({
+      items: [{ id: station.url, source: "radio", title: station.name, artist: null, album: null, durationSecs: null, radioUrl: station.url }],
+      index: 0,
+      local: () => playRadioLocal(station),
+    });
   const nowPlaying = useEngineStore((s) => s.nowPlaying);
 
   const [mode, setMode] = useState<Mode>("browse");

@@ -105,7 +105,7 @@ export function requirePremium(feature: PremiumFeature): boolean {
  * settles, so the cache→server hydration on launch (which legitimately flips
  * false→true for an existing supporter) never reads as a fresh unlock.
  */
-function useSupporterUnlockToast(): void {
+function useSupporterUnlockToast(enabled = true): void {
   const premium = usePremium();
   const loading = useEntitlementStore((s) => s.loading);
   const prev = useRef(premium);
@@ -113,7 +113,7 @@ function useSupporterUnlockToast(): void {
   useEffect(() => {
     // Payments off ⇒ everyone is "unlocked" from the first render, so there is
     // no purchase to acknowledge. See `@/config/payments`.
-    if (!PAYMENTS_ENABLED) return;
+    if (!PAYMENTS_ENABLED || !enabled) return;
     if (!armed.current) {
       if (!loading) {
         armed.current = true;
@@ -125,11 +125,15 @@ function useSupporterUnlockToast(): void {
       toast.success("You're a Supporter — thank you! Everything's unlocked.");
     }
     prev.current = premium;
-  }, [premium, loading]);
+  }, [premium, loading, enabled]);
 }
 
-/** The modal every upsell CTA opens. Mount exactly once (in `App.tsx`). */
-export function SupporterUpsellModal() {
+/**
+ * The modal every upsell CTA opens. Mount once per window: `App.tsx` in the
+ * main window, and the Settings window (with `unlockToast={false}`, since the
+ * main window already toasts an unlock and both windows would otherwise).
+ */
+export function SupporterUpsellModal({ unlockToast = true }: { unlockToast?: boolean } = {}) {
   const open = useUpsellStore((s) => s.open);
   const feature = useUpsellStore((s) => s.feature);
   const close = useUpsellStore((s) => s.close);
@@ -137,7 +141,7 @@ export function SupporterUpsellModal() {
 
   // Also carries the app-wide unlock acknowledgement — this component is
   // always mounted, so it's the natural home for the transition watcher.
-  useSupporterUnlockToast();
+  useSupporterUnlockToast(unlockToast);
 
   // Payments off ⇒ no checkout surface at all. Guarded after the hooks above
   // (PAYMENTS_ENABLED is a module constant, but keeping every hook

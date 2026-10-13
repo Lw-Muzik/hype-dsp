@@ -1,4 +1,5 @@
-import { Volume2 } from "lucide-react";
+import { useEffect } from "react";
+import { Settings, Volume2 } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { useUiStore } from "@/stores/ui";
 import { useEngineStore } from "@/stores/engine";
@@ -6,7 +7,8 @@ import { PowerToggle } from "@/components/PowerToggle";
 import { Slider } from "@/components/Slider";
 import { LevelMeter } from "@/components/LevelMeter";
 import { ScrollingWaveform } from "@/features/player/ScrollingWaveform";
-import { TITLEBAR_INSET } from "@/lib/platform";
+import { TITLEBAR_INSET, isMac } from "@/lib/platform";
+import { openSettings } from "@/lib/ipc";
 import { UpdatePill } from "@/features/update/UpdatePill";
 
 /**
@@ -25,6 +27,19 @@ export function TopBar() {
   const setMasterVolume = useEngineStore((s) => s.setMasterVolume);
 
   const volumePct = Math.round(masterVolume * 100);
+
+  // Cmd/Ctrl+, opens Settings. The app menu carries the same accelerator; opening
+  // twice just focuses the window, so the two paths can't conflict.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "," && (isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        void openSettings().catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     // `data-tauri-drag-region="deep"` makes the whole bar a window drag handle;
@@ -71,6 +86,16 @@ export function TopBar() {
         </div>
 
         <PowerToggle on={power} onToggle={setPower} />
+
+        <button
+          type="button"
+          aria-label="Settings"
+          title={isMac ? "Settings (⌘,)" : "Settings (Ctrl+,)"}
+          onClick={() => void openSettings().catch(() => {})}
+          className="grid size-8 place-items-center rounded-control text-text-faint transition-colors hover:bg-surface-overlay hover:text-text"
+        >
+          <Settings className="size-4" aria-hidden="true" />
+        </button>
       </div>
     </header>
   );

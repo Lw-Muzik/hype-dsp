@@ -7,7 +7,7 @@ import { SidebarNowPlaying } from "@/components/SidebarNowPlaying";
 import { cn } from "@/lib/cn";
 import { TITLEBAR_INSET } from "@/lib/platform";
 
-/** Persistent left navigation: brand, primary destinations, system, collapse. */
+/** Persistent left navigation: brand, primary destinations, collapse. */
 const COLLAPSED_WIDTH = 68;
 
 export function Sidebar() {
@@ -19,7 +19,6 @@ export function Sidebar() {
   const resizing = useUiStore((s) => s.resizing);
 
   const main = ROUTES.filter((r) => r.group === "main" && !r.hidden);
-  const system = ROUTES.filter((r) => r.group === "system" && !r.hidden);
 
   return (
     <aside
@@ -69,19 +68,6 @@ export function Sidebar() {
       </nav>
 
       <SidebarNowPlaying collapsed={collapsed} />
-
-      <div className="flex flex-col gap-1 px-3 pb-1">
-        {system.map((r) => (
-          <NavItem
-            key={r.id}
-            icon={r.icon}
-            label={r.label}
-            active={route === r.id}
-            collapsed={collapsed}
-            onClick={() => setRoute(r.id)}
-          />
-        ))}
-      </div>
 
       <div className="px-3 pb-3 pt-1">
         <button

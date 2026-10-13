@@ -12,8 +12,7 @@ export type Route =
   | "stems"
   | "player"
   | "stations"
-  | "visuals"
-  | "settings";
+  | "visuals";
 
 /** The right sidebar's tabs. "video" only appears for a track that has footage
  *  — a song's "video" is a square still, so offering it would promise a picture

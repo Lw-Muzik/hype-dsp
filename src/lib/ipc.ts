@@ -1747,3 +1747,32 @@ export function ipcErrorMessage(value: unknown): string {
   if (typeof value === "string") return value;
   return "Unexpected error";
 }
+
+/* ---- Settings window ---------------------------------------------------- */
+
+/** Anchors in the Settings window. Keep identical to `SECTIONS` in
+ *  `src-tauri/src/commands/settings_window.rs` (pinned by a test). */
+export type SettingsSection =
+  | "about"
+  | "appearance"
+  | "library"
+  | "devices"
+  | "cloud"
+  | "youtube-music"
+  | "playback"
+  | "output"
+  | "account"
+  | "system-audio"
+  | "visualizer";
+
+/** Open the Settings window (or focus it), optionally scrolled to a section. */
+export function openSettings(section?: SettingsSection): Promise<void> {
+  return invoke<void>("settings_open", { section: section ?? null });
+}
+
+/** An already-open Settings window was asked to show another section. */
+export function onSettingsSection(
+  handler: (section: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>("settings://section", (e) => handler(e.payload));
+}

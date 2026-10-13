@@ -19,8 +19,6 @@ import {
   Wand2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { routeById } from "@/app/routes";
-import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { DevicesView } from "@/features/devices/DevicesView";
 import { CloudView } from "@/features/cloud/CloudView";
@@ -474,7 +472,6 @@ function OutputDevices({
  * selectable to switch the system default output (`audio_set_default_output`).
  */
 export function SettingsView() {
-  const route = routeById("settings");
   const appInfo = useUiStore((s) => s.appInfo);
   const playback = useEngineStore((s) => s.state.playback);
   const setPlayback = useEngineStore((s) => s.setPlayback);
@@ -710,337 +707,354 @@ export function SettingsView() {
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <PageHeader
-        icon={route.icon}
-        title={route.label}
-        subtitle={route.tagline}
-      />
       <div className="grid gap-4">
-        <Card title="About" icon={Info}>
-          <div className="divide-y divide-border">
-            <InfoRow label="Application" value={appInfo?.name ?? "HypeMuzik"} />
-            <InfoRow label="Version" value={appInfo?.version ?? "—"} />
-            <div className="border-t border-border pt-3">
-              <UpdateRow />
-            </div>
-            <InfoRow
-              label="Engine schema"
-              value={appInfo ? `v${appInfo.engineSchema}` : "—"}
-            />
-          </div>
-        </Card>
-
-        <ThemeCard />
-
-        <MusicLibraryCard />
-
-        <DevicesView />
-
-        {/* Cloud music (Google Drive / Dropbox) is a Supporter feature. */}
-        <PremiumGate feature="CLOUD">
-          <CloudView />
-        </PremiumGate>
-        {/* youtube music view */}
-        <YtMusicView />
-
-        <Card
-          title="Playback"
-          icon={ListMusic}
-          actions={
-            <Switch
-              checked={playback.gapless}
-              onChange={(v) => setPlayback(v, playback.crossfadeSecs)}
-              label="Gapless playback"
-            />
-          }
-        >
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-text-muted">
-              Gapless removes silence between tracks. Crossfade overlaps the end
-              of one track with the start of the next (any crossfade implies
-              gapless). Applies to the next track list you play.
-            </p>
-            <div className="flex items-center gap-3">
-              <span className="w-20 shrink-0 text-sm text-text-muted">
-                Crossfade
-              </span>
-              <Slider
-                label="Crossfade duration"
-                min={0}
-                max={12}
-                step={0.5}
-                value={playback.crossfadeSecs}
-                onChange={(v) => setPlayback(playback.gapless, v)}
-                formatValue={(v) =>
-                  v === 0 ? "off" : `${v.toFixed(1)} seconds`
-                }
-                className="flex-1"
+        <section id="about" className="scroll-mt-4">
+          <Card title="About" icon={Info}>
+            <div className="divide-y divide-border">
+              <InfoRow label="Application" value={appInfo?.name ?? "HypeMuzik"} />
+              <InfoRow label="Version" value={appInfo?.version ?? "—"} />
+              <div className="border-t border-border pt-3">
+                <UpdateRow />
+              </div>
+              <InfoRow
+                label="Engine schema"
+                value={appInfo ? `v${appInfo.engineSchema}` : "—"}
               />
-              <span className="w-12 text-right text-xs tabular-nums text-text-muted">
-                {playback.crossfadeSecs === 0
-                  ? "Off"
-                  : `${playback.crossfadeSecs.toFixed(1)}s`}
-              </span>
             </div>
-            {/* Data Saver silently wins over this slider for everything that
-                streams, which reads as "crossfade is broken for cloud and
-                YouTube" — the setting is doing exactly what it says, two screens
-                away from where the effect shows up. Say so where it's set. */}
-            {playback.dataSaver && playback.crossfadeSecs > 0 && (
-              <p className="flex items-start gap-2 rounded-control bg-surface-overlay px-3 py-2 text-xs text-text-muted">
+          </Card>
+        </section>
+
+        <section id="appearance" className="scroll-mt-4">
+          <ThemeCard />
+        </section>
+
+        <section id="library" className="scroll-mt-4">
+          <MusicLibraryCard />
+        </section>
+
+        <section id="devices" className="scroll-mt-4">
+          <DevicesView />
+        </section>
+
+        <section id="cloud" className="scroll-mt-4">
+          {/* Cloud music (Google Drive / Dropbox) is a Supporter feature. */}
+          <PremiumGate feature="CLOUD">
+            <CloudView />
+          </PremiumGate>
+        </section>
+        <section id="youtube-music" className="scroll-mt-4">
+          {/* youtube music view */}
+          <YtMusicView />
+        </section>
+
+        <section id="playback" className="scroll-mt-4">
+          <Card
+            title="Playback"
+            icon={ListMusic}
+            actions={
+              <Switch
+                checked={playback.gapless}
+                onChange={(v) => setPlayback(v, playback.crossfadeSecs)}
+                label="Gapless playback"
+              />
+            }
+          >
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-text-muted">
+                Gapless removes silence between tracks. Crossfade overlaps the end
+                of one track with the start of the next (any crossfade implies
+                gapless). Applies to the next track list you play.
+              </p>
+              <div className="flex items-center gap-3">
+                <span className="w-20 shrink-0 text-sm text-text-muted">
+                  Crossfade
+                </span>
+                <Slider
+                  label="Crossfade duration"
+                  min={0}
+                  max={12}
+                  step={0.5}
+                  value={playback.crossfadeSecs}
+                  onChange={(v) => setPlayback(playback.gapless, v)}
+                  formatValue={(v) =>
+                    v === 0 ? "off" : `${v.toFixed(1)} seconds`
+                  }
+                  className="flex-1"
+                />
+                <span className="w-12 text-right text-xs tabular-nums text-text-muted">
+                  {playback.crossfadeSecs === 0
+                    ? "Off"
+                    : `${playback.crossfadeSecs.toFixed(1)}s`}
+                </span>
+              </div>
+              {/* Data Saver silently wins over this slider for everything that
+                  streams, which reads as "crossfade is broken for cloud and
+                  YouTube" — the setting is doing exactly what it says, two screens
+                  away from where the effect shows up. Say so where it's set. */}
+              {playback.dataSaver && playback.crossfadeSecs > 0 && (
+                <p className="flex items-start gap-2 rounded-control bg-surface-overlay px-3 py-2 text-xs text-text-muted">
+                  <CircleAlert
+                    className="mt-0.5 size-3.5 shrink-0 text-warning"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    Data Saver is on, so crossfade applies to local files only.
+                    Cloud, phone and YouTube Music play one track at a time and cut
+                    straight from one to the next.
+                  </span>
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 text-sm">
+                  <p className="font-medium">Data Saver</p>
+                  <p className="text-xs text-text-muted">
+                    Stream progressively on slow connections (no full-download /
+                    prefetch). Turns off gapless and crossfade for cloud, phone and
+                    YouTube Music.
+                  </p>
+                </div>
+                <Switch
+                  checked={playback.dataSaver}
+                  onChange={(v) => setDataSaver(v)}
+                  label="Data Saver"
+                />
+              </div>
+            </div>
+          </Card>
+        </section>
+
+        <section id="output" className="scroll-mt-4">
+          <Card title="Output devices" icon={Speaker}>
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-text-muted">
+                Choose where sound plays. Selecting a device makes it the system
+                default output, so everything — this app and the rest of macOS —
+                follows.
+              </p>
+              <OutputDevices
+                state={devices}
+                switchingUid={switchingUid}
+                onSelect={(d) => void selectDevice(d)}
+              />
+            </div>
+          </Card>
+        </section>
+
+        <section id="account" className="scroll-mt-4">
+          <AccountCard />
+        </section>
+
+        <section id="system-audio" className="scroll-mt-4">
+          <Card title="System-wide audio" icon={Sparkles}>
+            <div className="flex flex-col gap-3">
+              {systemStatus.supported && (
+                <div className="flex items-center justify-between gap-3 rounded-control border border-accent/30 bg-accent-muted/40 px-3 py-2.5">
+                  <div className="min-w-0 text-sm">
+                    <p className="font-medium text-accent-strong">
+                      Equalize everything you hear
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      Routes all system audio through the equalizer and effects.
+                    </p>
+                    {runtimeStatus !== "disabled" && (
+                      <span
+                        className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${runtimeStatus === "recovering"
+                            ? "bg-amber-500/15 text-amber-400"
+                            : "bg-success/15 text-success"
+                          }`}
+                        title={
+                          runtimeStatus === "recovering"
+                            ? "A transient failure (e.g. heavy CPU load or a device change) is being recovered in the background — audio is restored but momentarily unequalised."
+                            : "System-wide EQ is running."
+                        }
+                      >
+                        <span
+                          className={`size-1.5 rounded-full ${runtimeStatus === "recovering"
+                              ? "animate-pulse bg-amber-400"
+                              : "bg-success"
+                            }`}
+                          aria-hidden="true"
+                        />
+                        {runtimeStatus === "recovering" ? "Recovering…" : "Active"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    {systemAffordance === "enable" ? (
+                      <>
+                        <Button variant="primary" onClick={startSystemAudio}>
+                          {systemEqOn ? "Restart" : "Enable"}
+                        </Button>
+                        {systemEqOn && (
+                          <Button variant="secondary" onClick={stopSystemEq}>
+                            Stop
+                          </Button>
+                        )}
+                      </>
+                    ) : systemAffordance === "install" ? (
+                      <Button
+                        variant="primary"
+                        onClick={() => void installAudioDriver()}
+                        disabled={driverInstalling}
+                      >
+                        {driverInstalling ? "Installing…" : "Install audio driver"}
+                      </Button>
+                    ) : systemAffordance === "not-bundled" ? (
+                      awaitingReboot ? (
+                        <span className="text-xs text-text-muted">
+                          Restart your PC to finish setup
+                        </span>
+                      ) : (
+                        <Button
+                          variant="primary"
+                          onClick={() => void setupApo()}
+                          disabled={setupPhase !== null}
+                        >
+                          {setupPhase === "installing"
+                            ? "Installing…"
+                            : "Set up system-wide EQ"}
+                        </Button>
+                      )
+                    ) : (
+                      <span className="text-xs text-text-muted">
+                        Unavailable on this system
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {systemStatus.supported && systemAffordance === "install" && (
+                <p className="text-xs text-text-muted">
+                  System-wide EQ routes audio through the HypeMuzik virtual audio
+                  device. Installing it needs a one-time administrator approval.
+                </p>
+              )}
+              {systemStatus.available && isMacos && (
+                <div className="rounded-control border border-border bg-surface px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium">Apply to</p>
+                    <div className="flex gap-1 rounded-control bg-surface-overlay p-0.5">
+                      {(
+                        [
+                          ["all", "All apps"],
+                          ["only", "Only selected"],
+                          ["except", "All except"],
+                        ] as [SystemEqScopeMode, string][]
+                      ).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setScopeMode(mode)}
+                          className={`rounded-[6px] px-2.5 py-1 text-xs transition-colors ${
+                            systemEqScope.mode === mode
+                              ? "bg-accent-muted text-accent-strong"
+                              : "text-text-muted hover:text-text"
+                          }`}
+                          aria-pressed={systemEqScope.mode === mode}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {systemEqScope.mode !== "all" && (
+                    <div className="mt-2.5 max-h-48 overflow-y-auto rounded-md border border-border">
+                      {scopeApps.length === 0 ? (
+                        <p className="px-3 py-3 text-xs text-text-faint">
+                          No apps are playing audio right now. Start playback in another
+                          app, then reopen this list.
+                        </p>
+                      ) : (
+                        <ul className="divide-y divide-border/60">
+                          {scopeApps.map((app) => {
+                            const checked = systemEqScope.apps.includes(app.id);
+                            return (
+                              <li key={app.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleScopeApp(app.id)}
+                                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-surface-overlay"
+                                  aria-pressed={checked}
+                                >
+                                  <span
+                                    className={`flex size-4 shrink-0 items-center justify-center rounded-[4px] border text-[10px] ${
+                                      checked
+                                        ? "border-accent bg-accent-muted text-accent-strong"
+                                        : "border-border"
+                                    }`}
+                                    aria-hidden="true"
+                                  >
+                                    {checked ? "✓" : ""}
+                                  </span>
+                                  {app.icon && (
+                                    <img
+                                      src={app.icon}
+                                      alt=""
+                                      className="size-4 shrink-0 rounded-[3px]"
+                                    />
+                                  )}
+                                  <span className="min-w-0 flex-1 truncate text-text">
+                                    {app.name}
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                  <p className="mt-2 text-[11px] text-text-faint">
+                    {systemEqScope.mode === "only"
+                      ? "Only the checked apps are equalized."
+                      : "Every app except the checked ones is equalized."}{" "}
+                    Changes rebuild the tap; apps must be playing to appear.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 text-sm">
+                  <p className="font-medium">Input capture</p>
+                  <p className="text-xs text-text-muted">
+                    Route a microphone / input device through the chain.
+                  </p>
+                </div>
+                <Button variant="secondary" onClick={startCapture}>
+                  Start
+                </Button>
+              </div>
+
+              {(captureError || systemEqError || driverError) && (
+                <p className="text-sm text-danger">
+                  {captureError ?? systemEqError ?? driverError}
+                </p>
+              )}
+
+              <div className="flex items-start gap-2 rounded-control border border-border bg-surface px-3 py-2 text-xs text-text-muted">
                 <CircleAlert
-                  className="mt-0.5 size-3.5 shrink-0 text-warning"
+                  className="mt-0.5 size-3.5 shrink-0 text-text-faint"
                   aria-hidden="true"
                 />
                 <span>
-                  Data Saver is on, so crossfade applies to local files only.
-                  Cloud, phone and YouTube Music play one track at a time and cut
-                  straight from one to the next.
+                  {systemAffordance === "enable"
+                    ? "Everything you hear is re-rendered through the chain. macOS taps other apps (first use prompts for audio-capture permission; the grant persists on a code-signed build); Linux routes through a PipeWire/PulseAudio virtual sink and restores your default output when stopped; Windows routes through the bundled HypeMuzik virtual audio device."
+                    : systemAffordance === "install"
+                      ? "System-wide equalization on Windows routes audio through the bundled HypeMuzik virtual audio device. Install the driver (one-time, admin-approved) to enable it."
+                      : systemAffordance === "not-bundled"
+                        ? "One-click setup installs VB-Audio's free VB-CABLE virtual audio device (downloaded from vb-audio.com, one admin approval) and routes all system audio through the equalizer. If the download fails, install VB-CABLE manually from vb-audio.com/Cable — it's detected automatically."
+                        : "System-wide equalization isn't available here. See docs/system-eq.md."}
                 </span>
-              </p>
-            )}
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 text-sm">
-                <p className="font-medium">Data Saver</p>
-                <p className="text-xs text-text-muted">
-                  Stream progressively on slow connections (no full-download /
-                  prefetch). Turns off gapless and crossfade for cloud, phone and
-                  YouTube Music.
-                </p>
               </div>
-              <Switch
-                checked={playback.dataSaver}
-                onChange={(v) => setDataSaver(v)}
-                label="Data Saver"
-              />
             </div>
-          </div>
-        </Card>
+          </Card>
+        </section>
 
-        <Card title="Output devices" icon={Speaker}>
-          <div className="flex flex-col gap-3">
-            <p className="text-sm text-text-muted">
-              Choose where sound plays. Selecting a device makes it the system
-              default output, so everything — this app and the rest of macOS —
-              follows.
-            </p>
-            <OutputDevices
-              state={devices}
-              switchingUid={switchingUid}
-              onSelect={(d) => void selectDevice(d)}
-            />
-          </div>
-        </Card>
-
-        <AccountCard />
-
-        <Card title="System-wide audio" icon={Sparkles}>
-          <div className="flex flex-col gap-3">
-            {systemStatus.supported && (
-              <div className="flex items-center justify-between gap-3 rounded-control border border-accent/30 bg-accent-muted/40 px-3 py-2.5">
-                <div className="min-w-0 text-sm">
-                  <p className="font-medium text-accent-strong">
-                    Equalize everything you hear
-                  </p>
-                  <p className="text-xs text-text-muted">
-                    Routes all system audio through the equalizer and effects.
-                  </p>
-                  {runtimeStatus !== "disabled" && (
-                    <span
-                      className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${runtimeStatus === "recovering"
-                          ? "bg-amber-500/15 text-amber-400"
-                          : "bg-success/15 text-success"
-                        }`}
-                      title={
-                        runtimeStatus === "recovering"
-                          ? "A transient failure (e.g. heavy CPU load or a device change) is being recovered in the background — audio is restored but momentarily unequalised."
-                          : "System-wide EQ is running."
-                      }
-                    >
-                      <span
-                        className={`size-1.5 rounded-full ${runtimeStatus === "recovering"
-                            ? "animate-pulse bg-amber-400"
-                            : "bg-success"
-                          }`}
-                        aria-hidden="true"
-                      />
-                      {runtimeStatus === "recovering" ? "Recovering…" : "Active"}
-                    </span>
-                  )}
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  {systemAffordance === "enable" ? (
-                    <>
-                      <Button variant="primary" onClick={startSystemAudio}>
-                        {systemEqOn ? "Restart" : "Enable"}
-                      </Button>
-                      {systemEqOn && (
-                        <Button variant="secondary" onClick={stopSystemEq}>
-                          Stop
-                        </Button>
-                      )}
-                    </>
-                  ) : systemAffordance === "install" ? (
-                    <Button
-                      variant="primary"
-                      onClick={() => void installAudioDriver()}
-                      disabled={driverInstalling}
-                    >
-                      {driverInstalling ? "Installing…" : "Install audio driver"}
-                    </Button>
-                  ) : systemAffordance === "not-bundled" ? (
-                    awaitingReboot ? (
-                      <span className="text-xs text-text-muted">
-                        Restart your PC to finish setup
-                      </span>
-                    ) : (
-                      <Button
-                        variant="primary"
-                        onClick={() => void setupApo()}
-                        disabled={setupPhase !== null}
-                      >
-                        {setupPhase === "installing"
-                          ? "Installing…"
-                          : "Set up system-wide EQ"}
-                      </Button>
-                    )
-                  ) : (
-                    <span className="text-xs text-text-muted">
-                      Unavailable on this system
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {systemStatus.supported && systemAffordance === "install" && (
-              <p className="text-xs text-text-muted">
-                System-wide EQ routes audio through the HypeMuzik virtual audio
-                device. Installing it needs a one-time administrator approval.
-              </p>
-            )}
-            {systemStatus.available && isMacos && (
-              <div className="rounded-control border border-border bg-surface px-3 py-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium">Apply to</p>
-                  <div className="flex gap-1 rounded-control bg-surface-overlay p-0.5">
-                    {(
-                      [
-                        ["all", "All apps"],
-                        ["only", "Only selected"],
-                        ["except", "All except"],
-                      ] as [SystemEqScopeMode, string][]
-                    ).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setScopeMode(mode)}
-                        className={`rounded-[6px] px-2.5 py-1 text-xs transition-colors ${
-                          systemEqScope.mode === mode
-                            ? "bg-accent-muted text-accent-strong"
-                            : "text-text-muted hover:text-text"
-                        }`}
-                        aria-pressed={systemEqScope.mode === mode}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {systemEqScope.mode !== "all" && (
-                  <div className="mt-2.5 max-h-48 overflow-y-auto rounded-md border border-border">
-                    {scopeApps.length === 0 ? (
-                      <p className="px-3 py-3 text-xs text-text-faint">
-                        No apps are playing audio right now. Start playback in another
-                        app, then reopen this list.
-                      </p>
-                    ) : (
-                      <ul className="divide-y divide-border/60">
-                        {scopeApps.map((app) => {
-                          const checked = systemEqScope.apps.includes(app.id);
-                          return (
-                            <li key={app.id}>
-                              <button
-                                type="button"
-                                onClick={() => toggleScopeApp(app.id)}
-                                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-surface-overlay"
-                                aria-pressed={checked}
-                              >
-                                <span
-                                  className={`flex size-4 shrink-0 items-center justify-center rounded-[4px] border text-[10px] ${
-                                    checked
-                                      ? "border-accent bg-accent-muted text-accent-strong"
-                                      : "border-border"
-                                  }`}
-                                  aria-hidden="true"
-                                >
-                                  {checked ? "✓" : ""}
-                                </span>
-                                {app.icon && (
-                                  <img
-                                    src={app.icon}
-                                    alt=""
-                                    className="size-4 shrink-0 rounded-[3px]"
-                                  />
-                                )}
-                                <span className="min-w-0 flex-1 truncate text-text">
-                                  {app.name}
-                                </span>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-                )}
-                <p className="mt-2 text-[11px] text-text-faint">
-                  {systemEqScope.mode === "only"
-                    ? "Only the checked apps are equalized."
-                    : "Every app except the checked ones is equalized."}{" "}
-                  Changes rebuild the tap; apps must be playing to appear.
-                </p>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 text-sm">
-                <p className="font-medium">Input capture</p>
-                <p className="text-xs text-text-muted">
-                  Route a microphone / input device through the chain.
-                </p>
-              </div>
-              <Button variant="secondary" onClick={startCapture}>
-                Start
-              </Button>
-            </div>
-
-            {(captureError || systemEqError || driverError) && (
-              <p className="text-sm text-danger">
-                {captureError ?? systemEqError ?? driverError}
-              </p>
-            )}
-
-            <div className="flex items-start gap-2 rounded-control border border-border bg-surface px-3 py-2 text-xs text-text-muted">
-              <CircleAlert
-                className="mt-0.5 size-3.5 shrink-0 text-text-faint"
-                aria-hidden="true"
-              />
-              <span>
-                {systemAffordance === "enable"
-                  ? "Everything you hear is re-rendered through the chain. macOS taps other apps (first use prompts for audio-capture permission; the grant persists on a code-signed build); Linux routes through a PipeWire/PulseAudio virtual sink and restores your default output when stopped; Windows routes through the bundled HypeMuzik virtual audio device."
-                  : systemAffordance === "install"
-                    ? "System-wide equalization on Windows routes audio through the bundled HypeMuzik virtual audio device. Install the driver (one-time, admin-approved) to enable it."
-                    : systemAffordance === "not-bundled"
-                      ? "One-click setup installs VB-Audio's free VB-CABLE virtual audio device (downloaded from vb-audio.com, one admin approval) and routes all system audio through the equalizer. If the download fails, install VB-CABLE manually from vb-audio.com/Cable — it's detected automatically."
-                      : "System-wide equalization isn't available here. See docs/system-eq.md."}
-              </span>
-            </div>
-          </div>
-        </Card>
-
-        <VisualizerCard />
+        <section id="visualizer" className="scroll-mt-4">
+          <VisualizerCard />
+        </section>
       </div>
     </div>
   );

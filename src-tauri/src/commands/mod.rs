@@ -30,6 +30,7 @@ pub mod presets;
 pub mod profiles;
 pub mod radio;
 pub mod scenes;
+pub mod settings_window;
 pub mod stems;
 pub mod tv;
 pub mod visualizer;

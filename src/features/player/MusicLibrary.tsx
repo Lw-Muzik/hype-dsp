@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
-import { useUiStore } from "@/stores/ui";
+import { openSettings } from "@/lib/ipc";
 import { trackArt, useMusicLibrary } from "@/features/player/useMusicLibrary";
 import type { MusicTrack } from "@/features/player/useMusicLibrary";
 import type { ArtSource } from "@/lib/useTrackArtwork";
@@ -164,7 +164,6 @@ export function MusicLibrary() {
     s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined,
   );
   const playingKey = current ? `${current.source}:${current.id}` : null;
-  const setRoute = useUiStore((s) => s.setRoute);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
@@ -326,7 +325,9 @@ export function MusicLibrary() {
       ) : needsConnect ? (
         <ConnectPrompt
           kind={sourceFilter === "phone" ? "phone" : "cloud"}
-          onConnect={() => setRoute("settings")}
+          onConnect={() =>
+            void openSettings(sourceFilter === "phone" ? "devices" : "cloud")
+          }
         />
       ) : filtered.length === 0 ? (
         <EmptySource source={sourceFilter} />

@@ -22,7 +22,7 @@ import { Artwork } from "@/features/player/Artwork";
 import { TrackRow, TRACK_ROW_H } from "@/features/player/TrackRow";
 import { SEARCH_FILTERS, useExploreStore } from "@/stores/explore";
 import { useEngineStore } from "@/stores/engine";
-import { useUiStore } from "@/stores/ui";
+import { openSettings } from "@/lib/ipc";
 import type { ExploreItem, ExploreShelf } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
@@ -40,7 +40,6 @@ import { cn } from "@/lib/cn";
  */
 export function ExploreView() {
   const route = routeById("explore");
-  const setRoute = useUiStore((s) => s.setRoute);
 
   const signedIn = useExploreStore((s) => s.signedIn);
   const sections = useExploreStore((s) => s.sections);
@@ -128,7 +127,7 @@ export function ExploreView() {
             title="Not signed in to YouTube Music"
             body="Sign in from Settings to browse YouTube's playlists and albums here."
             action={
-              <Button variant="primary" onClick={() => setRoute("settings")}>
+              <Button variant="primary" onClick={() => void openSettings("youtube-music")}>
                 <ListMusic className="size-4" aria-hidden="true" />
                 Sign in from Settings
               </Button>

@@ -5,6 +5,7 @@ import ThemeBackdrop from "@/features/theme/ThemeBackdrop";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { UpdateBanner } from "@/features/update/UpdateBanner";
+import { ConfirmHost } from "@/components/ConfirmHost";
 import { Toaster } from "@/components/Toaster";
 import { SupporterUpsellModal } from "@/components/PremiumGate";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
@@ -138,6 +139,7 @@ export function App() {
         {mode === "player" && <NowPlayingBar />}
       </div>
       <Toaster />
+      <ConfirmHost />
       <SupporterUpsellModal />
     </div>
   );

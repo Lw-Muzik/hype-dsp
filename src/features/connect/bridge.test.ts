@@ -42,6 +42,10 @@ function setup() {
   const onWelcome = vi.fn();
   const onPong = vi.fn();
   const onVizSub = vi.fn();
+  const onWelcomeStates = vi.fn();
+  const onState = vi.fn();
+  const onAck = vi.fn();
+  const onError = vi.fn();
   const handle = createInboundHandler({
     player,
     rpc,
@@ -51,9 +55,13 @@ function setup() {
     onWelcome,
     onPong,
     onVizSub,
+    onWelcomeStates,
+    onState,
+    onAck,
+    onError,
   });
   const settle = () => new Promise((r) => setTimeout(r, 0));
-  return { handle, sent, player, onDevices, onWelcome, onPong, onVizSub, settle };
+  return { handle, sent, player, onDevices, onWelcome, onPong, onVizSub, onWelcomeStates, onState, onAck, onError, settle };
 }
 
 describe("createInboundHandler", () => {
@@ -163,5 +171,32 @@ describe("createInboundHandler", () => {
         result: { track: null, found: false, synced: false, source: null, lines: [] },
       },
     ]);
+  });
+
+  describe("v1.2: this app as a remote", () => {
+    const state = {
+      seq: 3, track: ytRef("a"), playing: true, positionMs: 0, durationMs: 1000, volume: 1,
+      shuffle: false, repeat: "off" as const, queue: [], at: 5,
+    };
+    it("hands a welcome's states to the remote session before the device list", () => {
+      const { handle, onWelcomeStates, onDevices } = setup();
+      const order: string[] = [];
+      onWelcomeStates.mockImplementation(() => order.push("states"));
+      onDevices.mockImplementation(() => order.push("devices"));
+      handle({ t: "welcome", v: 1, deviceId: DEVICE, serverTime: 1, devices: [], activeDeviceId: "p", states: { p: state } });
+      expect(onWelcomeStates).toHaveBeenCalledWith([], "p", { p: state });
+      expect(order).toEqual(["states", "devices"]);
+    });
+    it("routes another player's state, acks and errors", () => {
+      const { handle, onState, onAck, onError, sent } = setup();
+      handle({ t: "state", deviceId: "p", state });
+      handle({ t: "ack", id: "rc-1", ok: false, error: "offline" });
+      handle({ t: "ack", id: "rc-2", ok: true });
+      handle({ t: "error", code: "not_a_player", message: "no" });
+      expect(onState).toHaveBeenCalledWith("p", state);
+      expect(onAck.mock.calls).toEqual([["rc-1", false, "offline"], ["rc-2", true, undefined]]);
+      expect(onError).toHaveBeenCalledWith("not_a_player", "no");
+      expect(sent).toEqual([]); // an ack of ours is never acked back
+    });
   });
 });

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Command, PlayerState } from "../protocol";
+import type { Command, PlayerState, TrackRef } from "../protocol";
 import type { StateBody } from "../statePublisher";
 import { localRef, ytRef } from "../testKit";
 import { buildTransfer, moveTo, playableOn, type TransferDeps } from "./transfer";
@@ -18,7 +18,7 @@ let cmdResult: CmdResult;
 let hereOk: boolean;
 let hereCmd: Command | null;
 
-const q = (uid: string, track = ytRef(uid)) => ({ uid, track });
+const q = (uid: string, track: TrackRef = ytRef(uid)) => ({ uid, track });
 const body = (over: Partial<StateBody> = {}): StateBody => ({
   track: ytRef("cur"), playing: true, positionMs: 30_000, durationMs: 200_000, volume: 1,
   shuffle: false, repeat: "off", queue: [q("n1"), q("n2")], ...over,
@@ -41,7 +41,7 @@ const deps: TransferDeps = {
   playHere: vi.fn(async (cmd) => {
     calls.push("playHere");
     hereCmd = cmd;
-    return hereOk ? { ok: true } : { ok: false, error: "x" };
+    return hereOk ? ({ ok: true } as const) : ({ ok: false, error: "x" } as const);
   }),
   pauseLocal: vi.fn(() => void calls.push("pauseLocal")),
   info: vi.fn(),

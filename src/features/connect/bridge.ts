@@ -1,11 +1,12 @@
 /**
  * Inbound frames → the player. `cmd`s run one at a time and are acked when
  * accepted; `rpc`s answer as soon as their lookup finishes; `welcome` and
- * `devices` feed the device list; `pong` feeds the hub clock and the hub's
+ * `devices` feed the device list (and, v1.2, the remote session and the
+ * claim/yield rules, with `state`, `ack` and `error`); `pong` feeds the hub clock and the hub's
  * `viz_sub` starts or stops the visualiser stream (v1.1).
  */
 import { CommandQueue, executeCommand, type PlayerPort } from "./commands";
-import { decodeFrame, type DeviceInfo, type Frame } from "./protocol";
+import { decodeFrame, type AckError, type DeviceInfo, type Frame, type PlayerState } from "./protocol";
 import type { QueueUidTracker } from "./queueUids";
 import { executeRpc, type RpcPort } from "./rpc";
 
@@ -17,6 +18,19 @@ export interface BridgeDeps {
   onDevices?(devices: DeviceInfo[], activeDeviceId: string | null): void;
   /** The hub's clock at `welcome` (a first guess before any `pong`). */
   onWelcome?(serverTime: number): void;
+  /** `welcome` in full: the devices, who is active and every online player's
+   *  latest state (v1.2: this app can be a remote). Runs before `onDevices`. */
+  onWelcomeStates?(
+    devices: DeviceInfo[],
+    activeDeviceId: string | null,
+    states: Record<string, PlayerState>,
+  ): void;
+  /** Another player's state (v1.2). */
+  onState?(deviceId: string | undefined, state: PlayerState): void;
+  /** The answer to a `cmd` this app sent as a remote (v1.2). */
+  onAck?(id: string, ok: boolean, error?: AckError): void;
+  /** `error` from the hub (v1.2: `not_a_player` ends a claim). */
+  onError?(code: string, message: string): void;
   onPong?(id: string, serverTime: number): void;
   /** The hub's subscriber count went 0 → 1 (`true`) or 1 → 0 (`false`). */
   onVizSub?(on: boolean): void;
@@ -69,10 +83,20 @@ export function createInboundHandler(deps: BridgeDeps): (raw: unknown) => void {
       }
       case "welcome":
         deps.onWelcome?.(frame.serverTime);
+        deps.onWelcomeStates?.(frame.devices, frame.activeDeviceId, frame.states);
         deps.onDevices?.(frame.devices, frame.activeDeviceId);
         return;
       case "devices":
         deps.onDevices?.(frame.devices, frame.activeDeviceId);
+        return;
+      case "state":
+        deps.onState?.(frame.deviceId, frame.state);
+        return;
+      case "ack":
+        deps.onAck?.(frame.id, frame.ok, frame.error);
+        return;
+      case "error":
+        deps.onError?.(frame.code, frame.message);
         return;
       case "pong":
         deps.onPong?.(frame.id, frame.serverTime);

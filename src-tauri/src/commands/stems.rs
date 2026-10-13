@@ -304,7 +304,7 @@ pub fn stems_arm(
         let worker_cancel = cancel.clone();
         let progress_app = app.clone();
         let worker_key = key.clone();
-        std::thread::Builder::new()
+        let worker = std::thread::Builder::new()
             .name("hm-stems".into())
             .spawn(move || {
                 let result = separator.fill(&worker_store, &worker_cancel, |ready, total| {
@@ -314,30 +314,25 @@ pub fn stems_arm(
                     Ok(()) => {
                         separator.save_cached(&worker_key, &worker_store);
                         let _ = progress_app.emit("stems:progress", 1.0_f32);
+                        Ok(())
                     }
-                    Err(StemError::Aborted) => separator.unload(),
+                    Err(StemError::Aborted) => {
+                        separator.unload();
+                        Ok(())
+                    }
                     Err(e) => {
-                        let _ = progress_app.emit("stems:error", e.to_string());
+                        let message = e.to_string();
+                        let _ = progress_app.emit("stems:error", message.clone());
+                        Err(message)
                     }
                 }
             })
             .map_err(|e| fail(e.to_string()))?;
 
-        // Wait for the stretch around the playhead.
-        loop {
-            if cancel.load(Ordering::Relaxed) {
-                return Ok(());
-            }
-            let here = (playhead() * f64::from(RATE)) as usize;
-            let last = ((here + (LEAD_SECS * f64::from(RATE)) as usize).min(store.frames() - 1)).max(here.min(store.frames() - 1));
-            let (from, to) = (chunk_containing(here.min(store.frames() - 1)), chunk_containing(last));
-            if (from..=to).all(|c| store.is_ready(c)) {
-                break;
-            }
-            if store.is_complete() {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(40));
+        match wait_for_lead(&store, &cancel, &playhead, worker) {
+            Ok(LeadWait::Ready) => {}
+            Ok(LeadWait::Cancelled) => return Ok(()),
+            Err(e) => return Err(fail(e)),
         }
     } else {
         let _ = app.emit("stems:progress", 1.0_f32);
@@ -349,6 +344,50 @@ pub fn stems_arm(
     // Swap in at the live playhead; unity gains reproduce the original mix.
     engine.play_stems(store, playhead()).map_err(|e| fail(e.to_string()))?;
     Ok(())
+}
+
+/// How the wait for the stretch around the playhead ended.
+#[derive(Debug, PartialEq)]
+enum LeadWait {
+    /// It is separated (or the whole track is): swap the stems in.
+    Ready,
+    /// The session was cancelled (another track armed, or the view was left).
+    Cancelled,
+}
+
+/// Wait until the playhead through `LEAD_SECS` past it is separated. `Err` when
+/// the worker stops first — it failed (the message it also emitted on
+/// `stems:error`) or panicked — so the panel stops waiting instead of spinning
+/// under the error forever.
+fn wait_for_lead(
+    store: &StemStore,
+    cancel: &AtomicBool,
+    playhead: impl Fn() -> f64,
+    worker: std::thread::JoinHandle<Result<(), String>>,
+) -> Result<LeadWait, String> {
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Ok(LeadWait::Cancelled);
+        }
+        // Read before checking readiness: a worker that finished cleanly had
+        // already completed the store, so the check below sees that.
+        let finished = worker.is_finished();
+        let here = (playhead() * f64::from(RATE)) as usize;
+        let last = ((here + (LEAD_SECS * f64::from(RATE)) as usize).min(store.frames() - 1)).max(here.min(store.frames() - 1));
+        let (from, to) = (chunk_containing(here.min(store.frames() - 1)), chunk_containing(last));
+        if (from..=to).all(|c| store.is_ready(c)) || store.is_complete() {
+            return Ok(LeadWait::Ready);
+        }
+        if finished {
+            return match worker.join() {
+                Ok(Err(e)) => Err(e),
+                // Stopped early without an error: it was cancelled.
+                Ok(Ok(())) => Ok(LeadWait::Cancelled),
+                Err(_) => Err("stem separation stopped unexpectedly".into()),
+            };
+        }
+        std::thread::sleep(Duration::from_millis(40));
+    }
 }
 
 /// Set a control's gain live (0 = muted, 1 = unity). 0 vocals, 1 drums,
@@ -373,4 +412,70 @@ pub fn stems_reset(engine: State<'_, AudioEngine>, stems: State<'_, StemState>) 
 pub fn stems_gains(engine: State<'_, AudioEngine>) -> Vec<f32> {
     let gains = engine.stem_gains();
     (0..ELEMENT_COUNT).map(|i| gains.get(i)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A one-chunk track: the lead window is that chunk.
+    fn short_store() -> Arc<StemStore> {
+        StemStore::new(vec![0.0; 4000])
+    }
+
+    fn worker(f: impl FnOnce() -> Result<(), String> + Send + 'static) -> std::thread::JoinHandle<Result<(), String>> {
+        std::thread::spawn(f)
+    }
+
+    #[test]
+    fn a_failed_worker_ends_the_wait_with_its_error() {
+        let store = short_store();
+        let r = wait_for_lead(&store, &AtomicBool::new(false), || 0.0, worker(|| Err("stem engine error: boom".into())));
+        assert_eq!(r, Err("stem engine error: boom".to_string()));
+    }
+
+    #[test]
+    fn a_panicked_worker_ends_the_wait() {
+        let store = short_store();
+        let r = wait_for_lead(&store, &AtomicBool::new(false), || 0.0, worker(|| panic!("worker died")));
+        assert!(r.unwrap_err().contains("unexpectedly"));
+    }
+
+    #[test]
+    fn a_worker_that_stops_cleanly_early_was_cancelled() {
+        let store = short_store();
+        let r = wait_for_lead(&store, &AtomicBool::new(false), || 0.0, worker(|| Ok(())));
+        assert_eq!(r, Ok(LeadWait::Cancelled));
+    }
+
+    #[test]
+    fn cancelling_ends_the_wait() {
+        let store = short_store();
+        let r = wait_for_lead(&store, &AtomicBool::new(true), || 0.0, worker(|| Ok(())));
+        assert_eq!(r, Ok(LeadWait::Cancelled));
+    }
+
+    #[test]
+    fn a_separated_window_is_ready_even_while_the_worker_runs() {
+        let store = short_store();
+        let n = store.mix().len();
+        assert!(store.fill_from(&vec![0.0; n], &vec![0.0; n]));
+        let r = wait_for_lead(&store, &AtomicBool::new(false), || 0.0, worker(|| {
+            std::thread::sleep(Duration::from_millis(300));
+            Ok(())
+        }));
+        assert_eq!(r, Ok(LeadWait::Ready));
+    }
+
+    #[test]
+    fn a_worker_that_finishes_the_track_is_ready() {
+        let store = short_store();
+        let s = store.clone();
+        let r = wait_for_lead(&store, &AtomicBool::new(false), || 0.0, worker(move || {
+            let n = s.mix().len();
+            assert!(s.fill_from(&vec![0.0; n], &vec![0.0; n]));
+            Ok(())
+        }));
+        assert_eq!(r, Ok(LeadWait::Ready));
+    }
 }

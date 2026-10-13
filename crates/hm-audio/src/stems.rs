@@ -86,6 +86,14 @@ pub fn mix_frame(m: [f32; 2], v: [f32; 2], d: [f32; 2], g: [f32; ELEMENT_COUNT])
     })
 }
 
+/// The output frame the stem mixer starts at when it replaces the file player
+/// at `start_secs` (the live playhead): same instant, at the device rate, never
+/// past the end.
+pub fn swap_start_frame(start_secs: f64, device_rate: u32, total_frames: usize) -> usize {
+    let f = (start_secs.max(0.0) * f64::from(device_rate)).round();
+    (f as usize).min(total_frames)
+}
+
 /// Plays a [`StemStore`] through the engine at the device rate.
 pub struct StemPlaybackSource {
     store: Arc<StemStore>,
@@ -332,6 +340,27 @@ mod tests {
         assert_eq!(src.read(&mut out, 2), 100);
         assert!(out[200..].iter().all(|&x| x == 0.0));
         assert_eq!(src.position(), 100);
+    }
+
+    #[test]
+    fn swap_lands_on_the_playhead_in_the_device_domain() {
+        assert_eq!(swap_start_frame(12.5, 48_000, 10_000_000), 600_000);
+        assert_eq!(swap_start_frame(12.5, 44_100, 10_000_000), 551_250);
+        assert_eq!(swap_start_frame(-3.0, 48_000, 100), 0);
+        assert_eq!(swap_start_frame(1e9, 48_000, 100), 100, "clamped to the end");
+    }
+
+    #[test]
+    fn a_swap_at_the_playhead_continues_from_the_same_sample() {
+        // A ramp: after seeking to the swap frame the first output is the ramp
+        // value at that instant, not the start of the track.
+        let frames = 44_100;
+        let mix: Vec<f32> = (0..frames).flat_map(|i| [i as f32 / frames as f32; 2]).collect();
+        let store = StemStore::new(mix);
+        let mut src = StemPlaybackSource::new(store, Arc::new(StemGains::default()), 44_100);
+        src.seek(swap_start_frame(0.5, 44_100, src.total_frames()));
+        let first = play(&mut src, 1)[0];
+        assert!((first - 0.5).abs() < 1e-4, "{first}");
     }
 
     #[test]

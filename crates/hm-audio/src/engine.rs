@@ -1702,7 +1702,7 @@ fn control_loop(ctx: ControlCtx) {
                 pos.prepare(sample_rate, stem_source.total_frames());
                 // Start at the live playhead so swapping stems in mid-track is gapless.
                 let start_frame =
-                    ((start_secs.max(0.0)) * sample_rate as f64).round() as usize;
+                    crate::stems::swap_start_frame(start_secs, sample_rate, stem_source.total_frames());
                 if start_frame > 0 {
                     stem_source.seek(start_frame);
                 }

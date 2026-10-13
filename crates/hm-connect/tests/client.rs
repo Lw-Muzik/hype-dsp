@@ -354,6 +354,18 @@ async fn outbound_frames_reach_the_hub_verbatim() {
 }
 
 #[tokio::test]
+async fn a_remote_cmd_goes_out_and_its_ack_comes_back() {
+    let hub = Hub::start().await;
+    let (handle, mut rx, mut conn) = connected(&hub, FakeTokens::with("t")).await;
+    assert!(matches!(frame(&mut rx).await, Frame::Welcome { .. }));
+
+    handle.send(&frame_of("cmd.play.to.json")).unwrap();
+    assert_eq!(conn.json().await, fixture("cmd.play.to.json"));
+    conn.send(fixture("ack.ok.json")).await;
+    assert_eq!(frame(&mut rx).await, frame_of("ack.ok.json"));
+}
+
+#[tokio::test]
 async fn a_player_cannot_send_controller_or_hub_frames() {
     let hub = Hub::start().await;
     let (handle, _rx, _conn) = connected(&hub, FakeTokens::with("t")).await;

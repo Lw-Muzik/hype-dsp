@@ -146,6 +146,7 @@ export function useHypeConnect(): void {
         }),
     });
     takeover.setPlaying(isAudible(useEngineStore.getState()));
+    let welcomeHandled = false;
     const syncPlayers = (active: string | null) =>
       useRemoteStore.getState().setPlayers(session.players, active, deviceId);
 
@@ -197,7 +198,9 @@ export function useHypeConnect(): void {
       send: connectSend,
       onDevices: (devices, active) => {
         useConnectStore.getState().setDevices(devices, active);
-        takeover.onDevices(devices, active);
+        // A welcome already went through `takeover.onWelcome` just before.
+        if (welcomeHandled) welcomeHandled = false;
+        else takeover.onDevices(devices, active);
         session.onDevices(devices, active);
         syncPlayers(active);
       },
@@ -206,6 +209,8 @@ export function useHypeConnect(): void {
         // event reaches the webview first.
         takeover.setConnected(true);
         session.setConnected(true);
+        takeover.onWelcome(devices, active, states);
+        welcomeHandled = true;
         session.onWelcome(devices, active, states);
       },
       onState: (id, state) => session.onState(id, state),

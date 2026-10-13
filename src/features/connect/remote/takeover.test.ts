@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { DeviceInfo } from "../protocol";
+import type { DeviceInfo, PlayerState } from "../protocol";
 import { CLAIM_TIMEOUT_MS, Takeover } from "./takeover";
 
 const dev = (id: string, over: Partial<DeviceInfo> = {}): DeviceInfo => ({
@@ -251,5 +251,97 @@ describe("rate limit: at most one claim per 3 s", () => {
     r.advance(2_000);
     r.tk.onDevices([ME, PHONE], null);
     expect(r.selects).toHaveLength(2);
+  });
+});
+
+describe("welcome (Claim (c) / Yield)", () => {
+  const ps = (playing: boolean): PlayerState => ({
+    seq: 1, track: null, playing, positionMs: 0, durationMs: null, volume: 1, shuffle: false, repeat: "off", queue: [],
+  });
+  const startOffline = () => {
+    r.tk.setConnected(false);
+    r.tk.setPlaying(true);
+    r.tk.setConnected(true);
+  };
+  it("offline start claims even when another online player is active and playing", () => {
+    startOffline();
+    r.tk.onWelcome([ME, PHONE], "phone", { phone: ps(true) });
+    expect(r.selects).toEqual([SELF]);
+    expect(r.pauses).toBe(0);
+  });
+  it("claims when the active device's welcome state is missing", () => {
+    r.tk.onDevices([ME, PHONE], SELF);
+    r.tk.setPlaying(true);
+    r.tk.onWelcome([ME, PHONE], "phone", {});
+    expect(r.selects).toEqual([SELF]);
+  });
+  it("claims when the active device's welcome state is not playing", () => {
+    r.tk.onDevices([ME, PHONE], SELF);
+    r.tk.setPlaying(true);
+    r.tk.onWelcome([ME, PHONE], "phone", { phone: ps(false) });
+    expect(r.selects).toEqual([SELF]);
+  });
+  it("yields when the active device is playing and there was no offline start", () => {
+    r.tk.onDevices([ME, PHONE], SELF);
+    r.tk.setPlaying(true);
+    r.advance(4_000);
+    r.tk.onWelcome([ME, PHONE], "phone", { phone: ps(true) });
+    expect(r.pauses).toBe(1);
+    expect(r.selects).toEqual([]);
+  });
+  it("still claims on welcome when active is null, offline or not a player", () => {
+    startOffline();
+    r.tk.onWelcome([ME, WEB], "web", {});
+    expect(r.selects).toEqual([SELF]);
+  });
+  it("devices frames still yield even after an offline start", () => {
+    startOffline();
+    r.tk.onWelcome([ME, PHONE], SELF, {});
+    r.tk.onDevices([ME, PHONE], "phone");
+    expect(r.pauses).toBe(1);
+  });
+  it("the offline flag clears when playback stops", () => {
+    startOffline();
+    r.tk.setPlaying(false);
+    r.tk.setPlaying(true); // connected edge: claims, clears anyway
+    r.tk.onError("not_a_player");
+    r.advance(4_000);
+    r.tk.onWelcome([ME, PHONE], "phone", { phone: ps(true) });
+    expect(r.pauses).toBeGreaterThan(0);
+  });
+  it("the offline flag clears once a claim is sent", () => {
+    startOffline();
+    r.tk.onWelcome([ME, PHONE], "phone", { phone: ps(true) }); // claim sent
+    r.tk.onError("not_a_player");
+    r.advance(4_000);
+    r.tk.onWelcome([ME, PHONE], "phone", { phone: ps(true) });
+    expect(r.selects).toHaveLength(1);
+    expect(r.pauses).toBeGreaterThan(0);
+  });
+  it("a claim postponed over a welcome is checked as a devices check afterwards", () => {
+    r.tk.onDevices([ME, PHONE], null);
+    r.tk.setPlaying(true);
+    r.tk.onWelcome([ME, PHONE], "phone", { phone: ps(false) });
+    expect(r.pauses).toBe(0);
+    r.advance(3_000);
+    expect(r.pauses).toBe(1);
+  });
+  it("stopping playback clears the offline flag", () => {
+    r.tk.onDevices([ME, PHONE], "phone");
+    r.tk.setPlaying(true); // connected edge: claim at t0
+    r.tk.setPlaying(false);
+    r.tk.setConnected(false);
+    r.tk.setPlaying(true); // offline start
+    r.tk.setPlaying(false); // stopped: flag cleared
+    r.tk.setConnected(true);
+    r.advance(100);
+    r.tk.setPlaying(true); // rate-limited: no claim, so only the stop could clear it
+    r.tk.onWelcome([ME, PHONE], "phone", { phone: ps(true) });
+    expect(r.pauses).toBe(1);
+  });
+  it("does nothing when idle", () => {
+    r.tk.onWelcome([ME, PHONE], "phone", { phone: ps(true) });
+    expect(r.selects).toEqual([]);
+    expect(r.pauses).toBe(0);
   });
 });

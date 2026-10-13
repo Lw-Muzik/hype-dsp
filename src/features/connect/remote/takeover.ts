@@ -15,9 +15,15 @@
  *   not stop). A claiming player postpones the check until claiming ends and
  *   applies it to the latest list.
  *
+ * - **Claim (c), on `welcome` only.** Claim rather than yield when playback
+ *   started while there was no socket, or the active device's `welcome.states`
+ *   entry is missing or not playing (a stale selection, e.g. after a merge).
+ *   Yield on `welcome` only when neither applies; `devices` frames are
+ *   unchanged, and a postponed check after a claim runs as a `devices` check.
+ *
  * "Playing" is the music engine only; the Movies/TV player never reaches this.
  */
-import type { DeviceInfo } from "../protocol";
+import type { DeviceInfo, PlayerState } from "../protocol";
 
 export const CLAIM_TIMEOUT_MS = 3_000;
 export const CLAIM_MIN_GAP_MS = 3_000;
@@ -45,6 +51,9 @@ export class Takeover {
   private claiming = false;
   private claimTimer: unknown = null;
   private lastClaimAt: number | null = null;
+  /** Playback started while there was no socket (set on that play edge,
+   *  cleared when playback stops or a claim is sent). */
+  private offlineStart = false;
 
   constructor(private readonly deps: TakeoverDeps) {}
 
@@ -63,10 +72,37 @@ export class Takeover {
   setPlaying(playing: boolean): void {
     const was = this.playing;
     this.playing = playing;
-    if (playing && !was) this.claim();
+    if (!playing) this.offlineStart = false;
+    if (playing && !was) {
+      if (!this.connected) this.offlineStart = true;
+      this.claim();
+    }
   }
 
-  /** A `welcome` or `devices` frame. */
+  /** A `welcome` frame (§3.12 Claim (c) / Yield differ from `devices`). */
+  onWelcome(
+    devices: readonly DeviceInfo[],
+    activeDeviceId: string | null,
+    states: Readonly<Record<string, PlayerState>>,
+  ): void {
+    this.devices = devices;
+    this.activeId = activeDeviceId;
+    if (activeDeviceId === this.selfId && this.selfId !== "") {
+      this.endClaim();
+      return;
+    }
+    if (this.claiming || !this.connected || !this.playing) return;
+    const active = activeDeviceId === null ? undefined : devices.find((d) => d.id === activeDeviceId);
+    if (isOnlinePlayer(active)) {
+      const activePlaying = states[active.id]?.playing === true;
+      if (this.offlineStart || !activePlaying) this.claim();
+      else this.deps.pauseLocal();
+    } else {
+      this.claim();
+    }
+  }
+
+  /** A `devices` frame. */
   onDevices(devices: readonly DeviceInfo[], activeDeviceId: string | null): void {
     this.devices = devices;
     this.activeId = activeDeviceId;
@@ -107,6 +143,7 @@ export class Takeover {
     const now = this.deps.now();
     if (this.lastClaimAt !== null && now - this.lastClaimAt < CLAIM_MIN_GAP_MS) return;
     this.lastClaimAt = now;
+    this.offlineStart = false;
     this.claiming = true;
     this.clearTimer();
     this.claimTimer = this.deps.setTimeout(() => {

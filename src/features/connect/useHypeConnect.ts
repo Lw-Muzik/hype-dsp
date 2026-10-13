@@ -1,10 +1,17 @@
 import { useEffect } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { connectSend, connectStatus, onConnectInbound, onConnectStatus } from "@/lib/ipc";
+import {
+  connectSend,
+  connectStatus,
+  onConnectInbound,
+  onConnectStatus,
+  onEngineFrame,
+} from "@/lib/ipc";
 import type { ConnectStatus } from "@/lib/ipc";
 import { useAccountStore } from "@/stores/account";
 import { useEngineStore } from "@/stores/engine";
 import { createInboundHandler } from "./bridge";
+import { ClockSync, HubClock } from "./hubClock";
 import { appRpcPort, enginePlayerPort } from "./ports";
 import { QueueUidTracker } from "./queueUids";
 import {
@@ -14,6 +21,8 @@ import {
   type EngineView,
 } from "./statePublisher";
 import { useConnectStore } from "./store";
+import { PositionExtrapolator } from "./viz/position";
+import { VizStreamer } from "./viz/streamer";
 
 /** Store changes a controller could see. Meters and spectrum (30 fps) and
  *  every DSP setting other than volume are not among them. */
@@ -33,6 +42,9 @@ function playerChanged(s: EngineView, prev: EngineView): boolean {
     s.state.masterVolume !== prev.state.masterVolume
   );
 }
+
+/** Playing and not paused: what the visualiser stream and its position need. */
+const isAudible = (s: { playing: boolean; paused: boolean }): boolean => s.playing && !s.paused;
 
 /**
  * Hype Connect's player half, mounted once for the app's lifetime: executes
@@ -60,12 +72,64 @@ export function useHypeConnect(): void {
       seqStore: localStorageSeqStore(),
     });
 
+    // Hub time (for a viz frame's `heardAt`): ping/pong on every welcome and
+    // every ~10 s, the fastest of the last five round trips wins.
+    const hubClock = new HubClock();
+    const clockSync = new ClockSync({
+      clock: hubClock,
+      sendPing: (id) => connectSend({ t: "ping", id }),
+      now: () => Date.now(),
+      setInterval: (fn, ms) => window.setInterval(fn, ms),
+      clearInterval: (handle) => window.clearInterval(handle as number),
+    });
+
+    // Position between the engine's ~10/s progress events.
+    const position = new PositionExtrapolator();
+    const syncPosition = (s: ReturnType<typeof useEngineStore.getState>) =>
+      position.sync(s.positionSecs * 1000, performance.now(), isAudible(s) && !s.buffering);
+    syncPosition(useEngineStore.getState());
+
+    // Engine spectra are listened to only while a controller watches AND audio
+    // plays. Listening here (not through the store) also keeps frames flowing
+    // while the window is hidden: the store drops them then.
+    const viz = new VizStreamer({
+      listen: (onSpectrum) => {
+        const attached = onEngineFrame((frame) => {
+          if (frame.spectrum) onSpectrum(frame.spectrum);
+        });
+        return () => {
+          void attached.then((unlisten) => unlisten()).catch(() => {});
+        };
+      },
+      send: (frame) => connectSend({ t: "viz", frame }),
+      isPlaying: () => isAudible(useEngineStore.getState()),
+      positionMs: () => position.positionAt(performance.now()),
+      hubNowMs: () => hubClock.nowMs(),
+      nowMs: () => performance.now(),
+    });
+    const unsubscribeEngine = useEngineStore.subscribe((s, prev) => {
+      if (
+        s.positionSecs !== prev.positionSecs ||
+        s.playing !== prev.playing ||
+        s.paused !== prev.paused ||
+        s.buffering !== prev.buffering
+      ) {
+        syncPosition(s);
+      }
+      if (isAudible(s) !== isAudible(prev)) viz.refresh();
+      // A new track: the beat detector forgets the last song's loudness.
+      if (s.queueIndex !== prev.queueIndex || s.nowPlaying !== prev.nowPlaying) viz.resetAnalysis();
+    });
+
     const handleInbound = createInboundHandler({
       player: enginePlayerPort(getDeviceId),
       rpc: appRpcPort(getDeviceId),
       uids,
       send: connectSend,
       onDevices: (devices, active) => useConnectStore.getState().setDevices(devices, active),
+      onWelcome: (serverTime) => hubClock.seedFromWelcome(serverTime, Date.now()),
+      onPong: (id, serverTime) => clockSync.onPong(id, serverTime),
+      onVizSub: (on) => viz.setSubscribed(on),
     });
 
     const applyStatus = (status: ConnectStatus) => {
@@ -74,8 +138,18 @@ export function useHypeConnect(): void {
       const c = status.connection;
       // A fresh socket gets the current state at once; between sockets there
       // is nobody to tell.
-      if (c?.state === "connected") publisher.start();
-      else publisher.stop();
+      if (c?.state === "connected") {
+        publisher.start();
+        clockSync.start();
+        viz.setOnline(true);
+        // The hub's `viz_sub` can reach Rust before this listener exists (a
+        // controller already watching when the app launches); Rust remembers.
+        if (status.vizSubscribed) viz.setSubscribed(true);
+      } else {
+        publisher.stop();
+        clockSync.stop();
+        viz.setOnline(false);
+      }
       if (c?.state === "stopped" && c.reason === "unlinked") {
         // Rust already dropped the revoked session; seeing it gone, SessionGate
         // bootstraps a fresh anonymous one.
@@ -102,6 +176,9 @@ export function useHypeConnect(): void {
     return () => {
       cancelled = true;
       publisher.stop();
+      clockSync.stop();
+      viz.dispose();
+      unsubscribeEngine();
       for (const un of unlisteners) un();
     };
   }, []);

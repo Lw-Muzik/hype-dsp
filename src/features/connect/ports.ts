@@ -13,8 +13,12 @@ import type { LibraryTrack } from "@/lib/types";
 import { useEngineStore } from "@/stores/engine";
 import { useLibraryStore } from "@/stores/library";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
+import { lookupLyrics } from "@/features/player/useLyrics";
 import type { PlayerPort } from "./commands";
+import type { LyricsPort } from "./lyrics";
+import { queueItemToRef } from "./refs";
 import type { RpcPort } from "./rpc";
+import { activeQueueItem } from "./statePublisher";
 
 /** The `getState`/`subscribe` half of a zustand store. */
 export interface StoreLike<T> {
@@ -126,6 +130,33 @@ export function enginePlayerPort(deviceId: () => string): PlayerPort {
   };
 }
 
+/** The Lyrics panel's own resolver and cache, aimed at the track playing now
+ *  (`useLyrics` keys it the same way, so a lookup done for one serves the other). */
+export function appLyricsPort(deviceId: () => string): LyricsPort {
+  return {
+    current: () => {
+      const s = useEngineStore.getState();
+      const item = activeQueueItem(s);
+      if (!item) return null;
+      return {
+        track: queueItemToRef(item, deviceId()),
+        key: `${item.source}:${item.id}`,
+        title: s.nowPlayingMeta?.title ?? null,
+        artist: s.nowPlayingMeta?.artist ?? null,
+        durationSecs: item.durationSecs ?? null,
+      };
+    },
+    resolve: (t) =>
+      lookupLyrics(
+        t.key,
+        activeQueueItem(useEngineStore.getState()),
+        t.title ?? "",
+        t.artist,
+        t.durationSecs,
+      ),
+  };
+}
+
 const SIGNED_IN_TTL_MS = 5 * 60_000;
 const SIGNED_OUT_TTL_MS = 15_000;
 
@@ -152,5 +183,6 @@ export function appRpcPort(deviceId: () => string): RpcPort {
     exploreTracks: ytmusicExploreTracks,
     artistPage: ytmusicArtistPage,
     localTracks: localLibrary,
+    lyrics: appLyricsPort(deviceId),
   };
 }

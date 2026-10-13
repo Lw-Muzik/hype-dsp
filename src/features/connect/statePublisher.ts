@@ -35,16 +35,24 @@ export interface EngineView {
 
 export type StateBody = Omit<PlayerState, "seq" | "at">;
 
+/** The queue item a controller is told is the current track, or `undefined`
+ *  when idle. After a natural end the queue stays parked on its last item, but
+ *  nothing is loaded: that's idle, not "paused on track N". */
+export function activeQueueItem(
+  s: Pick<EngineView, "queue" | "queueIndex" | "playing" | "nowPlaying">,
+): QueueItem | undefined {
+  const current = s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined;
+  return current !== undefined && (s.playing || s.nowPlaying !== null) ? current : undefined;
+}
+
 export function buildPlayerState(
   s: EngineView,
   deviceId: string,
   uids: QueueUidTracker,
 ): StateBody {
   const ids = uids.uidsFor(s.queue);
-  const current = s.queueIndex >= 0 ? s.queue[s.queueIndex] : undefined;
-  // After a natural end the queue stays parked on its last item, but nothing
-  // is loaded: that's idle, not "paused on track N".
-  const active = current !== undefined && (s.playing || s.nowPlaying !== null);
+  const current = activeQueueItem(s);
+  const active = current !== undefined;
   const upcoming = active
     ? s.order
         .slice(s.orderPos + 1, s.orderPos + 1 + MAX_STATE_QUEUE)

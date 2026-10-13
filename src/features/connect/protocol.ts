@@ -1,5 +1,6 @@
 /**
- * Hype Connect protocol v1 — the TypeScript side of
+ * Hype Connect protocol v1 (+ v1.1: the `lyrics` rpc and the visualiser
+ * stream) — the TypeScript side of
  * `hypemuzik-management/backend/docs/hype-connect.md`.
  *
  * Rust (`crates/hm-connect`) owns the socket and already validates every
@@ -11,7 +12,7 @@
  */
 
 export type DeviceKind = "web" | "mobile" | "desktop";
-export type Cap = "player" | "yt" | "local";
+export type Cap = "player" | "yt" | "local" | "lyrics" | "viz";
 
 export interface DeviceHello {
   id: string;
@@ -93,7 +94,7 @@ export type AckError =
   | "timeout";
 
 export type RpcError = "offline" | "unsupported" | "not_signed_in" | "failed" | "timeout";
-export type RpcMethod = "search" | "suggest" | "open" | "artist" | "library";
+export type RpcMethod = "search" | "suggest" | "open" | "artist" | "library" | "lyrics";
 
 export interface QueueEntry {
   uid: string;
@@ -133,6 +134,49 @@ export interface Shelf {
   items: Item[];
 }
 
+/** One timed word of a lyric line (§3.8). */
+export interface LyricWord {
+  startMs: number;
+  endMs: number;
+  text: string;
+}
+
+export interface LyricLine {
+  /** `null` when the lyrics aren't synced. */
+  startMs: number | null;
+  /** May be `""` for an instrumental gap. */
+  text: string;
+  /** Word timing, when the source has it. */
+  words: LyricWord[] | null;
+}
+
+/** The `lyrics` rpc result (§3.8, v1.1). */
+export interface Lyrics {
+  /** What these lyrics belong to: the player's current track. */
+  track: TrackRef | null;
+  /** `false`: none exist / were found, and `lines` is `[]`. */
+  found: boolean;
+  /** `true`: every line has a `startMs`. */
+  synced: boolean;
+  source: string | null;
+  lines: LyricLine[];
+}
+
+/** Bands in a `viz` frame (§3.11). */
+export const VIZ_BANDS = 32;
+
+/** What a player's audio looks like (§3.11). */
+export interface VizFrame {
+  /** HUB-clock epoch ms at which this frame's audio is heard. */
+  heardAt: number;
+  positionMs: number;
+  /** Exactly {@link VIZ_BANDS} values in 0..1, log-spaced ~30 Hz → 16 kHz, low first. */
+  bands: number[];
+  level: number;
+  /** Bass-onset strength, 0 = no onset this frame. */
+  beat: number;
+}
+
 export type SearchFilter = "all" | "songs" | "videos" | "albums" | "artists" | "playlists";
 
 export type Frame =
@@ -163,7 +207,9 @@ export type Frame =
   | { t: "rpc_result"; id: string; ok: true; result: Record<string, unknown> }
   | { t: "rpc_result"; id: string; ok: false; error: RpcError }
   | { t: "ping"; id: string }
-  | { t: "pong"; id: string; serverTime: number };
+  | { t: "pong"; id: string; serverTime: number }
+  | { t: "viz_sub"; to?: string; on: boolean }
+  | { t: "viz"; deviceId?: string; frame: VizFrame };
 
 /* ------------------------------------------------------------- decoding */
 
@@ -221,7 +267,7 @@ function opt<T>(o: Obj, k: string, read: (o: Obj, k: string) => T): Partial<Reco
 }
 
 const DEVICE_KINDS = ["web", "mobile", "desktop"] as const;
-const CAPS = ["player", "yt", "local"] as const;
+const CAPS = ["player", "yt", "local", "lyrics", "viz"] as const;
 const REPEAT = ["off", "all", "one"] as const;
 const ACK_ERRORS = [
   "offline",
@@ -232,11 +278,15 @@ const ACK_ERRORS = [
   "timeout",
 ] as const;
 const RPC_ERRORS = ["offline", "unsupported", "not_signed_in", "failed", "timeout"] as const;
-const RPC_METHODS = ["search", "suggest", "open", "artist", "library"] as const;
+const RPC_METHODS = ["search", "suggest", "open", "artist", "library", "lyrics"] as const;
 const ITEM_KINDS = ["song", "video", "album", "playlist", "artist"] as const;
 
+/** Receivers ignore caps they don't know (§3.1): an unknown one is dropped,
+ *  never a reason to reject the frame. */
 function caps(v: unknown): Cap[] {
-  return list(v, "caps", (c) => oneOf(c, CAPS, "cap"));
+  return list(v, "caps", (c) => (CAPS as readonly unknown[]).includes(c) ? (c as Cap) : null).filter(
+    (c): c is Cap => c !== null,
+  );
 }
 
 export function decodeDeviceInfo(v: unknown): DeviceInfo {
@@ -354,6 +404,21 @@ export function decodeItem(v: unknown): Item {
   };
 }
 
+export function decodeVizFrame(v: unknown): VizFrame {
+  const o = obj(v, "frame");
+  const bands = list(o.bands, "bands", (b) =>
+    typeof b === "number" && Number.isFinite(b) ? b : fail("bands[]"),
+  );
+  if (bands.length !== VIZ_BANDS) fail("bands");
+  return {
+    heardAt: num(o, "heardAt"),
+    positionMs: num(o, "positionMs"),
+    bands,
+    level: num(o, "level"),
+    beat: num(o, "beat"),
+  };
+}
+
 function route(o: Obj): { to?: string; from?: string } {
   return { ...(opt(o, "to", str) as { to?: string }), ...(opt(o, "from", str) as { from?: string }) };
 }
@@ -418,6 +483,14 @@ function decodeFrameStrict(v: unknown): Frame {
       return { t: "ping", id: str(o, "id") };
     case "pong":
       return { t: "pong", id: str(o, "id"), serverTime: num(o, "serverTime") };
+    case "viz_sub":
+      return { t: "viz_sub", ...(opt(o, "to", str) as { to?: string }), on: bool(o, "on") };
+    case "viz":
+      return {
+        t: "viz",
+        ...(opt(o, "deviceId", str) as { deviceId?: string }),
+        frame: decodeVizFrame(o.frame),
+      };
     default:
       return fail("t");
   }

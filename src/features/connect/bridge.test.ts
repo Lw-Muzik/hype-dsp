@@ -36,17 +36,24 @@ function setup() {
     artistPage: async () => [],
     localTracks: async () => [],
     forgetSignIn: () => {},
+    lyrics: { current: () => null, resolve: async () => null },
   };
   const onDevices = vi.fn();
+  const onWelcome = vi.fn();
+  const onPong = vi.fn();
+  const onVizSub = vi.fn();
   const handle = createInboundHandler({
     player,
     rpc,
     uids: new QueueUidTracker(),
     send: async (f) => void sent.push(f),
     onDevices,
+    onWelcome,
+    onPong,
+    onVizSub,
   });
   const settle = () => new Promise((r) => setTimeout(r, 0));
-  return { handle, sent, player, onDevices, settle };
+  return { handle, sent, player, onDevices, onWelcome, onPong, onVizSub, settle };
 }
 
 describe("createInboundHandler", () => {
@@ -108,5 +115,53 @@ describe("createInboundHandler", () => {
     handle({ t: "cmd", id: "3", cmd: { type: "prev" } });
     await settle();
     expect(sent.map((f) => (f as { id: string }).id)).toEqual(["1", "2", "3"]);
+  });
+
+  it("hands a welcome's server time to the clock, and its devices to the list", () => {
+    const { handle, onWelcome, onDevices } = setup();
+    handle({
+      t: "welcome",
+      v: 1,
+      deviceId: DEVICE,
+      serverTime: 1_760_000_000_123,
+      devices: [],
+      activeDeviceId: null,
+      states: {},
+    });
+    expect(onWelcome).toHaveBeenCalledWith(1_760_000_000_123);
+    expect(onDevices).toHaveBeenCalledWith([], null);
+  });
+
+  it("does not mistake a devices frame for a welcome", () => {
+    const { handle, onWelcome } = setup();
+    handle({ t: "devices", devices: [], activeDeviceId: null });
+    expect(onWelcome).not.toHaveBeenCalled();
+  });
+
+  it("routes pong to the clock", () => {
+    const { handle, onPong } = setup();
+    handle({ t: "pong", id: "clk-1", serverTime: 42 });
+    expect(onPong).toHaveBeenCalledWith("clk-1", 42);
+  });
+
+  it("routes the hub's viz_sub on and off", () => {
+    const { handle, onVizSub } = setup();
+    handle({ t: "viz_sub", on: true });
+    handle({ t: "viz_sub", on: false });
+    expect(onVizSub.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("answers a lyrics rpc with nothing playing as found:false, no track, and no YouTube session needed", async () => {
+    const { handle, sent, settle } = setup();
+    handle({ t: "rpc", id: "r-9", method: "lyrics", params: {} });
+    await settle();
+    expect(sent).toEqual([
+      {
+        t: "rpc_result",
+        id: "r-9",
+        ok: true,
+        result: { track: null, found: false, synced: false, source: null, lines: [] },
+      },
+    ]);
   });
 });

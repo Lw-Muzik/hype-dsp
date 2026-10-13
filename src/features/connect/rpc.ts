@@ -1,7 +1,8 @@
 /**
  * Remote catalog calls (§3.8), answered through the same IPC the Explore and
  * Library views use: `search`, `suggest`, `open` and `artist` run on this
- * desktop's own YouTube Music session; `library` pages its local files.
+ * desktop's own YouTube Music session; `library` pages its local files;
+ * `lyrics` (v1.1) reads what the Lyrics panel would show.
  */
 import type { ExploreItem, ExploreShelf, LibraryTrack, YtTrack } from "@/lib/types";
 import {
@@ -11,6 +12,7 @@ import {
   type RpcMethod,
   type SearchFilter,
 } from "./protocol";
+import { answerLyrics, type LyricsPort } from "./lyrics";
 import { exploreShelfToShelf, itemToExploreItem, libraryTrackToRef, ytTrackToRef } from "./refs";
 
 export interface RpcPort {
@@ -26,6 +28,8 @@ export interface RpcPort {
   localTracks(): Promise<LibraryTrack[]>;
   /** A YT call failed for want of a session: forget any cached sign-in. */
   forgetSignIn(): void;
+  /** The playing track's lyrics, via the app's own resolver. */
+  lyrics: LyricsPort;
 }
 
 export type RpcOutcome =
@@ -78,6 +82,8 @@ export async function executeRpc(
 ): Promise<RpcOutcome> {
   try {
     if (method === "library") return await library(params, port);
+    // Lyrics come from the app's own resolver, not from YouTube Music.
+    if (method === "lyrics") return done({ ...(await answerLyrics(port.lyrics)) });
     if (!(await port.ytSignedIn())) return fail("not_signed_in");
     return await youtube(method, params, port);
   } catch (e) {
@@ -90,7 +96,7 @@ export async function executeRpc(
 }
 
 async function youtube(
-  method: Exclude<RpcMethod, "library">,
+  method: Exclude<RpcMethod, "library" | "lyrics">,
   params: Record<string, unknown>,
   port: RpcPort,
 ): Promise<RpcOutcome> {

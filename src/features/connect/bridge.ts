@@ -1,7 +1,8 @@
 /**
  * Inbound frames → the player. `cmd`s run one at a time and are acked when
  * accepted; `rpc`s answer as soon as their lookup finishes; `welcome` and
- * `devices` feed the device list.
+ * `devices` feed the device list; `pong` feeds the hub clock and the hub's
+ * `viz_sub` starts or stops the visualiser stream (v1.1).
  */
 import { CommandQueue, executeCommand, type PlayerPort } from "./commands";
 import { decodeFrame, type DeviceInfo, type Frame } from "./protocol";
@@ -14,6 +15,11 @@ export interface BridgeDeps {
   uids: QueueUidTracker;
   send(frame: Frame): Promise<void>;
   onDevices?(devices: DeviceInfo[], activeDeviceId: string | null): void;
+  /** The hub's clock at `welcome` (a first guess before any `pong`). */
+  onWelcome?(serverTime: number): void;
+  onPong?(id: string, serverTime: number): void;
+  /** The hub's subscriber count went 0 → 1 (`true`) or 1 → 0 (`false`). */
+  onVizSub?(on: boolean): void;
 }
 
 /** `{t, id}` of a frame that didn't decode, so it can still be answered. */
@@ -62,8 +68,17 @@ export function createInboundHandler(deps: BridgeDeps): (raw: unknown) => void {
         return;
       }
       case "welcome":
+        deps.onWelcome?.(frame.serverTime);
+        deps.onDevices?.(frame.devices, frame.activeDeviceId);
+        return;
       case "devices":
         deps.onDevices?.(frame.devices, frame.activeDeviceId);
+        return;
+      case "pong":
+        deps.onPong?.(frame.id, frame.serverTime);
+        return;
+      case "viz_sub":
+        deps.onVizSub?.(frame.on);
         return;
       default:
         return;

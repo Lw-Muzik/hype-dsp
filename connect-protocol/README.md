@@ -1,7 +1,7 @@
 # Hype Connect protocol fixtures (copy)
 
 A verbatim copy of `hypemuzik-management/backend/connect-protocol/fixtures/` —
-the normative example frames for `backend/docs/hype-connect.md` (protocol v1).
+the normative example frames for `backend/docs/hype-connect.md` (protocol v1 + the v1.1 `lyrics` rpc and visualiser stream — 56 files).
 
 Both test suites in this repo read this one folder:
 

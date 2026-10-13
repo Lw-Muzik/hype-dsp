@@ -23,6 +23,7 @@ function fakePort(over: Partial<RpcPort> & { library?: LibraryTrack[] } = {}) {
     artistPage: vi.fn(async (): Promise<ExploreShelf[]> => []),
     localTracks: vi.fn(async () => library),
     forgetSignIn: vi.fn(),
+    lyrics: { current: () => null, resolve: vi.fn(async () => null) },
   } satisfies RpcPort;
   // Overrides replace the mocks; the return type keeps `.mock` for the rest.
   return { ...base, ...rest } as typeof base;

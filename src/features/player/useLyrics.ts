@@ -32,6 +32,20 @@ export function clearLyricsCache(key?: string): void {
   }
 }
 
+/** Lyrics for a track outside React (Hype Connect's `lyrics` rpc): the shared
+ *  cache first, else the same lookup the lyrics view would start. The lookup
+ *  runs to completion and fills the cache even if the caller stops waiting. */
+export function lookupLyrics(
+  key: string,
+  item: QueueItem | undefined,
+  title: string,
+  artist: string | null,
+  durationSecs: number | null,
+): Promise<ParsedLyrics | null> {
+  if (cache.has(key)) return Promise.resolve(cache.get(key)!);
+  return fetchFor(key, item, title, artist, durationSecs);
+}
+
 interface LyricsState {
   loading: boolean;
   lyrics: ParsedLyrics | null;

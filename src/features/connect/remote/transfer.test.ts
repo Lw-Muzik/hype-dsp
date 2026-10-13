@@ -111,6 +111,13 @@ describe("this computer -> other", () => {
     expect(calls).toEqual([]);
     expect(deps.error).toHaveBeenCalled();
   });
+  it("hands over the role when paused on music that can't move", async () => {
+    local = body({ track: localRef("/x", SELF), queue: [], playing: false });
+    expect(await moveTo(PHONE, deps)).toEqual({ ok: true, moved: 0, dropped: 0 });
+    expect(calls).toEqual(["select:phone"]);
+    expect(deps.error).not.toHaveBeenCalled();
+    expect(deps.info).toHaveBeenCalledWith(expect.stringContaining("Pixel is the player now"));
+  });
   it("just selects the target when this computer is idle", async () => {
     local = body({ track: null, queue: [], playing: false, positionMs: 0 });
     expect(await moveTo(PHONE, deps)).toEqual({ ok: true, moved: 0, dropped: 0 });

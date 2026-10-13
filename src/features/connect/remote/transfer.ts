@@ -55,12 +55,13 @@ interface Snapshot {
   track: TrackRef | null;
   queue: { track: TrackRef }[];
   positionMs: number;
+  playing: boolean;
 }
 
 /** `play` for `targetId` from what the source is playing; null when nothing
  *  on it can move. */
 export function buildTransfer(
-  snap: Snapshot,
+  snap: Omit<Snapshot, "playing">,
   targetId: string,
 ): { cmd: PlayCommand; moved: number; dropped: number } | null {
   const all: TrackRef[] = [...(snap.track ? [snap.track] : []), ...snap.queue.map((q) => q.track)];
@@ -91,10 +92,17 @@ export async function moveTo(targetId: string, d: TransferDeps): Promise<MoveRes
   const built = snap ? buildTransfer(snap, targetId) : null;
 
   if (!built) {
-    if (snap && (snap.track !== null || snap.queue.length > 0)) {
+    if (snap && snap.playing && (snap.track !== null || snap.queue.length > 0)) {
       // Something is playing but none of it can move.
       d.error(`Nothing playing on ${d.deviceName(source)} can play on ${d.deviceName(targetId)}.`);
       return { ok: false, reason: "nothing" };
+    }
+    if (snap && (snap.track !== null || snap.queue.length > 0)) {
+      // Paused on music that can't move: there's nothing to carry, only the
+      // choice of player, and refusing would leave no way to switch.
+      await d.select(targetId).catch(() => {});
+      d.info(`${d.deviceName(targetId)} is the player now. What was on ${d.deviceName(source)} stayed there.`);
+      return { ok: true, moved: 0, dropped: 0 };
     }
     // Idle source: just hand over the role.
     await d.select(targetId).catch(() => {});
@@ -126,10 +134,10 @@ export async function moveTo(targetId: string, d: TransferDeps): Promise<MoveRes
 function readSource(source: string, self: string, d: TransferDeps): Snapshot | null {
   if (source === self) {
     const s = d.localState();
-    return { track: s.track, queue: s.queue, positionMs: s.positionMs };
+    return { track: s.track, queue: s.queue, positionMs: s.positionMs, playing: s.playing };
   }
   const s = d.stateOf(source);
   if (!s) return null;
   const view: Pick<RemoteView, "positionMs" | "at" | "playing" | "durationMs"> = s;
-  return { track: s.track, queue: s.queue, positionMs: positionNow(view, d.hubNow()) };
+  return { track: s.track, queue: s.queue, positionMs: positionNow(view, d.hubNow()), playing: s.playing };
 }

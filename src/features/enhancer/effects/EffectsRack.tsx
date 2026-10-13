@@ -89,12 +89,15 @@ export function EffectsRack() {
   return (
     <nav
       aria-label="Effects rack"
-      className="sticky top-0 z-10 -mx-2 rounded-card border border-border bg-canvas/80 px-2 py-2 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-canvas/60"
+      className="@container sticky top-0 z-10 -mx-2 rounded-card border border-border bg-canvas/80 px-2 py-2 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-canvas/60"
     >
       <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-text-muted">
         Effects · <span className="text-accent-strong">{onCount} on</span>
       </p>
-      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+      {/* Columns follow the rack's own width (container queries), not the
+          viewport's: beside the sidebar a wide window still leaves too little
+          room for six labelled tiles. */}
+      <ul className="grid grid-cols-2 gap-2 @lg:grid-cols-3 @3xl:grid-cols-4 @6xl:grid-cols-6">
         {EFFECTS.map((e) => (
           <Tile key={e.id} fx={toggles[e.id]} />
         ))}

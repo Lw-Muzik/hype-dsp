@@ -41,6 +41,10 @@ export function SettingsWindow() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<SettingsSection>("about");
+  // After a jump, the target stays highlighted until the scroll settles: a
+  // section near the end can't reach the top, so the spy would otherwise pick
+  // whichever section the scroll stopped on.
+  const pinnedUntil = useRef(0);
 
   const goTo = useCallback((id: string, opts?: { flash?: boolean; smooth?: boolean }) => {
     const el = document.getElementById(id);
@@ -50,6 +54,7 @@ export function SettingsWindow() {
       block: "start",
     });
     setActive(id);
+    pinnedUntil.current = Date.now() + 1200;
     if (opts?.flash && !prefersReducedMotion) {
       el.classList.add(...FLASH);
       window.setTimeout(() => el.classList.remove(...FLASH), FLASH_MS);
@@ -77,6 +82,7 @@ export function SettingsWindow() {
     if (!root || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(
       (entries) => {
+        if (Date.now() < pinnedUntil.current) return;
         const hit = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
@@ -88,7 +94,24 @@ export function SettingsWindow() {
       const el = document.getElementById(id);
       if (el) observer.observe(el);
     }
-    return () => observer.disconnect();
+    // At the very bottom the last sections never reach the top band; highlight
+    // the last one whose heading is on screen instead.
+    const onScroll = () => {
+      if (Date.now() < pinnedUntil.current) return;
+      if (root.scrollTop + root.clientHeight < root.scrollHeight - 2) return;
+      const bottom = root.getBoundingClientRect().bottom;
+      const visible = SETTINGS_SECTIONS.filter(({ id }) => {
+        const el = document.getElementById(id);
+        return el ? el.getBoundingClientRect().top < bottom - 48 : false;
+      });
+      const last = visible[visible.length - 1];
+      if (last) setActive(last.id);
+    };
+    root.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      root.removeEventListener("scroll", onScroll);
+    };
   }, []);
 
   // Esc / Cmd+W / Ctrl+W close the window.

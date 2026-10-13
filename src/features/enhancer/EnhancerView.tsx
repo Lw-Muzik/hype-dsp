@@ -35,6 +35,9 @@ import { CompanderCard } from "./CompanderCard";
 import { SaturationCard } from "./SaturationCard";
 import { ScriptCard } from "./ScriptCard";
 import { PresetsCard } from "./PresetsCard";
+import { EffectsRack } from "./effects/EffectsRack";
+import { FxAnchor } from "./effects/FxAnchor";
+import { useEffectToggles } from "./effects/useEffectToggles";
 
 export function EnhancerView() {
   const route = routeById("enhancer");
@@ -50,11 +53,9 @@ export function EnhancerView() {
   const activeProfileId = useEngineStore((s) => s.state.activeProfileId);
   const setBass = useEngineStore((s) => s.setBass);
   const setSpatializer = useEngineStore((s) => s.setSpatializer);
-  const setSurround3d = useEngineStore((s) => s.setSurround3d);
   const applyProfile = useEngineStore((s) => s.applyProfile);
   const clearProfile = useEngineStore((s) => s.clearProfile);
-  const output = useEngineStore((s) => s.state.output);
-  const setOutput = useEngineStore((s) => s.setOutput);
+  const fx = useEffectToggles();
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -100,12 +101,8 @@ export function EnhancerView() {
       .catch(() => { });
   };
 
-  // 3D Surround is a Supporter feature — gate turning it on (never gate
-  // turning it off) and opening the speaker configurator.
-  const toggleSurround3d = (v: boolean) => {
-    if (v && !requirePremium("SURROUND_3D")) return;
-    setSurround3d({ ...surround3d, enabled: v });
-  };
+  // 3D Surround is a Supporter feature — the shared toggle gates turning it
+  // on (never off); opening the speaker configurator is gated here.
   const openSurroundConfig = () => {
     if (!requirePremium("SURROUND_3D")) return;
     setSurroundOpen(true);
@@ -116,6 +113,8 @@ export function EnhancerView() {
       <PageHeader icon={route.icon} title={route.label} subtitle={route.tagline} />
 
       <div className="flex flex-col gap-4">
+        <EffectsRack />
+
         {/* Audio source */}
         <Card title="Audio source" icon={FileAudio}>
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -167,220 +166,242 @@ export function EnhancerView() {
         </Card>
 
         {/* Chain presets */}
-        <PresetsCard />
+        <FxAnchor id="presets">
+          <PresetsCard />
+        </FxAnchor>
 
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Bass */}
-          <Card
-            title="Bass boost"
-            icon={Speaker}
-            actions={
-              <Switch
-                checked={bass.enabled}
-                onChange={(v) => setBass(v, bass.amount, bass.harmonics, bass.adaptive)}
-                label="Enable bass boost"
-              />
-            }
-          >
-            <div className={cn("flex flex-col gap-4", !bass.enabled && "opacity-60")}>
-              <div className="flex items-center gap-3">
-                <span className="w-16 shrink-0 text-sm text-text-muted">Amount</span>
-                <Slider
-                  label="Bass amount"
-                  min={0}
-                  max={12}
-                  step={0.5}
-                  value={bass.amount}
-                  onChange={(v) => setBass(bass.enabled, v, bass.harmonics, bass.adaptive)}
-                  formatValue={(v) => `${v.toFixed(1)} decibels`}
-                  className="flex-1"
+          <FxAnchor id="bass">
+            <Card
+              title="Bass boost"
+              icon={Speaker}
+              actions={
+                <Switch
+                  checked={bass.enabled}
+                  onChange={fx.bass.toggle}
+                  label="Enable bass boost"
                 />
-                <span className="w-12 text-right text-xs tabular-nums text-text-muted">
-                  {bass.amount.toFixed(1)} dB
-                </span>
+              }
+            >
+              <div className={cn("flex flex-col gap-4", !bass.enabled && "opacity-60")}>
+                <div className="flex items-center gap-3">
+                  <span className="w-16 shrink-0 text-sm text-text-muted">Amount</span>
+                  <Slider
+                    label="Bass amount"
+                    min={0}
+                    max={12}
+                    step={0.5}
+                    value={bass.amount}
+                    onChange={(v) => setBass(bass.enabled, v, bass.harmonics, bass.adaptive)}
+                    formatValue={(v) => `${v.toFixed(1)} decibels`}
+                    className="flex-1"
+                  />
+                  <span className="w-12 text-right text-xs tabular-nums text-text-muted">
+                    {bass.amount.toFixed(1)} dB
+                  </span>
+                </div>
+                <label className="flex items-center justify-between text-sm">
+                  <span className="text-text-muted">
+                    Harmonic enhancement
+                    <span className="ml-1 text-text-faint">(small drivers)</span>
+                  </span>
+                  <Switch
+                    checked={bass.harmonics}
+                    onChange={(v) => setBass(bass.enabled, bass.amount, v, bass.adaptive)}
+                    label="Harmonic enhancement"
+                  />
+                </label>
+                <label className="flex items-center justify-between text-sm">
+                  <span className="text-text-muted">
+                    Adaptive
+                    <span className="ml-1 text-text-faint">(anti-overload)</span>
+                  </span>
+                  <Switch
+                    checked={bass.adaptive}
+                    onChange={(v) => setBass(bass.enabled, bass.amount, bass.harmonics, v)}
+                    label="Adaptive bass (anti-overload)"
+                  />
+                </label>
               </div>
-              <label className="flex items-center justify-between text-sm">
-                <span className="text-text-muted">
-                  Harmonic enhancement
-                  <span className="ml-1 text-text-faint">(small drivers)</span>
-                </span>
-                <Switch
-                  checked={bass.harmonics}
-                  onChange={(v) => setBass(bass.enabled, bass.amount, v, bass.adaptive)}
-                  label="Harmonic enhancement"
-                />
-              </label>
-              <label className="flex items-center justify-between text-sm">
-                <span className="text-text-muted">
-                  Adaptive
-                  <span className="ml-1 text-text-faint">(anti-overload)</span>
-                </span>
-                <Switch
-                  checked={bass.adaptive}
-                  onChange={(v) => setBass(bass.enabled, bass.amount, bass.harmonics, v)}
-                  label="Adaptive bass (anti-overload)"
-                />
-              </label>
-            </div>
-          </Card>
+            </Card>
+          </FxAnchor>
 
           {/* Surround */}
+          <FxAnchor id="surround">
+            <Card
+              title="Surround"
+              icon={Waves}
+              actions={
+                <Switch
+                  checked={spatializer.enabled}
+                  onChange={fx.surround.toggle}
+                  label="Enable surround"
+                />
+              }
+            >
+              <div
+                className={cn(
+                  "flex flex-col gap-4",
+                  !spatializer.enabled && "opacity-60",
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-16 shrink-0 text-sm text-text-muted">Amount</span>
+                  <Slider
+                    label="Surround amount"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={spatializer.amount}
+                    onChange={(v) =>
+                      setSpatializer(spatializer.enabled, v, spatializer.mode)
+                    }
+                    formatValue={(v) => `${Math.round(v * 100)} percent`}
+                    className="flex-1"
+                  />
+                  <span className="w-12 text-right text-xs tabular-nums text-text-muted">
+                    {Math.round(spatializer.amount * 100)}%
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {(["crossfeed", "hrtf"] as const).map((m: SpatialMode) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() =>
+                        setSpatializer(spatializer.enabled, spatializer.amount, m)
+                      }
+                      className={cn(
+                        "rounded-control border px-3 py-1.5 text-sm capitalize transition-colors",
+                        spatializer.mode === m
+                          ? "border-accent/40 bg-accent-muted text-accent-strong"
+                          : "border-border text-text-muted hover:text-text",
+                      )}
+                    >
+                      {m === "hrtf" ? "HRTF" : "Crossfeed"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-text-faint">
+                  {spatializer.mode === "hrtf"
+                    ? "HRTF: a parametric virtual-speaker model (inter-aural delay, level, pinna notch + widening) — places the image in front of and outside your head."
+                    : "Crossfeed: a Bauer-style blend (delayed, head-shadowed bleed of the opposite channel) that relaxes hard-panned mixes on headphones."}
+                </p>
+              </div>
+            </Card>
+          </FxAnchor>
+
+        </div>
+
+        {/* 3D Surround */}
+        <FxAnchor id="surround3d">
           <Card
-            title="Surround"
-            icon={Waves}
+            title="3D Surround"
+            icon={Orbit}
             actions={
               <Switch
-                checked={spatializer.enabled}
-                onChange={(v) =>
-                  setSpatializer(v, spatializer.amount, spatializer.mode)
-                }
-                label="Enable surround"
+                checked={surround3d.enabled}
+                onChange={fx.surround3d.toggle}
+                label="Enable 3D Surround"
               />
             }
           >
             <div
               className={cn(
-                "flex flex-col gap-4",
-                !spatializer.enabled && "opacity-60",
+                "flex flex-wrap items-center justify-between gap-4",
+                !surround3d.enabled && "opacity-60",
               )}
             >
-              <div className="flex items-center gap-3">
-                <span className="w-16 shrink-0 text-sm text-text-muted">Amount</span>
-                <Slider
-                  label="Surround amount"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={spatializer.amount}
-                  onChange={(v) =>
-                    setSpatializer(spatializer.enabled, v, spatializer.mode)
-                  }
-                  formatValue={(v) => `${Math.round(v * 100)} percent`}
-                  className="flex-1"
-                />
-                <span className="w-12 text-right text-xs tabular-nums text-text-muted">
-                  {Math.round(spatializer.amount * 100)}%
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                {(["crossfeed", "hrtf"] as const).map((m: SpatialMode) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() =>
-                      setSpatializer(spatializer.enabled, spatializer.amount, m)
-                    }
-                    className={cn(
-                      "rounded-control border px-3 py-1.5 text-sm capitalize transition-colors",
-                      spatializer.mode === m
-                        ? "border-accent/40 bg-accent-muted text-accent-strong"
-                        : "border-border text-text-muted hover:text-text",
-                    )}
-                  >
-                    {m === "hrtf" ? "HRTF" : "Crossfeed"}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-text-faint">
-                {spatializer.mode === "hrtf"
-                  ? "HRTF: a parametric virtual-speaker model (inter-aural delay, level, pinna notch + widening) — places the image in front of and outside your head."
-                  : "Crossfeed: a Bauer-style blend (delayed, head-shadowed bleed of the opposite channel) that relaxes hard-panned mixes on headphones."}
+              <p className="text-sm text-text-muted">
+                Virtual {activeSpeakers}-speaker ring rendered binaurally —{" "}
+                {Math.round(surround3d.intensity * 100)}% intensity, subwoofer{" "}
+                {Math.round(surround3d.subwoofer * 100)}%.
               </p>
+              <Button variant="secondary" onClick={openSurroundConfig}>
+                <Orbit className="size-4" aria-hidden="true" />
+                Configure speakers
+              </Button>
             </div>
           </Card>
-        </div>
-
-        {/* 3D Surround */}
-        <Card
-          title="3D Surround"
-          icon={Orbit}
-          actions={
-            <Switch
-              checked={surround3d.enabled}
-              onChange={toggleSurround3d}
-              label="Enable 3D Surround"
-            />
-          }
-        >
-          <div
-            className={cn(
-              "flex flex-wrap items-center justify-between gap-4",
-              !surround3d.enabled && "opacity-60",
-            )}
-          >
-            <p className="text-sm text-text-muted">
-              Virtual {activeSpeakers}-speaker ring rendered binaurally —{" "}
-              {Math.round(surround3d.intensity * 100)}% intensity, subwoofer{" "}
-              {Math.round(surround3d.subwoofer * 100)}%.
-            </p>
-            <Button variant="secondary" onClick={openSurroundConfig}>
-              <Orbit className="size-4" aria-hidden="true" />
-              Configure speakers
-            </Button>
-          </div>
-        </Card>
+        </FxAnchor>
 
         {/* Room reverb */}
-        <RoomCard />
+        <FxAnchor id="room">
+          <RoomCard />
+        </FxAnchor>
 
         {/* Convolver / IR correction */}
-        <ConvolverCard />
+        <FxAnchor id="convolver">
+          <ConvolverCard />
+        </FxAnchor>
 
         {/* Multiband compander */}
-        <CompanderCard />
+        <FxAnchor id="compander">
+          <CompanderCard />
+        </FxAnchor>
 
         {/* Tube saturation */}
-        <SaturationCard />
+        <FxAnchor id="saturation">
+          <SaturationCard />
+        </FxAnchor>
 
         {/* LiveProg — runs where it sits in the chain: after saturation, before
             the makeup gain and limiter. */}
-        <ScriptCard />
+        <FxAnchor id="script">
+          <ScriptCard />
+        </FxAnchor>
 
         {/* Headphone correction */}
-        <Card title="Headphone correction" icon={Headphones}>
-          <div className="flex flex-col gap-3">
-            <Combobox
-              items={profileItems}
-              value={activeProfileId}
-              onSelect={selectProfile}
-              onClear={clearProfile}
-              placeholder="Select your headphones…"
-              searchPlaceholder="Search headphones…"
-              emptyText="No matching headphones"
-            />
-            {headphone.enabled && activeProfile ? (
-              <p className="text-xs text-text-muted">
-                Correcting for <span className="text-text">{activeProfile.model}</span>{" "}
-                — {headphone.bands.length} bands, preamp{" "}
-                {headphone.preamp.toFixed(1)} dB.
-              </p>
-            ) : (
-              <p className="text-xs text-text-faint">
-                Genuine AutoEq (oratory1990) correction curves for{" "}
-                {profiles.length} popular models.
-              </p>
-            )}
-          </div>
-        </Card>
+        <FxAnchor id="headphone">
+          <Card title="Headphone correction" icon={Headphones}>
+            <div className="flex flex-col gap-3">
+              <Combobox
+                items={profileItems}
+                value={activeProfileId}
+                onSelect={selectProfile}
+                onClear={clearProfile}
+                placeholder="Select your headphones…"
+                searchPlaceholder="Search headphones…"
+                emptyText="No matching headphones"
+              />
+              {headphone.enabled && activeProfile ? (
+                <p className="text-xs text-text-muted">
+                  Correcting for <span className="text-text">{activeProfile.model}</span>{" "}
+                  — {headphone.bands.length} bands, preamp{" "}
+                  {headphone.preamp.toFixed(1)} dB.
+                </p>
+              ) : (
+                <p className="text-xs text-text-faint">
+                  Genuine AutoEq (oratory1990) correction curves for{" "}
+                  {profiles.length} popular models.
+                </p>
+              )}
+            </div>
+          </Card>
+        </FxAnchor>
 
         {/* Output limiter */}
-        <Card
-          title="Limiter"
-          icon={ShieldCheck}
-          actions={
-            <Switch
-              checked={output.limiterEnabled}
-              onChange={(v) => setOutput({ ...output, limiterEnabled: v })}
-              label="Enable limiter"
-            />
-          }
-        >
-          <p className="text-sm text-text-muted">
-            A look-ahead brickwall limiter that catches peaks so boosted audio
-            never clips. On by default — turn it off only if you want the raw,
-            unlimited output (loud material may then distort).
-          </p>
-        </Card>
+        <FxAnchor id="limiter">
+          <Card
+            title="Limiter"
+            icon={ShieldCheck}
+            actions={
+              <Switch
+                checked={fx.limiter.enabled}
+                onChange={fx.limiter.toggle}
+                label="Enable limiter"
+              />
+            }
+          >
+            <p className="text-sm text-text-muted">
+              A look-ahead brickwall limiter that catches peaks so boosted audio
+              never clips. On by default — turn it off only if you want the raw,
+              unlimited output (loud material may then distort).
+            </p>
+          </Card>
+        </FxAnchor>
+
       </div>
 
       <Surround3DPanel

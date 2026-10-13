@@ -7,6 +7,7 @@ import { useEngineStore } from "@/stores/engine";
 import { ipcErrorMessage } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
 import { cn } from "@/lib/cn";
+import { useEffectToggle } from "./effects/useEffectToggles";
 
 /** Starting points, chosen to show one thing each: a bare `@sample`, state
  *  carried across frames in `@init`, and a builtin doing real work.
@@ -48,7 +49,7 @@ const EXAMPLES = [
  */
 export function ScriptCard() {
   const script = useEngineStore((s) => s.state.script);
-  const setScriptEnabled = useEngineStore((s) => s.setScriptEnabled);
+  const { toggle } = useEffectToggle("script");
   const compileScript = useEngineStore((s) => s.compileScript);
 
   const [draft, setDraft] = useState(script.source);
@@ -79,7 +80,7 @@ export function ScriptCard() {
       actions={
         <Switch
           checked={script.enabled}
-          onChange={setScriptEnabled}
+          onChange={toggle}
           label="Enable LiveProg script"
         />
       }

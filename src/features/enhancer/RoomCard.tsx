@@ -8,6 +8,7 @@ import { requirePremium } from "@/components/PremiumGate";
 import { useEngineStore } from "@/stores/engine";
 import { ROOM_PRESETS } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { useEffectToggle } from "./effects/useEffectToggles";
 
 /** The six continuous room-reverb parameters. */
 type RoomParam = "roomSize" | "decay" | "damping" | "preDelay" | "diffusion" | "wetDry";
@@ -38,6 +39,7 @@ const PRESET_ITEMS: ComboItem[] = ROOM_PRESETS.map((p) => ({ id: p.id, label: p.
 export function RoomCard() {
   const room = useEngineStore((s) => s.state.room);
   const setRoom = useEngineStore((s) => s.setRoom);
+  const { toggle } = useEffectToggle("room");
 
   const applyPreset = (id: string) => {
     if (!requirePremium("ROOM_REVERB")) return;
@@ -62,10 +64,7 @@ export function RoomCard() {
       actions={
         <Switch
           checked={room.enabled}
-          onChange={(v) => {
-            if (v && !requirePremium("ROOM_REVERB")) return;
-            setRoom({ ...room, enabled: v });
-          }}
+          onChange={toggle}
           label="Enable room reverb"
         />
       }

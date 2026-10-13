@@ -17,6 +17,7 @@ import { modeFromSystemEq, routeForMode } from "@/features/mode/appMode";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
 import { useUpdateStore } from "@/stores/update";
 import { useTray } from "@/features/tray/useTray";
+import { useSessionPersistence } from "@/features/session/useSessionPersistence";
 import {
   linkDiscoverStart,
   onPairedOnline,
@@ -27,6 +28,8 @@ import {
 export function App() {
   // Keep the system tray menu in sync and run its clicks.
   useTray();
+  // Bring back the last playback session (paused) and keep it saved.
+  useSessionPersistence();
 
   // Mirror the updater's status for the banner and top-bar pill. Idempotent.
   useEffect(() => {

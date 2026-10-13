@@ -1804,3 +1804,15 @@ export function trayUpdate(model: TrayModel): Promise<void> {
 export function onTrayAction(handler: (action: string) => void): Promise<UnlistenFn> {
   return listen<string>("tray://action", (e) => handler(e.payload));
 }
+
+/* ---------------------------------------------------------------- session */
+
+/** The saved playback session's JSON, if any (see `features/session`). */
+export function sessionLoad(): Promise<string | null> {
+  return invoke<string | null>("session_load");
+}
+
+/** Save the playback session's JSON; `null` clears it. */
+export function sessionSave(json: string | null): Promise<void> {
+  return invoke<void>("session_save", { json });
+}

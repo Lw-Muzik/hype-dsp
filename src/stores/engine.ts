@@ -59,6 +59,7 @@ import {
   saveNetworkMode,
 } from "./networkMode";
 import type { NetworkState } from "./networkMode";
+import type { PlaybackSession } from "@/features/session/playbackSession";
 import type {
   CloudEntry,
   CloudTrackMeta,
@@ -371,6 +372,18 @@ interface EngineStore {
   orderPos: number;
   shuffle: boolean;
   repeat: RepeatMode;
+  /**
+   * Set while a restored session (`restoreSession`) hasn't been played yet:
+   * the saved position. Nothing is loaded in the engine until the first play,
+   * which loads the track and seeks here. Null otherwise.
+   */
+  resumeAt: number | null;
+  /**
+   * Bring back a saved session, paused, without loading anything. Ignored
+   * (returns false) if something is already queued or playing, e.g. files
+   * opened with the app at launch.
+   */
+  restoreSession: (session: PlaybackSession) => boolean;
 
   hydrate: (state: EngineState) => void;
   setPower: (power: boolean) => void;
@@ -513,10 +526,20 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     void engineSetEq(eq.bands, eq.preGain, eq.enabled).catch(() => { });
   };
 
+  /**
+   * Where to seek once the resumed track can seek (the first progress event
+   * that says so), and until when to keep trying. See `resumeSession`.
+   */
+  let pendingSeek: number | null = null;
+  let pendingSeekUntil = 0;
+  /** A resumed track that never becomes seekable within this long starts at 0. */
+  const PENDING_SEEK_MS = 30_000;
+
   /** Reset all transport/queue state to idle. */
   const idleState = () => ({
     playing: false,
     paused: false,
+    resumeAt: null,
     metersLive: false,
     meters: idleMeters,
     nowPlaying: null,
@@ -535,6 +558,9 @@ export const useEngineStore = create<EngineStore>((set, get) => {
    * play back-to-back with no gap); phone/cloud/radio play one stream at a time.
    */
   const startPlayback = (pos: number) => {
+    // A pending seek belongs to the track it was set for; any new start drops
+    // it (resumeSession re-arms it after calling this).
+    pendingSeek = null;
     const { queue, order, repeat, state } = get();
     const qi = order[pos];
     const item = qi != null ? queue[qi] : undefined;
@@ -550,6 +576,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       currentYtVideoId: item.source === "ytmusic" ? (item.ytTrack?.videoId ?? null) : null,
       playing: true,
       paused: false,
+      resumeAt: null,
       positionSecs: 0,
       durationSecs: item.durationSecs,
       // Optimistic; the backend's progress events correct this per source.
@@ -714,6 +741,26 @@ export const useEngineStore = create<EngineStore>((set, get) => {
    *  card (one fetch per track change). Covers are never bulk-loaded onto
    *  queue items — the engine's decoded `now_playing` cover still wins if it
    *  lands first, and the backend caches per file so repeats are cheap. */
+  /**
+   * First play of a restored session: load the current track, then seek to the
+   * saved position once the source says it can seek (`applyProgress`). Streams
+   * only report that after they open, so seeking straight away would be lost.
+   */
+  const resumeSession = () => {
+    const { orderPos, resumeAt } = get();
+    if (orderPos < 0) {
+      set({ resumeAt: null });
+      return;
+    }
+    const at = resumeAt ?? 0;
+    startPlayback(orderPos);
+    if (at > 1) {
+      pendingSeek = at;
+      pendingSeekUntil = Date.now() + PENDING_SEEK_MS;
+      set({ positionSecs: at });
+    }
+  };
+
   const fillNowPlayingCover = (item: QueueItem): void => {
     if (item.source !== "cloud" || !item.cloud || item.cover) return;
     const file = item.cloud;
@@ -1004,6 +1051,39 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     orderPos: -1,
     shuffle: false,
     repeat: "off",
+    resumeAt: null,
+
+    restoreSession: (session) => {
+      const cur = get();
+      if (cur.queue.length > 0 || cur.playing) return false;
+      const qi = session.order[session.orderPos];
+      const item = qi === undefined ? undefined : session.queue[qi];
+      if (!item) return false;
+      const live = item.source === "radio";
+      set({
+        queue: session.queue,
+        order: session.order,
+        orderPos: session.orderPos,
+        queueIndex: qi!,
+        shuffle: session.shuffle,
+        repeat: session.repeat,
+        nowPlaying: item.title,
+        nowPlayingMeta: itemMeta(item),
+        // "Is there something to play", not "is it playing": the bar shows the
+        // track with a Play button. Nothing is loaded until that is pressed.
+        playing: false,
+        paused: true,
+        resumeAt: live ? 0 : session.positionSecs,
+        positionSecs: live ? 0 : session.positionSecs,
+        durationSecs: item.durationSecs,
+        // A known-length track can be scrubbed before it loads (it just moves
+        // the resume point).
+        seekable: !live && (item.durationSecs ?? 0) > 0,
+        buffering: false,
+      });
+      fillNowPlayingCover(item);
+      return true;
+    },
 
     hydrate: (state) => set({ state }),
 
@@ -1232,6 +1312,20 @@ export const useEngineStore = create<EngineStore>((set, get) => {
           buffering: p.buffering,
         };
       });
+      if (pendingSeek !== null) {
+        if (Date.now() > pendingSeekUntil) {
+          pendingSeek = null;
+        } else if (p.seekable) {
+          const at = pendingSeek;
+          pendingSeek = null;
+          const dur = get().durationSecs;
+          // In a track's last seconds there is nothing left to resume.
+          if (dur === null || at < dur - 2) {
+            set({ positionSecs: at });
+            void playerSeek(at).catch(() => {});
+          }
+        }
+      }
     },
 
     setPlaying: (playing) => {
@@ -1417,6 +1511,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     castIncoming: (title, artist) => {
       // A new queue is a new listening intent: the old radio session is over.
       resetRadioSession();
+      pendingSeek = null;
       const item: QueueItem = {
         id: title,
         source: "cast",
@@ -1435,6 +1530,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
         nowPlayingMeta: itemMeta(item),
         playing: true,
         paused: false,
+        resumeAt: null,
         positionSecs: 0,
         durationSecs: null,
         seekable: false,
@@ -1465,7 +1561,11 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
 
     togglePause: () => {
-      const { paused, playing } = get();
+      const { paused, playing, resumeAt } = get();
+      if (resumeAt !== null) {
+        resumeSession();
+        return;
+      }
       if (!playing) return;
       if (paused) {
         set({ paused: false });
@@ -1477,6 +1577,10 @@ export const useEngineStore = create<EngineStore>((set, get) => {
     },
 
     seek: (secs) => {
+      if (get().resumeAt !== null) {
+        set({ resumeAt: secs, positionSecs: secs });
+        return;
+      }
       if (!get().seekable) return;
       set({ positionSecs: secs });
       void playerSeek(secs).catch(() => { });
@@ -1489,6 +1593,7 @@ export const useEngineStore = create<EngineStore>((set, get) => {
       resetRadioSession();
       userStopped = true;
       gaplessQueueRunning = false;
+      pendingSeek = null;
       set({
         ...idleState(),
         queue: [],

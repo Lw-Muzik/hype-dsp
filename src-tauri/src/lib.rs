@@ -840,6 +840,8 @@ pub fn run() {
             commands::engine::system_audio_install_driver,
             commands::cable::system_audio_setup_routing,
             commands::settings_window::settings_open,
+            commands::session::session_load,
+            commands::session::session_save,
             tray::tray_update,
             commands::apo_setup::apo_setup,
             commands::apo_setup::apo_uninstall,

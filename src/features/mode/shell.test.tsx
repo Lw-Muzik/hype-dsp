@@ -34,6 +34,7 @@ vi.mock("@/components/SidebarNowPlaying", () => ({
 }));
 vi.mock("@/app/router", () => ({ Router: () => null }));
 vi.mock("@/features/tray/useTray", () => ({ useTray: () => {} }));
+vi.mock("@/features/session/useSessionPersistence", () => ({ useSessionPersistence: () => {} }));
 vi.mock("@/stores/musicLibrary", () => ({
   useMusicLibraryStore: Object.assign(
     (sel: (s: unknown) => unknown) => sel({ revalidateLocal: () => {} }),

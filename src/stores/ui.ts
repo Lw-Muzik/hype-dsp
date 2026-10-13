@@ -75,6 +75,65 @@ const saveEqBandCount = (n: number): void => {
   }
 };
 
+/** Every route, for validating a persisted one. Must list the whole union. */
+const ROUTE_IDS = [
+  "enhancer",
+  "equalizer",
+  "explore",
+  "mixer",
+  "movies",
+  "stems",
+  "player",
+  "stations",
+  "visuals",
+] as const satisfies readonly Route[];
+// Compile-time check that ROUTE_IDS covers the union: adding a route without
+// listing it here fails to type-check.
+const routesCovered: Exclude<Route, (typeof ROUTE_IDS)[number]> extends never ? true : never = true;
+void routesCovered;
+
+// Where the user was, so a relaunch opens there (like the mobile app). The
+// mode's own route rules still apply on top (App keeps the route valid).
+const ROUTE_KEY = "hm.route";
+const RIGHT_PANEL_KEY = "hm.rightPanel";
+const SIDEBAR_COLLAPSED_KEY = "hm.sidebarCollapsed";
+
+const loadRoute = (): Route => {
+  try {
+    const raw = localStorage.getItem(ROUTE_KEY);
+    return (ROUTE_IDS as readonly string[]).includes(raw ?? "") ? (raw as Route) : "player";
+  } catch {
+    return "player";
+  }
+};
+
+/** The Video tab needs a loaded video, which a relaunch doesn't have. */
+const loadRightPanel = (): RightPanel | null => {
+  try {
+    const raw = localStorage.getItem(RIGHT_PANEL_KEY);
+    return raw === "queue" || raw === "lyrics" ? raw : null;
+  } catch {
+    return null;
+  }
+};
+
+const loadSidebarCollapsed = (): boolean => {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const persist = (key: string, value: string | null): void => {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // Private mode / no storage — just won't persist.
+  }
+};
+
 interface UiState {
   /** Currently displayed view. */
   route: Route;
@@ -111,12 +170,18 @@ interface UiState {
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  route: "player",
-  setRoute: (route) => set({ route }),
+  route: loadRoute(),
+  setRoute: (route) => {
+    persist(ROUTE_KEY, route);
+    set({ route });
+  },
 
-  sidebarCollapsed: false,
+  sidebarCollapsed: loadSidebarCollapsed(),
   toggleSidebar: () =>
-    set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+    set((state) => {
+      persist(SIDEBAR_COLLAPSED_KEY, state.sidebarCollapsed ? "0" : "1");
+      return { sidebarCollapsed: !state.sidebarCollapsed };
+    }),
 
   eqBandCount: loadEqBandCount(),
   setEqBandCount: (n) => {
@@ -139,10 +204,17 @@ export const useUiStore = create<UiState>((set) => ({
   resizing: false,
   setResizing: (resizing) => set({ resizing }),
 
-  rightPanel: null,
+  rightPanel: loadRightPanel(),
   toggleRight: (tab) =>
-    set((state) => ({ rightPanel: state.rightPanel === tab ? null : tab })),
-  closeRight: () => set({ rightPanel: null }),
+    set((state) => {
+      const rightPanel = state.rightPanel === tab ? null : tab;
+      persist(RIGHT_PANEL_KEY, rightPanel);
+      return { rightPanel };
+    }),
+  closeRight: () => {
+    persist(RIGHT_PANEL_KEY, null);
+    set({ rightPanel: null });
+  },
 
   appInfo: null,
   setAppInfo: (appInfo) => set({ appInfo }),

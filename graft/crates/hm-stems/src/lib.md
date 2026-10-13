@@ -1,31 +1,29 @@
 # crates/hm-stems/src/lib.rs
 
-- onnx · module · L17-L17 — mod onnx;
-- STEM_COUNT · constant · L27-L27 — pub const STEM_COUNT: usize = 4;
-- STEM_SR · constant · L29-L29 — pub const STEM_SR: u32 = 44_100;
-- OVERLAP_DIV · constant · L31-L31 — const OVERLAP_DIV: usize = 4; // overlap = segment / 4
-- STEM_NAMES · constant · L34-L34 — const STEM_NAMES: [&str; STEM_COUNT] = ["vocals", "drums", "bass", "other"];
-- MODELS · constant · L40-L45 — const MODELS: [(&str, usize, usize); STEM_COUNT] = [
-- StemSet · type · L49-L49 — pub type StemSet = [Vec<f32>; STEM_COUNT];
-- StemError · enum · L52-L63 — pub enum StemError
-- Separator · struct · L67-L71 — pub struct Separator
-- new · function · L74-L80 — pub fn new(model_dir: PathBuf, cache_dir: PathBuf) -> Self
-- available · function · L83-L87 — pub fn available(&self) -> bool
-- accelerated · function · L91-L93 — pub fn accelerated(&self) -> bool
-- cache_slot · function · L95-L97 — fn cache_slot(&self, input: &Path) -> PathBuf
-- cached · function · L100-L107 — pub fn cached(&self, input: &Path) -> Option<StemSet>
-- ensure_loaded · function · L109-L124 — fn ensure_loaded<'a>(
-- separate · function · L129-L136 — pub fn separate(
-- separate_cancellable · function · L143-L233 — pub fn separate_cancellable(
-- write_cache · function · L235-L243 — fn write_cache(&self, input: &Path, set: &StemSet)
-- transition_window · function · L248-L261 — fn transition_window(segment: usize) -> Vec<f32>
-- cache_key · function · L265-L287 — fn cache_key(input: &Path) -> String
-- write_wav_f32 · function · L290-L302 — fn write_wav_f32(path: &Path, samples: &[f32]) -> Result<(), StemError>
-- read_wav_f32 · function · L305-L308 — fn read_wav_f32(path: &Path) -> Option<Vec<f32>>
-- tests · module · L311-L405 — mod tests
-- unavailable_without_models · function · L315-L322 — fn unavailable_without_models()
-- cancelled_separation_aborts_without_doing_work · function · L325-L332 — fn cancelled_separation_aborts_without_doing_work()
-- cache_key_is_stable_and_sanitized · function · L335-L339 — fn cache_key_is_stable_and_sanitized()
-- transition_window_is_trapezoidal · function · L342-L350 — fn transition_window_is_trapezoidal()
-- model_table_maps_rows_to_distinct_slots · function · L353-L359 — fn model_table_maps_rows_to_distinct_slots()
-- separates_real_models_end_to_end · function · L367-L404 — fn separates_real_models_end_to_end()
+- cache · module · L16-L16 — pub mod cache;
+- chunk · module · L17-L17 — pub mod chunk;
+- config · module · L18-L18 — pub mod config;
+- download · module · L19-L19 — pub mod download;
+- mask · module · L20-L20 — pub mod mask;
+- nets · module · L21-L21 — mod nets;
+- runtime · module · L22-L22 — pub mod runtime;
+- store · module · L23-L23 — pub mod store;
+- stft · module · L24-L24 — pub mod stft;
+- StemError · enum · L38-L51 — pub enum StemError
+- fill_store · function · L57-L75 — pub fn fill_store(
+- Separator · struct · L79-L86 — pub struct Separator
+- CACHE_BUDGET_BYTES · constant · L89-L89 — const CACHE_BUDGET_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+- new · function · L92-L94 — pub fn new(model_dir: PathBuf, cache_dir: PathBuf) -> Self
+- with_runtime_root · function · L97-L100 — pub fn with_runtime_root(mut self, root: PathBuf) -> Self
+- model_dir · function · L102-L104 — pub fn model_dir(&self) -> &Path
+- available · function · L107-L109 — pub fn available(&self) -> bool
+- is_cached · function · L112-L114 — pub fn is_cached(&self, key: &str) -> bool
+- load_cached · function · L117-L120 — pub fn load_cached(&self, key: &str, store: &StemStore) -> bool
+- save_cached · function · L123-L128 — pub fn save_cached(&self, key: &str, store: &StemStore)
+- fill · function · L133-L160 — pub fn fill(
+- unload · function · L163-L167 — pub fn unload(&self)
+- tests · module · L171-L230 — mod tests
+- unavailable_without_models · function · L176-L181 — fn unavailable_without_models()
+- cancelled_fill_stops_before_doing_work · function · L184-L189 — fn cancelled_fill_stops_before_doing_work()
+- fill_starts_at_the_playhead_and_completes_the_track · function · L192-L207 — fn fill_starts_at_the_playhead_and_completes_the_track()
+- cache_round_trip_reproduces_the_store · function · L210-L229 — fn cache_round_trip_reproduces_the_store()

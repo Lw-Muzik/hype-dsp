@@ -1,11 +1,10 @@
 # src/features/stems/StemsPanel.tsx
 
-- PadKind · type · L19-L19 — type PadKind = "mute" | "solo";
-- Pad · interface · L20-L29 — interface Pad
-- sameSet · function · L75-L76 — sameSet = (a: number[], b: number[])
-- StemsPanel · function · L81-L87 — function StemsPanel()
-- StemsPanelBody · function · L92-L276 — function StemsPanelBody()
-- tapPad · function · L174-L191 — tapPad = (pad: Pad)
-- isEngaged · function · L193-L196 — isEngaged = (pad: Pad)
-- Shell · function · L278-L312 — function Shell({ children, accelerated, }: { children: React.ReactNode; accelerated: boolean; })
-- Empty · function · L314-L321 — function Empty({ icon: Icon, text }: { icon: typeof AudioLines; text: string })
+- formatMb · function · L58-L58 — formatMb = (bytes: number)
+- StemsPanel · function · L63-L69 — function StemsPanel()
+- StemsPanelBody · function · L74-L328 — function StemsPanelBody()
+- update · function · L105-L109 — update = (id: StemId, patch: Partial<StemControls[StemId]>)
+- keep · function · L114-L115 — keep = (p: Promise<() => void>)
+- install · function · L169-L184 — install = async ()
+- ToggleChip · function · L330-L358 — function ToggleChip({ label, text, on, onClass, onClick, }: { label: string; text: string; on: boolean; onClass: string; onClick: () => void; })
+- Shell · function · L360-L372 — function Shell({ children }: { children: React.ReactNode })

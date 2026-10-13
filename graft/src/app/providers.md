@@ -1,4 +1,4 @@
 # src/app/providers.tsx
 
-- Providers · function · L29-L146 — function Providers({ children }: { children: ReactNode })
-- handleOpenFiles · function · L56-L66 — handleOpenFiles = async (paths: string[])
+- Providers · function · L29-L132 — function Providers({ children }: { children: ReactNode })
+- handleOpenFiles · function · L53-L63 — handleOpenFiles = async (paths: string[])

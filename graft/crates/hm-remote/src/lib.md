@@ -1,0 +1,23 @@
+# crates/hm-remote/src/lib.rs
+
+- ffi · module · L31-L31 — pub mod ffi;
+- manager · module · L32-L32 — pub mod manager;
+- phone · module · L33-L33 — pub mod phone;
+- secret · module · L34-L34 — pub mod secret;
+- ALPN_LINK · constant · L40-L40 — pub const ALPN_LINK: &[u8] = b"hypemuzik/link/0";
+- ALPN_PAIR · constant · L42-L42 — pub const ALPN_PAIR: &[u8] = b"hypemuzik/pair/0";
+- build_endpoint · function · L48-L54 — pub async fn build_endpoint(
+- BIND_TIMEOUT · constant · L72-L72 — const BIND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+- build_endpoint_with · function · L74-L96 — pub async fn build_endpoint_with(
+- endpoint_addr · function · L101-L110 — pub async fn endpoint_addr(ep: &Endpoint) -> Result<EndpointAddr>
+- dial_pair · function · L119-L146 — pub async fn dial_pair(
+- serve_tunnel · function · L150-L158 — pub async fn serve_tunnel(ep: Endpoint, shelf_port: u16) -> Result<()>
+- serve_connection · function · L162-L168 — async fn serve_connection(conn: Connection, shelf_port: u16)
+- stream_to_shelf · function · L171-L176 — async fn stream_to_shelf(send: SendStream, recv: RecvStream, shelf_port: u16)
+- RemoteProxy · struct · L183-L187 — pub struct RemoteProxy
+- drop · function · L190-L192 — fn drop(&mut self)
+- open_proxy · function · L199-L226 — pub async fn open_proxy(ep: &Endpoint, target: impl Into<EndpointAddr>) -> Result<RemoteProxy>
+- pipe · function · L233-L244 — async fn pipe(tcp: TcpStream, mut send: SendStream, mut recv: RecvStream)
+- tests · module · L247-L362 — mod tests
+- http_round_trips_over_iroh_tunnel · function · L255-L299 — async fn http_round_trips_over_iroh_tunnel() -> Result<()>
+- endpoint_with_custom_dns_resolver_binds_and_connects · function · L306-L361 — async fn endpoint_with_custom_dns_resolver_binds_and_connects() -> Result<()>

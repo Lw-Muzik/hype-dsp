@@ -1,0 +1,26 @@
+# src-tauri/src/commands/library.rs
+
+- AUDIO_EXTS · constant · L11-L13 — const AUDIO_EXTS: &[&str] = &[
+- MAX_DEPTH · constant · L14-L14 — const MAX_DEPTH: usize = 8;
+- SCAN_CHUNK · constant · L17-L17 — const SCAN_CHUNK: usize = 256;
+- is_audio · function · L19-L24 — pub(crate) fn is_audio(path: &Path) -> bool
+- ScanProgress · struct · L30-L33 — struct ScanProgress
+- collect_audio_paths · function · L36-L51 — fn collect_audio_paths(dir: &Path, out: &mut Vec<PathBuf>, depth: usize)
+- track_from_path · function · L57-L72 — pub(crate) fn track_from_path(path: &Path) -> LibraryTrack
+- index_paths · function · L77-L89 — pub(crate) fn index_paths(app: &tauri::AppHandle, store: &MediaStore, paths: &[PathBuf]) -> usize
+- library_scan · function · L97-L109 — pub fn library_scan(
+- library_refresh_tags · function · L116-L127 — pub fn library_refresh_tags(
+- library_list · function · L133-L135 — pub fn library_list(store: State<'_, MediaStore>) -> Result<Vec<LibraryTrack>, IpcError>
+- library_count · function · L139-L141 — pub fn library_count(store: State<'_, MediaStore>) -> Result<i64, IpcError>
+- library_available_count · function · L147-L149 — pub fn library_available_count(store: State<'_, MediaStore>) -> Result<i64, IpcError>
+- library_list_page · function · L156-L162 — pub fn library_list_page(
+- library_remove · function · L169-L171 — pub fn library_remove(store: State<'_, MediaStore>, path: String) -> Result<(), IpcError>
+- library_artwork · function · L177-L179 — pub fn library_artwork(path: String) -> Option<String>
+- playlist_list · function · L182-L184 — pub fn playlist_list(store: State<'_, MediaStore>) -> Result<Vec<Playlist>, IpcError>
+- playlist_create · function · L187-L189 — pub fn playlist_create(store: State<'_, MediaStore>, name: String) -> Result<Playlist, IpcError>
+- playlist_rename · function · L192-L198 — pub fn playlist_rename(
+- playlist_delete · function · L201-L203 — pub fn playlist_delete(store: State<'_, MediaStore>, id: String) -> Result<(), IpcError>
+- playlist_tracks · function · L206-L211 — pub fn playlist_tracks(
+- playlist_add · function · L214-L220 — pub fn playlist_add(
+- playlist_remove · function · L223-L229 — pub fn playlist_remove(
+- playlist_reorder · function · L232-L238 — pub fn playlist_reorder(

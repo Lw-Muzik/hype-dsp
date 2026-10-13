@@ -1,0 +1,66 @@
+# src-tauri/src/cloud.rs
+
+- REDIRECT_URI · constant · L25-L25 — const REDIRECT_URI: &str = "http://localhost:53682";
+- LOOPBACK_ADDR · constant · L26-L26 — const LOOPBACK_ADDR: &str = "127.0.0.1:53682";
+- DRIVE_SCOPE · constant · L27-L27 — const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
+- DEFAULT_GOOGLE_CLIENT_ID · constant · L39-L40 — const DEFAULT_GOOGLE_CLIENT_ID: &str =
+- DEFAULT_GOOGLE_CLIENT_SECRET · constant · L41-L41 — const DEFAULT_GOOGLE_CLIENT_SECRET: &str = "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";
+- DEFAULT_DROPBOX_APP_KEY · constant · L42-L42 — const DEFAULT_DROPBOX_APP_KEY: &str = "1d0mou7l0x19mas";
+- env_or · function · L44-L49 — fn env_or(name: &str, default: &str) -> String
+- google_client_id · function · L50-L52 — fn google_client_id() -> String
+- google_client_secret · function · L53-L55 — fn google_client_secret() -> String
+- dropbox_app_key · function · L56-L58 — fn dropbox_app_key() -> String
+- CloudProvider · enum · L64-L67 — pub enum CloudProvider
+- CloudEntry · struct · L73-L90 — pub struct CloudEntry
+- Tokens · struct · L93-L98 — struct Tokens
+- near_expiry · function · L101-L106 — fn near_expiry(&self) -> bool
+- now_secs · function · L109-L114 — fn now_secs() -> u64
+- StoredAccount · struct · L119-L124 — struct StoredAccount
+- Store · struct · L127-L136 — struct Store
+- migrate_legacy · function · L143-L161 — fn migrate_legacy(&mut self)
+- CloudAccount · struct · L167-L171 — pub struct CloudAccount
+- CloudStatus · struct · L177-L181 — pub struct CloudStatus
+- CloudState · struct · L184-L187 — pub struct CloudState
+- load · function · L190-L200 — pub fn load(path: PathBuf) -> Self
+- save · function · L202-L209 — fn save(&self, store: &Store)
+- accounts · function · L212-L222 — pub fn accounts(&self) -> Vec<CloudAccount>
+- status · function · L224-L233 — pub fn status(&self) -> CloudStatus
+- disconnect · function · L236-L240 — pub fn disconnect(&self, account_id: &str)
+- provider_of · function · L242-L248 — fn provider_of(&self, account_id: &str) -> Option<CloudProvider>
+- tokens · function · L250-L256 — fn tokens(&self, account_id: &str) -> Option<(CloudProvider, Tokens)>
+- set_tokens · function · L258-L264 — fn set_tokens(&self, account_id: &str, tokens: Tokens)
+- upsert · function · L268-L277 — fn upsert(&self, account: StoredAccount)
+- access_token · function · L280-L291 — fn access_token(&self, account_id: &str) -> Result<String, String>
+- connect · function · L298-L313 — pub fn connect(&self, provider: CloudProvider) -> Result<CloudAccount, String>
+- list · function · L317-L336 — pub fn list(&self, account_id: &str, folder: &str) -> Result<Vec<CloudEntry>, String>
+- all_audio · function · L342-L356 — pub fn all_audio(&self, account_id: &str) -> Result<Vec<CloudEntry>, String>
+- stream_target · function · L359-L378 — pub fn stream_target(
+- provider_key · function · L383-L388 — fn provider_key(provider: CloudProvider) -> &'static str
+- fetch_identity · function · L394-L445 — fn fetch_identity(provider: CloudProvider, access: &str) -> Result<(String, String), String>
+- random_b64url · function · L449-L453 — fn random_b64url(bytes: usize) -> String
+- open_url · function · L460-L476 — pub(crate) fn open_url(url: &str)
+- CREATE_NO_WINDOW · constant · L468-L468 — const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+- percent_decode · function · L478-L497 — fn percent_decode(s: &str) -> String
+- pct_encode · function · L502-L513 — fn pct_encode(s: &str) -> String
+- form_encode · function · L515-L521 — fn form_encode(pairs: &[(&str, &str)]) -> String
+- wait_for_code · function · L525-L588 — fn wait_for_code(listener: &TcpListener, expected_state: &str) -> Result<String, String>
+- oauth_connect · function · L590-L631 — fn oauth_connect(provider: CloudProvider) -> Result<Tokens, String>
+- http_client · function · L633-L638 — fn http_client() -> Result<reqwest::blocking::Client, String>
+- TokenResponse · struct · L641-L645 — struct TokenResponse
+- token_from_response · function · L647-L653 — fn token_from_response(r: TokenResponse, prev_refresh: Option<String>) -> Tokens
+- exchange_code · function · L655-L689 — fn exchange_code(provider: CloudProvider, code: &str, verifier: &str) -> Result<Tokens, String>
+- refresh_tokens · function · L691-L721 — fn refresh_tokens(provider: CloudProvider, refresh: &str) -> Result<Tokens, String>
+- DRIVE_FOLDER_MIME · constant · L725-L725 — const DRIVE_FOLDER_MIME: &str = "application/vnd.google-apps.folder";
+- DRIVE_AUDIO_MIMES · constant · L726-L735 — const DRIVE_AUDIO_MIMES: [&str; 8] = [
+- drive_browse · function · L738-L792 — fn drive_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String>
+- DRIVE_FOLDER_NAME_CAP · constant · L797-L797 — const DRIVE_FOLDER_NAME_CAP: usize = 300;
+- drive_all_audio · function · L802-L909 — fn drive_all_audio(access: &str) -> Result<Vec<CloudEntry>, String>
+- drive_folder_name · function · L912-L920 — fn drive_folder_name(client: &reqwest::blocking::Client, access: &str, id: &str) -> Option<String>
+- dropbox_is_audio · function · L924-L929 — fn dropbox_is_audio(name: &str) -> bool
+- dropbox_browse · function · L933-L996 — fn dropbox_browse(access: &str, folder: &str) -> Result<Vec<CloudEntry>, String>
+- dropbox_all_audio · function · L1001-L1055 — fn dropbox_all_audio(access: &str) -> Result<Vec<CloudEntry>, String>
+- dropbox_parent_folder · function · L1059-L1062 — fn dropbox_parent_folder(path: &str) -> Option<String>
+- dropbox_temporary_link · function · L1064-L1080 — fn dropbox_temporary_link(access: &str, path: &str) -> Result<String, String>
+- tests · module · L1083-L1099 — mod tests
+- parent_folder_of_nested_path · function · L1087-L1092 — fn parent_folder_of_nested_path()
+- no_parent_folder_at_root · function · L1095-L1098 — fn no_parent_folder_at_root()

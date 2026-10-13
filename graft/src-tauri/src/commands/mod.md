@@ -1,0 +1,31 @@
+# src-tauri/src/commands/mod.rs
+
+- account · module · L8-L8 — pub mod account;
+- apo_setup · module · L9-L9 — pub mod apo_setup;
+- app · module · L10-L10 — pub mod app;
+- audio · module · L11-L11 — pub mod audio;
+- autoeq · module · L12-L12 — pub mod autoeq;
+- cable · module · L13-L13 — pub mod cable;
+- chain_presets · module · L14-L14 — pub mod chain_presets;
+- cloud · module · L15-L15 — pub mod cloud;
+- engine · module · L16-L16 — pub mod engine;
+- identify · module · L17-L17 — pub mod identify;
+- install · module · L18-L18 — pub mod install;
+- library · module · L19-L19 — pub mod library;
+- link · module · L20-L20 — pub mod link;
+- license · module · L21-L21 — pub mod license;
+- linux_audio_setup · module · L22-L22 — pub mod linux_audio_setup;
+- lyrics · module · L23-L23 — pub mod lyrics;
+- mixer · module · L24-L24 — pub mod mixer;
+- movies · module · L25-L25 — pub mod movies;
+- movies_yt · module · L26-L26 — pub mod movies_yt;
+- open_with · module · L27-L27 — pub mod open_with;
+- presets · module · L28-L28 — pub mod presets;
+- profiles · module · L29-L29 — pub mod profiles;
+- radio · module · L30-L30 — pub mod radio;
+- scenes · module · L31-L31 — pub mod scenes;
+- stems · module · L32-L32 — pub mod stems;
+- tv · module · L33-L33 — pub mod tv;
+- visualizer · module · L34-L34 — pub mod visualizer;
+- ytmusic · module · L35-L35 — pub mod ytmusic;
+- ytmusic_setup · module · L36-L36 — pub mod ytmusic_setup;

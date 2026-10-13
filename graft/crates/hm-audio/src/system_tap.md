@@ -1,0 +1,39 @@
+# crates/hm-audio/src/system_tap.rs
+
+- TAP_SEQ · constant · L58-L58 — static TAP_SEQ: AtomicU64 = AtomicU64::new(0);
+- MAX_TAP_SAMPLES · constant · L64-L64 — const MAX_TAP_SAMPLES: usize = 1 << 20; // 1,048,576 f32 = 4 MiB
+- samples_in · function · L69-L71 — fn samples_in(byte_size: u32) -> usize
+- CaptureTelemetry · struct · L86-L99 — pub struct CaptureTelemetry
+- beat · function · L104-L106 — pub fn beat(&self) -> u64
+- generation · function · L109-L111 — pub fn generation(&self) -> u64
+- begin_generation · function · L115-L118 — pub fn begin_generation(&self)
+- first_layout · function · L122-L131 — pub fn first_layout(&self) -> Option<(u32, u32, u32, f32)>
+- TapContext · struct · L135-L139 — struct TapContext
+- SystemTapSource · struct · L142-L154 — pub struct SystemTapSource
+- addr · function · L160-L166 — fn addr(selector: u32) -> AudioObjectPropertyAddress
+- own_process_object · function · L169-L190 — fn own_process_object() -> Result<AudioObjectID, AudioError>
+- tap_uid_string · function · L192-L213 — fn tap_uid_string(tap_id: AudioObjectID) -> Result<String, AudioError>
+- tap_format · function · L215-L235 — fn tap_format(tap_id: AudioObjectID) -> Result<AudioStreamBasicDescription, AudioError>
+- io_proc · function · L245-L333 — unsafe extern "C-unwind" fn io_proc(
+- new · function · L348-L498 — pub fn new(
+- create_aggregate · function · L501-L556 — fn create_aggregate(tap_uid: &str, seq: u64) -> Result<AudioObjectID, AudioError>
+- key · function · L507-L509 — fn key(c: &std::ffi::CStr) -> objc2::rc::Retained<NSString>
+- drop · function · L559-L570 — fn drop(&mut self)
+- start · function · L574-L582 — fn start(&mut self, format: StreamFormat) -> Result<(), AudioError>
+- read · function · L584-L634 — fn read(&mut self, out: &mut [f32], channels: usize) -> usize
+- stop · function · L636-L636 — fn stop(&mut self) {}
+- position · function · L638-L640 — fn position(&self) -> usize
+- is_live · function · L642-L644 — fn is_live(&self) -> bool
+- available · function · L649-L651 — pub fn available() -> bool
+- default_output_device_id · function · L656-L671 — pub fn default_output_device_id() -> Option<AudioObjectID>
+- device_is_alive · function · L682-L700 — pub fn device_is_alive(device: AudioObjectID) -> bool
+- ListenerCtx · struct · L705-L707 — struct ListenerCtx
+- default_device_listener_proc · function · L716-L728 — unsafe extern "C-unwind" fn default_device_listener_proc(
+- DefaultOutputListener · struct · L737-L739 — pub struct DefaultOutputListener
+- new · function · L754-L772 — pub fn new(on_change: Box<dyn Fn() + Send>) -> Result<Self, AudioError>
+- drop · function · L776-L788 — fn drop(&mut self)
+- tests · module · L792-L843 — mod tests
+- samples_in_divides_bytes_by_f32_width · function · L796-L802 — fn samples_in_divides_bytes_by_f32_width()
+- samples_in_clamps_a_corrupt_bytesize · function · L805-L809 — fn samples_in_clamps_a_corrupt_bytesize()
+- device_is_alive_fails_open_for_unknown_device · function · L812-L816 — fn device_is_alive_fails_open_for_unknown_device()
+- capture_telemetry_generation_and_layout_roundtrip · function · L819-L842 — fn capture_telemetry_generation_and_layout_roundtrip()

@@ -1,0 +1,31 @@
+# crates/hm-dsp/src/script/compiler.rs
+
+- Op · enum · L31-L61 — pub enum Op
+- Builtin · enum · L68-L92 — pub enum Builtin
+- from_name · function · L96-L121 — pub fn from_name(name: &str) -> Option<(Builtin, usize)>
+- Program · struct · L126-L139 — pub struct Program
+- compiler_err · function · L146-L152 — fn compiler_err(msg: impl Into<String>) -> ScriptError
+- Compiler · struct · L154-L159 — struct Compiler
+- new · function · L162-L169 — fn new() -> Self
+- reg_of · function · L172-L180 — fn reg_of(&mut self, name: &str) -> u16
+- compile_stmts · function · L184-L189 — fn compile_stmts(&mut self, stmts: &[Stmt], out: &mut Vec<Op>) -> Result<(), ScriptError>
+- compile_stmt · function · L191-L231 — fn compile_stmt(&mut self, stmt: &Stmt, out: &mut Vec<Op>) -> Result<(), ScriptError>
+- compile_expr · function · L235-L347 — fn compile_expr(&mut self, expr: &Expr, out: &mut Vec<Op>) -> Result<(), ScriptError>
+- compile_loop_body · function · L354-L367 — fn compile_loop_body(&mut self, body: &[Stmt], out: &mut Vec<Op>) -> Result<(), ScriptError>
+- binop_to_op · function · L374-L391 — fn binop_to_op(op: &BinOp) -> Op
+- compile_ast · function · L402-L420 — pub fn compile_ast(ast: &Ast) -> Result<Program, ScriptError>
+- tests · module · L427-L620 — mod tests
+- test_basic_gain_opcodes · function · L434-L456 — fn test_basic_gain_opcodes()
+- test_unknown_function_error · function · L461-L468 — fn test_unknown_function_error()
+- test_srate_read_only · function · L473-L485 — fn test_srate_read_only()
+- test_sin_correct_arity · function · L490-L492 — fn test_sin_correct_arity()
+- test_sin_wrong_arity · function · L495-L502 — fn test_sin_wrong_arity()
+- test_atan2_needs_two_args · function · L505-L512 — fn test_atan2_needs_two_args()
+- test_if_emits_jumps · function · L517-L526 — fn test_if_emits_jumps()
+- test_num_regs_counts_vars · function · L531-L540 — fn test_num_regs_counts_vars()
+- test_parse_error_propagates · function · L545-L547 — fn test_parse_error_propagates()
+- test_while_back_jump · function · L552-L568 — fn test_while_back_jump()
+- test_loop_back_jump · function · L573-L587 — fn test_loop_back_jump()
+- test_compound_plus_eq · function · L592-L597 — fn test_compound_plus_eq()
+- test_pi_constant · function · L602-L612 — fn test_pi_constant()
+- test_srate_can_be_read · function · L617-L619 — fn test_srate_can_be_read()

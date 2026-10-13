@@ -1,0 +1,149 @@
+# crates/hm-audio/src/engine.rs
+
+- SystemEqStatus · enum · L59-L67 — pub enum SystemEqStatus
+- from_u8 · function · L70-L76 — fn from_u8(v: u8) -> Self
+- StallDetector · struct · L92-L95 — struct StallDetector
+- new · function · L99-L104 — fn new() -> Self
+- observe · function · L110-L120 — fn observe(&mut self, beat: u64, active: bool) -> u32
+- reset · function · L125-L127 — fn reset(&mut self)
+- TapAction · enum · L135-L145 — enum TapAction
+- assess_tap_stall · function · L159-L192 — fn assess_tap_stall(
+- cooldown_secs · function · L200-L205 — fn cooldown_secs(giveup_count: u32) -> u64
+- BASE · constant · L201-L201 — const BASE: u64 = 30;
+- CAP · constant · L202-L202 — const CAP: u64 = 300;
+- RebuildPolicy · struct · L217-L220 — struct RebuildPolicy
+- new · function · L224-L229 — fn new(max_failures: u32) -> Self
+- on_success · function · L232-L234 — fn on_success(&mut self)
+- on_failure · function · L239-L247 — fn on_failure(&mut self) -> bool
+- EngineMeters · struct · L253-L258 — pub struct EngineMeters
+- store · function · L261-L268 — fn store(&self, frame: MeterFrame)
+- load · function · L271-L282 — pub fn load(&self) -> MeterFrame
+- zero · function · L284-L286 — fn zero(&self)
+- compute_meters · function · L289-L320 — fn compute_meters(buffer: &[f32], channels: usize) -> MeterFrame
+- PlaybackPos · struct · L324-L338 — pub struct PlaybackPos
+- default · function · L341-L352 — fn default() -> Self
+- take_seek · function · L356-L359 — fn take_seek(&self) -> Option<usize>
+- request_seek · function · L361-L363 — fn request_seek(&self, frame: usize)
+- write · function · L365-L369 — fn write(&self, position: usize, total: usize)
+- prepare · function · L371-L379 — fn prepare(&self, sample_rate: u32, total: usize)
+- reset · function · L381-L384 — fn reset(&self)
+- position_secs · function · L387-L393 — pub fn position_secs(&self) -> f64
+- duration_secs · function · L396-L400 — pub fn duration_secs(&self) -> Option<f64>
+- is_seekable · function · L403-L405 — pub fn is_seekable(&self) -> bool
+- set_seekable · function · L407-L409 — fn set_seekable(&self, seekable: bool)
+- write_net · function · L414-L418 — fn write_net(&self, buffering: bool, download_bps: u64, rebuffer_count: u32)
+- is_buffering · function · L421-L423 — pub fn is_buffering(&self) -> bool
+- download_bps · function · L425-L427 — pub fn download_bps(&self) -> u64
+- rebuffer_count · function · L429-L431 — pub fn rebuffer_count(&self) -> u32
+- seek_secs · function · L434-L439 — pub fn seek_secs(&self, secs: f64)
+- Renderer · struct · L444-L448 — pub struct Renderer
+- new · function · L452-L469 — pub fn new(
+- render · function · L476-L513 — pub fn render(
+- EngineCommand · enum · L517-L566 — enum EngineCommand
+- AudioEngine · struct · L569-L626 — pub struct AudioEngine
+- ConvolverIrInfo · struct · L631-L636 — pub struct ConvolverIrInfo
+- MetaSink · struct · L641-L644 — pub struct MetaSink
+- set · function · L648-L651 — pub fn set(&self, meta: TrackMeta)
+- for_test · function · L660-L670 — pub(crate) fn for_test() -> (Self, Arc<ArcSwap<TrackMeta>>)
+- default · function · L674-L676 — fn default() -> Self
+- new · function · L681-L847 — pub fn new() -> Self
+- track_meta_handle · function · L851-L853 — pub fn track_meta_handle(&self) -> Arc<ArcSwap<TrackMeta>>
+- meta_version_handle · function · L854-L856 — pub fn meta_version_handle(&self) -> Arc<AtomicU64>
+- queue_index_handle · function · L858-L860 — pub fn queue_index_handle(&self) -> Arc<AtomicUsize>
+- state · function · L863-L868 — pub fn state(&self) -> EngineState
+- state_handle · function · L872-L874 — pub fn state_handle(&self) -> Arc<ArcSwap<EngineState>>
+- system_eq_status · function · L881-L883 — pub fn system_eq_status(&self) -> SystemEqStatus
+- update · function · L885-L889 — fn update(&self, f: impl FnOnce(&mut EngineState))
+- set_power · function · L892-L894 — pub fn set_power(&self, on: bool)
+- set_master_volume · function · L897-L899 — pub fn set_master_volume(&self, volume: f32)
+- set_state · function · L902-L915 — pub fn set_state(&self, new_state: EngineState)
+- set_eq · function · L918-L925 — pub fn set_eq(&self, bands: [f32; hm_core::BAND_COUNT], pre_gain: f32, enabled: bool)
+- apply_eq_preset · function · L928-L939 — pub fn apply_eq_preset(
+- set_bass · function · L942-L951 — pub fn set_bass(&self, enabled: bool, amount: f32, harmonics: bool, adaptive: bool)
+- set_playback · function · L955-L964 — pub fn set_playback(&self, gapless: bool, crossfade_secs: f32)
+- set_data_saver · function · L967-L969 — pub fn set_data_saver(&self, on: bool)
+- set_autoplay · function · L973-L975 — pub fn set_autoplay(&self, on: bool)
+- crossfade_secs · function · L978-L980 — pub fn crossfade_secs(&self) -> f32
+- set_spatializer · function · L983-L991 — pub fn set_spatializer(&self, enabled: bool, amount: f32, mode: SpatialMode)
+- set_surround3d · function · L994-L1009 — pub fn set_surround3d(
+- set_room · function · L1012-L1020 — pub fn set_room(&self, mut room: RoomState)
+- set_compander · function · L1023-L1030 — pub fn set_compander(&self, mut compander: CompanderState)
+- compile_script · function · L1042-L1048 — pub fn compile_script(&self, source: String) -> Result<(), hm_dsp::script::ScriptError>
+- set_script · function · L1051-L1053 — pub fn set_script(&self, enabled: bool)
+- recompile_from_state · function · L1056-L1058 — fn recompile_from_state(&self, state: &EngineState)
+- set_saturation · function · L1061-L1065 — pub fn set_saturation(&self, mut saturation: SaturationState)
+- set_output · function · L1072-L1076 — pub fn set_output(&self, mut output: OutputState)
+- set_convolver · function · L1081-L1100 — pub fn set_convolver(&self, mut state: ConvolverState)
+- load_convolver_ir · function · L1108-L1138 — pub fn load_convolver_ir(&self, path: &Path) -> Result<ConvolverIrInfo, AudioError>
+- set_headphone · function · L1141-L1150 — pub fn set_headphone(&self, bands: Vec<ParametricBand>, preamp: f32, profile_id: String)
+- clear_headphone · function · L1153-L1158 — pub fn clear_headphone(&self)
+- meters · function · L1161-L1163 — pub fn meters(&self) -> Arc<EngineMeters>
+- spectrum · function · L1166-L1168 — pub fn spectrum(&self) -> Arc<SpectrumTap>
+- compander_gr · function · L1171-L1173 — pub fn compander_gr(&self) -> std::sync::Arc<CompanderMeter>
+- pos · function · L1176-L1178 — pub fn pos(&self) -> Arc<PlaybackPos>
+- paused_flag · function · L1181-L1183 — pub fn paused_flag(&self) -> Arc<AtomicBool>
+- is_paused · function · L1186-L1188 — pub fn is_paused(&self) -> bool
+- seek · function · L1191-L1193 — pub fn seek(&self, secs: f64)
+- pause · function · L1196-L1202 — pub fn pause(&self)
+- resume · function · L1205-L1211 — pub fn resume(&self)
+- playing_flag · function · L1214-L1216 — pub fn playing_flag(&self) -> Arc<AtomicBool>
+- is_playing · function · L1219-L1221 — pub fn is_playing(&self) -> bool
+- play_file · function · L1225-L1232 — pub fn play_file(&self, path: &Path) -> Result<(), AudioError>
+- play_stems · function · L1241-L1254 — pub fn play_stems(
+- set_stem_gain · function · L1257-L1259 — pub fn set_stem_gain(&self, stem: usize, gain: f32)
+- stem_gains · function · L1262-L1264 — pub fn stem_gains(&self) -> Arc<StemGains>
+- play_radio · function · L1267-L1277 — pub fn play_radio(&self, url: String) -> Result<(), AudioError>
+- play_stream · function · L1282-L1297 — pub fn play_stream(
+- play_queue · function · L1302-L1308 — pub fn play_queue(&self, paths: Vec<String>, start: usize) -> Result<(), AudioError>
+- play_stream_queue · function · L1313-L1330 — pub fn play_stream_queue(
+- play_capture · function · L1333-L1339 — pub fn play_capture(&self) -> Result<(), AudioError>
+- play_system_tap · function · L1345-L1354 — pub fn play_system_tap(&self) -> Result<(), AudioError>
+- set_system_eq_scope · function · L1358-L1360 — pub fn set_system_eq_scope(&self, scope: hm_core::SystemEqScope)
+- start_system_eq · function · L1367-L1396 — pub fn start_system_eq(&self) -> Result<(), AudioError>
+- stop_system_eq · function · L1401-L1405 — pub fn stop_system_eq(&self)
+- stop · function · L1408-L1414 — pub fn stop(&self)
+- drop · function · L1418-L1424 — fn drop(&mut self)
+- output_setup · function · L1428-L1435 — fn output_setup() -> Result<(cpal::Device, cpal::StreamConfig), AudioError>
+- pick_f32_config · function · L1437-L1466 — fn pick_f32_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig, AudioError>
+- closest_supported_rate · function · L1472-L1474 — pub(crate) fn closest_supported_rate(min: u32, max: u32, preferred: Option<u32>) -> u32
+- ControlCtx · struct · L1480-L1520 — struct ControlCtx
+- SlotUpdate · enum · L1528-L1539 — enum SlotUpdate
+- slot_update · function · L1541-L1549 — fn slot_update(source: &str) -> SlotUpdate
+- publish_script · function · L1556-L1564 — fn publish_script(slot: &ScriptSlot, source: &str)
+- control_loop · function · L1566-L2142 — fn control_loop(ctx: ControlCtx)
+- EOF_POLL · constant · L1609-L1609 — const EOF_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+- build_output_stream · function · L2145-L2194 — fn build_output_stream(
+- TapWatch · struct · L2199-L2218 — struct TapWatch
+- tap_watchdog · function · L2239-L2421 — fn tap_watchdog(watch: TapWatch)
+- TICK · constant · L2242-L2242 — const TICK: Duration = Duration::from_millis(250);
+- STALL_TICKS · constant · L2244-L2244 — const STALL_TICKS: u32 = 3;
+- MAX_BACKOFF · constant · L2250-L2250 — const MAX_BACKOFF: u32 = 4;
+- tests · module · L2424-L2763 — mod tests
+- a_restored_script_is_compiled_back_into_the_slot · function · L2433-L2439 — fn a_restored_script_is_compiled_back_into_the_slot()
+- an_empty_source_clears_the_slot · function · L2444-L2447 — fn an_empty_source_clears_the_slot()
+- a_source_that_will_not_compile_leaves_the_running_program_alone · function · L2453-L2455 — fn a_source_that_will_not_compile_leaves_the_running_program_alone()
+- a_broken_source_does_not_disturb_what_is_already_playing · function · L2461-L2475 — fn a_broken_source_does_not_disturb_what_is_already_playing()
+- a_disabled_script_is_still_compiled · function · L2481-L2486 — fn a_disabled_script_is_still_compiled()
+- THRESH · constant · L2488-L2488 — const THRESH: u32 = 3;
+- stall_detector_stays_zero_when_inactive · function · L2491-L2497 — fn stall_detector_stays_zero_when_inactive()
+- stall_detector_stays_zero_while_output_progresses · function · L2500-L2505 — fn stall_detector_stays_zero_while_output_progresses()
+- stall_detector_counts_consecutive_frozen_beats · function · L2508-L2516 — fn stall_detector_counts_consecutive_frozen_beats()
+- stall_detector_reset_rearms_the_window · function · L2519-L2527 — fn stall_detector_reset_rearms_the_window()
+- stall_detector_resets_on_recovery · function · L2530-L2540 — fn stall_detector_resets_on_recovery()
+- stall_detector_pause_resets_miss_count · function · L2543-L2554 — fn stall_detector_pause_resets_miss_count()
+- assess_healthy_when_nothing_stalled · function · L2559-L2569 — fn assess_healthy_when_nothing_stalled()
+- assess_output_stall_on_live_unchanged_device_backs_off · function · L2572-L2584 — fn assess_output_stall_on_live_unchanged_device_backs_off()
+- assess_rebuilds_on_device_death_or_change · function · L2587-L2598 — fn assess_rebuilds_on_device_death_or_change()
+- assess_rebuilds_on_dead_capture_while_output_runs · function · L2601-L2608 — fn assess_rebuilds_on_dead_capture_while_output_runs()
+- assess_rebuilds_after_backoff_is_exhausted · function · L2611-L2618 — fn assess_rebuilds_after_backoff_is_exhausted()
+- cooldown_grows_exponentially_then_caps · function · L2623-L2632 — fn cooldown_grows_exponentially_then_caps()
+- system_eq_status_u8_roundtrips · function · L2635-L2645 — fn system_eq_status_u8_roundtrips()
+- rebuild_policy_gives_up_after_max_consecutive_failures · function · L2648-L2654 — fn rebuild_policy_gives_up_after_max_consecutive_failures()
+- rebuild_policy_success_resets_the_budget · function · L2657-L2665 — fn rebuild_policy_success_resets_the_budget()
+- rebuild_policy_rearms_after_giving_up · function · L2668-L2675 — fn rebuild_policy_rearms_after_giving_up()
+- closest_supported_rate_prefers_the_device_default · function · L2678-L2684 — fn closest_supported_rate_prefers_the_device_default()
+- closest_supported_rate_falls_back_to_48k_never_the_max · function · L2687-L2693 — fn closest_supported_rate_falls_back_to_48k_never_the_max()
+- constant_source · function · L2695-L2702 — fn constant_source(amplitude: f32, frames: usize) -> Box<dyn AudioSource>
+- limiter_keeps_engaged_output_below_ceiling · function · L2705-L2728 — fn limiter_keeps_engaged_output_below_ceiling()
+- power_off_bypasses_the_chain · function · L2731-L2755 — fn power_off_bypasses_the_chain()
+- meters_are_zero_for_silence · function · L2758-L2762 — fn meters_are_zero_for_silence()

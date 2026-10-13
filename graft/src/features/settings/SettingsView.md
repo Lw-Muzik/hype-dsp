@@ -1,0 +1,21 @@
+# src/features/settings/SettingsView.tsx
+
+- DeviceState · type · L75-L78 — type DeviceState = | { status: "loading" } | { status: "error"; message: string } | { status: "ready"; devices: OutputDevice[] };
+- InfoRow · function · L94-L101 — function InfoRow({ label, value }: { label: string; value: string })
+- SliderRow · function · L104-L142 — function SliderRow({ label, value, min, max, step, display, disabled = false, onChange, }: { label: string; value: number; min: number; max: number; step: number; display: string; disabled?: boolean; onChange: (value: number) => void; })
+- VisualizerCard · function · L151-L210 — function VisualizerCard()
+- MusicLibraryCard · function · L217-L383 — function MusicLibraryCard()
+- addFolder · function · L252-L270 — addFolder = async ()
+- refreshTags · function · L272-L289 — refreshTags = async ()
+- identifyMissing · function · L291-L312 — identifyMissing = async ()
+- OutputDevices · function · L391-L469 — function OutputDevices({ state, switchingUid, onSelect, }: { state: DeviceState; switchingUid: string | null; onSelect: (device: OutputDevice) => void; })
+- SettingsView · function · L476-L1047 — function SettingsView()
+- poll · function · L607-L611 — poll = ()
+- startCapture · function · L620-L623 — startCapture = ()
+- startSystemAudio · function · L624-L630 — startSystemAudio = ()
+- stopSystemEq · function · L631-L633 — stopSystemEq = ()
+- installAudioDriver · function · L636-L652 — installAudioDriver = async ()
+- setupApo · function · L658-L677 — setupApo = async ()
+- applyScope · function · L688-L697 — applyScope = async (next: { mode: SystemEqScopeMode; apps: string[] })
+- setScopeMode · function · L698-L702 — setScopeMode = (mode: SystemEqScopeMode)
+- toggleScopeApp · function · L703-L709 — toggleScopeApp = (id: string)

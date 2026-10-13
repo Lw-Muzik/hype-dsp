@@ -1,0 +1,22 @@
+# crates/hm-platform/src/lib.rs
+
+- error · module · L17-L17 — pub mod error;
+- util · module · L22-L22 — mod util;
+- macos · module · L25-L25 — mod macos;
+- win · module · L35-L35 — mod win;
+- SessionController · interface · L38-L53 — pub trait SessionController: Send
+- supported · function · L40-L42 — fn supported(&self) -> bool
+- unavailable_reason · function · L44-L46 — fn unavailable_reason(&self) -> Option<String>
+- list_sessions · function · L48-L48 — fn list_sessions(&self) -> Vec<AppSession>;
+- set_volume · function · L50-L50 — fn set_volume(&self, id: &str, gain: f32) -> Result<(), PlatformError>;
+- set_muted · function · L52-L52 — fn set_muted(&self, id: &str, muted: bool) -> Result<(), PlatformError>;
+- UnsupportedSessionController · struct · L58-L60 — pub struct UnsupportedSessionController
+- new · function · L63-L67 — pub fn new(reason: impl Into<String>) -> Self
+- supported · function · L71-L73 — fn supported(&self) -> bool
+- unavailable_reason · function · L74-L76 — fn unavailable_reason(&self) -> Option<String>
+- list_sessions · function · L77-L79 — fn list_sessions(&self) -> Vec<AppSession>
+- set_volume · function · L80-L82 — fn set_volume(&self, _id: &str, _gain: f32) -> Result<(), PlatformError>
+- set_muted · function · L83-L85 — fn set_muted(&self, _id: &str, _muted: bool) -> Result<(), PlatformError>
+- default_controller · function · L93-L95 — pub fn default_controller() -> Box<dyn SessionController>
+- default_controller · function · L103-L105 — pub fn default_controller() -> Box<dyn SessionController>
+- default_controller · function · L110-L114 — pub fn default_controller() -> Box<dyn SessionController>

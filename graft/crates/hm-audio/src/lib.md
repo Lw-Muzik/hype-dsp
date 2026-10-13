@@ -1,0 +1,49 @@
+# crates/hm-audio/src/lib.rs
+
+- capture · module · L12-L12 — pub mod capture;
+- crossfade · module · L13-L13 — pub(crate) mod crossfade;
+- decode · module · L14-L14 — pub mod decode;
+- fingerprint · module · L15-L15 — pub mod fingerprint;
+- ir_loader · module · L16-L16 — pub mod ir_loader;
+- diag · module · L17-L17 — pub(crate) mod diag;
+- device · module · L18-L18 — pub mod device;
+- resampler · module · L19-L19 — pub mod resampler;
+- engine · module · L20-L20 — pub mod engine;
+- error · module · L21-L21 — pub mod error;
+- meta · module · L22-L22 — pub mod meta;
+- output_device · module · L25-L25 — pub mod output_device;
+- queue · module · L26-L26 — pub mod queue;
+- sources · module · L27-L27 — pub mod sources;
+- spectrum · module · L28-L28 — pub mod spectrum;
+- stems · module · L29-L29 — pub mod stems;
+- stream_queue · module · L30-L30 — pub mod stream_queue;
+- streaming · module · L31-L31 — pub mod streaming;
+- thread_util · module · L33-L33 — pub(crate) mod thread_util;
+- system_eq_shared · module · L37-L37 — mod system_eq_shared;
+- system_tap · module · L39-L39 — pub mod system_tap;
+- system_eq_linux · module · L41-L41 — pub mod system_eq_linux;
+- system_eq_pipewire · module · L44-L44 — pub mod system_eq_pipewire;
+- system_eq_pulse · module · L47-L47 — pub mod system_eq_pulse;
+- system_eq_windows · module · L49-L49 — pub mod system_eq_windows;
+- system_eq_windows_apo · module · L52-L52 — pub mod system_eq_windows_apo;
+- win_driver · module · L55-L55 — pub mod win_driver;
+- system_eq_available · function · L59-L73 — pub fn system_eq_available() -> bool
+- StreamFormat · struct · L100-L103 — pub struct StreamFormat
+- new · function · L106-L111 — pub fn new(sample_rate: u32, channels: u16) -> Self
+- default · function · L116-L121 — fn default() -> Self
+- AudioSource · interface · L129-L173 — pub trait AudioSource: Send
+- start · function · L131-L131 — fn start(&mut self, format: StreamFormat) -> Result<(), AudioError>;
+- read · function · L134-L134 — fn read(&mut self, out: &mut [f32], channels: usize) -> usize;
+- stop · function · L136-L136 — fn stop(&mut self);
+- seek · function · L139-L139 — fn seek(&mut self, _frame: usize) {}
+- position · function · L141-L143 — fn position(&self) -> usize
+- total_frames · function · L145-L147 — fn total_frames(&self) -> usize
+- seekable · function · L151-L153 — fn seekable(&self) -> bool
+- is_live · function · L157-L159 — fn is_live(&self) -> bool
+- buffering · function · L162-L164 — fn buffering(&self) -> bool
+- download_bps · function · L166-L168 — fn download_bps(&self) -> u64
+- rebuffer_count · function · L170-L172 — fn rebuffer_count(&self) -> u32
+- AudioSink · interface · L176-L183 — pub trait AudioSink: Send
+- start · function · L178-L178 — fn start(&mut self, format: StreamFormat) -> Result<(), AudioError>;
+- write · function · L180-L180 — fn write(&mut self, buf: &[f32], channels: usize);
+- stop · function · L182-L182 — fn stop(&mut self);

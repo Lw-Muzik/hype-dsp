@@ -1,0 +1,29 @@
+# crates/hm-dsp/src/spatializer.rs
+
+- ITD_SECONDS · constant · L22-L22 — const ITD_SECONDS: f32 = 0.0003;
+- XFEED_LP_HZ · constant · L24-L24 — const XFEED_LP_HZ: f32 = 850.0;
+- HRTF_LP_HZ · constant · L26-L26 — const HRTF_LP_HZ: f32 = 1100.0;
+- PINNA_HZ · constant · L28-L28 — const PINNA_HZ: f32 = 7500.0;
+- flush · function · L33-L39 — fn flush(x: f32) -> f32
+- HrtfConvolver · struct · L44-L46 — pub struct HrtfConvolver
+- is_loaded · function · L50-L52 — pub fn is_loaded(&self) -> bool
+- Spatializer · struct · L55-L72 — pub struct Spatializer
+- new · function · L75-L93 — pub fn new(sample_rate: f32, channels: usize) -> Self
+- reconfigure · function · L95-L105 — fn reconfigure(&mut self)
+- hrtf_loaded · function · L109-L111 — pub fn hrtf_loaded(&self) -> bool
+- process_crossfeed · function · L115-L133 — fn process_crossfeed(&mut self, buffer: &mut [f32], channels: usize)
+- process_hrtf · function · L137-L163 — fn process_hrtf(&mut self, buffer: &mut [f32], channels: usize)
+- ILD · constant · L138-L138 — const ILD: f32 = 0.6;
+- prepare · function · L167-L171 — fn prepare(&mut self, sample_rate: f32, channels: usize)
+- process · function · L173-L182 — fn process(&mut self, buffer: &mut [f32], channels: usize)
+- set_params · function · L184-L188 — fn set_params(&mut self, params: &ProcessorParams)
+- tests · module · L192-L321 — mod tests
+- stereo · function · L196-L198 — fn stereo(pairs: &[(f32, f32)]) -> Vec<f32>
+- enabled · function · L200-L209 — fn enabled(amount: f32, mode: SpatialMode) -> EngineState
+- side_energy · function · L211-L213 — fn side_energy(buf: &[f32]) -> f32
+- amount_zero_is_identity · function · L216-L223 — fn amount_zero_is_identity()
+- crossfeed_feeds_opposite_ear_after_interaural_delay · function · L226-L246 — fn crossfeed_feeds_opposite_ear_after_interaural_delay()
+- crossfeed_narrows_hard_panned_content · function · L249-L262 — fn crossfeed_narrows_hard_panned_content()
+- hrtf_images_wider_than_crossfeed · function · L265-L286 — fn hrtf_images_wider_than_crossfeed()
+- modes_produce_distinct_output · function · L289-L304 — fn modes_produce_distinct_output()
+- output_is_bounded · function · L307-L320 — fn output_is_bounded()

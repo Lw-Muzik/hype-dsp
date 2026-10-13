@@ -1,0 +1,55 @@
+# crates/hm-ytmusic/src/explore.rs
+
+- PAGE_TYPE · constant · L56-L57 — const PAGE_TYPE: &str =
+- ALBUM_PAGE · constant · L59-L59 — const ALBUM_PAGE: &str = "MUSIC_PAGE_TYPE_ALBUM";
+- PLAYLIST_PAGE · constant · L60-L60 — const PLAYLIST_PAGE: &str = "MUSIC_PAGE_TYPE_PLAYLIST";
+- ARTIST_PAGE · constant · L61-L61 — const ARTIST_PAGE: &str = "MUSIC_PAGE_TYPE_ARTIST";
+- CARD_VIDEO_TYPE · constant · L65-L66 — const CARD_VIDEO_TYPE: &str =
+- TOP_RESULT · constant · L71-L71 — const TOP_RESULT: &str = "Top result";
+- ExploreItem · struct · L77-L117 — pub struct ExploreItem
+- ExploreKind · enum · L122-L128 — pub enum ExploreKind
+- ExploreShelf · struct · L133-L136 — pub struct ExploreShelf
+- parse_page · function · L144-L148 — pub fn parse_page(json: &Value) -> Vec<ExploreShelf>
+- collect_shelves · function · L150-L175 — fn collect_shelves(v: &Value, out: &mut Vec<ExploreShelf>)
+- push_shelf · function · L181-L187 — fn push_shelf(title: Option<String>, contents: Option<&Value>, out: &mut Vec<ExploreShelf>)
+- carousel_title · function · L189-L194 — fn carousel_title(shelf: &Value) -> Option<String>
+- shelf_title · function · L196-L201 — fn shelf_title(shelf: &Value) -> Option<String>
+- parse_card_shelf · function · L205-L215 — fn parse_card_shelf(shelf: &Value) -> Option<ExploreShelf>
+- parse_card · function · L219-L231 — fn parse_card(card: &Value) -> Option<ExploreItem>
+- parse_items · function · L233-L238 — fn parse_items(contents: Option<&Value>) -> Vec<ExploreItem>
+- parse_content · function · L243-L248 — fn parse_content(v: &Value) -> Option<ExploreItem>
+- parse_item · function · L251-L267 — fn parse_item(card: &Value) -> Option<ExploreItem>
+- open · function · L274-L315 — fn open<'a>(
+- parse_row · function · L325-L367 — fn parse_row(row: &Value) -> Option<ExploreItem>
+- byline · function · L379-L386 — fn byline(row: &Value) -> impl Iterator<Item = &Value> + Clone
+- linked_runs · function · L393-L407 — fn linked_runs<'a>(byline: impl Iterator<Item = &'a Value>, page_type: &str) -> Option<String>
+- duration_of · function · L415-L422 — fn duration_of<'a>(byline: impl Iterator<Item = &'a Value>) -> Option<f64>
+- fixed_duration · function · L426-L436 — fn fixed_duration(row: &Value) -> Option<f64>
+- kind_of · function · L441-L447 — fn kind_of(video_type: Option<&str>) -> ExploreKind
+- classify · function · L456-L467 — fn classify(browse_id: &str, page_type: Option<&str>) -> Option<ExploreKind>
+- playlist_browse_id · function · L476-L482 — fn playlist_browse_id(id: &str) -> String
+- tests · module · L485-L920 — mod tests
+- thumb · function · L489-L491 — fn thumb(url: &str, w: u64, h: u64) -> Value
+- item · function · L493-L509 — fn item(title: &str, browse_id: Option<&str>, subtitle: &[&str]) -> Value
+- shelf · function · L511-L520 — fn shelf(header: &str, items: Vec<Value>) -> Value
+- page · function · L522-L524 — fn page(shelves: Vec<Value>) -> Value
+- linked · function · L528-L538 — fn linked(text: &str, browse_id: &str, page_type: &str) -> Value
+- row · function · L542-L567 — fn row(title: &str, video_id: &str, cols: Vec<Vec<Value>>, video_type: Option<&str>) -> Value
+- reads_playlists_and_albums_from_their_shelves · function · L570-L601 — fn reads_playlists_and_albums_from_their_shelves()
+- reads_a_songs_carousel_of_list_rows · function · L606-L638 — fn reads_a_songs_carousel_of_list_rows()
+- reads_a_search_song_row_whose_album_sits_in_another_column · function · L644-L669 — fn reads_a_search_song_row_whose_album_sits_in_another_column()
+- reads_a_music_video_card_from_its_watch_endpoint · function · L674-L696 — fn reads_a_music_video_card_from_its_watch_endpoint()
+- a_stated_page_type_beats_the_id_prefix · function · L702-L711 — fn a_stated_page_type_beats_the_id_prefix()
+- falls_back_to_the_prefix_when_no_type_is_stated · function · L714-L719 — fn falls_back_to_the_prefix_when_no_type_is_stated()
+- playlist_ids_carry_the_vl_prefix_exactly_once · function · L724-L728 — fn playlist_ids_carry_the_vl_prefix_exactly_once()
+- a_playlist_result_without_the_prefix_gains_one · function · L733-L749 — fn a_playlist_result_without_the_prefix_gains_one()
+- reads_the_top_result_card_and_the_rows_beneath_it · function · L754-L776 — fn reads_the_top_result_card_and_the_rows_beneath_it()
+- drops_shelves_whose_items_open_nothing · function · L781-L796 — fn drops_shelves_whose_items_open_nothing()
+- skips_only_the_items_it_cannot_read · function · L801-L822 — fn skips_only_the_items_it_cannot_read()
+- drops_podcast_and_upload_rows · function · L827-L844 — fn drops_podcast_and_upload_rows()
+- does_not_mistake_a_year_or_a_view_count_for_a_duration · function · L849-L856 — fn does_not_mistake_a_year_or_a_view_count_for_a_duration()
+- reads_a_duration_from_a_fixed_column_when_the_byline_has_none · function · L861-L868 — fn reads_a_duration_from_a_fixed_column_when_the_byline_has_none()
+- a_credit_without_a_link_leaves_the_artist_absent_not_wrong · function · L873-L888 — fn a_credit_without_a_link_leaves_the_artist_absent_not_wrong()
+- a_page_it_understands_nothing_of_is_empty_not_an_error · function · L891-L897 — fn a_page_it_understands_nothing_of_is_empty_not_an_error()
+- a_shelf_without_a_header_is_skipped_rather_than_titled_blank · function · L900-L907 — fn a_shelf_without_a_header_is_skipped_rather_than_titled_blank()
+- picks_the_largest_thumbnail · function · L910-L919 — fn picks_the_largest_thumbnail()

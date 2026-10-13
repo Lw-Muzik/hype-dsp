@@ -1,0 +1,44 @@
+# src-tauri/src/commands/engine.rs
+
+- engine_get_state · function · L16-L18 — pub fn engine_get_state(engine: State<'_, AudioEngine>) -> EngineState
+- engine_set_power · function · L22-L24 — pub fn engine_set_power(engine: State<'_, AudioEngine>, power: bool)
+- engine_set_master_volume · function · L28-L30 — pub fn engine_set_master_volume(engine: State<'_, AudioEngine>, volume: f32)
+- engine_set_eq · function · L34-L45 — pub fn engine_set_eq(
+- EqImportResult · struct · L50-L53 — pub struct EqImportResult
+- apply_graphic_curve · function · L61-L70 — pub fn apply_graphic_curve(
+- engine_eq_import_graphic · function · L75-L80 — pub fn engine_eq_import_graphic(
+- engine_eq_import_vdc · function · L86-L96 — pub fn engine_eq_import_vdc(
+- ddc_list · function · L100-L102 — pub fn ddc_list() -> Vec<String>
+- engine_eq_apply_ddc · function · L107-L120 — pub fn engine_eq_apply_ddc(
+- engine_set_bass · function · L124-L132 — pub fn engine_set_bass(
+- engine_set_spatializer · function · L136-L143 — pub fn engine_set_spatializer(
+- engine_set_surround3d · function · L147-L155 — pub fn engine_set_surround3d(
+- engine_set_room · function · L159-L161 — pub fn engine_set_room(engine: State<'_, AudioEngine>, room: RoomState)
+- engine_set_convolver · function · L165-L167 — pub fn engine_set_convolver(engine: State<'_, AudioEngine>, convolver: hm_core::ConvolverState)
+- engine_set_compander · function · L171-L173 — pub fn engine_set_compander(engine: State<'_, AudioEngine>, compander: hm_core::CompanderState)
+- engine_set_saturation · function · L177-L179 — pub fn engine_set_saturation(engine: State<'_, AudioEngine>, saturation: hm_core::SaturationState)
+- engine_script_compile · function · L193-L200 — pub async fn engine_script_compile(
+- engine_set_script · function · L204-L206 — pub fn engine_set_script(engine: State<'_, AudioEngine>, enabled: bool)
+- engine_set_output · function · L211-L213 — pub fn engine_set_output(engine: State<'_, AudioEngine>, output: hm_core::OutputState)
+- engine_convolver_load_ir · function · L219-L226 — pub fn engine_convolver_load_ir(
+- player_play_file · function · L233-L235 — pub fn player_play_file(engine: State<'_, AudioEngine>, path: String) -> Result<(), IpcError>
+- player_play_radio · function · L239-L241 — pub fn player_play_radio(engine: State<'_, AudioEngine>, url: String) -> Result<(), IpcError>
+- engine_set_playback · function · L245-L247 — pub fn engine_set_playback(engine: State<'_, AudioEngine>, gapless: bool, crossfade_secs: f32)
+- engine_set_data_saver · function · L251-L253 — pub fn engine_set_data_saver(engine: State<'_, AudioEngine>, on: bool)
+- engine_set_autoplay · function · L257-L259 — pub fn engine_set_autoplay(engine: State<'_, AudioEngine>, on: bool)
+- player_play_queue · function · L265-L271 — pub fn player_play_queue(
+- player_play_capture · function · L278-L289 — pub fn player_play_capture(engine: State<'_, AudioEngine>) -> Result<(), IpcError>
+- capture_virtual_available · function · L293-L295 — pub fn capture_virtual_available() -> bool
+- system_audio_available · function · L301-L310 — pub fn system_audio_available() -> bool
+- player_play_system_audio · function · L319-L336 — pub fn player_play_system_audio(engine: State<'_, AudioEngine>) -> Result<(), IpcError>
+- system_eq_set_scope · function · L342-L344 — pub fn system_eq_set_scope(engine: State<'_, AudioEngine>, scope: hm_core::SystemEqScope)
+- stop_system_audio · function · L352-L361 — pub fn stop_system_audio(engine: State<'_, AudioEngine>)
+- SystemAudioStatus · struct · L367-L388 — pub struct SystemAudioStatus
+- system_audio_status · function · L395-L458 — pub fn system_audio_status(app: tauri::AppHandle) -> SystemAudioStatus
+- system_eq_status · function · L465-L467 — pub fn system_eq_status(engine: State<'_, AudioEngine>) -> hm_audio::SystemEqStatus
+- system_audio_install_driver · function · L475-L490 — pub fn system_audio_install_driver(app: tauri::AppHandle) -> Result<(), IpcError>
+- player_stop · function · L494-L496 — pub fn player_stop(engine: State<'_, AudioEngine>)
+- player_pause · function · L500-L502 — pub fn player_pause(engine: State<'_, AudioEngine>)
+- player_resume · function · L506-L508 — pub fn player_resume(engine: State<'_, AudioEngine>)
+- player_seek · function · L512-L514 — pub fn player_seek(engine: State<'_, AudioEngine>, secs: f64)
+- player_is_playing · function · L518-L520 — pub fn player_is_playing(engine: State<'_, AudioEngine>) -> bool

@@ -1,0 +1,29 @@
+# crates/hm-ytmusic/src/playlist.rs
+
+- GREY_OUT · constant · L37-L37 — const GREY_OUT: &str = "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT";
+- VIDEO_TYPE_PATH · constant · L52-L56 — pub(crate) const VIDEO_TYPE_PATH: &str = concat!(
+- is_music · function · L58-L63 — pub(crate) fn is_music(video_type: Option<&str>) -> bool
+- has_video · function · L79-L81 — pub(crate) fn has_video(video_type: Option<&str>) -> bool
+- parse_page · function · L84-L90 — pub fn parse_page(json: &Value, playlist: &YtPlaylist) -> Vec<YtTrack>
+- next_page_token · function · L99-L117 — pub fn next_page_token(json: &Value) -> Option<String>
+- walk · function · L100-L115 — fn walk(v: &Value) -> Option<String>
+- collect_rows · function · L119-L133 — fn collect_rows<'a>(v: &'a Value, out: &mut Vec<&'a Value>)
+- flex_text · function · L136-L140 — pub(crate) fn flex_text(row: &Value, col: usize) -> Option<String>
+- parse_row · function · L142-L181 — fn parse_row(row: &Value, playlist: &YtPlaylist) -> Option<YtTrack>
+- duration_of · function · L185-L192 — fn duration_of(row: &Value) -> Option<String>
+- tests · module · L195-L420 — mod tests
+- playlist · function · L199-L207 — fn playlist() -> YtPlaylist
+- row · function · L211-L237 — fn row(title: &str, video_id: &str, artist: &str, artist_browse: Option<&str>) -> Value
+- first_page · function · L240-L244 — fn first_page(rows: Vec<Value>) -> Value
+- continuation_page · function · L247-L250 — fn continuation_page(rows: Vec<Value>) -> Value
+- a_row_without_an_artist_browse_id_is_kept · function · L255-L267 — fn a_row_without_an_artist_browse_id_is_kept()
+- reads_rows_from_a_continuation_page_too · function · L272-L277 — fn reads_rows_from_a_continuation_page_too()
+- maps_a_row_onto_a_track · function · L280-L291 — fn maps_a_row_onto_a_track()
+- with_type · function · L300-L308 — fn with_type(mut row: Value, video_type: &str) -> Value
+- only_real_videos_report_having_video · function · L314-L328 — fn only_real_videos_report_having_video()
+- a_row_without_a_video_type_reports_no_video · function · L334-L338 — fn a_row_without_a_video_type_reports_no_video()
+- real_rows_from_a_captured_response_report_their_video_type · function · L352-L376 — fn real_rows_from_a_captured_response_report_their_video_type()
+- drops_podcasts_and_uploads_but_keeps_videos · function · L379-L391 — fn drops_podcasts_and_uploads_but_keeps_videos()
+- skips_deleted_and_id_less_rows_without_failing · function · L394-L403 — fn skips_deleted_and_id_less_rows_without_failing()
+- marks_greyed_out_rows_unavailable_rather_than_dropping_them · function · L406-L413 — fn marks_greyed_out_rows_unavailable_rather_than_dropping_them()
+- a_page_with_no_rows_is_empty_not_an_error · function · L416-L419 — fn a_page_with_no_rows_is_empty_not_an_error()

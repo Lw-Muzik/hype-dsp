@@ -1,0 +1,43 @@
+# src/features/stations/TvPlayer.tsx
+
+- Status · type · L30-L30 — type Status = "loading" | "playing" | "paused" | "error";
+- Mode · type · L32-L32 — type Mode = "normal" | "mini" | "full";
+- Level · type · L33-L33 — type Level = { index: number; label: string };
+- Track · type · L34-L34 — type Track = { id: number; label: string };
+- fmtTime · function · L39-L47 — function fmtTime(s: number): string
+- TvPlayer · function · L57-L641 — function TvPlayer({ channel, onClose }: { channel: TvChannel; onClose: () => void })
+- armStall · function · L108-L113 — armStall = ()
+- teardown · function · L123-L131 — teardown = ()
+- play · function · L134-L140 — play = ()
+- onPlaying · function · L144-L147 — onPlaying = ()
+- onPlaying · function · L248-L248 — onPlaying = ()
+- onWaiting · function · L249-L249 — onWaiting = ()
+- onPause · function · L250-L250 — onPause = ()
+- onError · function · L251-L251 — onError = ()
+- onVolume · function · L252-L255 — onVolume = ()
+- onTime · function · L256-L256 — onTime = ()
+- onDuration · function · L257-L260 — onDuration = ()
+- onProgress · function · L261-L264 — onProgress = ()
+- onEnterPip · function · L265-L265 — onEnterPip = ()
+- onLeavePip · function · L266-L266 — onLeavePip = ()
+- changeVolume · function · L301-L306 — changeVolume = (value: number)
+- seekTo · function · L313-L316 — seekTo = (t: number)
+- setLevel · function · L322-L325 — setLevel = (index: number)
+- setAudio · function · L326-L329 — setAudio = (id: number)
+- setSubtitle · function · L330-L337 — setSubtitle = (id: number)
+- changeSpeed · function · L338-L342 — changeSpeed = (rate: number)
+- togglePip · function · L343-L352 — togglePip = async ()
+- onKey · function · L357-L359 — onKey = (e: KeyboardEvent)
+- onKey · function · L366-L397 — onKey = (e: KeyboardEvent)
+- onResize · function · L403-L403 — onResize = ()
+- onDragDown · function · L421-L425 — onDragDown = (e: ReactPointerEvent)
+- onDragMove · function · L426-L430 — onDragMove = (e: ReactPointerEvent)
+- onDragUp · function · L431-L433 — onDragUp = ()
+- SettingsMenu · function · L645-L720 — function SettingsMenu({ levels, currentLevel, onLevel, audioTracks, audioTrack, onAudio, subtitleTracks, subtitleTrack, onSubtitle, seekable, speed, onSpeed, onClose, }: { levels: Level[]; currentLevel: number; onLevel: (index: number) => void; audioTracks: Track[]; audioTrack: number; onAudio: (id: number) => void; subtitleTracks: Track[]; subtitleTrack: number; onSubtitle: (id: number) => void; seekable: boolean; speed: number; onSpeed: (rate: number) => void; onClose: () => void; })
+- onDown · function · L676-L678 — onDown = (e: MouseEvent)
+- Section · function · L722-L729 — function Section({ title, children }: { title: string; children: ReactNode })
+- MenuItem · function · L731-L742 — function MenuItem({ selected, onClick, label }: { selected: boolean; onClick: () => void; label: string })
+- IconBtn · function · L745-L757 — function IconBtn({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode })
+- heightFor · function · L759-L761 — function heightFor(mode: Exclude<Mode, "full">): number
+- defaultPos · function · L762-L767 — function defaultPos(mode: Exclude<Mode, "full">): { x: number; y: number }
+- clamp · function · L768-L776 — function clamp(p: { x: number; y: number }, mode: Mode): { x: number; y: number }

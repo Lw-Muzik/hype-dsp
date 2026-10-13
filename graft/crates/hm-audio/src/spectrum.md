@@ -1,0 +1,26 @@
+# crates/hm-audio/src/spectrum.rs
+
+- SPECTRUM_BANDS · constant · L16-L16 — pub const SPECTRUM_BANDS: usize = 64;
+- WAVEFORM_SAMPLES · constant · L19-L19 — pub const WAVEFORM_SAMPLES: usize = 512;
+- FFT_SIZE · constant · L21-L21 — const FFT_SIZE: usize = 2048;
+- DB_FLOOR · constant · L23-L23 — const DB_FLOOR: f32 = 80.0;
+- LOW_HZ · constant · L24-L24 — const LOW_HZ: f32 = 20.0;
+- HIGH_HZ · constant · L25-L25 — const HIGH_HZ: f32 = 20_000.0;
+- SpectrumTap · struct · L30-L35 — pub struct SpectrumTap
+- default · function · L38-L43 — fn default() -> Self
+- store · function · L47-L51 — fn store(&self, values: &[f32; SPECTRUM_BANDS])
+- store_waveform · function · L55-L59 — fn store_waveform(&self, samples: &[f32])
+- load · function · L62-L67 — pub fn load(&self) -> Vec<f32>
+- load_waveform · function · L70-L75 — pub fn load_waveform(&self) -> Vec<f32>
+- zero · function · L78-L85 — pub fn zero(&self)
+- Analyzer · struct · L91-L106 — pub struct Analyzer
+- new · function · L111-L154 — pub fn new(sample_rate: f32) -> Self
+- push · function · L161-L198 — pub fn push(&mut self, block: &[f32], channels: usize, tap: &SpectrumTap)
+- analyze · function · L201-L227 — fn analyze(&mut self) -> [f32; SPECTRUM_BANDS]
+- band_for · function · L230-L236 — pub fn band_for(&self, freq_hz: f32, sample_rate: f32) -> usize
+- mono · function · L240-L246 — fn mono(block: &[f32], base: usize, channels: usize) -> f32
+- tests · module · L249-L351 — mod tests
+- sine_peaks_in_its_band · function · L253-L285 — fn sine_peaks_in_its_band()
+- silence_produces_zero_bands · function · L288-L293 — fn silence_produces_zero_bands()
+- hop_gating_skips_analysis_between_hops · function · L296-L326 — fn hop_gating_skips_analysis_between_hops()
+- publishes_latest_pcm_window · function · L329-L350 — fn publishes_latest_pcm_window()

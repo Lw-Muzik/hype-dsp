@@ -1,0 +1,63 @@
+# crates/hm-dsp/src/compander.rs
+
+- BAND_COUNT · constant · L39-L39 — pub const BAND_COUNT: usize = 10;
+- CROSSOVER_COUNT · constant · L40-L40 — const CROSSOVER_COUNT: usize = BAND_COUNT - 1; // 9
+- CENTERS_HZ · constant · L41-L42 — const CENTERS_HZ: [f32; BAND_COUNT] =
+- BUTTERWORTH_Q · constant · L43-L43 — const BUTTERWORTH_Q: f32 = std::f32::consts::FRAC_1_SQRT_2;
+- LOG10_20 · constant · L47-L47 — const LOG10_20: f32 = 8.685_889; // 20/ln(10)
+- INV_LOG10_20 · constant · L48-L48 — const INV_LOG10_20: f32 = 0.115_129_255; // ln(10)/20
+- LOOKAHEAD_MS · constant · L51-L51 — const LOOKAHEAD_MS: f32 = 3.0;
+- CTRL_INTERVAL · constant · L60-L60 — const CTRL_INTERVAL: usize = 8;
+- DB_PER_OCTAVE · constant · L62-L62 — const DB_PER_OCTAVE: f32 = 20.0 * std::f32::consts::LOG10_2;
+- flush · function · L65-L67 — fn flush(x: f32) -> f32
+- db_to_lin · function · L69-L71 — fn db_to_lin(db: f32) -> f32
+- lin_to_db · function · L77-L79 — fn lin_to_db(lin: f32) -> f32
+- lin_to_db_fast · function · L90-L104 — fn lin_to_db_fast(lin: f32) -> f32
+- CompanderMeter · struct · L114-L116 — pub struct CompanderMeter
+- default · function · L119-L121 — fn default() -> Self
+- new · function · L125-L130 — pub fn new() -> Self
+- store_band · function · L134-L136 — pub fn store_band(&self, band: usize, gr_db: f32)
+- load · function · L139-L141 — pub fn load(&self) -> [f32; BAND_COUNT]
+- LrChannel · struct · L151-L153 — struct LrChannel
+- new · function · L155-L157 — fn new() -> Self
+- configure · function · L158-L162 — fn configure(&mut self, sr: f32, freq: f32)
+- reset · function · L163-L167 — fn reset(&mut self)
+- lowpass · function · L170-L173 — fn lowpass(&mut self, x: f32) -> f32
+- BandCompressor · struct · L199-L224 — struct BandCompressor
+- new · function · L227-L251 — fn new(sample_rate: f32) -> Self
+- prepare · function · L253-L262 — fn prepare(&mut self, sample_rate: f32)
+- recalc · function · L264-L273 — fn recalc(&mut self, attack_ms: f32, release_ms: f32)
+- set_params · function · L275-L284 — fn set_params(&mut self, p: &ProcessorParams)
+- reset · function · L286-L295 — fn reset(&mut self)
+- current_gain_db · function · L299-L301 — fn current_gain_db(&self) -> f32
+- compute_gain · function · L305-L325 — fn compute_gain(&self, input_db: f32) -> f32
+- advance_gain · function · L336-L368 — fn advance_gain(&mut self, peak: f32) -> f32
+- process_frame · function · L377-L400 — fn process_frame(&mut self, l: &mut f32, r: &mut f32)
+- process_frame_mono · function · L406-L420 — fn process_frame_mono(&mut self, l: &mut f32)
+- lookahead_samples · function · L427-L429 — fn lookahead_samples(sample_rate: f32) -> usize
+- Compander · struct · L436-L448 — pub struct Compander
+- with_meter · function · L452-L464 — pub fn with_meter(sample_rate: f32, _channels: usize, meter: Arc<CompanderMeter>) -> Self
+- new · function · L467-L469 — pub fn new(sample_rate: f32, channels: usize) -> Self
+- meter · function · L472-L474 — pub fn meter(&self) -> Arc<CompanderMeter>
+- crossover_freq · function · L476-L478 — fn crossover_freq(i: usize) -> f32
+- reconfigure · function · L480-L486 — fn reconfigure(&mut self)
+- prepare · function · L490-L505 — fn prepare(&mut self, sample_rate: f32, _channels: usize)
+- process · function · L507-L593 — fn process(&mut self, buffer: &mut [f32], channels: usize)
+- set_params · function · L595-L609 — fn set_params(&mut self, params: &ProcessorParams)
+- tests · module · L613-L1138 — mod tests
+- compander_params · function · L617-L619 — fn compander_params(c: CompanderState) -> EngineState
+- flat_params · function · L621-L633 — fn flat_params() -> EngineState
+- rms · function · L635-L637 — fn rms(buf: &[f32]) -> f32
+- disabled_is_identity · function · L644-L660 — fn disabled_is_identity()
+- flat_compander_reconstructs_input · function · L663-L721 — fn flat_compander_reconstructs_input()
+- fast_attack_reduces_faster_than_slow · function · L724-L799 — fn fast_attack_reduces_faster_than_slow()
+- meter_reports_reduction_under_compression · function · L802-L855 — fn meter_reports_reduction_under_compression()
+- stays_bounded · function · L858-L881 — fn stays_bounded()
+- loud_input_is_compressed · function · L884-L926 — fn loud_input_is_compressed()
+- RefBand · struct · L931-L939 — struct RefBand
+- new · function · L942-L954 — fn new(sr: f32, attack_ms: f32, release_ms: f32) -> Self
+- process · function · L958-L975 — fn process(&mut self, x: f32, curve: &BandCompressor) -> f32
+- decimated_band_matches_per_frame_reference · function · L981-L1033 — fn decimated_band_matches_per_frame_reference()
+- fast_db_conversion_is_accurate · function · L1038-L1055 — fn fast_db_conversion_is_accurate()
+- mono_matches_dual_mono_stereo · function · L1060-L1094 — fn mono_matches_dual_mono_stereo()
+- quiet_below_gate_is_expanded_down · function · L1097-L1137 — fn quiet_below_gate_is_expanded_down()

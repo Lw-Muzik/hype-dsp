@@ -1,0 +1,34 @@
+# src/stores/engine.ts
+
+- QueueSource · type · L88-L88 — type QueueSource = "local" | "phone" | "cloud" | "ytmusic" | "radio" | "cast";
+- RepeatMode · type · L91-L91 — type RepeatMode = "off" | "all" | "one";
+- QueueItem · interface · L98-L118 — interface QueueItem
+- localItem · function · L187-L197 — function localItem(track: LibraryTrack): QueueItem
+- phoneItem · function · L199-L210 — function phoneItem(device: PhoneDevice, t: PhoneTrack): QueueItem
+- cloudItem · function · L212-L222 — function cloudItem(file: CloudEntry): QueueItem
+- ytmusicItem · function · L224-L237 — function ytmusicItem(t: YtTrack): QueueItem
+- radioItem · function · L240-L242 — function radioItem(t: YtTrack): QueueItem
+- extFromName · function · L246-L249 — function extFromName(name: string): string | undefined
+- itemMeta · function · L261-L268 — function itemMeta(item: QueueItem): TrackMeta
+- reconcileDuration · function · L289-L298 — function reconcileDuration( itemDuration: number | null, engineDuration: number | null, prevDuration: number | null, ): number | null
+- shuffleInPlace · function · L303-L309 — function shuffleInPlace<T>(arr: T[]): T[]
+- buildOrder · function · L312-L322 — function buildOrder( len: number, shuffle: boolean, start: number, ): { order: number[]; orderPos: number }
+- stepOrder · function · L325-L336 — function stepOrder( pos: number, len: number, repeat: RepeatMode, dir: 1 | -1, ): number | null
+- EngineStore · interface · L338-L459 — interface EngineStore
+- pushEq · function · L496-L498 — pushEq = (eq: EngineState["eq"])
+- idleState · function · L501-L513 — idleState = ()
+- startPlayback · function · L520-L683 — startPlayback = (pos: number)
+- onError · function · L542-L543 — onError = (e: unknown)
+- cloudNeedsMeta · function · L687-L692 — cloudNeedsMeta = (it: QueueItem): boolean
+- fillNowPlayingCover · function · L698-L714 — fillNowPlayingCover = (item: QueueItem): void
+- enrichCloudQueue · function · L726-L804 — enrichCloudQueue = (items: QueueItem[]): void
+- flush · function · L734-L778 — flush = ()
+- scheduleFlush · function · L780-L782 — scheduleFlush = ()
+- worker · function · L784-L798 — worker = async ()
+- setQueueAndPlay · function · L807-L822 — setQueueAndPlay = (items: QueueItem[], index: number)
+- resetRadioSession · function · L833-L841 — resetRadioSession = ()
+- appendQueueItems · function · L846-L854 — appendQueueItems = (items: QueueItem[])
+- resumeIfEndedNaturally · function · L857-L864 — resumeIfEndedNaturally = ()
+- fetchRadio · function · L869-L898 — fetchRadio = (step: NonNullable<ReturnType<typeof radioStep>>)
+- maybeExtendRadio · function · L901-L916 — maybeExtendRadio = ()
+- advanceOnEnd · function · L919-L958 — advanceOnEnd = ()

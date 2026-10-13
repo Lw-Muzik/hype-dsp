@@ -1,0 +1,26 @@
+# src/features/player/MusicLibrary.tsx
+
+- SourceFilter · type · L35-L35 — type SourceFilter = "all" | "local" | "phone" | "cloud";
+- Facet · type · L36-L36 — type Facet = "songs" | "albums" | "artists" | "folders" | "genres";
+- ViewMode · type · L37-L37 — type ViewMode = "list" | "grid";
+- Group · interface · L47-L55 — interface Group
+- groupTracks · function · L58-L91 — function groupTracks(tracks: MusicTrack[], facet: Facet): Group[]
+- pickDeck · function · L99-L122 — function pickDeck(tracks: MusicTrack[]): DeckItem[]
+- isUnavailable · function · L127-L129 — function isUnavailable(t: MusicTrack): boolean
+- matches · function · L131-L138 — function matches(t: MusicTrack, q: string): boolean
+- MusicLibrary · function · L152-L474 — function MusicLibrary()
+- playAt · function · L225-L237 — playAt = (list: MusicTrack[], index: number)
+- SourcePill · function · L476-L510 — function SourcePill({ icon: Icon, label, count, dot, active, onClick, }: { icon?: LucideIcon; label: string; count?: number; dot?: boolean; active: boolean; onClick: () => void; })
+- FacetTabs · function · L512-L543 — function FacetTabs({ facet, onSelect }: { facet: Facet; onSelect: (f: Facet) => void })
+- GroupRow · function · L545-L584 — function GroupRow({ group, facetIcon: Icon, showArt, onOpen, }: { group: Group; facetIcon: LucideIcon; showArt: boolean; onOpen: () => void; })
+- ViewToggle · function · L586-L608 — function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) => void })
+- btn · function · L587-L601 — btn = (mode: ViewMode, Icon: LucideIcon, label: string)
+- TrackCard · function · L621-L686 — function TrackCard({ track, playing, onPlay, }: { track: MusicTrack; playing: boolean; onPlay: () => void; })
+- GroupCard · function · L689-L728 — function GroupCard({ group, facetIcon: Icon, showArt, onOpen, }: { group: Group; facetIcon: LucideIcon; showArt: boolean; onOpen: () => void; })
+- SectionHeader · function · L730-L737 — function SectionHeader({ title, subtitle }: { title: string; subtitle?: string })
+- Empty · function · L739-L741 — function Empty({ message }: { message: string })
+- LibraryLoading · function · L744-L751 — function LibraryLoading({ message }: { message: string })
+- EmptySource · function · L754-L787 — function EmptySource({ source }: { source: SourceFilter })
+- CenteredEmpty · function · L789-L809 — function CenteredEmpty({ icon: Icon, title, body, }: { icon: LucideIcon; title: string; body: string; })
+- ConnectKind · type · L812-L812 — type ConnectKind = "phone" | "cloud";
+- ConnectPrompt · function · L832-L849 — function ConnectPrompt({ kind, onConnect }: { kind: ConnectKind; onConnect: () => void })

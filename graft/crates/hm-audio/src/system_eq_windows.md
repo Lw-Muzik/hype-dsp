@@ -1,0 +1,46 @@
+# crates/hm-audio/src/system_eq_windows.rs
+
+- VIRTUAL_DEVICE_NAME · constant · L91-L91 — pub const VIRTUAL_DEVICE_NAME: &str = "HypeMuzik";
+- FALLBACK_CABLE_NAME · constant · L98-L98 — pub const FALLBACK_CABLE_NAME: &str = "CABLE Input";
+- routing_device_names · function · L111-L119 — fn routing_device_names() -> Vec<String>
+- DSP_CHANNELS · constant · L123-L123 — const DSP_CHANNELS: usize = 2;
+- PKEY_DEVICE_FRIENDLY_NAME · constant · L127-L130 — const PKEY_DEVICE_FRIENDLY_NAME: PROPERTYKEY = PROPERTYKEY
+- CLSID_POLICY_CONFIG_CLIENT · constant · L137-L137 — const CLSID_POLICY_CONFIG_CLIENT: GUID = GUID::from_u128(0x870af99c_171d_4f9e_af0d_e63df40c2bc9);
+- IPolicyConfig · interface · L144-L195 — unsafe trait IPolicyConfig: IUnknown
+- get_mix_format · function · L146-L146 — unsafe fn get_mix_format(&self, name: PCWSTR, format: *mut *mut WAVEFORMATEX) -> HRESULT;
+- get_device_format · function · L148-L153 — unsafe fn get_device_format(
+- reset_device_format · function · L155-L155 — unsafe fn reset_device_format(&self, name: PCWSTR) -> HRESULT;
+- set_device_format · function · L157-L162 — unsafe fn set_device_format(
+- get_processing_period · function · L164-L170 — unsafe fn get_processing_period(
+- set_processing_period · function · L172-L172 — unsafe fn set_processing_period(&self, name: PCWSTR, period: *const i64) -> HRESULT;
+- get_share_mode · function · L174-L174 — unsafe fn get_share_mode(&self, name: PCWSTR, mode: *mut i32) -> HRESULT;
+- set_share_mode · function · L176-L176 — unsafe fn set_share_mode(&self, name: PCWSTR, mode: *const i32) -> HRESULT;
+- get_property_value · function · L178-L183 — unsafe fn get_property_value(
+- set_property_value · function · L185-L190 — unsafe fn set_property_value(
+- set_default_endpoint · function · L192-L192 — unsafe fn set_default_endpoint(&self, device_id: PCWSTR, role: i32) -> HRESULT;
+- set_endpoint_visibility · function · L194-L194 — unsafe fn set_endpoint_visibility(&self, name: PCWSTR, visible: i32) -> HRESULT;
+- ComGuard · struct · L204-L210 — struct ComGuard
+- new · function · L214-L221 — fn new() -> Self
+- drop · function · L225-L230 — fn drop(&mut self)
+- available · function · L243-L247 — pub fn available() -> bool
+- virtual_device_present · function · L252-L268 — unsafe fn virtual_device_present() -> windows::core::Result<bool>
+- device_friendly_name · function · L271-L277 — unsafe fn device_friendly_name(device: &IMMDevice) -> Option<String>
+- find_virtual_device · function · L285-L307 — unsafe fn find_virtual_device(
+- device_id · function · L310-L316 — unsafe fn device_id(device: &IMMDevice) -> windows::core::Result<String>
+- WindowsSystemEq · struct · L321-L327 — pub struct WindowsSystemEq
+- start · function · L332-L413 — pub fn start(state: Arc<ArcSwap<EngineState>>) -> Result<Self, AudioError>
+- drop · function · L417-L429 — fn drop(&mut self)
+- switch_default_to_virtual · function · L441-L463 — unsafe fn switch_default_to_virtual() -> Option<String>
+- set_default_endpoint · function · L468-L482 — unsafe fn set_default_endpoint(device_id: &str) -> bool
+- to_wide · function · L485-L487 — fn to_wide(s: &str) -> Vec<u16>
+- ClientFormat · struct · L495-L502 — struct ClientFormat
+- run_pipeline · function · L507-L740 — unsafe fn run_pipeline(
+- append_capture · function · L745-L782 — unsafe fn append_capture(
+- write_render · function · L787-L845 — unsafe fn write_render(
+- read_format · function · L853-L875 — unsafe fn read_format(format: *const WAVEFORMATEX) -> ClientFormat
+- HandleGuard · struct · L882-L882 — struct HandleGuard(HANDLE);
+- drop · function · L884-L889 — fn drop(&mut self)
+- StopGuard · struct · L893-L893 — struct StopGuard<'a>(&'a IAudioClient);
+- drop · function · L895-L898 — fn drop(&mut self)
+- MmcssGuard · struct · L902-L902 — struct MmcssGuard(HANDLE);
+- drop · function · L904-L907 — fn drop(&mut self)

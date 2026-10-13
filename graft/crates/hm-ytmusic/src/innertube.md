@@ -1,0 +1,41 @@
+# crates/hm-ytmusic/src/innertube.rs
+
+- ClientIdentity · enum · L59-L69 — pub(crate) enum ClientIdentity
+- IDENTITIES · constant · L72-L78 — pub(crate) const IDENTITIES: &[ClientIdentity] = &[
+- VISIONOS_VERSION · constant · L80-L80 — const VISIONOS_VERSION: &str = "1.02";
+- VISIONOS_UA · constant · L81-L82 — const VISIONOS_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) \
+- name · function · L86-L91 — pub(crate) fn name(&self) -> &'static str
+- id · function · L94-L99 — pub(crate) fn id(&self) -> &'static str
+- version · function · L101-L106 — pub(crate) fn version(&self) -> &'static str
+- user_agent · function · L111-L116 — pub(crate) fn user_agent(&self) -> String
+- context · function · L120-L146 — fn context(&self) -> Value
+- ROTATION_BUDGET · constant · L152-L152 — const ROTATION_BUDGET: std::time::Duration = std::time::Duration::from_secs(4);
+- android_vr_ua · function · L154-L159 — pub(crate) fn android_vr_ua(version: &str) -> String
+- VISITOR_DATA · constant · L168-L168 — static VISITOR_DATA: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+- visitor_data · function · L170-L172 — fn visitor_data() -> Option<String>
+- set_visitor_data · function · L174-L178 — fn set_visitor_data(value: Option<String>)
+- harvest_visitor_data · function · L181-L188 — fn harvest_visitor_data(json: &Value)
+- NativeMiss · enum · L195-L207 — pub(crate) enum NativeMiss
+- fmt · function · L210-L218 — fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+- resolve_native · function · L226-L244 — pub(crate) fn resolve_native(
+- ask_presenting · function · L257-L285 — fn ask_presenting(
+- player_once · function · L288-L327 — fn player_once(
+- cpn · function · L332-L345 — fn cpn() -> String
+- ALPHABET · constant · L333-L334 — const ALPHABET: &[u8; 64] =
+- parse_player_response · function · L350-L386 — pub(crate) fn parse_player_response(
+- tests · module · L389-L576 — mod tests
+- player_ok · function · L392-L403 — fn player_ok(url: &str) -> serde_json::Value
+- a_healthy_response_builds_the_exact_target · function · L406-L419 — fn a_healthy_response_builds_the_exact_target()
+- opus_alone_is_a_miss_never_a_target · function · L423-L430 — fn opus_alone_is_a_miss_never_a_target()
+- a_ciphered_format_is_its_own_miss · function · L435-L441 — fn a_ciphered_format_is_its_own_miss()
+- a_non_ok_playability_carries_its_status · function · L444-L451 — fn a_non_ok_playability_carries_its_status()
+- ordinal · function · L455-L460 — fn ordinal(version: &str) -> u32
+- every_android_vr_identity_is_below_the_gate_at_1_64 · function · L470-L479 — fn every_android_vr_identity_is_below_the_gate_at_1_64()
+- there_is_more_than_one_identity_to_fall_back_on · function · L484-L486 — fn there_is_more_than_one_identity_to_fall_back_on()
+- visionos_is_asked_first · function · L493-L495 — fn visionos_is_asked_first()
+- the_visionos_identity_is_the_one_that_was_measured · function · L500-L510 — fn the_visionos_identity_is_the_one_that_was_measured()
+- a_visionos_target_carries_the_visionos_user_agent · function · L515-L523 — fn a_visionos_target_carries_the_visionos_user_agent()
+- the_visionos_user_agent_survived_its_line_continuation · function · L530-L537 — fn the_visionos_user_agent_survived_its_line_continuation()
+- the_user_agent_names_the_version_that_minted_the_url · function · L540-L554 — fn the_user_agent_names_the_version_that_minted_the_url()
+- garbage_is_bad_json_not_a_panic · function · L557-L566 — fn garbage_is_bad_json_not_a_panic()
+- a_url_without_expiry_resolves_with_none · function · L572-L575 — fn a_url_without_expiry_resolves_with_none()

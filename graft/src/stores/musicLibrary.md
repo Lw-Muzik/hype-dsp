@@ -1,0 +1,27 @@
+# src/stores/musicLibrary.ts
+
+- MusicTrack · interface · L32-L44 — interface MusicTrack extends QueueItem
+- LoadStatus · type · L51-L51 — type LoadStatus = "idle" | "loading" | "ready" | "error";
+- SourceState · interface · L54-L64 — interface SourceState
+- RecoverableSourceState · interface · L70-L75 — interface RecoverableSourceState extends SourceState
+- parentFolder · function · L78-L82 — function parentFolder(path: string): string | null
+- mapLocalTrack · function · L85-L95 — function mapLocalTrack(t: LibraryTrack): MusicTrack
+- yieldToMain · function · L102-L112 — function yieldToMain(): Promise<void>
+- LocalPagedDeps · interface · L122-L138 — interface LocalPagedDeps
+- loadLocalPaged · function · L150-L201 — async function loadLocalPaged(deps: LocalPagedDeps): Promise<boolean>
+- cloudEntryToTrack · function · L209-L219 — function cloudEntryToTrack(e: CloudEntry): MusicTrack
+- ytTrackToTrack · function · L224-L235 — function ytTrackToTrack(t: YtTrack): MusicTrack
+- phoneTrackToTrack · function · L238-L250 — function phoneTrackToTrack(d: PhoneDevice, t: PhoneTrack): MusicTrack
+- IncrementalMapDeps · interface · L258-L273 — interface IncrementalMapDeps<S, T>
+- mapIncrementally · function · L285-L317 — async function mapIncrementally<S, T>( deps: IncrementalMapDeps<S, T>, ): Promise<T[] | null>
+- cloudMetaFlushMs · function · L336-L341 — function cloudMetaFlushMs(trackCount: number): number
+- preloadCloudMeta · function · L355-L394 — async function preloadCloudMeta( tracks: MusicTrack[], onBatch: (updates: Array<[string, CloudTrackMeta]>) => void, isStale: () => boolean, now: () => number, flushMs: () => number, ): Promise<void>
+- flush · function · L366-L371 — flush = (force: boolean)
+- worker · function · L374-L389 — worker = async ()
+- MusicLibraryStore · interface · L396-L449 — interface MusicLibraryStore
+- isStale · function · L523-L523 — isStale = ()
+- isStale · function · L566-L566 — isStale = ()
+- isStale · function · L607-L607 — isStale = ()
+- now · function · L608-L608 — now = ()
+- isStale · function · L749-L749 — isStale = ()
+- now · function · L750-L750 — now = ()

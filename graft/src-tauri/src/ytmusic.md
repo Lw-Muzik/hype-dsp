@@ -1,0 +1,27 @@
+# src-tauri/src/ytmusic.rs
+
+- CachedLibrary · struct · L19-L24 — pub struct CachedLibrary
+- YtLibraryCache · struct · L32-L35 — pub struct YtLibraryCache
+- new · function · L39-L44 — pub fn new(path: PathBuf) -> Self
+- cell · function · L46-L53 — fn cell(&self) -> &Mutex<Option<CachedLibrary>>
+- warm · function · L56-L58 — pub fn warm(&self)
+- get · function · L60-L62 — pub fn get(&self) -> Option<CachedLibrary>
+- put · function · L64-L70 — pub fn put(&self, lib: CachedLibrary)
+- clear · function · L73-L79 — pub fn clear(&self)
+- write · function · L83-L93 — fn write(&self)
+- Settings · struct · L98-L105 — struct Settings
+- YtSettings · struct · L107-L113 — pub struct YtSettings
+- load · function · L116-L126 — pub fn load(path: PathBuf, default_dir: PathBuf) -> Self
+- download_dir · function · L129-L137 — pub fn download_dir(&self) -> PathBuf
+- set_download_dir · function · L140-L146 — pub fn set_download_dir(&self, dir: Option<String>)
+- write · function · L148-L157 — fn write(&self)
+- url_cache_path · function · L162-L168 — pub fn url_cache_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf>
+- save_url_cache · function · L172-L177 — pub fn save_url_cache(path: &Path, json: &str)
+- is_within · function · L180-L185 — pub fn is_within(dir: &Path, path: &Path) -> bool
+- tests · module · L188-L292 — mod tests
+- settings_default_to_music_subfolder · function · L192-L196 — fn settings_default_to_music_subfolder()
+- settings_round_trip_and_reset · function · L199-L217 — fn settings_round_trip_and_reset()
+- library_cache_round_trips_and_clears · function · L220-L247 — fn library_cache_round_trips_and_clears()
+- corrupt_cache_reads_as_empty_rather_than_panicking · function · L250-L257 — fn corrupt_cache_reads_as_empty_rather_than_panicking()
+- save_url_cache_round_trips_via_write_then_rename · function · L260-L277 — fn save_url_cache_round_trips_via_write_then_rename()
+- is_within_rejects_escapes · function · L280-L291 — fn is_within_rejects_escapes()

@@ -1,0 +1,30 @@
+# crates/hm-dsp/src/script/vm.rs
+
+- STACK_CAP · constant · L23-L23 — const STACK_CAP: usize = 256;
+- Stack · struct · L29-L32 — struct Stack
+- new · function · L36-L41 — fn new() -> Self
+- push · function · L45-L51 — fn push(&mut self, v: f32)
+- pop · function · L55-L61 — fn pop(&mut self) -> f32
+- finite_or_zero · function · L70-L72 — fn finite_or_zero(v: f32) -> f32
+- is_false · function · L77-L79 — fn is_false(v: f32) -> bool
+- execute · function · L89-L240 — fn execute(ops: &[Op], regs: &mut [f32], budget: &mut u32)
+- dispatch_builtin · function · L251-L353 — fn dispatch_builtin(b: Builtin, stack: &mut Stack) -> f32
+- run_init · function · L364-L367 — pub fn run_init(prog: &Program, regs: &mut [f32], budget: u32)
+- run_sample · function · L377-L380 — pub fn run_sample(prog: &Program, regs: &mut [f32], spl: &mut [f32; 2], budget: u32)
+- run_sample_within · function · L394-L422 — pub fn run_sample_within(
+- tests · module · L429-L652 — mod tests
+- make_regs · function · L434-L436 — fn make_regs(prog: &Program) -> Vec<f32>
+- gain_halves · function · L441-L456 — fn gain_halves()
+- init_runs_once · function · L461-L491 — fn init_runs_once()
+- K · constant · L469-L469 — const K: usize = 7;
+- precedence_eval · function · L496-L506 — fn precedence_eval()
+- builtins_sqrt · function · L511-L517 — fn builtins_sqrt()
+- builtins_sin · function · L520-L527 — fn builtins_sin()
+- builtins_abs · function · L530-L536 — fn builtins_abs()
+- builtins_min_max · function · L539-L552 — fn builtins_min_max()
+- builtins_atan2 · function · L555-L568 — fn builtins_atan2()
+- builtins_tanh · function · L571-L583 — fn builtins_tanh()
+- runaway_loop_budget_terminates · function · L591-L602 — fn runaway_loop_budget_terminates()
+- nan_guard_div_zero · function · L607-L619 — fn nan_guard_div_zero()
+- nan_guard_sqrt_negative · function · L622-L634 — fn nan_guard_sqrt_negative()
+- loop_counted · function · L639-L651 — fn loop_counted()

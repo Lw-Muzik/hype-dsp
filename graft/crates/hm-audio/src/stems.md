@@ -1,0 +1,37 @@
+# crates/hm-audio/src/stems.rs
+
+- STEM_COUNT · constant · L29-L29 — pub const STEM_COUNT: usize = 4;
+- ELEMENT_COUNT · constant · L32-L32 — pub const ELEMENT_COUNT: usize = 5;
+- EL_VOCALS · constant · L33-L33 — pub const EL_VOCALS: usize = 0;
+- EL_KICK · constant · L34-L34 — pub const EL_KICK: usize = 1;
+- EL_HIHAT · constant · L35-L35 — pub const EL_HIHAT: usize = 2;
+- EL_BASS · constant · L36-L36 — pub const EL_BASS: usize = 3;
+- EL_MELODY · constant · L37-L37 — pub const EL_MELODY: usize = 4;
+- BUF_VOCALS · constant · L40-L40 — const BUF_VOCALS: usize = 0;
+- BUF_DRUMS · constant · L41-L41 — const BUF_DRUMS: usize = 1;
+- BUF_BASS · constant · L42-L42 — const BUF_BASS: usize = 2;
+- BUF_OTHER · constant · L43-L43 — const BUF_OTHER: usize = 3;
+- CROSSOVER_HZ · constant · L46-L46 — const CROSSOVER_HZ: f32 = 150.0;
+- StemGains · struct · L50-L52 — pub struct StemGains
+- default · function · L55-L59 — fn default() -> Self
+- set · function · L63-L67 — pub fn set(&self, element: usize, gain: f32)
+- get · function · L69-L75 — pub fn get(&self, element: usize) -> f32
+- snapshot · function · L77-L79 — fn snapshot(&self) -> [f32; ELEMENT_COUNT]
+- GAIN_SMOOTH · constant · L84-L84 — const GAIN_SMOOTH: f32 = 0.0025;
+- Biquad · struct · L89-L99 — struct Biquad
+- lowpass · function · L102-L118 — fn lowpass(sample_rate: f32, fc: f32, q: f32) -> Self
+- process · function · L121-L132 — fn process(&mut self, x: f32) -> f32
+- StemPlaybackSource · struct · L138-L148 — pub struct StemPlaybackSource
+- new · function · L155-L169 — pub fn new(stems: [Vec<f32>; STEM_COUNT], gains: Arc<StemGains>, sample_rate: f32) -> Self
+- sample · function · L173-L179 — fn sample(&self, b: usize, idx: usize) -> f32
+- start · function · L183-L185 — fn start(&mut self, _format: StreamFormat) -> Result<(), AudioError>
+- read · function · L187-L242 — fn read(&mut self, out: &mut [f32], channels: usize) -> usize
+- stop · function · L244-L246 — fn stop(&mut self)
+- seek · function · L248-L250 — fn seek(&mut self, frame: usize)
+- position · function · L252-L254 — fn position(&self) -> usize
+- total_frames · function · L256-L258 — fn total_frames(&self) -> usize
+- tests · module · L262-L339 — mod tests
+- settle · function · L265-L269 — fn settle(src: &mut StemPlaybackSource, frames: usize)
+- mutes_an_element_via_gain · function · L272-L294 — fn mutes_an_element_via_gain()
+- drum_bands_reconstruct_at_unity · function · L297-L318 — fn drum_bands_reconstruct_at_unity()
+- plays_to_longest_stem_skipping_empty_ones · function · L321-L338 — fn plays_to_longest_stem_skipping_empty_ones()

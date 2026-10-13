@@ -1,0 +1,30 @@
+# crates/hm-remote/src/manager.rs
+
+- RemotePeer · struct · L35-L39 — struct RemotePeer
+- PairedPhone · struct · L44-L49 — pub struct PairedPhone
+- RemotePhoneStatus · struct · L53-L58 — pub struct RemotePhoneStatus
+- PairingInfo · struct · L62-L66 — pub struct PairingInfo
+- PairingSession · struct · L68-L71 — struct PairingSession
+- PairRequest · struct · L75-L80 — struct PairRequest
+- PairReply · struct · L84-L87 — struct PairReply
+- Inner · struct · L89-L96 — struct Inner
+- RemoteManager · struct · L100-L104 — pub struct RemoteManager
+- new · function · L110-L141 — pub fn new(
+- endpoint_id · function · L144-L146 — pub fn endpoint_id(&self) -> String
+- dial_addr · function · L149-L152 — pub fn dial_addr(&self) -> EndpointAddr
+- start_pairing · function · L155-L167 — pub fn start_pairing(&self, ttl: Duration) -> PairingInfo
+- cancel_pairing · function · L170-L172 — pub fn cancel_pairing(&self)
+- connect_known · function · L176-L210 — pub fn connect_known(&self) -> Vec<PairedPhone>
+- remote_phones · function · L213-L228 — pub fn remote_phones(&self) -> Vec<RemotePhoneStatus>
+- forget · function · L231-L236 — pub fn forget(&self, id: &str)
+- block · function · L240-L246 — fn block<T, F>(&self, fut: F) -> T
+- run_blocking · function · L259-L269 — fn run_blocking<T, F>(runtime: &tokio::runtime::Runtime, fut: F) -> T
+- accept_pairings · function · L272-L282 — async fn accept_pairings(ep: Endpoint, inner: Arc<Inner>)
+- handle_pairing · function · L286-L334 — async fn handle_pairing(ep: Endpoint, inner: Arc<Inner>, conn: Connection) -> Result<()>
+- connect_peer · function · L338-L344 — async fn connect_peer(ep: &Endpoint, inner: &Arc<Inner>, addr: EndpointAddr) -> Result<u16>
+- upsert_peer · function · L346-L351 — fn upsert_peer(inner: &Arc<Inner>, peer: RemotePeer)
+- load_peers · function · L353-L358 — fn load_peers(path: &Path) -> Vec<RemotePeer>
+- save_peers · function · L360-L367 — fn save_peers(path: &Path, peers: &[RemotePeer])
+- tests · module · L370-L511 — mod tests
+- pairing_then_media_round_trips · function · L383-L470 — fn pairing_then_media_round_trips() -> Result<()>
+- new_builds_from_within_another_runtime · function · L480-L510 — fn new_builds_from_within_another_runtime() -> Result<()>

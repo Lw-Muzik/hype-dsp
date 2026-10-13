@@ -1,0 +1,24 @@
+# src-tauri/src/updater.rs
+
+- log · function · L38-L40 — fn log(msg: &str)
+- FIRST_CHECK_DELAY · constant · L52-L52 — const FIRST_CHECK_DELAY: Duration = Duration::from_secs(90);
+- CHECK_INTERVAL · constant · L56-L56 — const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+- EVENT · constant · L59-L59 — pub const EVENT: &str = "updater://status";
+- Status · enum · L64-L77 — pub enum Status
+- Staged · struct · L83-L86 — struct Staged
+- UpdaterState · struct · L89-L92 — pub struct UpdaterState
+- set_status · function · L95-L103 — fn set_status<R: Runtime>(&self, app: &AppHandle<R>, next: Status)
+- snapshot · function · L105-L107 — fn snapshot(&self) -> Status
+- has_staged · function · L110-L112 — pub fn has_staged(&self) -> bool
+- updater_status · function · L117-L119 — pub fn updater_status(state: State<'_, UpdaterState>) -> Status
+- updater_check_now · function · L124-L127 — pub async fn updater_check_now(app: AppHandle) -> Result<(), IpcError>
+- updater_restart_now · function · L135-L140 — pub async fn updater_restart_now(app: AppHandle) -> Result<(), IpcError>
+- spawn_cadence · function · L143-L156 — pub fn spawn_cadence(app: AppHandle)
+- check_and_stage · function · L159-L218 — async fn check_and_stage(app: &AppHandle)
+- stage_teardown · function · L229-L243 — fn stage_teardown<R: Runtime>(app: &AppHandle<R>)
+- install_staged · function · L247-L261 — fn install_staged<R: Runtime>(app: &AppHandle<R>) -> Result<bool, String>
+- install_on_exit · function · L269-L275 — pub fn install_on_exit<R: Runtime>(app: &AppHandle<R>)
+- tests · module · L278-L309 — mod tests
+- status_serializes_with_a_discriminant_the_ui_can_switch_on · function · L283-L294 — fn status_serializes_with_a_discriminant_the_ui_can_switch_on()
+- an_unknown_total_is_null_rather_than_zero · function · L299-L302 — fn an_unknown_total_is_null_rather_than_zero()
+- idle_and_failed_are_distinguishable · function · L306-L308 — fn idle_and_failed_are_distinguishable()

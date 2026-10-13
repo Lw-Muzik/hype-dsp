@@ -1,0 +1,78 @@
+# crates/hm-ytmusic/src/ytdlp.rs
+
+- AUDIO_FORMAT · constant · L26-L26 — const AUDIO_FORMAT: &str = "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]";
+- VIDEO_FORMAT · constant · L43-L44 — const VIDEO_FORMAT: &str =
+- PRINT_FIELDS · constant · L47-L53 — const PRINT_FIELDS: &[&str] = &[
+- NA · constant · L56-L56 — const NA: &str = "NA";
+- YtDlpError · enum · L59-L87 — pub enum YtDlpError
+- fmt · function · L90-L102 — fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+- StreamTarget · struct · L116-L129 — pub struct StreamTarget
+- parse_expiry · function · L138-L144 — pub(crate) fn parse_expiry(url: &str) -> Option<u64>
+- YtDlpRunner · interface · L148-L166 — pub trait YtDlpRunner: Send + Sync
+- run · function · L150-L150 — fn run(&self, args: &[String]) -> Result<String, YtDlpError>;
+- run_streaming · function · L155-L165 — fn run_streaming(
+- EXTRA_DIRS · constant · L172-L177 — const EXTRA_DIRS: &[&str] = &[
+- EXTRA_DIRS · constant · L179-L179 — const EXTRA_DIRS: &[&str] = &["/usr/bin", "/usr/local/bin", "/snap/bin", "/var/lib/flatpak/exports/bin"];
+- EXTRA_DIRS · constant · L181-L181 — const EXTRA_DIRS: &[&str] = &[];
+- BIN_NAME · constant · L184-L184 — const BIN_NAME: &str = "yt-dlp.exe";
+- BIN_NAME · constant · L186-L186 — const BIN_NAME: &str = "yt-dlp";
+- MANAGED_BIN_DIR · constant · L191-L191 — static MANAGED_BIN_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+- set_managed_bin_dir · function · L195-L197 — pub fn set_managed_bin_dir(dir: PathBuf)
+- managed_bin_dir · function · L200-L202 — pub fn managed_bin_dir() -> Option<&'static Path>
+- find_binary · function · L211-L213 — pub fn find_binary() -> Option<PathBuf>
+- find_binary_with · function · L216-L244 — fn find_binary_with(managed: Option<&Path>) -> Option<PathBuf>
+- is_executable · function · L246-L258 — fn is_executable(path: &Path) -> bool
+- ProcessRunner · struct · L261-L263 — pub struct ProcessRunner
+- new · function · L266-L268 — pub fn new(bin: PathBuf) -> Self
+- detect · function · L271-L273 — pub fn detect() -> Option<Self>
+- bin · function · L275-L277 — pub fn bin(&self) -> &Path
+- command · function · L285-L295 — fn command(&self) -> Command
+- CREATE_NO_WINDOW · constant · L291-L291 — const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+- version · function · L298-L305 — pub fn version(&self) -> Option<String>
+- run · function · L309-L336 — fn run(&self, args: &[String]) -> Result<String, YtDlpError>
+- run_streaming · function · L338-L388 — fn run_streaming(
+- classify · function · L396-L424 — pub fn classify(stderr: &str) -> YtDlpError
+- first_error_line · function · L428-L438 — fn first_error_line(stderr: &str) -> String
+- watch_url · function · L440-L442 — fn watch_url(video_id: &str) -> String
+- base_args · function · L452-L463 — fn base_args(cookies: Option<&Path>) -> Vec<String>
+- resolve · function · L469-L484 — pub fn resolve(
+- resolve_video · function · L491-L506 — pub fn resolve_video(
+- parse_resolve · function · L510-L553 — fn parse_resolve(stdout: &str) -> Result<StreamTarget, YtDlpError>
+- Progress · struct · L557-L560 — pub struct Progress
+- fraction · function · L563-L566 — pub fn fraction(&self) -> Option<f64>
+- PROGRESS_TEMPLATE · constant · L571-L571 — const PROGRESS_TEMPLATE: &str = "download:HMPROG %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s";
+- PATH_PREFIX · constant · L574-L574 — const PATH_PREFIX: &str = "HMPATH ";
+- download · function · L581-L635 — pub fn download(
+- parse_progress · function · L639-L649 — fn parse_progress(line: &str) -> Option<Progress>
+- have_ffmpeg · function · L654-L671 — pub fn have_ffmpeg() -> bool
+- tests · module · L674-L985 — mod tests
+- Fake · struct · L677-L679 — struct Fake
+- run · function · L681-L683 — fn run(&self, _args: &[String]) -> Result<String, YtDlpError>
+- sample_stdout · function · L686-L695 — fn sample_stdout() -> String
+- parses_resolve_output · function · L698-L711 — fn parses_resolve_output()
+- reads_the_expiry_the_cdn_stamped_on_the_url · function · L714-L717 — fn reads_the_expiry_the_cdn_stamped_on_the_url()
+- finds_expire_among_the_real_parameter_soup · function · L722-L727 — fn finds_expire_among_the_real_parameter_soup()
+- a_url_without_an_expiry_reports_none · function · L732-L736 — fn a_url_without_an_expiry_reports_none()
+- does_not_mistake_a_similarly_named_parameter_for_the_expiry · function · L740-L742 — fn does_not_mistake_a_similarly_named_parameter_for_the_expiry()
+- resolve_goes_through_runner · function · L745-L755 — fn resolve_goes_through_runner()
+- na_url_means_no_compatible_format · function · L758-L771 — fn na_url_means_no_compatible_format()
+- truncated_output_is_an_error · function · L774-L779 — fn truncated_output_is_an_error()
+- malformed_headers_degrade_to_empty · function · L782-L792 — fn malformed_headers_degrade_to_empty()
+- classifies_bot_check_as_blocked · function · L795-L798 — fn classifies_bot_check_as_blocked()
+- classifies_403_as_blocked · function · L801-L806 — fn classifies_403_as_blocked()
+- classifies_missing_format · function · L809-L820 — fn classifies_missing_format()
+- an_empty_extraction_is_not_reported_as_opus_only · function · L826-L839 — fn an_empty_extraction_is_not_reported_as_opus_only()
+- classifies_unavailable · function · L842-L847 — fn classifies_unavailable()
+- error_line_strips_prefix_and_warnings · function · L850-L856 — fn error_line_strips_prefix_and_warnings()
+- parses_progress_with_total · function · L859-L864 — fn parses_progress_with_total()
+- parses_progress_falling_back_to_estimate · function · L867-L870 — fn parses_progress_falling_back_to_estimate()
+- progress_without_total_has_no_fraction · function · L873-L877 — fn progress_without_total_has_no_fraction()
+- ignores_non_progress_lines · function · L880-L882 — fn ignores_non_progress_lines()
+- resolves_a_real_track_to_a_decodable_format · function · L890-L902 — fn resolves_a_real_track_to_a_decodable_format()
+- format_selector_never_accepts_opus · function · L905-L911 — fn format_selector_never_accepts_opus()
+- video_selector_never_accepts_av1 · function · L918-L927 — fn video_selector_never_accepts_av1()
+- video_selector_asks_only_for_video · function · L932-L937 — fn video_selector_asks_only_for_video()
+- plant_binary · function · L940-L949 — fn plant_binary(dir: &Path) -> PathBuf
+- managed_dir_wins_over_path · function · L954-L960 — fn managed_dir_wins_over_path()
+- empty_managed_dir_falls_through · function · L965-L972 — fn empty_managed_dir_falls_through()
+- non_executable_managed_file_is_ignored · function · L978-L984 — fn non_executable_managed_file_is_ignored()

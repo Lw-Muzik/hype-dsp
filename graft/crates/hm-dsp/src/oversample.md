@@ -1,0 +1,22 @@
+# crates/hm-dsp/src/oversample.rs
+
+- OVERSAMPLE · constant · L48-L48 — pub const OVERSAMPLE: usize = 4;
+- NUM_TAPS · constant · L91-L91 — const NUM_TAPS: usize = 136;
+- TAPS_PER_PHASE · constant · L99-L99 — const TAPS_PER_PHASE: usize = NUM_TAPS.div_ceil(OVERSAMPLE); // 136 / 4 = 34
+- Oversampler4x · struct · L106-L125 — pub struct Oversampler4x
+- new · function · L132-L190 — pub fn new(_sample_rate: f32) -> Self
+- latency_samples · function · L210-L212 — pub fn latency_samples(&self) -> usize
+- reset · function · L215-L220 — pub fn reset(&mut self)
+- upsample · function · L226-L263 — pub fn upsample(&mut self, input: &[f32], out4x: &mut [f32])
+- downsample · function · L269-L297 — pub fn downsample(&mut self, in4x: &[f32], out: &mut [f32])
+- tests · module · L304-L465 — mod tests
+- SR · constant · L307-L307 — const SR: f32 = 48_000.0;
+- make_sine · function · L309-L313 — fn make_sine(freq: f32, sr: f32, n: usize) -> Vec<f32>
+- roundtrip · function · L315-L322 — fn roundtrip(input: &[f32]) -> Vec<f32>
+- latency_reported · function · L327-L330 — fn latency_reported()
+- roundtrip_group_delay_matches_reported_latency · function · L341-L369 — fn roundtrip_group_delay_matches_reported_latency()
+- IMPULSE_POS · constant · L342-L342 — const IMPULSE_POS: usize = 64;
+- roundtrip_passband_unity · function · L374-L391 — fn roundtrip_passband_unity()
+- dc_gain_unity · function · L395-L410 — fn dc_gain_unity()
+- near_nyquist_attenuated · function · L415-L432 — fn near_nyquist_attenuated()
+- low_freq_energy_preserved · function · L436-L464 — fn low_freq_energy_preserved()

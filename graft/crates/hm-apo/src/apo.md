@@ -1,0 +1,22 @@
+# crates/hm-apo/src/apo.rs
+
+- DEFAULT_RATE · constant · L31-L31 — const DEFAULT_RATE: f32 = 48_000.0;
+- DEFAULT_CHANNELS · constant · L32-L32 — const DEFAULT_CHANNELS: usize = 2;
+- RtState · struct · L36-L48 — struct RtState
+- HypeMuzikApo · struct · L59-L61 — pub struct HypeMuzikApo
+- new · function · L64-L68 — pub fn new() -> Self
+- rt · function · L73-L75 — unsafe fn rt(&self) -> &mut Option<RtState>
+- default · function · L79-L81 — fn default() -> Self
+- Reset · function · L85-L87 — fn Reset(&self) -> windows_core::Result<()>
+- GetLatency · function · L89-L93 — fn GetLatency(&self) -> windows_core::Result<i64>
+- GetRegistrationProperties · function · L95-L121 — fn GetRegistrationProperties(&self) -> windows_core::Result<*mut APO_REG_PROPERTIES>
+- Initialize · function · L123-L125 — fn Initialize(&self, _cbdatasize: u32, _pbydata: *const u8) -> windows_core::Result<()>
+- IsInputFormatSupported · function · L127-L135 — fn IsInputFormatSupported(
+- IsOutputFormatSupported · function · L137-L143 — fn IsOutputFormatSupported(
+- GetInputChannelCount · function · L145-L151 — fn GetInputChannelCount(&self) -> windows_core::Result<u32>
+- LockForProcess · function · L155-L194 — fn LockForProcess(
+- UnlockForProcess · function · L196-L199 — fn UnlockForProcess(&self) -> windows_core::Result<()>
+- APOProcess · function · L203-L272 — fn APOProcess(
+- CalcInputFrames · function · L274-L276 — fn CalcInputFrames(&self, u32outputframecount: u32) -> u32
+- CalcOutputFrames · function · L278-L280 — fn CalcOutputFrames(&self, u32inputframecount: u32) -> u32
+- write_wide · function · L287-L297 — fn write_wide(dst: &mut [u16], s: &str)

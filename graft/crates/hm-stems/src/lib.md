@@ -1,0 +1,31 @@
+# crates/hm-stems/src/lib.rs
+
+- onnx · module · L17-L17 — mod onnx;
+- STEM_COUNT · constant · L27-L27 — pub const STEM_COUNT: usize = 4;
+- STEM_SR · constant · L29-L29 — pub const STEM_SR: u32 = 44_100;
+- OVERLAP_DIV · constant · L31-L31 — const OVERLAP_DIV: usize = 4; // overlap = segment / 4
+- STEM_NAMES · constant · L34-L34 — const STEM_NAMES: [&str; STEM_COUNT] = ["vocals", "drums", "bass", "other"];
+- MODELS · constant · L40-L45 — const MODELS: [(&str, usize, usize); STEM_COUNT] = [
+- StemSet · type · L49-L49 — pub type StemSet = [Vec<f32>; STEM_COUNT];
+- StemError · enum · L52-L63 — pub enum StemError
+- Separator · struct · L67-L71 — pub struct Separator
+- new · function · L74-L80 — pub fn new(model_dir: PathBuf, cache_dir: PathBuf) -> Self
+- available · function · L83-L87 — pub fn available(&self) -> bool
+- accelerated · function · L91-L93 — pub fn accelerated(&self) -> bool
+- cache_slot · function · L95-L97 — fn cache_slot(&self, input: &Path) -> PathBuf
+- cached · function · L100-L107 — pub fn cached(&self, input: &Path) -> Option<StemSet>
+- ensure_loaded · function · L109-L124 — fn ensure_loaded<'a>(
+- separate · function · L129-L136 — pub fn separate(
+- separate_cancellable · function · L143-L233 — pub fn separate_cancellable(
+- write_cache · function · L235-L243 — fn write_cache(&self, input: &Path, set: &StemSet)
+- transition_window · function · L248-L261 — fn transition_window(segment: usize) -> Vec<f32>
+- cache_key · function · L265-L287 — fn cache_key(input: &Path) -> String
+- write_wav_f32 · function · L290-L302 — fn write_wav_f32(path: &Path, samples: &[f32]) -> Result<(), StemError>
+- read_wav_f32 · function · L305-L308 — fn read_wav_f32(path: &Path) -> Option<Vec<f32>>
+- tests · module · L311-L405 — mod tests
+- unavailable_without_models · function · L315-L322 — fn unavailable_without_models()
+- cancelled_separation_aborts_without_doing_work · function · L325-L332 — fn cancelled_separation_aborts_without_doing_work()
+- cache_key_is_stable_and_sanitized · function · L335-L339 — fn cache_key_is_stable_and_sanitized()
+- transition_window_is_trapezoidal · function · L342-L350 — fn transition_window_is_trapezoidal()
+- model_table_maps_rows_to_distinct_slots · function · L353-L359 — fn model_table_maps_rows_to_distinct_slots()
+- separates_real_models_end_to_end · function · L367-L404 — fn separates_real_models_end_to_end()

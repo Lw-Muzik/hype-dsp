@@ -1,0 +1,41 @@
+# crates/hm-dsp/src/convolver.rs
+
+- CONV_BLOCK · constant · L19-L19 — pub const CONV_BLOCK: usize = 256;
+- CONV_FFT · constant · L21-L21 — pub const CONV_FFT: usize = 512;
+- MAX_IR_SECONDS · constant · L23-L23 — pub const MAX_IR_SECONDS: f32 = 4.0;
+- BINS · constant · L26-L26 — const BINS: usize = CONV_FFT / 2 + 1;
+- PreparedIrChannel · struct · L31-L33 — pub struct PreparedIrChannel
+- MonoConvolver · struct · L38-L62 — struct MonoConvolver
+- new · function · L65-L88 — fn new(max_partitions: usize) -> Self
+- process_block · function · L92-L136 — fn process_block(&mut self, block: &[f32; CONV_BLOCK], ir: &PreparedIrChannel)
+- process · function · L141-L154 — fn process(&mut self, input: &[f32], out: &mut [f32], ir: &PreparedIrChannel)
+- PreparedIr · struct · L158-L165 — pub struct PreparedIr
+- max_partitions · function · L168-L172 — pub fn max_partitions(target_sr: f32) -> usize
+- resample_linear · function · L176-L192 — fn resample_linear(input: &[f32], src_sr: f32, dst_sr: f32) -> Vec<f32>
+- partition_channel · function · L195-L210 — fn partition_channel(ir: &[f32], fft: &Arc<dyn RealToComplex<f32>>) -> PreparedIrChannel
+- build · function · L216-L295 — pub fn build(samples: &[f32], src_channels: usize, src_sr: f32, target_sr: f32) -> PreparedIr
+- IrSlot · type · L300-L300 — pub type IrSlot = Arc<ArcSwap<Option<Arc<PreparedIr>>>>;
+- empty_ir_slot · function · L303-L305 — pub fn empty_ir_slot() -> IrSlot
+- Convolver · struct · L308-L321 — pub struct Convolver
+- new · function · L324-L326 — pub fn new(sample_rate: f32, channels: usize) -> Self
+- with_slot · function · L328-L343 — pub fn with_slot(sample_rate: f32, _channels: usize, slot: IrSlot) -> Self
+- slot · function · L346-L348 — pub fn slot(&self) -> IrSlot
+- ensure_scratch · function · L350-L357 — fn ensure_scratch(&mut self, frames: usize)
+- prepare · function · L361-L373 — fn prepare(&mut self, sample_rate: f32, _channels: usize)
+- process · function · L375-L423 — fn process(&mut self, buffer: &mut [f32], channels: usize)
+- set_params · function · L425-L430 — fn set_params(&mut self, params: &ProcessorParams)
+- tests · module · L434-L651 — mod tests
+- conv_state · function · L438-L443 — fn conv_state(enabled: bool, wet: f32) -> EngineState
+- disabled_is_identity · function · L446-L453 — fn disabled_is_identity()
+- enabled_without_ir_is_identity · function · L456-L463 — fn enabled_without_ir_is_identity()
+- stays_bounded_with_loud_ir · function · L466-L476 — fn stays_bounded_with_loud_ir()
+- prepare_channel · function · L480-L496 — fn prepare_channel(ir: &[f32]) -> PreparedIrChannel
+- direct_conv · function · L499-L511 — fn direct_conv(x: &[f32], h: &[f32]) -> Vec<f32>
+- unit_impulse_ir_is_delayed_passthrough · function · L514-L529 — fn unit_impulse_ir_is_delayed_passthrough()
+- matches_direct_convolution · function · L532-L550 — fn matches_direct_convolution()
+- build_mono_unit_impulse_normalized_passthrough · function · L553-L566 — fn build_mono_unit_impulse_normalized_passthrough()
+- build_caps_length · function · L569-L578 — fn build_caps_length()
+- build_resamples_to_target · function · L581-L588 — fn build_resamples_to_target()
+- build_stereo_has_two_channels · function · L591-L601 — fn build_stereo_has_two_channels()
+- mono_input_skips_right_convolver_and_stays_bounded · function · L604-L624 — fn mono_input_skips_right_convolver_and_stays_bounded()
+- chunking_invariance · function · L627-L650 — fn chunking_invariance()

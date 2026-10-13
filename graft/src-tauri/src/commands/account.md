@@ -1,0 +1,50 @@
+# src-tauri/src/commands/account.rs
+
+- DEFAULT_API · constant · L21-L21 — const DEFAULT_API: &str = "http://37.60.225.220:9400/api";
+- Stored · struct · L24-L34 — struct Stored
+- LicenseInfo · struct · L39-L45 — pub struct LicenseInfo
+- AccountStatus · struct · L50-L62 — pub struct AccountStatus
+- UserDto · struct · L66-L71 — struct UserDto
+- EntitlementsDto · struct · L75-L77 — struct EntitlementsDto
+- MeDto · struct · L84-L87 — struct MeDto
+- is_admin · function · L90-L92 — fn is_admin(&self) -> bool
+- CheckoutDto · struct · L98-L100 — struct CheckoutDto
+- RestoreDto · struct · L104-L106 — struct RestoreDto
+- AuthDto · struct · L110-L114 — struct AuthDto
+- AccountState · struct · L116-L127 — pub struct AccountState
+- open · function · L130-L147 — pub fn open(path: PathBuf) -> Self
+- url · function · L149-L151 — fn url(&self, path: &str) -> String
+- save · function · L153-L160 — fn save(&self, s: &Stored)
+- store_session · function · L162-L170 — fn store_session(&self, dto: AuthDto)
+- clear · function · L172-L176 — fn clear(&self)
+- post · function · L178-L184 — fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::blocking::Response, String>
+- refresh_after_401 · function · L198-L238 — fn refresh_after_401(&self, stale_access: &str) -> bool
+- auth_get · function · L241-L249 — fn auth_get(&self, path: &str) -> Option<reqwest::blocking::Response>
+- auth_post · function · L254-L278 — fn auth_post(
+- signup · function · L281-L288 — pub fn signup(&self, email: &str, name: Option<&str>) -> Result<(), String>
+- request_otp · function · L291-L298 — pub fn request_otp(&self, email: &str) -> Result<(), String>
+- verify · function · L301-L314 — pub fn verify(&self, email: &str, code: &str) -> Result<(), String>
+- bootstrap_anonymous · function · L321-L344 — pub fn bootstrap_anonymous(
+- claim_request · function · L348-L358 — pub fn claim_request(&self, email: &str) -> Result<(), String>
+- claim_verify · function · L363-L379 — pub fn claim_verify(&self, email: &str, code: &str, name: Option<&str>) -> Result<(), String>
+- entitlements · function · L386-L395 — pub fn entitlements(&self) -> Result<bool, String>
+- support_checkout · function · L403-L419 — pub fn support_checkout(
+- support_restore · function · L424-L434 — pub fn support_restore(&self, install_id: &str, email: &str) -> Result<bool, String>
+- logout · function · L436-L446 — pub fn logout(&self)
+- status · function · L448-L484 — pub fn status(&self) -> AccountStatus
+- heartbeat · function · L486-L506 — pub fn heartbeat(&self, platform: &str, app_version: &str)
+- account_status · function · L512-L514 — pub fn account_status(account: State<'_, AccountState>) -> AccountStatus
+- account_signup · function · L517-L525 — pub fn account_signup(
+- account_request_otp · function · L528-L535 — pub fn account_request_otp(
+- account_verify · function · L538-L547 — pub fn account_verify(
+- account_logout · function · L550-L552 — pub fn account_logout(account: State<'_, AccountState>)
+- account_heartbeat · function · L555-L561 — pub fn account_heartbeat(
+- account_bootstrap_anonymous · function · L569-L579 — pub fn account_bootstrap_anonymous(
+- account_claim_request · function · L584-L591 — pub fn account_claim_request(
+- account_claim_verify · function · L595-L605 — pub fn account_claim_verify(
+- account_entitlements · function · L612-L616 — pub fn account_entitlements(account: State<'_, AccountState>) -> Result<bool, IpcError>
+- account_support_checkout · function · L626-L636 — pub fn account_support_checkout(
+- account_support_restore · function · L643-L652 — pub fn account_support_restore(
+- open_external_url · function · L659-L661 — pub fn open_external_url(url: String)
+- tests · module · L664-L682 — mod tests
+- me_dto_admin_derivation · function · L670-L681 — fn me_dto_admin_derivation()

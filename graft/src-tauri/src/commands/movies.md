@@ -1,0 +1,54 @@
+# src-tauri/src/commands/movies.rs
+
+- USER_AGENT · constant · L23-L23 — const USER_AGENT: &str = "HypeMuzik/1.0 (+https://github.com/Lw-Muzik)";
+- SEARCH_URL · constant · L24-L24 — const SEARCH_URL: &str = "https://archive.org/advancedsearch.php";
+- METADATA_URL · constant · L25-L25 — const METADATA_URL: &str = "https://archive.org/metadata";
+- DOWNLOAD_URL · constant · L26-L26 — const DOWNLOAD_URL: &str = "https://archive.org/download";
+- POSTER_URL · constant · L27-L27 — const POSTER_URL: &str = "https://archive.org/services/img";
+- DEFAULT_ROWS · constant · L30-L30 — const DEFAULT_ROWS: u32 = 30;
+- CollectionInfo · struct · L40-L43 — pub struct CollectionInfo
+- COLLECTIONS · constant · L45-L53 — pub const COLLECTIONS: &[CollectionInfo] = &[
+- whitelisted_collections_clause · function · L57-L60 — fn whitelisted_collections_clause() -> String
+- client · function · L66-L75 — fn client() -> &'static reqwest::blocking::Client
+- CLIENT · constant · L67-L67 — static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+- build_url · function · L80-L99 — fn build_url(base: &str, segments: &[&str]) -> String
+- poster_url · function · L101-L103 — fn poster_url(identifier: &str) -> String
+- file_url · function · L105-L107 — fn file_url(identifier: &str, name: &str) -> String
+- metadata_url · function · L109-L111 — fn metadata_url(identifier: &str) -> String
+- MovieCard · struct · L118-L124 — pub struct MovieCard
+- MovieStream · struct · L129-L134 — pub struct MovieStream
+- MovieDetail · struct · L139-L148 — pub struct MovieDetail
+- flexible_opt_u32 · function · L155-L165 — fn flexible_opt_u32<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+- flexible_opt_u64 · function · L167-L177 — fn flexible_opt_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+- SearchResponse · struct · L180-L182 — struct SearchResponse
+- SearchInner · struct · L185-L188 — struct SearchInner
+- SearchDoc · struct · L191-L199 — struct SearchDoc
+- doc_to_card · function · L201-L211 — fn doc_to_card(d: SearchDoc) -> MovieCard
+- search_movies · function · L214-L243 — fn search_movies(q: &str, page: u32, rows: u32) -> Result<Vec<MovieCard>, IpcError>
+- DescriptionField · enum · L251-L254 — enum DescriptionField
+- into_string · function · L257-L262 — fn into_string(self) -> String
+- ArchiveMetadata · struct · L266-L275 — struct ArchiveMetadata
+- ArchiveFile · struct · L278-L282 — struct ArchiveFile
+- MetadataResponse · struct · L285-L290 — struct MetadataResponse
+- SD_FORMAT · constant · L296-L296 — const SD_FORMAT: &str = "512Kb MPEG4";
+- HD_FORMAT · constant · L297-L297 — const HD_FORMAT: &str = "h.264";
+- pick_streams · function · L299-L322 — fn pick_streams(identifier: &str, files: &[ArchiveFile]) -> Vec<MovieStream>
+- year_from_date · function · L326-L328 — fn year_from_date(date: &str) -> Option<u32>
+- strip_html_tags · function · L335-L347 — fn strip_html_tags(input: &str) -> String
+- decode_entities · function · L349-L357 — fn decode_entities(s: &str) -> String
+- movies_browse · function · L363-L369 — pub fn movies_browse(collection: String, page: u32) -> Result<Vec<MovieCard>, IpcError>
+- movies_search · function · L373-L383 — pub fn movies_search(query: String, page: u32) -> Result<Vec<MovieCard>, IpcError>
+- movies_resolve · function · L390-L424 — pub fn movies_resolve(identifier: String) -> Result<MovieDetail, IpcError>
+- tests · module · L427-L599 — mod tests
+- file · function · L430-L432 — fn file(name: &str, format: &str) -> ArchiveFile
+- parses_search_docs_into_movie_cards · function · L435-L468 — fn parses_search_docs_into_movie_cards()
+- tolerates_year_and_downloads_sent_as_strings · function · L471-L483 — fn tolerates_year_and_downloads_sent_as_strings()
+- picks_sd_then_hd_when_both_present · function · L486-L508 — fn picks_sd_then_hd_when_both_present()
+- sd_falls_back_to_hd_file_without_duplicating_it · function · L511-L518 — fn sd_falls_back_to_hd_file_without_duplicating_it()
+- no_playable_file_yields_no_streams · function · L521-L524 — fn no_playable_file_yields_no_streams()
+- file_urls_percent_encode_spaces · function · L527-L531 — fn file_urls_percent_encode_spaces()
+- strips_tags_and_decodes_entities · function · L534-L541 — fn strips_tags_and_decodes_entities()
+- year_from_date_reads_the_leading_four_digits · function · L544-L548 — fn year_from_date_reads_the_leading_four_digits()
+- parses_full_metadata_response_fixture · function · L551-L574 — fn parses_full_metadata_response_fixture()
+- description_array_form_is_joined · function · L577-L589 — fn description_array_form_is_joined()
+- whitelisted_clause_names_every_confirmed_collection · function · L592-L598 — fn whitelisted_clause_names_every_confirmed_collection()

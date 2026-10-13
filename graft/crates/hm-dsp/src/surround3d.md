@@ -1,0 +1,46 @@
+# crates/hm-dsp/src/surround3d.rs
+
+- HEAD_RADIUS_M · constant · L23-L23 — const HEAD_RADIUS_M: f32 = 0.0875;
+- SOUND_SPEED · constant · L25-L25 — const SOUND_SPEED: f32 = 343.0;
+- FRONT_DEG · constant · L27-L27 — const FRONT_DEG: f32 = 30.0;
+- SIDE_DEG · constant · L28-L28 — const SIDE_DEG: f32 = 90.0;
+- SURROUND_DEG · constant · L29-L29 — const SURROUND_DEG: f32 = 135.0;
+- SURROUND_PREDELAY_S · constant · L31-L31 — const SURROUND_PREDELAY_S: f32 = 0.006;
+- LFE_HZ · constant · L33-L33 — const LFE_HZ: f32 = 120.0;
+- TWEETER_HZ · constant · L36-L36 — const TWEETER_HZ: f32 = 2000.0;
+- ROTATION_HZ · constant · L39-L39 — const ROTATION_HZ: f32 = 0.1;
+- ROTATION_DEPTH · constant · L41-L41 — const ROTATION_DEPTH: f32 = 0.45;
+- SURROUND_LEVEL · constant · L43-L43 — const SURROUND_LEVEL: f32 = 0.85;
+- ROT_RENORM_INTERVAL · constant · L47-L47 — const ROT_RENORM_INTERVAL: u32 = 4096;
+- flush · function · L52-L58 — fn flush(x: f32) -> f32
+- VirtualSpeaker · struct · L62-L72 — struct VirtualSpeaker
+- new · function · L77-L98 — fn new(sample_rate: f32, azimuth_deg: f32, feed_gain: f32) -> Self
+- render · function · L102-L116 — fn render(&mut self, s: f32) -> (f32, f32)
+- left_ear_gain · function · L122-L128 — fn left_ear_gain(&self) -> f32
+- Surround3D · struct · L132-L172 — pub struct Surround3D
+- new · function · L175-L206 — pub fn new(sample_rate: f32, channels: usize) -> Self
+- reconfigure · function · L208-L232 — fn reconfigure(&mut self)
+- apply_speaker_states · function · L235-L254 — fn apply_speaker_states(&mut self)
+- is_active · function · L257-L261 — fn is_active(&self) -> bool
+- prepare · function · L265-L269 — fn prepare(&mut self, sample_rate: f32, channels: usize)
+- process · function · L271-L373 — fn process(&mut self, buffer: &mut [f32], channels: usize)
+- set_params · function · L375-L384 — fn set_params(&mut self, params: &ProcessorParams)
+- tests · module · L388-L676 — mod tests
+- stereo · function · L392-L394 — fn stereo(pairs: &[(f32, f32)]) -> Vec<f32>
+- state · function · L396-L406 — fn state(intensity: f32, subwoofer: f32, speakers: SurroundSpeakers) -> EngineState
+- speakers_only · function · L409-L418 — fn speakers_only(side: bool, front: bool) -> SurroundSpeakers
+- energy · function · L420-L422 — fn energy(buf: &[f32]) -> f32
+- sine_stereo · function · L424-L433 — fn sine_stereo(freq: f32, frames: usize) -> Vec<f32>
+- disabled_is_identity · function · L436-L443 — fn disabled_is_identity()
+- intensity_zero_is_identity · function · L446-L453 — fn intensity_zero_is_identity()
+- enabled_changes_signal_but_stays_bounded · function · L456-L464 — fn enabled_changes_signal_but_stays_bounded()
+- disabling_a_speaker_changes_output · function · L467-L490 — fn disabling_a_speaker_changes_output()
+- subwoofer_level_adds_low_frequency_energy · function · L493-L512 — fn subwoofer_level_adds_low_frequency_energy()
+- intensity_scales_the_effect · function · L515-L538 — fn intensity_scales_the_effect()
+- tweeters_carry_highs_not_lows · function · L541-L562 — fn tweeters_carry_highs_not_lows()
+- disabling_tweeters_keeps_treble_on_front · function · L565-L586 — fn disabling_tweeters_keeps_treble_on_front()
+- surround_only · function · L588-L597 — fn surround_only() -> SurroundSpeakers
+- surround_has_a_reverb_tail · function · L600-L615 — fn surround_has_a_reverb_tail()
+- surround_fills_the_room_for_mono_and_decorrelates · function · L618-L634 — fn surround_fills_the_room_for_mono_and_decorrelates()
+- surround_field_rotates_over_time · function · L637-L655 — fn surround_field_rotates_over_time()
+- surround_reverb_stays_bounded · function · L658-L675 — fn surround_reverb_stays_bounded()

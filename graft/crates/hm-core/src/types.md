@@ -1,0 +1,59 @@
+# crates/hm-core/src/types.rs
+
+- BAND_COUNT · constant · L12-L12 — pub const BAND_COUNT: usize = 31;
+- ISO_CENTERS_HZ · constant · L18-L22 — pub const ISO_CENTERS_HZ: [f32; BAND_COUNT] = [
+- EqState · struct · L27-L33 — pub struct EqState
+- default · function · L36-L42 — fn default() -> Self
+- BassBoostState · struct · L49-L58 — pub struct BassBoostState
+- default · function · L61-L68 — fn default() -> Self
+- SpatialMode · enum · L74-L79 — pub enum SpatialMode
+- SpatializerState · struct · L84-L89 — pub struct SpatializerState
+- default · function · L92-L98 — fn default() -> Self
+- SurroundSpeakers · struct · L104-L113 — pub struct SurroundSpeakers
+- default · function · L116-L125 — fn default() -> Self
+- Surround3DState · struct · L133-L140 — pub struct Surround3DState
+- default · function · L143-L150 — fn default() -> Self
+- RoomState · struct · L157-L173 — pub struct RoomState
+- default · function · L176-L188 — fn default() -> Self
+- ConvolverState · struct · L197-L211 — pub struct ConvolverState
+- default · function · L214-L224 — fn default() -> Self
+- CompanderState · struct · L231-L247 — pub struct CompanderState
+- default · function · L250-L262 — fn default() -> Self
+- SaturationState · struct · L268-L274 — pub struct SaturationState
+- default · function · L277-L283 — fn default() -> Self
+- ScriptState · struct · L290-L293 — pub struct ScriptState
+- OutputState · struct · L299-L305 — pub struct OutputState
+- default · function · L308-L314 — fn default() -> Self
+- PlaybackState · struct · L320-L334 — pub struct PlaybackState
+- default_autoplay · function · L336-L338 — fn default_autoplay() -> bool
+- default · function · L341-L348 — fn default() -> Self
+- HeadphoneCorrectionState · struct · L355-L359 — pub struct HeadphoneCorrectionState
+- default · function · L362-L368 — fn default() -> Self
+- EngineState · struct · L378-L401 — pub struct EngineState
+- default · function · L404-L424 — fn default() -> Self
+- SystemEqScopeMode · enum · L430-L438 — pub enum SystemEqScopeMode
+- SystemEqScope · struct · L445-L448 — pub struct SystemEqScope
+- EqPreset · struct · L453-L460 — pub struct EqPreset
+- ParametricBand · struct · L465-L471 — pub struct ParametricBand
+- HeadphoneProfile · struct · L476-L483 — pub struct HeadphoneProfile
+- LibraryTrack · struct · L488-L497 — pub struct LibraryTrack
+- LibraryPage · struct · L505-L508 — pub struct LibraryPage
+- Playlist · struct · L513-L516 — pub struct Playlist
+- TrackMeta · struct · L523-L529 — pub struct TrackMeta
+- RadioStation · struct · L534-L541 — pub struct RadioStation
+- TvChannel · struct · L549-L562 — pub struct TvChannel
+- TvCategory · struct · L567-L572 — pub struct TvCategory
+- TvCountry · struct · L578-L581 — pub struct TvCountry
+- AppSession · struct · L586-L593 — pub struct AppSession
+- MeterFrame · struct · L598-L603 — pub struct MeterFrame
+- default · function · L606-L611 — fn default() -> Self
+- EngineFrame · struct · L622-L628 — pub struct EngineFrame
+- tests · module · L631-L720 — mod tests
+- bass_boost_default_adaptive_is_false · function · L635-L639 — fn bass_boost_default_adaptive_is_false()
+- convolver_default_is_disabled_and_empty · function · L642-L651 — fn convolver_default_is_disabled_and_empty()
+- compander_default_is_disabled_with_mastering_defaults · function · L654-L666 — fn compander_default_is_disabled_with_mastering_defaults()
+- saturation_default_is_disabled · function · L669-L675 — fn saturation_default_is_disabled()
+- engine_state_deserializes_with_missing_fields · function · L678-L690 — fn engine_state_deserializes_with_missing_fields()
+- system_eq_scope_serde_roundtrip · function · L693-L702 — fn system_eq_scope_serde_roundtrip()
+- engine_state_full_roundtrip · function · L705-L711 — fn engine_state_full_roundtrip()
+- script_default_is_disabled_empty · function · L714-L719 — fn script_default_is_disabled_empty()

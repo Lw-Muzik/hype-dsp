@@ -1,0 +1,22 @@
+# crates/hm-visualizer/src/projectm.rs
+
+- ProjectM · struct · L18-L20 — pub struct ProjectM
+- new · function · L24-L28 — pub fn new() -> Self
+- set_window_size · function · L30-L32 — pub fn set_window_size(&self, width: u32, height: u32)
+- add_pcm_mono · function · L35-L49 — pub fn add_pcm_mono(&self, samples: &[f32])
+- render_frame · function · L52-L54 — pub fn render_frame(&self)
+- set_fps · function · L56-L58 — pub fn set_fps(&self, fps: i32)
+- set_beat_sensitivity · function · L59-L61 — pub fn set_beat_sensitivity(&self, sensitivity: f32)
+- set_preset_duration · function · L62-L64 — pub fn set_preset_duration(&self, seconds: f64)
+- set_preset_locked · function · L65-L67 — pub fn set_preset_locked(&self, locked: bool)
+- load_preset_file · function · L71-L75 — pub fn load_preset_file(&self, path: &Path, smooth: bool)
+- handle · function · L77-L79 — fn handle(&self) -> ffi::projectm_handle
+- default · function · L83-L85 — fn default() -> Self
+- drop · function · L89-L91 — fn drop(&mut self)
+- Playlist · struct · L95-L97 — pub struct Playlist
+- new · function · L100-L104 — pub fn new(pm: &ProjectM) -> Self
+- add_dir · function · L107-L112 — pub fn add_dir(&self, dir: &Path) -> u32
+- set_shuffle · function · L114-L116 — pub fn set_shuffle(&self, shuffle: bool)
+- next · function · L117-L119 — pub fn next(&self)
+- prev · function · L120-L122 — pub fn prev(&self)
+- drop · function · L126-L128 — fn drop(&mut self)

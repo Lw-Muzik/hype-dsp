@@ -1,0 +1,43 @@
+# crates/hm-audio/src/output_device.rs
+
+- OutputTransport · enum · L32-L43 — pub enum OutputTransport
+- TRANSPORT_BUILT_IN · constant · L48-L48 — const TRANSPORT_BUILT_IN: u32 = 0x626c_746e; // 'bltn'
+- TRANSPORT_USB · constant · L49-L49 — const TRANSPORT_USB: u32 = 0x7573_6220; // 'usb '
+- TRANSPORT_BLUETOOTH · constant · L50-L50 — const TRANSPORT_BLUETOOTH: u32 = 0x626c_7565; // 'blue'
+- TRANSPORT_BLUETOOTH_LE · constant · L51-L51 — const TRANSPORT_BLUETOOTH_LE: u32 = 0x626c_6561; // 'blea'
+- TRANSPORT_HDMI · constant · L52-L52 — const TRANSPORT_HDMI: u32 = 0x6864_6d69; // 'hdmi'
+- TRANSPORT_DISPLAY_PORT · constant · L53-L53 — const TRANSPORT_DISPLAY_PORT: u32 = 0x6470_7274; // 'dprt'
+- TRANSPORT_AIRPLAY · constant · L54-L54 — const TRANSPORT_AIRPLAY: u32 = 0x6169_7270; // 'airp'
+- TRANSPORT_AGGREGATE · constant · L55-L55 — const TRANSPORT_AGGREGATE: u32 = 0x6772_7570; // 'grup'
+- TRANSPORT_AUTO_AGGREGATE · constant · L56-L56 — const TRANSPORT_AUTO_AGGREGATE: u32 = 0x6667_7270; // 'fgrp'
+- TRANSPORT_VIRTUAL · constant · L57-L57 — const TRANSPORT_VIRTUAL: u32 = 0x7669_7274; // 'virt'
+- TRANSPORT_THUNDERBOLT · constant · L58-L58 — const TRANSPORT_THUNDERBOLT: u32 = 0x7468_756e; // 'thun'
+- from_transport_code · function · L63-L76 — pub fn from_transport_code(code: u32) -> Self
+- OutputDevice · struct · L82-L96 — pub struct OutputDevice
+- list_output_devices · function · L102-L111 — pub fn list_output_devices() -> Result<Vec<OutputDevice>, AudioError>
+- set_default_output · function · L118-L130 — pub fn set_default_output(uid: &str) -> Result<(), AudioError>
+- default_output_uid · function · L133-L142 — pub fn default_output_uid() -> Option<String>
+- default_output_device_id · function · L146-L155 — pub fn default_output_device_id() -> Option<u32>
+- total_channels · function · L160-L162 — pub(crate) fn total_channels(channels_per_buffer: &[u32]) -> u32
+- fallback · module · L166-L191 — mod fallback
+- list_output_devices · function · L169-L182 — pub fn list_output_devices() -> Result<Vec<OutputDevice>, AudioError>
+- default_output_uid · function · L184-L190 — pub fn default_output_uid() -> Option<String>
+- macos · module · L195-L493 — mod macos
+- addr · function · L216-L222 — fn addr(selector: u32, scope: u32) -> AudioObjectPropertyAddress
+- all_device_ids · function · L226-L265 — fn all_device_ids() -> Vec<AudioObjectID>
+- output_channel_count · function · L270-L319 — fn output_channel_count(device: AudioObjectID) -> u32
+- read_cfstring · function · L322-L342 — fn read_cfstring(device: AudioObjectID, selector: u32) -> Option<String>
+- read_u32 · function · L345-L360 — fn read_u32(device: AudioObjectID, selector: u32, scope: u32) -> Option<u32>
+- device_is_alive · function · L364-L373 — fn device_is_alive(device: AudioObjectID) -> bool
+- default_output_device_id · function · L375-L393 — pub fn default_output_device_id() -> Option<AudioObjectID>
+- default_output_uid · function · L395-L398 — pub fn default_output_uid() -> Option<String>
+- device_id_for_uid · function · L401-L405 — fn device_id_for_uid(uid: &str) -> Option<AudioObjectID>
+- list_output_devices · function · L407-L447 — pub fn list_output_devices() -> Vec<OutputDevice>
+- set_default_output · function · L449-L492 — pub fn set_default_output(uid: &str) -> Result<(), AudioError>
+- tests · module · L496-L623 — mod tests
+- transport_codes_map_to_expected_variants · function · L500-L547 — fn transport_codes_map_to_expected_variants()
+- transport_serializes_to_lowercase_wire_form · function · L550-L564 — fn transport_serializes_to_lowercase_wire_form()
+- output_device_serializes_camel_case_keys · function · L567-L580 — fn output_device_serializes_camel_case_keys()
+- total_channels_sums_every_buffer · function · L584-L590 — fn total_channels_sums_every_buffer()
+- local_transport_fourccs_match_core_audio · function · L595-L615 — fn local_transport_fourccs_match_core_audio()
+- listing_does_not_panic · function · L620-L622 — fn listing_does_not_panic()

@@ -1,0 +1,203 @@
+# crates/hm-ytmusic/src/lib.rs
+
+- cookies · module · L30-L30 — pub mod cookies;
+- explore · module · L31-L31 — pub mod explore;
+- innertube · module · L32-L32 — mod innertube;
+- nav · module · L33-L33 — mod nav;
+- playlist · module · L34-L34 — pub mod playlist;
+- radio · module · L35-L35 — mod radio;
+- search · module · L36-L36 — pub mod search;
+- ytdlp · module · L37-L37 — pub mod ytdlp;
+- LIBRARY_GRID_ITEMS · constant · L65-L66 — const LIBRARY_GRID_ITEMS: &str = "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer\
+- PLAYLIST_FETCH_CONCURRENCY · constant · L70-L70 — const PLAYLIST_FETCH_CONCURRENCY: usize = 6;
+- PLAYLIST_PAGE_LIMIT · constant · L75-L75 — const PLAYLIST_PAGE_LIMIT: usize = 60;
+- YtPlaylist · struct · L79-L87 — pub struct YtPlaylist
+- YtTrack · struct · L91-L114 — pub struct YtTrack
+- ExploreSection · struct · L119-L122 — pub struct ExploreSection
+- ExploreCategory · struct · L126-L131 — pub struct ExploreCategory
+- YtDlpInfo · struct · L135-L141 — pub struct YtDlpInfo
+- YtMusicStatus · struct · L145-L148 — pub struct YtMusicStatus
+- SessionStore · struct · L160-L163 — struct SessionStore
+- KEYCHAIN · constant · L167-L170 — const KEYCHAIN: Self = Self
+- Session · enum · L179-L182 — enum Session
+- YtMusicState · struct · L184-L254 — pub struct YtMusicState
+- EXPIRY_MARGIN_SECS · constant · L262-L262 — const EXPIRY_MARGIN_SECS: u64 = 90 * 60;
+- now_secs · function · L265-L270 — fn now_secs() -> Option<u64>
+- is_fresh · function · L273-L279 — fn is_fresh(target: &ytdlp::StreamTarget, now: u64) -> bool
+- TargetCache · type · L282-L282 — type TargetCache = RwLock<std::collections::HashMap<String, ytdlp::StreamTarget>>;
+- probe_client · function · L288-L296 — fn probe_client() -> &'static reqwest::blocking::Client
+- CLIENT · constant · L289-L289 — static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+- probe_ok · function · L312-L314 — fn probe_ok(target: &ytdlp::StreamTarget) -> bool
+- ProbeVerdict · enum · L322-L332 — enum ProbeVerdict
+- probe · function · L334-L357 — fn probe(target: &ytdlp::StreamTarget) -> ProbeVerdict
+- GATED_STREAM_MESSAGE · constant · L363-L365 — const GATED_STREAM_MESSAGE: &str =
+- GATED_VIDEO_MESSAGE · constant · L377-L379 — const GATED_VIDEO_MESSAGE: &str =
+- native_resolve_enabled · function · L385-L388 — fn native_resolve_enabled() -> bool
+- ON · constant · L386-L386 — static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+- cached_in · function · L390-L394 — fn cached_in(cache: &TargetCache, video_id: &str) -> Option<ytdlp::StreamTarget>
+- remember_in · function · L397-L409 — fn remember_in(cache: &TargetCache, video_id: &str, target: &ytdlp::StreamTarget)
+- UrlCacheFile · struct · L414-L417 — struct UrlCacheFile
+- URL_CACHE_VERSION · constant · L419-L419 — const URL_CACHE_VERSION: u32 = 1;
+- default · function · L422-L424 — fn default() -> Self
+- new · function · L428-L442 — pub fn new() -> Self
+- load · function · L455-L457 — pub fn load() -> Self
+- with_session_store · function · L459-L464 — fn with_session_store(session_store: SessionStore) -> Self
+- signed_in · function · L470-L472 — pub fn signed_in(&self) -> bool
+- status · function · L474-L487 — pub fn status(&self) -> YtMusicStatus
+- sign_in · function · L490-L505 — pub async fn sign_in(&self, captured: Vec<YtCookie>) -> Result<(), String>
+- sign_out · function · L507-L514 — pub async fn sign_out(&self) -> Result<(), String>
+- cookies_snapshot · function · L528-L546 — fn cookies_snapshot(&self) -> Option<Vec<YtCookie>>
+- client · function · L549-L563 — async fn client(&self) -> Result<Arc<YtMusic<BrowserToken>>, String>
+- playlists · function · L576-L593 — pub async fn playlists(&self) -> Result<Vec<YtPlaylist>, String>
+- playlist_tracks · function · L596-L599 — pub async fn playlist_tracks(&self, playlist: &YtPlaylist) -> Result<Vec<YtTrack>, String>
+- explore_categories · function · L606-L626 — pub async fn explore_categories(&self) -> Result<Vec<ExploreSection>, String>
+- explore_page · function · L630-L641 — pub async fn explore_page(&self, params: &str) -> Result<Vec<ExploreShelf>, String>
+- search · function · L654-L691 — pub async fn search(&self, query: &str, filter: &str) -> Result<Vec<ExploreShelf>, String>
+- search_suggestions · function · L698-L713 — pub async fn search_suggestions(&self, query: &str) -> Vec<String>
+- artist_page · function · L723-L732 — pub async fn artist_page(&self, browse_id: &str) -> Result<Vec<ExploreShelf>, String>
+- radio · function · L741-L751 — pub async fn radio(&self, video_id: &str) -> Result<RadioBatch, String>
+- radio_continue · function · L756-L770 — pub async fn radio_continue(&self, video_id: &str, token: &str) -> Result<RadioBatch, String>
+- explore_tracks · function · L776-L798 — pub async fn explore_tracks(&self, item: &ExploreItem) -> Result<Vec<YtTrack>, String>
+- artist_tracks · function · L809-L824 — async fn artist_tracks(&self, item: &ExploreItem) -> Result<Vec<YtTrack>, String>
+- album_tracks · function · L831-L861 — async fn album_tracks(&self, album_id: &str, fallback_title: &str) -> Result<Vec<YtTrack>, String>
+- all_tracks · function · L870-L892 — pub async fn all_tracks(&self) -> Result<(Vec<YtPlaylist>, Vec<YtTrack>), String>
+- runner · function · L895-L908 — fn runner(&self) -> Result<ProcessRunner, String>
+- cached_target · function · L911-L913 — fn cached_target(&self, video_id: &str) -> Option<ytdlp::StreamTarget>
+- live_or_probed_target · function · L918-L935 — fn live_or_probed_target(&self, video_id: &str) -> Option<ytdlp::StreamTarget>
+- remember_target · function · L938-L942 — fn remember_target(&self, video_id: &str, target: &ytdlp::StreamTarget)
+- native_miss · function · L947-L952 — fn native_miss(&self, reason: &str)
+- url_cache_snapshot · function · L961-L985 — pub fn url_cache_snapshot(&self) -> Option<(u64, String)>
+- restore_url_cache · function · L992-L1008 — pub fn restore_url_cache(&self, json: &str)
+- url_cache_generation · function · L1010-L1012 — pub fn url_cache_generation(&self) -> u64
+- prefetch · function · L1021-L1026 — pub fn prefetch(&self, video_id: &str) -> Result<(), String>
+- prefetch_batch · function · L1036-L1040 — pub fn prefetch_batch(&self, video_ids: &[String])
+- prefetch_video · function · L1048-L1050 — pub fn prefetch_video(&self, video_id: &str) -> Result<(), String>
+- forget · function · L1058-L1071 — pub fn forget(&self, video_id: &str)
+- stream_target · function · L1077-L1080 — pub fn stream_target(&self, video_id: &str) -> Result<(String, Vec<(String, String)>), String>
+- video_target · function · L1093-L1117 — pub fn video_target(&self, video_id: &str) -> Result<(String, Vec<(String, String)>), String>
+- resolve · function · L1131-L1181 — pub fn resolve(&self, video_id: &str) -> Result<ytdlp::StreamTarget, String>
+- download · function · L1184-L1204 — pub fn download(
+- Resolved · struct · L1209-L1215 — struct Resolved
+- resolve_with_fallback · function · L1227-L1284 — fn resolve_with_fallback(
+- resolve_video_with_fallback · function · L1308-L1322 — fn resolve_video_with_fallback(
+- cookie_file · function · L1326-L1331 — fn cookie_file(cookies: Option<&[YtCookie]>) -> Result<Option<CookieFile>, String>
+- PlaylistContinuation · struct · L1341-L1344 — struct PlaylistContinuation<'a>
+- header · function · L1347-L1349 — fn header(&self) -> serde_json::Map<String, Value>
+- params · function · L1350-L1355 — fn params(&self) -> Vec<(&str, std::borrow::Cow<'_, str>)>
+- path · function · L1356-L1358 — fn path(&self) -> &str
+- RawPage · struct · L1364-L1364 — struct RawPage;
+- parse_from · function · L1367-L1369 — fn parse_from(_: ProcessedResult<PlaylistContinuation<'_>>) -> ytmapi_rs::Result<Self>
+- Output · type · L1373-L1373 — type Output = RawPage;
+- Method · type · L1374-L1374 — type Method = PostMethod;
+- WatchContinuation · struct · L1382-L1385 — struct WatchContinuation<'a>
+- header · function · L1388-L1390 — fn header(&self) -> serde_json::Map<String, Value>
+- params · function · L1391-L1396 — fn params(&self) -> Vec<(&str, std::borrow::Cow<'_, str>)>
+- path · function · L1397-L1399 — fn path(&self) -> &str
+- parse_from · function · L1403-L1405 — fn parse_from(_: ProcessedResult<WatchContinuation<'_>>) -> ytmapi_rs::Result<Self>
+- Output · type · L1409-L1409 — type Output = RawPage;
+- Method · type · L1410-L1410 — type Method = PostMethod;
+- fetch_tracks · function · L1427-L1469 — async fn fetch_tracks(
+- pad_short_subtitles · function · L1486-L1510 — fn pad_short_subtitles(json: &mut Value) -> usize
+- track_of · function · L1521-L1539 — fn track_of(item: &ExploreItem) -> YtTrack
+- map_playlist · function · L1541-L1549 — fn map_playlist(p: ytmapi_rs::parse::LibraryPlaylist) -> YtPlaylist
+- join_artists · function · L1551-L1558 — fn join_artists(artists: &[ytmapi_rs::parse::ParsedSongArtist]) -> Option<String>
+- best_thumbnail · function · L1562-L1567 — fn best_thumbnail(thumbs: &[ytmapi_rs::common::Thumbnail]) -> Option<String>
+- parse_duration · function · L1573-L1586 — pub(crate) fn parse_duration(raw: &str) -> Option<f64>
+- parse_track_count · function · L1589-L1591 — fn parse_track_count(raw: &str) -> Option<u32>
+- tests · module · L1594-L3245 — mod tests
+- live_state · function · L1611-L1626 — fn live_state() -> Option<&'static YtMusicState>
+- STATE · constant · L1612-L1612 — static STATE: std::sync::OnceLock<Option<YtMusicState>> = std::sync::OnceLock::new();
+- target · function · L1628-L1637 — fn target(expires_at: Option<u64>) -> ytdlp::StreamTarget
+- NOW · constant · L1639-L1639 — const NOW: u64 = 1_784_290_000;
+- a_url_with_hours_left_is_fresh · function · L1642-L1645 — fn a_url_with_hours_left_is_fresh()
+- a_url_inside_the_margin_is_not_fresh · function · L1648-L1652 — fn a_url_inside_the_margin_is_not_fresh()
+- an_expired_url_is_not_fresh · function · L1655-L1659 — fn an_expired_url_is_not_fresh()
+- a_url_without_a_stated_expiry_is_never_fresh · function · L1664-L1666 — fn a_url_without_a_stated_expiry_is_never_fresh()
+- stored_session · function · L1672-L1685 — fn stored_session(expires: Option<i64>) -> Vec<YtCookie>
+- uncleared · function · L1687-L1689 — fn uncleared() -> Result<(), String>
+- building_the_state_never_reads_the_stored_session · function · L1698-L1711 — fn building_the_state_never_reads_the_stored_session()
+- READS · constant · L1699-L1699 — static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+- read · function · L1700-L1703 — fn read() -> Result<Option<Vec<YtCookie>>, String>
+- the_stored_session_is_read_once_on_first_demand · function · L1717-L1732 — fn the_stored_session_is_read_once_on_first_demand()
+- READS · constant · L1718-L1718 — static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+- read · function · L1719-L1722 — fn read() -> Result<Option<Vec<YtCookie>>, String>
+- a_lapsed_session_reads_as_signed_out_and_is_left_alone · function · L1741-L1757 — fn a_lapsed_session_reads_as_signed_out_and_is_left_alone()
+- CLEARS · constant · L1742-L1742 — static CLEARS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+- read · function · L1743-L1745 — fn read() -> Result<Option<Vec<YtCookie>>, String>
+- clear · function · L1746-L1749 — fn clear() -> Result<(), String>
+- a_refused_read_settles_as_signed_out_without_asking_again · function · L1764-L1775 — fn a_refused_read_settles_as_signed_out_without_asking_again()
+- READS · constant · L1765-L1765 — static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+- read · function · L1766-L1769 — fn read() -> Result<Option<Vec<YtCookie>>, String>
+- the_resolve_path_sees_the_session_too · function · L1781-L1787 — fn the_resolve_path_sees_the_session_too()
+- a_remembered_url_comes_back · function · L1790-L1795 — fn a_remembered_url_comes_back()
+- an_undatable_url_is_not_remembered · function · L1798-L1802 — fn an_undatable_url_is_not_remembered()
+- a_url_that_is_already_stale_is_not_served · function · L1805-L1809 — fn a_url_that_is_already_stale_is_not_served()
+- a_url_can_be_forgotten_before_it_expires · function · L1816-L1822 — fn a_url_can_be_forgotten_before_it_expires()
+- video_target_fixture · function · L1824-L1833 — fn video_target_fixture(expires_at: Option<u64>) -> ytdlp::StreamTarget
+- the_audio_and_video_caches_do_not_answer_for_each_other · function · L1840-L1851 — fn the_audio_and_video_caches_do_not_answer_for_each_other()
+- forgetting_drops_the_video_url_too · function · L1856-L1869 — fn forgetting_drops_the_video_url_too()
+- the_video_cache_will_not_serve_a_stale_url · function · L1874-L1885 — fn the_video_cache_will_not_serve_a_stale_url()
+- writing_drops_whatever_has_expired · function · L1890-L1901 — fn writing_drops_whatever_has_expired()
+- a_second_resolve_costs_nothing · function · L1911-L1946 — fn a_second_resolve_costs_nothing()
+- ID · constant · L1912-L1912 — const ID: &str = "dQw4w9WgXcQ";
+- parses_mm_ss · function · L1949-L1952 — fn parses_mm_ss()
+- parses_hh_mm_ss · function · L1955-L1957 — fn parses_hh_mm_ss()
+- parses_bare_seconds · function · L1960-L1962 — fn parses_bare_seconds()
+- rejects_junk_duration · function · L1965-L1970 — fn rejects_junk_duration()
+- parses_track_counts · function · L1973-L1979 — fn parses_track_counts()
+- joins_artists_skipping_blanks · function · L1982-L1999 — fn joins_artists_skipping_blanks()
+- picks_largest_thumbnail · function · L2002-L2017 — fn picks_largest_thumbnail()
+- grid · function · L2021-L2045 — fn grid(subtitles: &[Option<Vec<&str>>]) -> Value
+- runs_at · function · L2047-L2056 — fn runs_at(json: &Value, i: usize) -> Vec<String>
+- pads_auto_mix_subtitle_so_the_count_read_resolves · function · L2061-L2068 — fn pads_auto_mix_subtitle_so_the_count_read_resolves()
+- leaves_well_formed_subtitles_untouched · function · L2071-L2079 — fn leaves_well_formed_subtitles_untouched()
+- leaves_empty_and_absent_subtitles_alone · function · L2084-L2088 — fn leaves_empty_and_absent_subtitles_alone()
+- counts_only_the_items_it_padded · function · L2091-L2098 — fn counts_only_the_items_it_padded()
+- SessionSensitive · struct · L2104-L2109 — struct SessionSensitive
+- run · function · L2112-L2120 — fn run(&self, args: &[String]) -> Result<String, YtDlpError>
+- ok_stdout · function · L2123-L2132 — fn ok_stdout() -> String
+- session_path · function · L2134-L2136 — fn session_path() -> &'static Path
+- retries_without_the_session_when_signed_in_finds_no_format · function · L2141-L2153 — fn retries_without_the_session_when_signed_in_finds_no_format()
+- does_not_drop_the_session_for_a_blocked_track · function · L2158-L2167 — fn does_not_drop_the_session_for_a_blocked_track()
+- does_not_drop_the_session_for_an_unavailable_track · function · L2170-L2178 — fn does_not_drop_the_session_for_an_unavailable_track()
+- does_not_retry_when_there_was_no_session · function · L2182-L2190 — fn does_not_retry_when_there_was_no_session()
+- a_known_bad_session_is_not_tried_first · function · L2196-L2207 — fn a_known_bad_session_is_not_tried_first()
+- a_private_track_still_reaches_the_session_when_anonymous_leads · function · L2213-L2223 — fn a_private_track_still_reaches_the_session_when_anonymous_leads()
+- an_unclassified_failure_alternates_identities · function · L2231-L2241 — fn an_unclassified_failure_alternates_identities()
+- reports_both_attempts_when_the_retry_also_fails · function · L2246-L2256 — fn reports_both_attempts_when_the_retry_also_fails()
+- video_leads_with_anonymous_even_when_signed_in · function · L2266-L2279 — fn video_leads_with_anonymous_even_when_signed_in()
+- video_falls_back_to_the_session_when_anonymous_cannot_see_it · function · L2285-L2294 — fn video_falls_back_to_the_session_when_anonymous_cannot_see_it()
+- video_does_not_retry_when_there_was_no_session · function · L2298-L2307 — fn video_does_not_retry_when_there_was_no_session()
+- video_reports_both_reasons_when_both_fail · function · L2312-L2322 — fn video_reports_both_reasons_when_both_fail()
+- live_resolves_the_picture_anonymously · function · L2334-L2357 — fn live_resolves_the_picture_anonymously()
+- ignores_a_response_without_a_grid · function · L2361-L2365 — fn ignores_a_response_without_a_grid()
+- live_explore_sweeps_every_category · function · L2380-L2441 — async fn live_explore_sweeps_every_category()
+- explore_page_insisting · function · L2451-L2466 — async fn explore_page_insisting(
+- KindTally · struct · L2470-L2476 — struct KindTally
+- count · function · L2479-L2488 — fn count(&mut self, kind: ExploreKind)
+- total · function · L2490-L2492 — fn total(&self) -> usize
+- live_explore_items_open_into_tracks · function · L2499-L2543 — async fn live_explore_items_open_into_tracks()
+- live_playlists_load_completely · function · L2555-L2585 — async fn live_playlists_load_completely()
+- LIVE_QUERY · constant · L2590-L2590 — const LIVE_QUERY: &str = "burna boy";
+- live_search_answers_every_filter · function · L2600-L2653 — async fn live_search_answers_every_filter()
+- live_search_songs_carry_their_detail · function · L2660-L2693 — async fn live_search_songs_carry_their_detail()
+- live_a_playlist_from_search_opens_into_tracks · function · L2702-L2724 — async fn live_a_playlist_from_search_opens_into_tracks()
+- live_an_artist_from_search_opens_into_a_page_with_tracks · function · L2730-L2778 — async fn live_an_artist_from_search_opens_into_a_page_with_tracks()
+- live_a_song_from_search_opens_into_itself · function · L2784-L2801 — async fn live_a_song_from_search_opens_into_itself()
+- live_search_suggestions_complete_a_partial_query · function · L2806-L2820 — async fn live_search_suggestions_complete_a_partial_query()
+- live_library_listing_parses · function · L2825-L2833 — async fn live_library_listing_parses()
+- live_radio_pages_endlessly · function · L2838-L2864 — async fn live_radio_pages_endlessly()
+- live_native_resolve_is_fast_and_unthrottled · function · L2870-L2995 — async fn live_native_resolve_is_fast_and_unthrottled()
+- ID · constant · L2956-L2956 — const ID: &str = "dQw4w9WgXcQ";
+- fresh_in · function · L3000-L3010 — fn fresh_in(expires_in: i64) -> ytdlp::StreamTarget
+- url_cache_round_trips_fresh_entries · function · L3015-L3030 — fn url_cache_round_trips_fresh_entries()
+- snapshot_is_the_union_of_live_and_restored · function · L3033-L3048 — fn snapshot_is_the_union_of_live_and_restored()
+- garbage_and_wrong_versions_are_ignored_not_fatal · function · L3051-L3058 — fn garbage_and_wrong_versions_are_ignored_not_fatal()
+- generation_moves_on_remember_not_on_read_or_restore · function · L3062-L3078 — fn generation_moves_on_remember_not_on_read_or_restore()
+- one_shot_server · function · L3081-L3106 — fn one_shot_server(
+- restored_state_with · function · L3108-L3121 — fn restored_state_with(url: String) -> YtMusicState
+- a_healthy_restored_entry_is_probed_once_then_live · function · L3132-L3151 — fn a_healthy_restored_entry_is_probed_once_then_live()
+- a_refusal_and_an_unreachable_probe_are_different_answers · function · L3160-L3197 — fn a_refusal_and_an_unreachable_probe_are_different_answers()
+- a_dead_restored_entry_is_dropped_and_dirties_the_cache · function · L3203-L3212 — fn a_dead_restored_entry_is_dropped_and_dirties_the_cache()
+- a_live_entry_is_served_without_any_request · function · L3216-L3232 — fn a_live_entry_is_served_without_any_request()
+- forgetting_a_url_dirties_the_cache · function · L3238-L3244 — fn forgetting_a_url_dirties_the_cache()

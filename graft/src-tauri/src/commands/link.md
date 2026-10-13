@@ -1,0 +1,34 @@
+# src-tauri/src/commands/link.rs
+
+- DiscoveryState · struct · L22-L24 — pub struct DiscoveryState
+- link_discover_start · function · L30-L54 — pub fn link_discover_start(app: AppHandle, disc: State<'_, DiscoveryState>)
+- link_discover_stop · function · L58-L62 — pub fn link_discover_stop(disc: State<'_, DiscoveryState>)
+- link_discover · function · L66-L69 — pub fn link_discover(link: State<'_, LinkState>) -> Result<Vec<PhoneDevice>, IpcError>
+- link_paired · function · L73-L75 — pub fn link_paired(link: State<'_, LinkState>) -> Vec<PhoneDevice>
+- link_pair · function · L85-L96 — pub fn link_pair(
+- link_pair_address · function · L102-L110 — pub fn link_pair_address(
+- link_unpair · function · L114-L116 — pub fn link_unpair(link: State<'_, LinkState>, device_id: String)
+- catch_build · function · L129-L141 — fn catch_build<T>(build: impl FnOnce() -> Result<T, String>) -> Result<T, String>
+- RemoteState · struct · L155-L162 — pub struct RemoteState
+- new · function · L165-L172 — pub fn new(app: AppHandle, secret_path: PathBuf, store_path: PathBuf) -> Self
+- has_known_peers · function · L176-L181 — pub fn has_known_peers(&self) -> bool
+- built · function · L186-L188 — fn built(&self) -> Option<&hm_remote::RemoteManager>
+- manager · function · L195-L221 — pub fn manager(&self) -> Result<&hm_remote::RemoteManager, String>
+- link_remote_qr · function · L231-L238 — pub fn link_remote_qr(
+- link_remote_cancel · function · L242-L248 — pub fn link_remote_cancel(remote: State<'_, RemoteState>)
+- link_remote_status · function · L253-L263 — pub fn link_remote_status(remote: State<'_, RemoteState>) -> Vec<hm_remote::RemotePhoneStatus>
+- link_remote_connect · function · L268-L286 — pub fn link_remote_connect(
+- link_remote_forget · function · L292-L306 — pub fn link_remote_forget(
+- link_library · function · L310-L315 — pub fn link_library(
+- link_artwork · function · L320-L326 — pub fn link_artwork(
+- link_lyrics · function · L332-L338 — pub fn link_lyrics(
+- link_play · function · L344-L358 — pub fn link_play(
+- PhoneQueueItem · struct · L363-L366 — pub struct PhoneQueueItem
+- link_play_queue · function · L372-L402 — pub fn link_play_queue(
+- UploadProgress · struct · L407-L416 — pub struct UploadProgress
+- link_upload · function · L428-L478 — pub fn link_upload(
+- tests · module · L481-L519 — mod tests
+- catch_build_passes_ok_through · function · L491-L493 — fn catch_build_passes_ok_through()
+- catch_build_passes_err_through · function · L496-L501 — fn catch_build_passes_err_through()
+- catch_build_converts_a_str_panic_into_err · function · L504-L508 — fn catch_build_converts_a_str_panic_into_err()
+- catch_build_converts_a_string_panic_into_err · function · L511-L518 — fn catch_build_converts_a_string_panic_into_err()

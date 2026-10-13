@@ -1,0 +1,32 @@
+# src-tauri/src/commands/movies_yt.rs
+
+- MIN_MOVIE_DURATION_SECS · constant · L33-L33 — const MIN_MOVIE_DURATION_SECS: f64 = 3600.0;
+- MIN_TITLED_DURATION_SECS · constant · L38-L38 — const MIN_TITLED_DURATION_SECS: f64 = 2400.0;
+- DISCOVERY_FETCH_CAP · constant · L45-L45 — const DISCOVERY_FETCH_CAP: u32 = 200;
+- CACHE_TTL · constant · L51-L51 — const CACHE_TTL: Duration = Duration::from_secs(60 * 60);
+- thumbnail_url · function · L53-L55 — fn thumbnail_url(video_id: &str) -> String
+- channel_videos_url · function · L57-L59 — fn channel_videos_url(channel_id: &str) -> String
+- YtMovie · struct · L67-L73 — pub struct YtMovie
+- FlatPlaylistResponse · struct · L81-L90 — struct FlatPlaylistResponse
+- FlatEntry · struct · L93-L101 — struct FlatEntry
+- flexible_opt_duration · function · L107-L117 — fn flexible_opt_duration<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+- clean_title · function · L124-L126 — fn clean_title(raw: &str) -> String
+- title_claims_full_movie · function · L132-L134 — fn title_claims_full_movie(title: &str) -> bool
+- entry_to_movie · function · L139-L162 — fn entry_to_movie(entry: FlatEntry, channel_title: Option<&str>) -> Option<YtMovie>
+- discover · function · L166-L187 — fn discover(runner: &dyn YtDlpRunner, channel_id: &str) -> Result<Vec<YtMovie>, IpcError>
+- CacheEntry · struct · L191-L194 — struct CacheEntry
+- cache · function · L196-L199 — fn cache() -> &'static Mutex<HashMap<String, CacheEntry>>
+- CACHE · constant · L197-L197 — static CACHE: std::sync::OnceLock<Mutex<HashMap<String, CacheEntry>>> = std::sync::OnceLock::new();
+- yt_movies_channel · function · L216-L250 — pub fn yt_movies_channel(channel_id: String, limit: u32) -> Result<Vec<YtMovie>, IpcError>
+- tests · module · L253-L383 — mod tests
+- entry · function · L256-L262 — fn entry(id: &str, title: &str, duration: f64) -> FlatEntry
+- keeps_only_hour_plus_entries · function · L265-L272 — fn keeps_only_hour_plus_entries()
+- accepts_a_shorter_edit_only_when_the_title_says_full_movie · function · L275-L284 — fn accepts_a_shorter_edit_only_when_the_title_says_full_movie()
+- missing_duration_is_excluded_not_zero · function · L287-L290 — fn missing_duration_is_excluded_not_zero()
+- tolerates_duration_sent_as_a_string · function · L293-L298 — fn tolerates_duration_sent_as_a_string()
+- strips_marketing_suffix_but_keeps_punctuation_before_it · function · L301-L308 — fn strips_marketing_suffix_but_keeps_punctuation_before_it()
+- builds_the_documented_thumbnail_shape · function · L311-L316 — fn builds_the_documented_thumbnail_shape()
+- maps_a_full_channel_listing_fixture · function · L319-L345 — fn maps_a_full_channel_listing_fixture()
+- falls_back_to_uploader_when_channel_is_absent · function · L348-L361 — fn falls_back_to_uploader_when_channel_is_absent()
+- empty_id_is_rejected_before_any_yt_dlp_spawn · function · L364-L367 — fn empty_id_is_rejected_before_any_yt_dlp_spawn()
+- serialises_camel_case_for_the_frontend · function · L370-L382 — fn serialises_camel_case_for_the_frontend()

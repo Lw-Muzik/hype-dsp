@@ -1,0 +1,75 @@
+# src/lib/types.ts
+
+- AppInfo · interface · L19-L23 — interface AppInfo
+- EqState · interface · L25-L30 — interface EqState
+- BassBoostState · interface · L32-L39 — interface BassBoostState
+- SpatialMode · type · L41-L41 — type SpatialMode = "crossfeed" | "hrtf";
+- SpatializerState · interface · L43-L48 — interface SpatializerState
+- SurroundSpeakers · interface · L51-L58 — interface SurroundSpeakers
+- Surround3DState · interface · L60-L67 — interface Surround3DState
+- RoomState · interface · L70-L79 — interface RoomState
+- ConvolverState · interface · L82-L90 — interface ConvolverState
+- CompanderState · interface · L93-L103 — interface CompanderState
+- SaturationState · interface · L106-L110 — interface SaturationState
+- ScriptState · interface · L112-L115 — interface ScriptState
+- RoomPreset · interface · L118-L127 — interface RoomPreset
+- OutputState · interface · L143-L147 — interface OutputState
+- PlaybackState · interface · L150-L159 — interface PlaybackState
+- HeadphoneCorrectionState · interface · L161-L165 — interface HeadphoneCorrectionState
+- EngineState · interface · L167-L186 — interface EngineState
+- SystemEqScopeMode · type · L189-L189 — type SystemEqScopeMode = "all" | "only" | "except";
+- SystemEqScope · interface · L192-L196 — interface SystemEqScope
+- EqPreset · interface · L198-L204 — interface EqPreset
+- ChainPreset · interface · L207-L211 — interface ChainPreset
+- ParametricBand · interface · L213-L218 — interface ParametricBand
+- HeadphoneProfile · interface · L220-L226 — interface HeadphoneProfile
+- RadioStation · interface · L228-L235 — interface RadioStation
+- RadioCountry · interface · L238-L242 — interface RadioCountry
+- TvChannel · interface · L246-L259 — interface TvChannel
+- TvCategory · interface · L262-L266 — interface TvCategory
+- TvCountry · interface · L269-L273 — interface TvCountry
+- AppSession · interface · L275-L282 — interface AppSession
+- LicenseStatus · type · L284-L287 — type LicenseStatus = | { kind: "trial"; daysLeft: number } | { kind: "licensed" } | { kind: "expired" };
+- LicenseInfo · interface · L290-L296 — interface LicenseInfo
+- AccountStatus · interface · L299-L312 — interface AccountStatus
+- MixerSnapshot · interface · L314-L318 — interface MixerSnapshot
+- MeterFrame · interface · L320-L325 — interface MeterFrame
+- EngineFrame · interface · L327-L333 — interface EngineFrame
+- LibraryTrack · interface · L335-L343 — interface LibraryTrack
+- LibraryPage · interface · L348-L351 — interface LibraryPage
+- Playlist · interface · L353-L356 — interface Playlist
+- TransportProgress · interface · L358-L367 — interface TransportProgress
+- TrackMeta · interface · L370-L376 — interface TrackMeta
+- DeviceInfo · interface · L378-L381 — interface DeviceInfo
+- OutputTransport · type · L384-L394 — type OutputTransport = | "builtin" | "usb" | "bluetooth" | "hdmi" | "displayport" | "airplay" | "aggregate" | "virtual" | "thunderbolt" | "other";
+- OutputDevice · interface · L397-L406 — interface OutputDevice
+- StreamFormat · interface · L408-L411 — interface StreamFormat
+- IpcError · interface · L414-L417 — interface IpcError
+- CloudProvider · type · L419-L419 — type CloudProvider = "googleDrive" | "dropbox";
+- CloudAccount · interface · L424-L428 — interface CloudAccount
+- CloudEntry · interface · L431-L442 — interface CloudEntry
+- CloudAudioPage · interface · L446-L449 — interface CloudAudioPage
+- CloudTrackMeta · interface · L452-L458 — interface CloudTrackMeta
+- CloudStatus · interface · L460-L466 — interface CloudStatus
+- YtPlaylist · interface · L471-L478 — interface YtPlaylist
+- YtTrack · interface · L482-L501 — interface YtTrack
+- RadioBatch · interface · L505-L508 — interface RadioBatch
+- YtDlpInfo · interface · L512-L518 — interface YtDlpInfo
+- YtMusicStatus · interface · L520-L523 — interface YtMusicStatus
+- ExploreSection · interface · L526-L529 — interface ExploreSection
+- ExploreCategory · interface · L531-L535 — interface ExploreCategory
+- ExploreShelf · interface · L538-L541 — interface ExploreShelf
+- ExploreKind · type · L545-L545 — type ExploreKind = "playlist" | "album" | "artist" | "song" | "video";
+- ExploreItem · interface · L549-L567 — interface ExploreItem
+- YtMusicPage · interface · L571-L575 — interface YtMusicPage
+- YtDownloadProgress · interface · L578-L587 — interface YtDownloadProgress
+- PhoneDevice · interface · L592-L598 — interface PhoneDevice
+- PhoneTrack · interface · L601-L613 — interface PhoneTrack
+- MovieSource · type · L623-L623 — type MovieSource = "archive" | "youtube";
+- ArchiveMovie · interface · L629-L636 — interface ArchiveMovie
+- YoutubeMovie · interface · L642-L649 — interface YoutubeMovie
+- Movie · type · L652-L652 — type Movie = ArchiveMovie | YoutubeMovie;
+- YtMovieEntry · interface · L658-L664 — interface YtMovieEntry
+- MovieStream · interface · L668-L673 — interface MovieStream
+- MovieDetail · interface · L678-L688 — interface MovieDetail
+- AutoEqEntry · interface · L691-L698 — interface AutoEqEntry

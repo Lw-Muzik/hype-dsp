@@ -1,0 +1,40 @@
+# src-tauri/src/commands/ytmusic_setup.rs
+
+- ytdlp_asset · function · L36-L47 — fn ytdlp_asset() -> &'static str
+- ytdlp_bin_name · function · L50-L56 — fn ytdlp_bin_name() -> &'static str
+- YTDLP_LATEST · constant · L58-L58 — const YTDLP_LATEST: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download";
+- FfmpegSource · enum · L67-L75 — enum FfmpegSource
+- ffmpeg_source · function · L77-L102 — fn ffmpeg_source() -> FfmpegSource
+- FFMPEG_BUILDS_LATEST · constant · L104-L105 — const FFMPEG_BUILDS_LATEST: &str =
+- checksum_for · function · L114-L135 — fn checksum_for(sums: &str, name: &str) -> Option<String>
+- SetupProgress · struct · L142-L149 — struct SetupProgress
+- emit · function · L151-L162 — fn emit(app: &AppHandle, tool: &'static str, phase: &'static str, received: u64, total: Option<u64>)
+- client · function · L164-L172 — fn client() -> Result<reqwest::blocking::Client, String>
+- fetch_text · function · L175-L184 — fn fetch_text(client: &reqwest::blocking::Client, url: &str) -> Result<String, String>
+- download_with_progress · function · L188-L225 — fn download_with_progress(
+- managed_dir · function · L231-L235 — fn managed_dir() -> Result<PathBuf, String>
+- install_binary · function · L240-L253 — fn install_binary(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, String>
+- url_file_name · function · L259-L263 — fn url_file_name(url: &str) -> Option<&str>
+- find_in_tree · function · L268-L281 — fn find_in_tree(root: &Path, name: &str) -> Option<PathBuf>
+- extract_archive · function · L285-L322 — fn extract_archive(archive: &Path, dest: &Path) -> Result<(), String>
+- verify · function · L325-L336 — fn verify(app: &AppHandle, tool: &'static str, bytes: &[u8], expected: &str) -> Result<(), String>
+- install_ytdlp · function · L339-L350 — fn install_ytdlp(app: &AppHandle) -> Result<(), String>
+- install_ffmpeg · function · L355-L415 — fn install_ffmpeg(app: &AppHandle) -> Result<(), String>
+- ytmusic_setup · function · L424-L438 — pub fn ytmusic_setup(
+- UPDATE_EVERY · constant · L443-L443 — const UPDATE_EVERY: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
+- update_due · function · L447-L452 — fn update_due(stamp: Option<&str>, now_secs: u64) -> bool
+- stamp_path · function · L454-L456 — fn stamp_path() -> Option<PathBuf>
+- now_secs · function · L458-L463 — fn now_secs() -> u64
+- stamp_update_check · function · L465-L473 — fn stamp_update_check()
+- spawn_auto_update · function · L481-L516 — pub fn spawn_auto_update()
+- CREATE_NO_WINDOW · constant · L503-L503 — const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+- tests · module · L519-L646 — mod tests
+- checksum_for_named_listing · function · L524-L531 — fn checksum_for_named_listing()
+- checksum_for_binary_marker · function · L535-L542 — fn checksum_for_binary_marker()
+- checksum_for_single_hash_file · function · L546-L552 — fn checksum_for_single_hash_file()
+- checksum_for_missing_entry · function · L556-L559 — fn checksum_for_missing_entry()
+- checksum_for_ignores_garbage · function · L563-L566 — fn checksum_for_ignores_garbage()
+- asset_names_are_release_shaped · function · L570-L581 — fn asset_names_are_release_shaped()
+- url_file_name_strips_query_and_fragment · function · L588-L611 — fn url_file_name_strips_query_and_fragment()
+- update_due_logic · function · L614-L623 — fn update_due_logic()
+- live_release_publishes_our_assets · function · L629-L645 — fn live_release_publishes_our_assets()

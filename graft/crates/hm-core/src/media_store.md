@@ -1,0 +1,42 @@
+# crates/hm-core/src/media_store.rs
+
+- now_millis · function · L13-L18 — fn now_millis() -> i64
+- AVAILABLE_COUNT_TTL · constant · L24-L24 — const AVAILABLE_COUNT_TTL: Duration = Duration::from_secs(30);
+- MediaStore · struct · L27-L37 — pub struct MediaStore
+- open · function · L40-L64 — pub fn open(path: &Path) -> Result<Self, HmError>
+- open_in_memory · function · L66-L68 — pub fn open_in_memory() -> Result<Self, HmError>
+- read_lock · function · L72-L77 — fn read_lock(&self) -> std::sync::MutexGuard<'_, Connection>
+- from_conn · function · L79-L141 — fn from_conn(conn: Connection) -> Result<Self, HmError>
+- upsert_track · function · L144-L168 — pub fn upsert_track(&self, track: &LibraryTrack) -> Result<(), HmError>
+- upsert_tracks · function · L172-L206 — pub fn upsert_tracks(&self, tracks: &[LibraryTrack]) -> Result<(), HmError>
+- list_tracks · function · L208-L216 — pub fn list_tracks(&self) -> Result<Vec<LibraryTrack>, HmError>
+- count_tracks · function · L220-L223 — pub fn count_tracks(&self) -> Result<i64, HmError>
+- list_tracks_page · function · L237-L256 — pub fn list_tracks_page(&self, offset: i64, limit: i64) -> Result<LibraryPage, HmError>
+- count_available_tracks · function · L271-L305 — pub fn count_available_tracks(&self) -> Result<i64, HmError>
+- invalidate_available_cache · function · L309-L311 — fn invalidate_available_cache(&self)
+- remove_track · function · L313-L320 — pub fn remove_track(&self, path: &str) -> Result<(), HmError>
+- list_playlists · function · L322-L333 — pub fn list_playlists(&self) -> Result<Vec<Playlist>, HmError>
+- create_playlist · function · L335-L350 — pub fn create_playlist(&self, name: &str) -> Result<Playlist, HmError>
+- rename_playlist · function · L352-L362 — pub fn rename_playlist(&self, id: &str, name: &str) -> Result<(), HmError>
+- delete_playlist · function · L364-L369 — pub fn delete_playlist(&self, id: &str) -> Result<(), HmError>
+- playlist_tracks · function · L372-L381 — pub fn playlist_tracks(&self, id: &str) -> Result<Vec<LibraryTrack>, HmError>
+- add_to_playlist · function · L384-L404 — pub fn add_to_playlist(&self, playlist_id: &str, track_path: &str) -> Result<(), HmError>
+- remove_from_playlist · function · L406-L413 — pub fn remove_from_playlist(&self, playlist_id: &str, track_path: &str) -> Result<(), HmError>
+- reorder_playlist · function · L416-L431 — pub fn reorder_playlist(&self, playlist_id: &str, paths: &[String]) -> Result<(), HmError>
+- list_favorites · function · L436-L453 — pub fn list_favorites(&self) -> Result<Vec<RadioStation>, HmError>
+- add_favorite · function · L455-L463 — pub fn add_favorite(&self, s: &RadioStation) -> Result<(), HmError>
+- remove_favorite · function · L465-L469 — pub fn remove_favorite(&self, id: &str) -> Result<(), HmError>
+- list_tv_favorites · function · L475-L495 — pub fn list_tv_favorites(&self) -> Result<Vec<TvChannel>, HmError>
+- add_tv_favorite · function · L497-L509 — pub fn add_tv_favorite(&self, c: &TvChannel) -> Result<(), HmError>
+- remove_tv_favorite · function · L511-L515 — pub fn remove_tv_favorite(&self, id: &str) -> Result<(), HmError>
+- track_available · function · L524-L532 — fn track_available(path: &str, dir_cache: &mut HashMap<PathBuf, bool>) -> bool
+- row_to_track · function · L534-L543 — fn row_to_track(r: &rusqlite::Row) -> rusqlite::Result<LibraryTrack>
+- tests · module · L546-L762 — mod tests
+- track · function · L549-L558 — fn track(path: &str, title: &str) -> LibraryTrack
+- tracks_upsert_and_list · function · L561-L569 — fn tracks_upsert_and_list()
+- file_store_reads_through_readonly_connection · function · L574-L599 — fn file_store_reads_through_readonly_connection()
+- count_tracks_reports_total · function · L602-L609 — fn count_tracks_reports_total()
+- list_tracks_page_is_ordered_and_bounded · function · L612-L666 — fn list_tracks_page_is_ordered_and_bounded()
+- page_hides_unreachable_files · function · L669-L708 — fn page_hides_unreachable_files()
+- playlist_lifecycle · function · L711-L732 — fn playlist_lifecycle()
+- tv_favorites_round_trip · function · L735-L761 — fn tv_favorites_round_trip()

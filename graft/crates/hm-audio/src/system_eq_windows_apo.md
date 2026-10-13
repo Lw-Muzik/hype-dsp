@@ -1,0 +1,39 @@
+# crates/hm-audio/src/system_eq_windows_apo.rs
+
+- WindowsBackend · enum · L18-L25 — pub enum WindowsBackend
+- select · function · L31-L39 — pub fn select(driver_present: bool, apo_is_installed: bool) -> WindowsBackend
+- ApoSlot · enum · L46-L51 — pub enum ApoSlot
+- choose_slot · function · L55-L61 — pub fn choose_slot(is_composite: bool) -> ApoSlot
+- fx_value_names · function · L66-L72 — pub fn fx_value_names(slot: ApoSlot) -> [String; 2]
+- endpoint_fx_key · function · L77-L81 — pub fn endpoint_fx_key(endpoint_guid: &str) -> String
+- win · module · L88-L487 — mod win
+- ApoBackend · struct · L104-L107 — pub struct ApoBackend
+- start · function · L111-L135 — pub fn start(state: Arc<ArcSwap<EngineState>>) -> Result<Self, AudioError>
+- drop · function · L139-L144 — fn drop(&mut self)
+- FX_FMTID · constant · L165-L166 — const FX_FMTID: windows_core::GUID =
+- ApoInstallOutcome · enum · L170-L173 — pub enum ApoInstallOutcome
+- ComInit · struct · L176-L176 — struct ComInit;
+- new · function · L178-L183 — fn new() -> Self
+- drop · function · L186-L188 — fn drop(&mut self)
+- install · function · L194-L201 — pub fn install(dll_src: &Path) -> Result<ApoInstallOutcome, AudioError>
+- uninstall · function · L204-L212 — pub fn uninstall() -> Result<(), AudioError>
+- repair · function · L216-L225 — pub fn repair() -> Result<(), AudioError>
+- copy_dll · function · L228-L237 — fn copy_dll(src: &Path) -> Result<PathBuf, AudioError>
+- register_com · function · L242-L253 — fn register_com(dll_path: &Path) -> Result<(), AudioError>
+- unregister_com · function · L255-L259 — fn unregister_com() -> Result<(), AudioError>
+- set_disable_protected_audio_dg · function · L262-L268 — fn set_disable_protected_audio_dg(enable: bool) -> Result<(), AudioError>
+- attach_default_endpoint · function · L271-L298 — fn attach_default_endpoint() -> Result<(), AudioError>
+- detach_default_endpoint · function · L300-L321 — fn detach_default_endpoint() -> Result<(), AudioError>
+- apo_attached · function · L324-L352 — fn apo_attached() -> Result<bool, AudioError>
+- slot_pids · function · L354-L359 — fn slot_pids(slot: super::ApoSlot) -> [u32; 2]
+- to_wide · function · L363-L365 — fn to_wide(s: &str) -> Vec<u16>
+- reg_set_str · function · L367-L404 — fn reg_set_str(subkey: &str, name: Option<&str>, value: &str) -> Result<(), AudioError>
+- reg_set_dword · function · L406-L438 — fn reg_set_dword(subkey: &str, name: &str, value: u32) -> Result<(), AudioError>
+- reg_delete_tree · function · L440-L451 — fn reg_delete_tree(subkey: &str) -> Result<(), AudioError>
+- _fx_key_ref · function · L455-L457 — fn _fx_key_ref(guid: &str) -> String
+- apo_installed · function · L460-L486 — pub fn apo_installed() -> bool
+- tests · module · L493-L529 — mod tests
+- selection_priority_driver_then_apo_then_none · function · L497-L502 — fn selection_priority_driver_then_apo_then_none()
+- composite_endpoints_use_mode_slot · function · L505-L508 — fn composite_endpoints_use_mode_slot()
+- fx_value_names_match_slot_pids · function · L511-L521 — fn fx_value_names_match_slot_pids()
+- endpoint_fx_key_is_render_scoped · function · L524-L528 — fn endpoint_fx_key_is_render_scoped()

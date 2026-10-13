@@ -1,0 +1,21 @@
+# crates/hm-audio/src/system_eq_pulse.rs
+
+- SINK_NAME · constant · L42-L42 — const SINK_NAME: &str = "hypemuzik_eq";
+- RATE · constant · L43-L43 — const RATE: u32 = 48_000;
+- CHANNELS · constant · L44-L44 — const CHANNELS: usize = 2;
+- BLOCK_FRAMES · constant · L47-L47 — const BLOCK_FRAMES: usize = 1024;
+- STARTUP_TIMEOUT · constant · L50-L50 — const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
+- available · function · L56-L58 — pub fn available() -> bool
+- server_reachable · function · L61-L69 — fn server_reachable() -> bool
+- tool_exists · function · L73-L81 — fn tool_exists(name: &str) -> bool
+- PulseSystemEq · struct · L85-L92 — pub struct PulseSystemEq
+- start · function · L97-L190 — pub fn start(state: Arc<ArcSwap<EngineState>>) -> Result<Self, AudioError>
+- drop · function · L194-L205 — fn drop(&mut self)
+- process_loop · function · L214-L259 — fn process_loop(
+- spawn_pipeline · function · L263-L311 — fn spawn_pipeline(real_sink: &str) -> Result<(Child, Child, ChildStdout, ChildStdin), AudioError>
+- current_default_sink · function · L313-L320 — fn current_default_sink() -> Option<String>
+- load_null_sink · function · L322-L339 — fn load_null_sink() -> Result<String, AudioError>
+- set_default_sink_verified · function · L344-L353 — fn set_default_sink_verified(name: &str) -> Result<(), AudioError>
+- set_default_sink · function · L355-L366 — fn set_default_sink(name: &str) -> Result<(), AudioError>
+- move_inputs_to · function · L370-L384 — fn move_inputs_to(sink: &str)
+- unload_module · function · L386-L390 — fn unload_module(module_id: &str)

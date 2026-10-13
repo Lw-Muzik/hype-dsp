@@ -1,0 +1,22 @@
+# crates/hm-dsp/src/reverb.rs
+
+- COMB_TUNINGS · constant · L10-L10 — const COMB_TUNINGS: [usize; 4] = [1116, 1188, 1277, 1356];
+- ALLPASS_TUNINGS · constant · L12-L12 — const ALLPASS_TUNINGS: [usize; 2] = [556, 441];
+- STEREO_SPREAD · constant · L14-L14 — const STEREO_SPREAD: usize = 23;
+- COMB_FEEDBACK · constant · L16-L16 — const COMB_FEEDBACK: f32 = 0.86;
+- DAMP · constant · L18-L18 — const DAMP: f32 = 0.22;
+- ALLPASS_FEEDBACK · constant · L19-L19 — const ALLPASS_FEEDBACK: f32 = 0.5;
+- INPUT_GAIN · constant · L21-L21 — const INPUT_GAIN: f32 = 0.025;
+- flush · function · L26-L32 — fn flush(x: f32) -> f32
+- Comb · struct · L35-L42 — struct Comb
+- new · function · L45-L54 — fn new(len: usize) -> Self
+- process · function · L57-L68 — fn process(&mut self, x: f32) -> f32
+- Allpass · struct · L72-L75 — struct Allpass
+- new · function · L78-L83 — fn new(len: usize) -> Self
+- process · function · L86-L95 — fn process(&mut self, x: f32) -> f32
+- RoomReverb · struct · L99-L104 — pub(crate) struct RoomReverb
+- new · function · L107-L122 — pub(crate) fn new(sample_rate: f32) -> Self
+- process · function · L126-L143 — pub(crate) fn process(&mut self, x: f32) -> (f32, f32)
+- tests · module · L147-L177 — mod tests
+- impulse_produces_a_decaying_decorrelated_tail · function · L151-L164 — fn impulse_produces_a_decaying_decorrelated_tail()
+- sustained_input_stays_bounded · function · L167-L176 — fn sustained_input_stays_bounded()

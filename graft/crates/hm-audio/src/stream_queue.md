@@ -1,0 +1,98 @@
+# crates/hm-audio/src/stream_queue.rs
+
+- StreamTarget · struct · L41-L46 — pub struct StreamTarget
+- StreamResolver · type · L59-L59 — pub type StreamResolver = Arc<dyn Fn(usize, bool) -> Result<StreamTarget, String> + Send + Sync>;
+- Slot · enum · L70-L78 — enum Slot
+- DecodeEvent · enum · L86-L127 — enum DecodeEvent
+- MAX_ATTEMPTS · constant · L138-L138 — const MAX_ATTEMPTS: u32 = 4;
+- FETCH_TIMEOUT · constant · L149-L149 — const FETCH_TIMEOUT: Duration = Duration::from_secs(90);
+- CHUNK_FRAMES · constant · L165-L165 — const CHUNK_FRAMES: usize = 48_000;
+- SpooledBody · struct · L172-L174 — struct SpooledBody
+- create · function · L180-L201 — fn create(ext: Option<&str>) -> std::io::Result<(Self, std::fs::File)>
+- SEQ · constant · L181-L181 — static SEQ: AtomicU64 = AtomicU64::new(0);
+- drop · function · L205-L207 — fn drop(&mut self)
+- Opened · enum · L214-L224 — enum Opened
+- open_stream · function · L229-L268 — fn open_stream(client: &reqwest::blocking::Client, target: &StreamTarget) -> Opened
+- TeeReader · struct · L283-L287 — struct TeeReader<'a, R>
+- read · function · L290-L297 — fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>
+- StreamFailure · enum · L303-L314 — enum StreamFailure
+- after_stream_failure · function · L330-L336 — fn after_stream_failure(bytes_seen: u64, declared: Option<u64>) -> StreamFailure
+- drain_then_classify · function · L349-L351 — fn drain_then_classify(declared: Option<u64>, drain: impl FnOnce() -> u64) -> StreamFailure
+- finish_or_retry · function · L364-L366 — fn finish_or_retry(bytes_seen: u64, declared: Option<u64>) -> bool
+- finish_or_drain_then_retry · function · L386-L392 — fn finish_or_drain_then_retry(
+- LoadAttempt · enum · L398-L406 — enum LoadAttempt
+- LadderOutcome · enum · L410-L418 — enum LadderOutcome
+- load_with_retry · function · L425-L448 — fn load_with_retry(
+- StreamQueueSource · struct · L451-L478 — pub struct StreamQueueSource
+- START_FRAMES_SECS · constant · L486-L486 — const START_FRAMES_SECS: f32 = 1.0;
+- start_frames · function · L491-L493 — fn start_frames(rate: u32) -> usize
+- capacity_hint · function · L506-L513 — fn capacity_hint(num_frames: Option<u64>, src_rate: u32, device_rate: u32) -> Option<usize>
+- stream_decode_attempt · function · L533-L725 — fn stream_decode_attempt(
+- spawn · function · L732-L845 — pub fn spawn(
+- ready · function · L852-L858 — fn ready(&self, i: usize) -> bool
+- done · function · L862-L864 — fn done(&self, i: usize) -> bool
+- growing_head_at_least · function · L868-L870 — fn growing_head_at_least(&self, i: usize, frames: usize) -> bool
+- track_len · function · L872-L877 — fn track_len(&self, i: usize) -> usize
+- frame · function · L879-L886 — fn frame(&self, i: usize, f: usize) -> (f32, f32)
+- crossfade_frames · function · L888-L891 — fn crossfade_frames(&self) -> usize
+- drain · function · L895-L1025 — fn drain(&mut self)
+- advance_window · function · L1029-L1038 — fn advance_window(&mut self)
+- signal_track · function · L1040-L1042 — fn signal_track(&self)
+- signal_index · function · L1047-L1056 — fn signal_index(&self, i: usize)
+- drop · function · L1060-L1062 — fn drop(&mut self)
+- start · function · L1066-L1070 — fn start(&mut self, _format: StreamFormat) -> Result<(), AudioError>
+- read · function · L1072-L1189 — fn read(&mut self, out: &mut [f32], channels: usize) -> usize
+- stop · function · L1191-L1194 — fn stop(&mut self)
+- seek · function · L1196-L1201 — fn seek(&mut self, frame: usize)
+- position · function · L1203-L1212 — fn position(&self) -> usize
+- total_frames · function · L1214-L1220 — fn total_frames(&self) -> usize
+- tests · module · L1224-L2326 — mod tests
+- stereo · function · L1227-L1229 — fn stereo(value: f32, frames: usize) -> Vec<f32>
+- eager · function · L1234-L1236 — fn eager(tracks: Vec<Vec<f32>>, crossfade_frames: usize) -> StreamQueueSource
+- eager_slots · function · L1239-L1258 — fn eager_slots(slots: Vec<Slot>, crossfade_frames: usize) -> StreamQueueSource
+- a_fetch_asks_for_the_body_as_a_range · function · L1270-L1330 — fn a_fetch_asks_for_the_body_as_a_range()
+- plays_tracks_gaplessly_then_ends · function · L1333-L1342 — fn plays_tracks_gaplessly_then_ends()
+- crossfade_ramps_from_one_track_to_the_next · function · L1347-L1360 — fn crossfade_ramps_from_one_track_to_the_next()
+- crossfade_reports_the_incoming_track_position_and_duration · function · L1374-L1394 — fn crossfade_reports_the_incoming_track_position_and_duration()
+- crossfade_announces_the_incoming_track_at_its_start · function · L1397-L1410 — fn crossfade_announces_the_incoming_track_at_its_start()
+- a_late_lookahead_still_ramps_fully_out · function · L1413-L1440 — fn a_late_lookahead_still_ramps_fully_out()
+- buffers_silence_while_a_track_is_undecoded · function · L1443-L1451 — fn buffers_silence_while_a_track_is_undecoded()
+- skips_a_failed_track · function · L1454-L1460 — fn skips_a_failed_track()
+- retry_recovers_a_transient_failure · function · L1463-L1487 — fn retry_recovers_a_transient_failure()
+- permanent_failure_skips_without_retrying · function · L1490-L1505 — fn permanent_failure_skips_without_retrying()
+- gives_up_after_max_attempts · function · L1508-L1520 — fn gives_up_after_max_attempts()
+- stop_request_aborts_retrying · function · L1523-L1534 — fn stop_request_aborts_retrying()
+- spooled_body_deletes_its_temp_file_on_drop · function · L1537-L1550 — fn spooled_body_deletes_its_temp_file_on_drop()
+- spool_sanitizes_a_hostile_extension_hint · function · L1553-L1561 — fn spool_sanitizes_a_hostile_extension_hint()
+- a_growing_track_below_the_start_gate_buffers_silence · function · L1566-L1575 — fn a_growing_track_below_the_start_gate_buffers_silence()
+- a_growing_track_past_the_start_gate_plays · function · L1578-L1590 — fn a_growing_track_past_the_start_gate_plays()
+- an_underrun_on_a_growing_track_stalls_without_advancing · function · L1593-L1616 — fn an_underrun_on_a_growing_track_stalls_without_advancing()
+- a_boundary_advances_only_when_done · function · L1619-L1641 — fn a_boundary_advances_only_when_done()
+- a_crossfade_defers_while_the_current_track_grows · function · L1644-L1677 — fn a_crossfade_defers_while_the_current_track_grows()
+- a_crossfade_into_a_growing_next_with_enough_head_ramps · function · L1680-L1695 — fn a_crossfade_into_a_growing_next_with_enough_head_ramps()
+- a_crossfade_waits_for_a_growing_next_below_the_fade_width · function · L1698-L1729 — fn a_crossfade_waits_for_a_growing_next_below_the_fade_width()
+- reset_keeps_the_cursor_and_stalls_until_redecoded · function · L1732-L1754 — fn reset_keeps_the_cursor_and_stalls_until_redecoded()
+- a_failed_track_still_skips · function · L1757-L1765 — fn a_failed_track_still_skips()
+- drain_applies_the_event_protocol · function · L1768-L1816 — fn drain_applies_the_event_protocol()
+- meta_capacity_hint_reserves_once_and_holds_steady_across_chunks · function · L1824-L1875 — fn meta_capacity_hint_reserves_once_and_holds_steady_across_chunks()
+- meta_reaches_the_sink_early_but_not_mid_fade · function · L1878-L1937 — fn meta_reaches_the_sink_early_but_not_mid_fade()
+- seeded_meta_survives_a_tagless_stream · function · L1940-L1995 — fn seeded_meta_survives_a_tagless_stream()
+- FlakyReader · struct · L2002-L2005 — struct FlakyReader
+- read · function · L2008-L2021 — fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>
+- tee_reader_passes_bytes_through_and_mirrors_them_to_the_file · function · L2025-L2042 — fn tee_reader_passes_bytes_through_and_mirrors_them_to_the_file()
+- tee_reader_propagates_the_inner_error_after_partial_reads · function · L2045-L2063 — fn tee_reader_propagates_the_inner_error_after_partial_reads()
+- after_stream_failure_classifies_a_complete_body_as_decode_spool · function · L2073-L2079 — fn after_stream_failure_classifies_a_complete_body_as_decode_spool()
+- after_stream_failure_classifies_a_short_body_as_retry · function · L2082-L2084 — fn after_stream_failure_classifies_a_short_body_as_retry()
+- after_stream_failure_with_no_declared_length_is_lenient · function · L2087-L2091 — fn after_stream_failure_with_no_declared_length_is_lenient()
+- finish_or_retry_matches_the_same_predicate_both_directions · function · L2094-L2098 — fn finish_or_retry_matches_the_same_predicate_both_directions()
+- drain_then_classify_uses_the_post_drain_byte_count_not_the_pre_drain_one · function · L2101-L2113 — fn drain_then_classify_uses_the_post_drain_byte_count_not_the_pre_drain_one()
+- drain_then_classify_still_retries_when_the_drain_itself_comes_up_short · function · L2116-L2123 — fn drain_then_classify_still_retries_when_the_drain_itself_comes_up_short()
+- drain_then_classify_is_lenient_with_no_declared_length · function · L2126-L2132 — fn drain_then_classify_is_lenient_with_no_declared_length()
+- finish_or_drain_then_retry_is_true_without_draining_when_already_complete · function · L2140-L2145 — fn finish_or_drain_then_retry_is_true_without_draining_when_already_complete()
+- finish_or_drain_then_retry_trusts_a_drain_that_completes_the_body · function · L2148-L2155 — fn finish_or_drain_then_retry_trusts_a_drain_that_completes_the_body()
+- finish_or_drain_then_retry_still_retries_when_the_drain_stays_short · function · L2158-L2160 — fn finish_or_drain_then_retry_still_retries_when_the_drain_stays_short()
+- finish_or_drain_then_retry_is_lenient_with_no_declared_length · function · L2163-L2165 — fn finish_or_drain_then_retry_is_lenient_with_no_declared_length()
+- serve_body · function · L2196-L2227 — fn serve_body(
+- run_stream_decode_attempt · function · L2232-L2255 — fn run_stream_decode_attempt(
+- a_clean_complete_stream_publishes_exactly_meta_chunk_star_done · function · L2258-L2294 — fn a_clean_complete_stream_publishes_exactly_meta_chunk_star_done()
+- a_body_shorter_than_its_declared_length_never_publishes_a_done · function · L2297-L2325 — fn a_body_shorter_than_its_declared_length_never_publishes_a_done()

@@ -1,0 +1,32 @@
+# crates/hm-audio/src/system_eq_pipewire.rs
+
+- SINK_NAME · constant · L71-L71 — const SINK_NAME: &str = "hypemuzik_eq";
+- OUT_NAME · constant · L73-L73 — const OUT_NAME: &str = "hypemuzik_eq_out";
+- NODE_GROUP · constant · L78-L78 — const NODE_GROUP: &str = "hypemuzik.eq";
+- RATE · constant · L79-L79 — const RATE: u32 = 48_000;
+- CHANNELS · constant · L80-L80 — const CHANNELS: usize = 2;
+- RING_SAMPLES · constant · L83-L83 — const RING_SAMPLES: usize = 8192 * CHANNELS * 4;
+- STARTUP_TIMEOUT · constant · L85-L85 — const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
+- CLASS_OUTPUT_STREAM · constant · L89-L89 — const CLASS_OUTPUT_STREAM: &str = "Stream/Output/Audio";
+- available · function · L97-L99 — pub fn available() -> bool
+- socket_present · function · L103-L113 — fn socket_present() -> bool
+- Cmd · enum · L116-L118 — enum Cmd
+- PipewireSystemEq · struct · L124-L129 — pub struct PipewireSystemEq
+- start · function · L135-L190 — pub fn start(state: Arc<ArcSwap<EngineState>>) -> Result<Self, AudioError>
+- heartbeat · function · L195-L197 — pub fn heartbeat(&self) -> u64
+- drop · function · L201-L208 — fn drop(&mut self)
+- Mover · struct · L219-L229 — struct Mover
+- try_move · function · L234-L245 — fn try_move(&mut self, node_id: u32) -> bool
+- flush_pending · function · L248-L255 — fn flush_pending(&mut self)
+- clear_all · function · L259-L267 — fn clear_all(&mut self)
+- run_loop · function · L272-L292 — fn run_loop(
+- build_and_run · function · L294-L489 — fn build_and_run(
+- handle_global · function · L493-L544 — fn handle_global(
+- is_moveable_output · function · L548-L550 — fn is_moveable_output(media_class: Option<&str>) -> bool
+- is_own_stream · function · L556-L566 — fn is_own_stream(
+- audio_format_pod · function · L571-L592 — fn audio_format_pod() -> Vec<u8>
+- tests · module · L595-L624 — mod tests
+- moveable_only_matches_output_streams · function · L599-L604 — fn moveable_only_matches_output_streams()
+- excludes_our_own_nodes_by_name · function · L607-L610 — fn excludes_our_own_nodes_by_name()
+- excludes_hypemuzik_by_app_identity · function · L613-L617 — fn excludes_hypemuzik_by_app_identity()
+- does_not_exclude_other_apps · function · L620-L623 — fn does_not_exclude_other_apps()

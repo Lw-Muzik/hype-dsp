@@ -1,0 +1,30 @@
+# src-tauri/src/commands/linux_audio_setup.rs
+
+- PackageManager · enum · L33-L42 — pub enum PackageManager
+- binary · function · L48-L55 — pub fn binary(self) -> &'static str
+- pulse_utils_package · function · L59-L66 — pub fn pulse_utils_package(self) -> &'static str
+- install_argv · function · L71-L84 — pub fn install_argv(pm: PackageManager, pkgs: &[&str]) -> Vec<String>
+- manual_command · function · L89-L91 — pub fn manual_command(pm: PackageManager, pkgs: &[&str]) -> String
+- compute_missing_packages · function · L102-L116 — pub fn compute_missing_packages(
+- LinuxSetupResult · enum · L122-L135 — pub enum LinuxSetupResult
+- linux_system_audio_setup · function · L142-L152 — pub fn linux_system_audio_setup(app: tauri::AppHandle) -> Result<LinuxSetupResult, IpcError>
+- imp · module · L158-L356 — mod imp
+- Trigger · enum · L167-L170 — pub enum Trigger
+- auto_setup_on_launch · function · L175-L189 — pub fn auto_setup_on_launch(app: tauri::AppHandle)
+- run_setup · function · L191-L260 — pub fn run_setup(app: &tauri::AppHandle, trigger: Trigger) -> LinuxSetupResult
+- run_pkexec_install · function · L265-L286 — fn run_pkexec_install(pm: PackageManager, pkgs: &[&str]) -> Result<(), String>
+- detect_package_manager · function · L289-L301 — fn detect_package_manager() -> Option<PackageManager>
+- which · function · L304-L312 — fn which(name: &str) -> bool
+- pactl_reachable · function · L315-L323 — fn pactl_reachable() -> bool
+- is_sandboxed · function · L327-L332 — fn is_sandboxed() -> bool
+- declined_marker · function · L334-L339 — fn declined_marker(app: &tauri::AppHandle) -> Option<PathBuf>
+- write_declined_marker · function · L341-L349 — fn write_declined_marker(app: &tauri::AppHandle) -> std::io::Result<()>
+- clear_declined_marker · function · L351-L355 — fn clear_declined_marker(app: &tauri::AppHandle)
+- tests · module · L359-L411 — mod tests
+- apt_install_argv_is_noninteractive · function · L363-L368 — fn apt_install_argv_is_noninteractive()
+- pacman_uses_libpulse_and_noconfirm · function · L371-L375 — fn pacman_uses_libpulse_and_noconfirm()
+- manual_command_is_sudo_prefixed · function · L378-L383 — fn manual_command_is_sudo_prefixed()
+- nothing_missing_when_pipewire_is_running · function · L386-L390 — fn nothing_missing_when_pipewire_is_running()
+- pulse_utils_missing_installs_the_package · function · L393-L400 — fn pulse_utils_missing_installs_the_package()
+- nothing_installable_when_no_server_is_reachable · function · L403-L405 — fn nothing_installable_when_no_server_is_reachable()
+- nothing_to_do_when_pulse_tools_present · function · L408-L410 — fn nothing_to_do_when_pulse_tools_present()

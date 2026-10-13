@@ -1,0 +1,46 @@
+# crates/hm-audio/src/decode.rs
+
+- DecodedAudio · struct · L24-L28 — pub struct DecodedAudio
+- open_format · function · L30-L45 — fn open_format(path: &Path) -> Result<Box<dyn FormatReader>, AudioError>
+- is_eof · function · L47-L49 — fn is_eof(e: &SymError) -> bool
+- open_format_bytes · function · L53-L65 — fn open_format_bytes(
+- open_format_stream · function · L84-L100 — pub fn open_format_stream<'a, R>(
+- DecodeChunk · enum · L104-L115 — pub enum DecodeChunk
+- decode_file · function · L118-L120 — pub fn decode_file(path: &Path) -> Result<DecodedAudio, AudioError>
+- decode_bytes · function · L124-L126 — pub fn decode_bytes(bytes: Vec<u8>, ext_hint: Option<&str>) -> Result<DecodedAudio, AudioError>
+- collect_decoded · function · L131-L154 — fn collect_decoded(format: Box<dyn FormatReader>) -> Result<DecodedAudio, AudioError>
+- decode_format_chunked · function · L170-L235 — pub fn decode_format_chunked<'a>(
+- probe_tags · function · L240-L245 — pub fn probe_tags(path: &Path) -> crate::meta::TrackTags
+- probe_track · function · L250-L264 — pub fn probe_track(path: &Path) -> (crate::meta::TrackTags, Option<f64>)
+- probe_artwork · function · L268-L271 — pub fn probe_artwork(path: &Path) -> Option<String>
+- probe_lyrics · function · L275-L278 — pub fn probe_lyrics(path: &Path) -> Option<String>
+- probe_duration · function · L282-L293 — pub fn probe_duration(path: &Path) -> Option<f64>
+- append_stereo · function · L295-L311 — fn append_stereo(out: &mut Vec<f32>, interleaved: &[f32], channels: usize)
+- resample_stereo · function · L314-L335 — pub fn resample_stereo(samples: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32>
+- StreamResampler · struct · L350-L359 — pub struct StreamResampler
+- new · function · L362-L370 — pub fn new(src_rate: u32, dst_rate: u32) -> Self
+- push · function · L373-L379 — pub fn push(&mut self, chunk: &[f32]) -> Vec<f32>
+- finish · function · L382-L387 — pub fn finish(&mut self) -> Vec<f32>
+- emit · function · L389-L435 — fn emit(&mut self, at_end: bool) -> Vec<f32>
+- local · function · L438-L442 — fn local(&self, i: usize) -> Option<[f32; 2]>
+- tests · module · L446-L676 — pub(crate) mod tests
+- resample_is_identity_at_same_rate · function · L450-L453 — fn resample_is_identity_at_same_rate()
+- resample_doubling_rate_doubles_frames · function · L456-L460 — fn resample_doubling_rate_doubles_frames()
+- decodes_a_generated_wav · function · L463-L485 — fn decodes_a_generated_wav()
+- assert_chunked_matches · function · L489-L506 — fn assert_chunked_matches(input: &[f32], src: u32, dst: u32, splits: &[usize])
+- ramp · function · L508-L510 — fn ramp(frames: usize) -> Vec<f32>
+- chunked_resample_matches_one_shot_upsampling · function · L513-L515 — fn chunked_resample_matches_one_shot_upsampling()
+- chunked_resample_matches_one_shot_downsampling · function · L518-L520 — fn chunked_resample_matches_one_shot_downsampling()
+- chunked_resample_is_identity_at_same_rate · function · L523-L525 — fn chunked_resample_is_identity_at_same_rate()
+- one_frame_chunks_still_match · function · L528-L530 — fn one_frame_chunks_still_match()
+- chunked_resample_handles_empty_input · function · L533-L535 — fn chunked_resample_handles_empty_input()
+- chunked_resample_handles_zero_length_pushes · function · L538-L542 — fn chunked_resample_handles_zero_length_pushes()
+- chunked_resample_single_frame_input · function · L545-L547 — fn chunked_resample_single_frame_input()
+- chunked_resample_matches_one_shot_heavy_downsampling · function · L558-L560 — fn chunked_resample_matches_one_shot_heavy_downsampling()
+- chunked_resample_matches_one_shot_extreme_downsampling · function · L563-L565 — fn chunked_resample_matches_one_shot_extreme_downsampling()
+- chunked_resample_matches_at_the_half_ratio_boundary · function · L568-L572 — fn chunked_resample_matches_at_the_half_ratio_boundary()
+- tiny_wav · function · L577-L598 — pub(crate) fn tiny_wav(frames: usize, rate: u32) -> Vec<u8>
+- chunked_decode_equals_whole_decode · function · L601-L624 — fn chunked_decode_equals_whole_decode()
+- chunked_decode_flushes_in_bounded_chunks · function · L627-L641 — fn chunked_decode_flushes_in_bounded_chunks()
+- a_false_from_the_sink_aborts_the_decode · function · L644-L655 — fn a_false_from_the_sink_aborts_the_decode()
+- chunked_resample_length_sweep_matches_one_shot · function · L658-L675 — fn chunked_resample_length_sweep_matches_one_shot()

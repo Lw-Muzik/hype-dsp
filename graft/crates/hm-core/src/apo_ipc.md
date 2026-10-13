@@ -1,0 +1,31 @@
+# crates/hm-core/src/apo_ipc.rs
+
+- EngineParamsPod · struct · L45-L94 — pub struct EngineParamsPod
+- b2u · function · L97-L99 — fn b2u(b: bool) -> u32
+- u2b · function · L102-L104 — fn u2b(u: u32) -> bool
+- mode_to_u32 · function · L107-L112 — fn mode_to_u32(m: SpatialMode) -> u32
+- u32_to_mode · function · L115-L120 — fn u32_to_mode(u: u32) -> SpatialMode
+- from_state · function · L126-L173 — pub fn from_state(state: &EngineState, active: bool) -> Self
+- apply_pod · function · L183-L230 — pub fn apply_pod(pod: &EngineParamsPod, out: &mut EngineState)
+- MAX_READ_RETRIES · constant · L236-L236 — const MAX_READ_RETRIES: u32 = 100;
+- SeqlockCell · struct · L253-L257 — pub struct SeqlockCell
+- zeroed · function · L270-L276 — pub fn zeroed() -> Self
+- default · function · L280-L282 — fn default() -> Self
+- write_seqlock · function · L288-L298 — pub fn write_seqlock(cell: &SeqlockCell, pod: &EngineParamsPod)
+- read_seqlock · function · L305-L326 — pub fn read_seqlock(cell: &SeqlockCell) -> Option<EngineParamsPod>
+- SharedMapping · struct · L337-L340 — pub struct SharedMapping
+- create_writer · function · L356-L374 — pub fn create_writer(name: &str) -> std::io::Result<Self>
+- open_reader · function · L378-L386 — pub fn open_reader(name: &str) -> std::io::Result<Self>
+- from_handle · function · L388-L411 — fn from_handle(handle: windows::Win32::Foundation::HANDLE) -> std::io::Result<Self>
+- cell · function · L414-L418 — pub fn cell(&self) -> &SeqlockCell
+- drop · function · L423-L433 — fn drop(&mut self)
+- to_wide · function · L437-L439 — fn to_wide(s: &str) -> Vec<u16>
+- win_err · function · L442-L444 — fn win_err(e: windows::core::Error) -> std::io::Error
+- tests · module · L447-L571 — mod tests
+- pod_roundtrips_through_engine_state · function · L452-L467 — fn pod_roundtrips_through_engine_state()
+- seqlock_reads_last_consistent_write · function · L475-L488 — fn seqlock_reads_last_consistent_write()
+- seqlock_none_before_first_write · function · L491-L494 — fn seqlock_none_before_first_write()
+- seqlock_second_write_replaces_first · function · L499-L512 — fn seqlock_second_write_replaces_first()
+- apply_pod_covers_every_carried_stage · function · L517-L559 — fn apply_pod_covers_every_carried_stage()
+- pod_is_plain_old_data · function · L562-L570 — fn pod_is_plain_old_data()
+- assert_copy · function · L567-L567 — fn assert_copy<T: Copy>() {}

@@ -1,0 +1,29 @@
+# src-tauri/src/commands/identify.rs
+
+- USER_AGENT · constant · L18-L18 — const USER_AGENT: &str = "HypeMuzik/1.0 (https://github.com/Lw-Muzik)";
+- ACOUSTID_GAP · constant · L20-L20 — const ACOUSTID_GAP: Duration = Duration::from_millis(340);
+- MUSICBRAINZ_GAP · constant · L23-L23 — const MUSICBRAINZ_GAP: Duration = Duration::from_millis(1100);
+- MB_LAST_CALL · constant · L26-L26 — static MB_LAST_CALL: Mutex<Option<Instant>> = Mutex::new(None);
+- musicbrainz_rate_limit · function · L31-L45 — fn musicbrainz_rate_limit()
+- RecognitionResult · struct · L50-L59 — pub struct RecognitionResult
+- title · function · L63-L65 — pub(crate) fn title(&self) -> Option<&str>
+- artist · function · L68-L70 — pub(crate) fn artist(&self) -> Option<&str>
+- Progress · struct · L76-L79 — struct Progress
+- AcoustidResponse · struct · L84-L86 — struct AcoustidResponse
+- AcoustidResult · struct · L88-L92 — struct AcoustidResult
+- Recording · struct · L94-L99 — struct Recording
+- NamedEntity · struct · L101-L103 — struct NamedEntity
+- ReleaseGroup · struct · L105-L109 — struct ReleaseGroup
+- acoustid_key · function · L111-L115 — fn acoustid_key() -> String
+- acoustid_lookup · function · L118-L176 — fn acoustid_lookup(fingerprint: &str, duration: u32) -> Option<RecognitionResult>
+- MbRecording · struct · L181-L186 — struct MbRecording
+- MbCredit · struct · L188-L191 — struct MbCredit
+- MbRelease · struct · L193-L195 — struct MbRelease
+- musicbrainz_enrich · function · L200-L250 — fn musicbrainz_enrich(recording_id: &str, base: &RecognitionResult) -> Option<RecognitionResult>
+- is_blank · function · L254-L256 — fn is_blank(v: Option<std::borrow::Cow<'_, str>>) -> bool
+- write_tags_fill_empty · function · L260-L293 — fn write_tags_fill_empty(path: &str, r: &RecognitionResult) -> bool
+- refresh_db · function · L296-L313 — fn refresh_db(store: &MediaStore, path: &str)
+- needs_identify · function · L317-L324 — fn needs_identify(t: &LibraryTrack) -> bool
+- identify_track · function · L330-L332 — pub fn identify_track(store: State<'_, MediaStore>, path: String) -> Option<RecognitionResult>
+- identify_local · function · L339-L353 — pub(crate) fn identify_local(store: &MediaStore, path: &str) -> Option<RecognitionResult>
+- library_identify_missing · function · L360-L385 — pub fn library_identify_missing(

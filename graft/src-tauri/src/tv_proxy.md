@@ -1,0 +1,43 @@
+# src-tauri/src/tv_proxy.rs
+
+- TvProxy · struct · L28-L30 — pub struct TvProxy
+- video_url · function · L40-L46 — pub fn video_url(&self, upstream: &str, user_agent: Option<&str>) -> String
+- stream_url · function · L50-L59 — pub fn stream_url(&self, upstream: &str, user_agent: Option<&str>, referrer: Option<&str>) -> String
+- start · function · L64-L92 — pub fn start() -> Option<TvProxy>
+- handle · function · L94-L111 — fn handle(client: &reqwest::blocking::Client, port: u16, request: tiny_http::Request)
+- VIDEO_BODY_TIMEOUT · constant · L124-L124 — const VIDEO_BODY_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+- serve_video · function · L145-L195 — fn serve_video(
+- VIDEO_CHUNK · constant · L203-L203 — const VIDEO_CHUNK: u64 = 1 << 20;
+- VideoFraming · struct · L206-L212 — struct VideoFraming
+- video_framing · function · L214-L231 — fn video_framing(client_range: Option<&str>, total: u64) -> VideoFraming
+- parse_byte_range · function · L236-L248 — fn parse_byte_range(header: Option<&str>) -> Option<(u64, Option<u64>)>
+- video_total_len · function · L255-L273 — fn video_total_len(
+- parse_clen · function · L276-L280 — fn parse_clen(url: &str) -> Option<u64>
+- total_from_content_range · function · L283-L285 — fn total_from_content_range(cr: &str) -> Option<u64>
+- next_chunk · function · L288-L293 — fn next_chunk(next: u64, end: u64, chunk: u64) -> Option<(u64, u64)>
+- ChunkedVideo · struct · L300-L308 — struct ChunkedVideo
+- read · function · L311-L345 — fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize>
+- serve_playlist · function · L350-L389 — fn serve_playlist(
+- serve_segment · function · L394-L434 — fn serve_segment(
+- rewrite_tag_uri · function · L438-L455 — fn rewrite_tag_uri(
+- proxied · function · L459-L469 — fn proxied(port: u16, abs_url: &str, ua: Option<&str>, referer: Option<&str>) -> String
+- is_playlist · function · L471-L474 — fn is_playlist(u: &str) -> bool
+- resolve · function · L476-L483 — fn resolve(base: Option<&Url>, uri: &str) -> String
+- fetch_text · function · L485-L503 — fn fetch_text(
+- respond · function · L505-L523 — fn respond(
+- enc · function · L525-L527 — fn enc(s: &str) -> String
+- parse_query · function · L529-L533 — fn parse_query(query: &str) -> HashMap<String, String>
+- tests · module · L536-L747 — mod tests
+- playlist_detection_ignores_query_and_fragment · function · L540-L545 — fn playlist_detection_ignores_query_and_fragment()
+- relative_uris_resolve_against_the_playlist · function · L548-L556 — fn relative_uris_resolve_against_the_playlist()
+- proxied_routes_playlists_to_hls_and_segments_to_seg · function · L559-L565 — fn proxied_routes_playlists_to_hls_and_segments_to_seg()
+- key_uri_in_a_tag_is_rewritten · function · L568-L575 — fn key_uri_in_a_tag_is_rewritten()
+- parses_a_bounded_and_open_ended_range · function · L578-L582 — fn parses_a_bounded_and_open_ended_range()
+- non_single_ranges_are_treated_as_absent · function · L587-L593 — fn non_single_ranges_are_treated_as_absent()
+- framing_maps_the_element_range_onto_the_response · function · L599-L612 — fn framing_maps_the_element_range_onto_the_response()
+- framing_clamps_a_range_past_the_end · function · L617-L621 — fn framing_clamps_a_range_past_the_end()
+- reads_clen_from_the_googlevideo_url · function · L624-L628 — fn reads_clen_from_the_googlevideo_url()
+- reads_total_from_a_content_range · function · L631-L635 — fn reads_total_from_a_content_range()
+- chunks_cover_the_span_in_bounded_steps · function · L639-L649 — fn chunks_cover_the_span_in_bounded_steps()
+- the_proxy_streams_a_whole_video_in_bounded_chunks · function · L657-L737 — fn the_proxy_streams_a_whole_video_in_bounded_chunks()
+- stream_url_builds_a_loopback_hls_url · function · L740-L746 — fn stream_url_builds_a_loopback_hls_url()

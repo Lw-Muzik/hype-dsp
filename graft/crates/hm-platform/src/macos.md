@@ -1,0 +1,47 @@
+# crates/hm-platform/src/macos.rs
+
+- addr · function · L62-L68 — fn addr(selector: u32) -> AudioObjectPropertyAddress
+- get_scalar · function · L70-L85 — fn get_scalar<T: Copy + Default>(obj: AudioObjectID, selector: u32) -> Option<T>
+- get_cfstring · function · L87-L106 — fn get_cfstring(obj: AudioObjectID, selector: u32) -> Option<String>
+- process_object_list · function · L108-L142 — fn process_object_list() -> Vec<AudioObjectID>
+- is_running_output · function · L144-L146 — fn is_running_output(obj: AudioObjectID) -> bool
+- default_output_device · function · L149-L155 — fn default_output_device() -> Option<AudioObjectID>
+- device_sample_rate · function · L158-L160 — fn device_sample_rate(dev: AudioObjectID) -> Option<f32>
+- tap_sample_rate · function · L163-L178 — fn tap_sample_rate(tap_id: AudioObjectID) -> Option<f32>
+- responsible_pid · function · L183-L193 — fn responsible_pid(pid: i32) -> i32
+- responsibility_get_pid_responsible_for_pid · function · L185-L185 — fn responsibility_get_pid_responsible_for_pid(pid: i32) -> i32;
+- friendly_name · function · L195-L202 — fn friendly_name(bundle_id: &str) -> String
+- running_app_identity · function · L205-L216 — fn running_app_identity(pid: i32) -> Option<(String, String)>
+- icon_data_uri · function · L219-L227 — fn icon_data_uri(pid: i32) -> Option<String>
+- app_identity · function · L231-L245 — fn app_identity(obj: AudioObjectID) -> (String, String)
+- process_objects_for_id · function · L248-L253 — fn process_objects_for_id(id: &str) -> Vec<AudioObjectID>
+- output_process_objects_for_ids · function · L261-L266 — pub fn output_process_objects_for_ids(ids: &[String]) -> Vec<u32>
+- tap_uid_string · function · L268-L270 — fn tap_uid_string(tap_id: AudioObjectID) -> Option<String>
+- CaptureCtx · struct · L275-L277 — struct CaptureCtx
+- RenderCtx · struct · L281-L290 — struct RenderCtx
+- capture_proc · function · L294-L329 — unsafe extern "C-unwind" fn capture_proc(
+- pop_frame · function · L332-L338 — unsafe fn pop_frame(consumer: &mut Consumer<f32>) -> Option<[f32; 2]>
+- render_proc · function · L344-L403 — unsafe extern "C-unwind" fn render_proc(
+- AppTap · struct · L410-L419 — struct AppTap
+- new · function · L425-L546 — fn new(processes: &[AudioObjectID], gain: f32) -> Result<Self, PlatformError>
+- set_gain · function · L548-L550 — fn set_gain(&self, gain: f32)
+- drop · function · L554-L572 — fn drop(&mut self)
+- create_capture_aggregate · function · L578-L624 — fn create_capture_aggregate(
+- key · function · L582-L584 — fn key(c: &std::ffi::CStr) -> Retained<NSString>
+- Desired · struct · L629-L632 — struct Desired
+- default · function · L635-L640 — fn default() -> Self
+- gain · function · L645-L651 — fn gain(&self) -> f32
+- is_passthrough · function · L653-L655 — fn is_passthrough(&self) -> bool
+- MacosSessionController · struct · L660-L665 — pub struct MacosSessionController
+- new · function · L668-L670 — pub fn new() -> Self
+- icon_for · function · L673-L682 — fn icon_for(&self, id: &str, obj: AudioObjectID) -> Option<String>
+- apply · function · L690-L717 — fn apply(&self, id: &str) -> Result<(), PlatformError>
+- supported · function · L721-L723 — fn supported(&self) -> bool
+- unavailable_reason · function · L725-L727 — fn unavailable_reason(&self) -> Option<String>
+- list_sessions · function · L729-L757 — fn list_sessions(&self) -> Vec<AppSession>
+- set_volume · function · L759-L767 — fn set_volume(&self, id: &str, gain: f32) -> Result<(), PlatformError>
+- set_muted · function · L769-L777 — fn set_muted(&self, id: &str, muted: bool) -> Result<(), PlatformError>
+- tests · module · L781-L814 — mod tests
+- friendly_name_strips_bundle_prefix · function · L785-L789 — fn friendly_name_strips_bundle_prefix()
+- desired_semantics · function · L792-L801 — fn desired_semantics()
+- enumeration_and_intent_are_safe · function · L804-L813 — fn enumeration_and_intent_are_safe()

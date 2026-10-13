@@ -1,0 +1,44 @@
+# crates/hm-dsp/src/lib.rs
+
+- script · module · L16-L16 — pub mod script;
+- script_stage · module · L17-L17 — pub mod script_stage;
+- bass_boost · module · L18-L18 — pub mod bass_boost;
+- compander · module · L19-L19 — pub mod compander;
+- convolver · module · L20-L20 — pub mod convolver;
+- biquad · module · L21-L21 — pub mod biquad;
+- delay · module · L22-L22 — mod delay;
+- oversample · module · L23-L23 — pub mod oversample;
+- gain · module · L24-L24 — pub mod gain;
+- graphic_eq · module · L25-L25 — pub mod graphic_eq;
+- headphone · module · L26-L26 — pub mod headphone;
+- limiter · module · L27-L27 — pub mod limiter;
+- reverb · module · L28-L28 — mod reverb;
+- room · module · L29-L29 — pub mod room;
+- saturation · module · L30-L30 — pub mod saturation;
+- spatializer · module · L31-L31 — pub mod spatializer;
+- surround3d · module · L32-L32 — pub mod surround3d;
+- empty_compander_meter · function · L40-L42 — pub fn empty_compander_meter() -> std::sync::Arc<CompanderMeter>
+- ChainSlots · struct · L65-L72 — pub struct ChainSlots
+- default · function · L77-L83 — fn default() -> Self
+- ProcessorParams · type · L91-L91 — pub type ProcessorParams = EngineState;
+- AudioProcessor · interface · L99-L110 — pub trait AudioProcessor: Send
+- prepare · function · L103-L103 — fn prepare(&mut self, sample_rate: f32, channels: usize);
+- process · function · L106-L106 — fn process(&mut self, buffer: &mut [f32], channels: usize);
+- set_params · function · L109-L109 — fn set_params(&mut self, params: &ProcessorParams);
+- ProcessChain · struct · L118-L122 — pub struct ProcessChain
+- new · function · L126-L128 — pub fn new() -> Self
+- standard · function · L134-L136 — pub fn standard(sample_rate: f32, channels: usize) -> Self
+- standard_with_slots · function · L142-L163 — pub fn standard_with_slots(
+- push · function · L167-L172 — pub fn push(&mut self, mut processor: Box<dyn AudioProcessor>)
+- len · function · L175-L177 — pub fn len(&self) -> usize
+- is_empty · function · L180-L182 — pub fn is_empty(&self) -> bool
+- prepare · function · L185-L191 — pub fn prepare(&mut self, sample_rate: f32, channels: usize)
+- set_params · function · L194-L198 — pub fn set_params(&mut self, params: &ProcessorParams)
+- process · function · L203-L207 — pub fn process(&mut self, buffer: &mut [f32], channels: usize)
+- tests · module · L211-L276 — mod tests
+- empty_chain_is_identity · function · L217-L227 — fn empty_chain_is_identity()
+- chain_tracks_length · function · L231-L235 — fn chain_tracks_length()
+- standard_chain_is_identity_when_all_off · function · L240-L252 — fn standard_chain_is_identity_when_all_off()
+- standard_chain_includes_compander · function · L256-L259 — fn standard_chain_includes_compander()
+- standard_chain_includes_saturation · function · L263-L266 — fn standard_chain_includes_saturation()
+- standard_chain_includes_script · function · L272-L275 — fn standard_chain_includes_script()

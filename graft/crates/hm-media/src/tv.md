@@ -1,0 +1,58 @@
+# crates/hm-media/src/tv.rs
+
+- SEED · constant · L22-L22 — const SEED: &str = include_str!("../data/tv_seed.json");
+- WORLD_COUNTRIES · constant · L23-L23 — const WORLD_COUNTRIES: &str = include_str!("../data/world_countries.json");
+- BASE · constant · L24-L24 — const BASE: &str = "https://iptv-org.github.io/iptv";
+- TTL · constant · L27-L27 — const TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+- MAX_RESULTS · constant · L30-L30 — const MAX_RESULTS: usize = 600;
+- seed · function · L34-L36 — pub fn seed() -> Vec<TvChannel>
+- world_countries · function · L40-L42 — pub fn world_countries() -> Vec<TvCountry>
+- categories · function · L46-L78 — pub fn categories() -> Vec<TvCategory>
+- CATS · constant · L47-L74 — const CATS: &[(&str, &str)] = &[
+- by_country · function · L82-L93 — pub fn by_country(code: &str, cache_dir: Option<&Path>) -> Vec<TvChannel>
+- by_category · function · L96-L109 — pub fn by_category(id: &str, cache_dir: Option<&Path>) -> Vec<TvChannel>
+- search · function · L115-L130 — pub fn search(query: &str, cache_dir: Option<&Path>) -> Vec<TvChannel>
+- global_index · function · L133-L139 — fn global_index(cache_dir: Option<&Path>) -> Vec<TvChannel>
+- parse_m3u · function · L150-L179 — fn parse_m3u(text: &str, default_country: Option<&str>) -> Vec<TvChannel>
+- Pending · struct · L182-L192 — struct Pending
+- into_channel · function · L195-L212 — fn into_channel(self) -> Option<TvChannel>
+- parse_extinf · function · L215-L239 — fn parse_extinf(rest: &str, default_country: Option<&str>) -> Pending
+- apply_vlcopt · function · L241-L253 — fn apply_vlcopt(p: &mut Pending, opt: &str)
+- attr · function · L256-L262 — fn attr(attrs: &str, key: &str) -> Option<String>
+- first_group · function · L265-L267 — fn first_group(g: String) -> Option<String>
+- country_from_tvg_id · function · L270-L274 — fn country_from_tvg_id(id: &str) -> Option<String>
+- quality_from_name · function · L277-L295 — fn quality_from_name(name: &str) -> Option<String>
+- is_alpha2 · function · L297-L299 — fn is_alpha2(code: &str) -> bool
+- cache_path · function · L303-L305 — fn cache_path(cache_dir: Option<&Path>, sub: &str, key: &str) -> Option<PathBuf>
+- fetch_text_cached · function · L309-L330 — fn fetch_text_cached(url: &str, cache: Option<&Path>) -> Option<String>
+- is_fresh · function · L332-L339 — fn is_fresh(path: &Path) -> bool
+- http_get · function · L341-L352 — fn http_get(url: &str) -> Option<String>
+- HEALTH_TTL · constant · L365-L365 — const HEALTH_TTL: Duration = Duration::from_secs(60 * 60);
+- HEALTH_CONCURRENCY · constant · L371-L371 — const HEALTH_CONCURRENCY: usize = 16;
+- HEALTH_TIMEOUT · constant · L375-L375 — const HEALTH_TIMEOUT: Duration = Duration::from_secs(6);
+- probe_is_alive · function · L388-L397 — pub fn probe_is_alive(status: u16, body_head: &str, content_type: &str) -> bool
+- probe_channel · function · L405-L432 — fn probe_channel(client: &reqwest::blocking::Client, ch: &TvChannel) -> bool
+- Health · struct · L436-L439 — struct Health
+- TvHealthCache · struct · L447-L449 — pub struct TvHealthCache
+- fresh · function · L452-L457 — fn fresh(&self, url: &str, now: Instant) -> Option<bool>
+- store · function · L459-L463 — fn store(&self, url: &str, alive: bool, now: Instant)
+- is_health_fresh · function · L467-L469 — fn is_health_fresh(at: Instant, now: Instant) -> bool
+- check_alive · function · L475-L525 — pub fn check_alive(channels: &[TvChannel], cache: &TvHealthCache) -> Vec<String>
+- tests · module · L528-L707 — mod tests
+- chan · function · L531-L543 — fn chan(id: &str, url: &str) -> TvChannel
+- a_200_that_is_not_a_playlist_is_not_alive · function · L549-L551 — fn a_200_that_is_not_a_playlist_is_not_alive()
+- a_real_playlist_body_is_alive · function · L554-L556 — fn a_real_playlist_body_is_alive()
+- an_hls_content_type_is_alive_even_without_the_marker · function · L561-L564 — fn an_hls_content_type_is_alive_even_without_the_marker()
+- a_non_2xx_is_dead_regardless_of_body · function · L569-L573 — fn a_non_2xx_is_dead_regardless_of_body()
+- a_verdict_expires_after_the_ttl · function · L578-L583 — fn a_verdict_expires_after_the_ttl()
+- the_cache_serves_a_fresh_verdict_without_probing · function · L588-L604 — fn the_cache_serves_a_fresh_verdict_without_probing()
+- verdicts_are_shared_by_url_across_ids · function · L609-L617 — fn verdicts_are_shared_by_url_across_ids()
+- seed_parses_and_is_playable · function · L621-L626 — fn seed_parses_and_is_playable()
+- world_countries_are_bundled_and_alpha2 · function · L629-L634 — fn world_countries_are_bundled_and_alpha2()
+- categories_are_non_empty_and_slugged · function · L637-L641 — fn categories_are_non_empty_and_slugged()
+- parses_a_full_entry_with_inline_and_vlcopt_headers · function · L644-L662 — fn parses_a_full_entry_with_inline_and_vlcopt_headers()
+- default_country_applies_when_id_has_none · function · L665-L670 — fn default_country_applies_when_id_has_none()
+- skips_entries_without_a_valid_url_and_malformed_lines · function · L673-L684 — fn skips_entries_without_a_valid_url_and_malformed_lines()
+- id_falls_back_to_url_when_tvg_id_missing · function · L687-L692 — fn id_falls_back_to_url_when_tvg_id_missing()
+- quality_parser_finds_resolution_or_nothing · function · L695-L699 — fn quality_parser_finds_resolution_or_nothing()
+- invalid_country_and_category_codes_return_empty_without_network · function · L702-L706 — fn invalid_country_and_category_codes_return_empty_without_network()

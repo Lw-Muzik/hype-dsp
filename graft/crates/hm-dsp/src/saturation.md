@@ -1,0 +1,47 @@
+# crates/hm-dsp/src/saturation.rs
+
+- BIAS · constant · L64-L64 — const BIAS: f32 = 0.2;
+- DC_R · constant · L67-L67 — const DC_R: f32 = 0.999;
+- MAX_BLOCK_FRAMES · constant · L70-L70 — const MAX_BLOCK_FRAMES: usize = 4096;
+- flush · function · L74-L76 — fn flush(x: f32) -> f32
+- shape · function · L82-L84 — fn shape(x: f32, drive: f32) -> f32
+- DcBlocker · struct · L87-L90 — struct DcBlocker
+- new · function · L93-L95 — fn new() -> Self
+- process · function · L98-L103 — fn process(&mut self, x: f32) -> f32
+- reset · function · L105-L108 — fn reset(&mut self)
+- DelayLine · struct · L112-L115 — struct DelayLine
+- new · function · L118-L123 — fn new(len: usize) -> Self
+- resize · function · L126-L129 — fn resize(&mut self, len: usize)
+- process · function · L133-L139 — fn process(&mut self, x: f32) -> f32
+- Saturation · struct · L145-L170 — pub struct Saturation
+- new · function · L178-L196 — pub fn new(sample_rate: f32, _channels: usize) -> Self
+- compute_drive_makeup · function · L211-L234 — fn compute_drive_makeup(drive_raw: f32) -> (f32, f32)
+- REF_AMP · constant · L213-L213 — const REF_AMP: f32 = 0.5;
+- STEPS · constant · L214-L214 — const STEPS: usize = 256; // one cycle, enough precision
+- process_channel · function · L238-L282 — fn process_channel(
+- prepare · function · L286-L302 — fn prepare(&mut self, sample_rate: f32, _channels: usize)
+- process · function · L304-L328 — fn process(&mut self, buffer: &mut [f32], channels: usize)
+- set_params · function · L330-L347 — fn set_params(&mut self, params: &ProcessorParams)
+- tests · module · L354-L663 — mod tests
+- SR · constant · L359-L359 — const SR: f32 = 48_000.0;
+- make_params · function · L361-L366 — fn make_params(enabled: bool, drive: f32, mix: f32) -> EngineState
+- rms · function · L368-L370 — fn rms(buf: &[f32]) -> f32
+- disabled_is_identity · function · L375-L383 — fn disabled_is_identity()
+- mix_zero_is_dry_delayed · function · L388-L417 — fn mix_zero_is_dry_delayed()
+- produces_even_harmonic · function · L422-L466 — fn produces_even_harmonic()
+- N · constant · L423-L423 — const N: usize = 8192;
+- FREQ · constant · L424-L424 — const FREQ: f32 = 1_000.0;
+- makeup_keeps_level_roughly_stable · function · L471-L505 — fn makeup_keeps_level_roughly_stable()
+- N · constant · L476-L476 — const N: usize = 96_000; // 2 s @48k
+- FREQ · constant · L477-L477 — const FREQ: f32 = 440.0;
+- DRIVE · constant · L478-L478 — const DRIVE: f32 = 0.5;
+- SKIP · constant · L481-L481 — const SKIP: usize = 6_000;
+- stays_bounded · function · L510-L528 — fn stays_bounded()
+- antialias_smoke · function · L534-L562 — fn antialias_smoke()
+- N · constant · L535-L535 — const N: usize = 8192;
+- FREQ · constant · L536-L536 — const FREQ: f32 = 15_000.0;
+- mix_half_no_passband_comb · function · L584-L662 — fn mix_half_no_passband_comb()
+- N · constant · L585-L585 — const N: usize = 4096;
+- DRIVE · constant · L586-L586 — const DRIVE: f32 = 0.0; // near-linear shaper
+- FREQS · constant · L587-L587 — const FREQS: [f32; 4] = [1_000.0, 5_000.0, 10_000.0, 15_000.0];
+- AMP · constant · L588-L588 — const AMP: f32 = 0.25; // 4 tones × 0.25 = total ≤ 1.0

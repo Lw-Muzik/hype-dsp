@@ -1,0 +1,32 @@
+# crates/hm-audio/src/queue.rs
+
+- DecodedTrack · type · L35-L35 — type DecodedTrack = (usize, Vec<f32>, TrackMeta);
+- QueuePlaybackSource · struct · L38-L73 — pub struct QueuePlaybackSource
+- spawn · function · L81-L164 — pub fn spawn(
+- ready · function · L166-L168 — fn ready(&self, i: usize) -> bool
+- track_len · function · L170-L175 — fn track_len(&self, i: usize) -> usize
+- crossfade_frames · function · L178-L181 — fn crossfade_frames(&self) -> usize
+- frame · function · L184-L189 — fn frame(&self, i: usize, f: usize) -> (f32, f32)
+- drain · function · L192-L201 — fn drain(&mut self)
+- advance_window · function · L205-L214 — fn advance_window(&mut self)
+- signal_track · function · L217-L219 — fn signal_track(&self)
+- signal_index · function · L225-L234 — fn signal_index(&self, i: usize)
+- drop · function · L238-L240 — fn drop(&mut self)
+- write_frame · function · L243-L253 — pub(crate) fn write_frame(out: &mut [f32], base: usize, channels: usize, l: f32, r: f32)
+- start · function · L256-L260 — fn start(&mut self, _format: StreamFormat) -> Result<(), AudioError>
+- read · function · L262-L349 — fn read(&mut self, out: &mut [f32], channels: usize) -> usize
+- stop · function · L351-L354 — fn stop(&mut self)
+- seek · function · L356-L361 — fn seek(&mut self, frame: usize)
+- position · function · L363-L374 — fn position(&self) -> usize
+- total_frames · function · L376-L382 — fn total_frames(&self) -> usize
+- tests · module · L386-L573 — mod tests
+- stereo · function · L389-L391 — fn stereo(value: f32, frames: usize) -> Vec<f32>
+- eager · function · L396-L416 — fn eager(tracks: Vec<Vec<f32>>, crossfade_frames: usize) -> QueuePlaybackSource
+- plays_tracks_gaplessly_then_ends · function · L419-L431 — fn plays_tracks_gaplessly_then_ends()
+- crossfade_ramps_from_one_track_to_the_next · function · L441-L456 — fn crossfade_ramps_from_one_track_to_the_next()
+- crossfade_reports_the_incoming_track_position_and_duration · function · L472-L492 — fn crossfade_reports_the_incoming_track_position_and_duration()
+- crossfade_announces_the_incoming_track_at_its_start · function · L495-L513 — fn crossfade_announces_the_incoming_track_at_its_start()
+- a_late_lookahead_still_ramps_fully_out · function · L516-L539 — fn a_late_lookahead_still_ramps_fully_out()
+- reports_current_track_position_and_total · function · L542-L549 — fn reports_current_track_position_and_total()
+- buffers_silence_while_a_track_is_undecoded · function · L552-L560 — fn buffers_silence_while_a_track_is_undecoded()
+- frees_played_tracks_to_bound_memory · function · L563-L572 — fn frees_played_tracks_to_bound_memory()

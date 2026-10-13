@@ -1,0 +1,74 @@
+# crates/hm-link/src/lib.rs
+
+- SERVICE_TYPE · constant · L30-L30 — pub const SERVICE_TYPE: &str = "_hypemuzik._tcp.local.";
+- PhoneDevice · struct · L37-L43 — pub struct PhoneDevice
+- PhoneTrack · struct · L49-L65 — pub struct PhoneTrack
+- LibraryResponse · struct · L68-L71 — struct LibraryResponse
+- PairResponse · struct · L74-L76 — struct PairResponse
+- UploadedTrack · struct · L83-L87 — pub struct UploadedTrack
+- PingResponse · struct · L91-L96 — struct PingResponse
+- Paired · struct · L100-L106 — struct Paired
+- Store · struct · L109-L121 — struct Store
+- LinkState · struct · L124-L127 — pub struct LinkState
+- load · function · L131-L148 — pub fn load(path: PathBuf) -> Self
+- save · function · L150-L169 — fn save(&self, store: &Store)
+- self_id · function · L172-L174 — pub fn self_id(&self) -> String
+- paired · function · L177-L190 — pub fn paired(&self) -> Vec<PhoneDevice>
+- is_paired · function · L195-L202 — pub fn is_paired(&self, device_id: &str) -> bool
+- unpair · function · L205-L210 — pub fn unpair(&self, device_id: &str)
+- register_remote · function · L215-L226 — pub fn register_remote(&self, id: String, name: String, port: u16, token: String)
+- remember · function · L228-L233 — fn remember(&self, dev: Paired)
+- find · function · L235-L244 — fn find(&self, device_id: &str) -> Result<Paired, String>
+- discover · function · L249-L272 — pub fn discover(&self, timeout: Duration) -> Result<Vec<PhoneDevice>, String>
+- update_addresses · function · L276-L291 — pub fn update_addresses(&self, discovered: &[PhoneDevice])
+- pair · function · L294-L335 — pub fn pair(
+- pair_by_address · function · L341-L367 — pub fn pair_by_address(
+- artwork_data_uri · function · L373-L400 — pub fn artwork_data_uri(&self, device_id: &str, track_id: &str) -> Option<String>
+- lyrics · function · L406-L420 — pub fn lyrics(&self, device_id: &str, track_id: &str) -> Option<String>
+- library · function · L423-L439 — pub fn library(&self, device_id: &str) -> Result<Vec<PhoneTrack>, String>
+- stream_target · function · L443-L451 — pub fn stream_target(
+- upload · function · L468-L512 — pub fn upload(
+- is_known_token · function · L519-L529 — pub fn is_known_token(&self, token: &str) -> bool
+- stream_target_for_token · function · L534-L546 — pub fn stream_target_for_token(
+- ProgressReader · struct · L553-L558 — struct ProgressReader<R, F>
+- new · function · L561-L568 — fn new(inner: R, total: u64, on_progress: F) -> Self
+- read · function · L572-L579 — fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>
+- upload_client · function · L589-L595 — fn upload_client() -> Result<reqwest::blocking::Client, String>
+- pct_encode · function · L600-L611 — fn pct_encode(s: &str) -> String
+- stream_url · function · L614-L624 — fn stream_url(dev: &Paired, track_id: &str, ext: &str) -> (String, Vec<(String, String)>)
+- Advertiser · struct · L627-L630 — pub struct Advertiser
+- drop · function · L633-L636 — fn drop(&mut self)
+- advertise_player · function · L642-L657 — pub fn advertise_player(name: &str, id: &str, port: u16) -> Result<Advertiser, String>
+- sanitize_ext · function · L663-L670 — fn sanitize_ext(ext: &str) -> String
+- ip_host · function · L673-L678 — fn ip_host(addr: &IpAddr) -> String
+- parse_phone · function · L682-L716 — fn parse_phone(info: &ServiceInfo) -> Option<PhoneDevice>
+- is_routable · function · L720-L725 — fn is_routable(ip: &IpAddr) -> bool
+- is_routable_v4 · function · L727-L729 — fn is_routable_v4(ip: &std::net::Ipv4Addr) -> bool
+- watch · function · L739-L744 — pub fn watch(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice))
+- watch_mdns · function · L747-L767 — fn watch_mdns(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice))
+- watch_bonjour · function · L772-L889 — fn watch_bonjour(stop: Arc<AtomicBool>, on_found: impl Fn(PhoneDevice))
+- Partial · struct · L777-L787 — struct Partial
+- resolve_host · function · L898-L910 — fn resolve_host(host: &str, port: u16) -> Option<String>
+- resolve_via_dns_sd · function · L916-L948 — fn resolve_via_dns_sd(host: &str) -> Option<String>
+- parse_txt_quoted · function · L953-L972 — fn parse_txt_quoted(s: &str) -> Vec<(String, String)>
+- random_hex · function · L974-L978 — fn random_hex(bytes: usize) -> String
+- http_client · function · L980-L989 — fn http_client() -> Result<reqwest::blocking::Client, String>
+- device_name · function · L992-L1009 — pub fn device_name() -> String
+- CREATE_NO_WINDOW · constant · L1000-L1000 — const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+- tests · module · L1014-L1262 — mod tests
+- temp_path · function · L1017-L1019 — fn temp_path(tag: &str) -> PathBuf
+- loopback_and_link_local_are_not_routable · function · L1022-L1035 — fn loopback_and_link_local_are_not_routable()
+- self_id_is_generated_and_persists_across_loads · function · L1038-L1048 — fn self_id_is_generated_and_persists_across_loads()
+- pairing_is_stored_streamable_and_revocable · function · L1051-L1082 — fn pairing_is_stored_streamable_and_revocable()
+- remember_replaces_an_existing_pairing · function · L1085-L1101 — fn remember_replaces_an_existing_pairing()
+- discovery_refreshes_a_paired_phones_changed_address · function · L1104-L1134 — fn discovery_refreshes_a_paired_phones_changed_address()
+- token_resolution_authenticates_and_streams_casts · function · L1137-L1158 — fn token_resolution_authenticates_and_streams_casts()
+- library_response_parses_phone_camelcase_payload · function · L1161-L1178 — fn library_response_parses_phone_camelcase_payload()
+- phone_track_round_trips_to_camelcase_for_the_frontend · function · L1181-L1196 — fn phone_track_round_trips_to_camelcase_for_the_frontend()
+- sanitize_ext_only_allows_known_audio_extensions · function · L1199-L1205 — fn sanitize_ext_only_allows_known_audio_extensions()
+- ipv6_hosts_are_bracketed · function · L1208-L1213 — fn ipv6_hosts_are_bracketed()
+- pct_encode_passes_unreserved_through · function · L1216-L1218 — fn pct_encode_passes_unreserved_through()
+- pct_encode_escapes_spaces_and_unicode · function · L1221-L1225 — fn pct_encode_escapes_spaces_and_unicode()
+- pct_encode_neutralises_header_injection · function · L1228-L1233 — fn pct_encode_neutralises_header_injection()
+- progress_reader_reports_cumulative_bytes · function · L1236-L1251 — fn progress_reader_reports_cumulative_bytes()
+- progress_reader_passes_bytes_through_unchanged · function · L1254-L1261 — fn progress_reader_passes_bytes_through_unchanged()

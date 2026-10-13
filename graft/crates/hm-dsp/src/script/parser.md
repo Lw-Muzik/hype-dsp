@@ -1,0 +1,65 @@
+# crates/hm-dsp/src/script/parser.rs
+
+- Ast · struct · L23-L26 — pub struct Ast
+- AssignOp · enum · L30-L36 — pub enum AssignOp
+- Stmt · enum · L41-L48 — pub enum Stmt
+- Const · enum · L52-L55 — pub enum Const
+- UnOp · enum · L59-L62 — pub enum UnOp
+- BinOp · enum · L66-L81 — pub enum BinOp
+- Expr · enum · L86-L100 — pub enum Expr
+- parse · function · L107-L110 — pub fn parse(tokens: &[Spanned<Token>]) -> Result<Ast, ScriptError>
+- Section · enum · L114-L118 — enum Section
+- Parser · struct · L120-L123 — struct Parser<'a>
+- new · function · L126-L128 — fn new(tokens: &'a [Spanned<Token>]) -> Self
+- peek · function · L132-L134 — fn peek(&self) -> Option<&Spanned<Token>>
+- peek_at · function · L137-L139 — fn peek_at(&self, n: usize) -> Option<&Spanned<Token>>
+- expect · function · L142-L155 — fn expect(&mut self, tok: &Token) -> Result<(), ScriptError>
+- err · function · L158-L167 — fn err(&self, msg: &str) -> ScriptError
+- eof_err · function · L170-L183 — fn eof_err(&self, msg: &str) -> ScriptError
+- parse_program · function · L187-L227 — fn parse_program(&mut self) -> Result<Ast, ScriptError>
+- consume_optional_semicolon · function · L230-L234 — fn consume_optional_semicolon(&mut self)
+- parse_stmt · function · L238-L249 — fn parse_stmt(&mut self) -> Result<Stmt, ScriptError>
+- parse_block · function · L253-L280 — fn parse_block(&mut self) -> Result<Vec<Stmt>, ScriptError>
+- parse_expr · function · L284-L286 — fn parse_expr(&mut self) -> Result<Expr, ScriptError>
+- parse_or · function · L289-L297 — fn parse_or(&mut self) -> Result<Expr, ScriptError>
+- parse_and · function · L300-L308 — fn parse_and(&mut self) -> Result<Expr, ScriptError>
+- parse_cmp · function · L311-L319 — fn parse_cmp(&mut self) -> Result<Expr, ScriptError>
+- parse_add · function · L322-L335 — fn parse_add(&mut self) -> Result<Expr, ScriptError>
+- parse_mul · function · L338-L352 — fn parse_mul(&mut self) -> Result<Expr, ScriptError>
+- parse_unary · function · L357-L371 — fn parse_unary(&mut self) -> Result<Expr, ScriptError>
+- parse_pow · function · L376-L385 — fn parse_pow(&mut self) -> Result<Expr, ScriptError>
+- parse_primary · function · L388-L427 — fn parse_primary(&mut self) -> Result<Expr, ScriptError>
+- parse_call_or_form · function · L431-L442 — fn parse_call_or_form(&mut self, name: String) -> Result<Expr, ScriptError>
+- parse_arg_list · function · L446-L466 — fn parse_arg_list(&mut self) -> Result<Vec<Expr>, ScriptError>
+- parse_if · function · L469-L483 — fn parse_if(&mut self) -> Result<Expr, ScriptError>
+- parse_while · function · L486-L491 — fn parse_while(&mut self) -> Result<Expr, ScriptError>
+- parse_loop · function · L494-L518 — fn parse_loop(&mut self) -> Result<Expr, ScriptError>
+- parse_paren_expr · function · L521-L526 — fn parse_paren_expr(&mut self) -> Result<Expr, ScriptError>
+- assign_op · function · L530-L539 — fn assign_op(tok: &Token) -> Option<AssignOp>
+- cmp_op · function · L542-L552 — fn cmp_op(tok: &Token) -> Option<BinOp>
+- tests · module · L555-L810 — mod tests
+- ast · function · L560-L563 — fn ast(src: &str) -> Ast
+- parse_err · function · L566-L569 — fn parse_err(src: &str) -> ScriptError
+- num · function · L571-L573 — fn num(n: f64) -> Expr
+- var · function · L574-L576 — fn var(name: &str) -> Expr
+- bin · function · L577-L579 — fn bin(op: BinOp, l: Expr, r: Expr) -> Expr
+- test_precedence_mul_over_add · function · L582-L588 — fn test_precedence_mul_over_add()
+- test_right_assoc_pow · function · L591-L596 — fn test_right_assoc_pow()
+- test_assign_stmt · function · L599-L611 — fn test_assign_stmt()
+- test_if_expr · function · L614-L623 — fn test_if_expr()
+- test_bare_script_defaults_to_sample · function · L626-L638 — fn test_bare_script_defaults_to_sample()
+- test_sections · function · L641-L661 — fn test_sections()
+- test_missing_paren · function · L664-L670 — fn test_missing_paren()
+- test_logical_precedence · function · L673-L682 — fn test_logical_precedence()
+- test_while · function · L685-L697 — fn test_while()
+- test_function_call · function · L700-L704 — fn test_function_call()
+- test_block_section_ignored · function · L709-L714 — fn test_block_section_ignored()
+- test_loop_count_and_block · function · L717-L729 — fn test_loop_count_and_block()
+- test_loop_inline_body · function · L732-L740 — fn test_loop_inline_body()
+- test_compound_assign · function · L743-L753 — fn test_compound_assign()
+- test_unary_not_and_neg · function · L756-L766 — fn test_unary_not_and_neg()
+- test_parenthesised_overrides_precedence · function · L769-L774 — fn test_parenthesised_overrides_precedence()
+- test_const_pi · function · L777-L787 — fn test_const_pi()
+- test_multi_arg_call · function · L790-L796 — fn test_multi_arg_call()
+- test_empty_statement_skipped · function · L799-L802 — fn test_empty_statement_skipped()
+- test_if_wrong_arity · function · L805-L809 — fn test_if_wrong_arity()

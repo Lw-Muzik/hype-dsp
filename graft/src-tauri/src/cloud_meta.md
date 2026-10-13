@@ -1,0 +1,21 @@
+# src-tauri/src/cloud_meta.rs
+
+- CloudTrackMeta · struct · L32-L37 — pub struct CloudTrackMeta
+- is_useful · function · L41-L46 — pub fn is_useful(&self) -> bool
+- tags_only · function · L50-L57 — pub fn tags_only(&self) -> Self
+- StoredTags · struct · L67-L71 — struct StoredTags
+- Inner · struct · L74-L83 — struct Inner
+- cover_path · function · L88-L92 — fn cover_path(&self, key: &str) -> PathBuf
+- read_cover · function · L94-L96 — fn read_cover(&self, key: &str) -> Option<String>
+- write_cover · function · L98-L101 — fn write_cover(&self, key: &str, cover: &str)
+- flush_to_disk · function · L104-L115 — fn flush_to_disk(&self)
+- CloudMetaCache · struct · L120-L122 — pub struct CloudMetaCache
+- load · function · L125-L177 — pub fn load(tags_path: PathBuf) -> Self
+- get · function · L182-L186 — pub fn get(&self, key: &str) -> Option<CloudTrackMeta>
+- cover_for · function · L191-L193 — pub fn cover_for(&self, key: &str) -> Option<String>
+- snapshot_tags_for · function · L200-L209 — pub fn snapshot_tags_for(&self, prefix: &str) -> HashMap<String, CloudTrackMeta>
+- put · function · L213-L222 — pub fn put(&self, key: String, meta: CloudTrackMeta)
+- tests · module · L226-L272 — mod tests
+- cache_in · function · L229-L231 — fn cache_in(dir: &std::path::Path) -> CloudMetaCache
+- stores_tags_in_map_and_cover_on_disk · function · L234-L261 — fn stores_tags_in_map_and_cover_on_disk()
+- unknown_key_is_none · function · L264-L271 — fn unknown_key_is_none()

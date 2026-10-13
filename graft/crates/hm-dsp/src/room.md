@@ -1,0 +1,44 @@
+# crates/hm-dsp/src/room.rs
+
+- COMB_TUNING_L · constant · L17-L17 — const COMB_TUNING_L: [usize; 8] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
+- COMB_TUNING_R · constant · L18-L18 — const COMB_TUNING_R: [usize; 8] = [1139, 1211, 1300, 1379, 1445, 1514, 1580, 1640];
+- ALLPASS_TUNING_L · constant · L19-L19 — const ALLPASS_TUNING_L: [usize; 4] = [556, 441, 341, 225];
+- ALLPASS_TUNING_R · constant · L20-L20 — const ALLPASS_TUNING_R: [usize; 4] = [579, 464, 364, 248];
+- REFERENCE_SR · constant · L21-L21 — const REFERENCE_SR: f32 = 44_100.0;
+- FIXED_GAIN · constant · L22-L22 — const FIXED_GAIN: f32 = 0.015;
+- SCALE_ROOM · constant · L23-L23 — const SCALE_ROOM: f32 = 0.28;
+- OFFSET_ROOM · constant · L24-L24 — const OFFSET_ROOM: f32 = 0.7;
+- SCALE_DAMP · constant · L25-L25 — const SCALE_DAMP: f32 = 0.4;
+- MAX_PREDELAY_MS · constant · L26-L26 — const MAX_PREDELAY_MS: f32 = 200.0;
+- flush · function · L31-L37 — fn flush(x: f32) -> f32
+- Comb · struct · L41-L49 — struct Comb
+- new · function · L52-L63 — fn new(cap: usize, delay: usize) -> Self
+- set_delay · function · L64-L66 — fn set_delay(&mut self, d: usize)
+- set_feedback · function · L67-L69 — fn set_feedback(&mut self, f: f32)
+- set_damp · function · L70-L73 — fn set_damp(&mut self, d: f32)
+- process · function · L75-L83 — fn process(&mut self, x: f32) -> f32
+- Allpass · struct · L87-L91 — struct Allpass
+- new · function · L94-L100 — fn new(size: usize) -> Self
+- set_feedback · function · L101-L103 — fn set_feedback(&mut self, f: f32)
+- process · function · L105-L112 — fn process(&mut self, x: f32) -> f32
+- Delay · struct · L116-L119 — struct Delay
+- new · function · L122-L127 — fn new(cap: usize) -> Self
+- process · function · L129-L140 — fn process(&mut self, x: f32, delay: usize) -> f32
+- RoomEffects · struct · L144-L161 — pub struct RoomEffects
+- new · function · L164-L184 — pub fn new(sample_rate: f32, _channels: usize) -> Self
+- reconfigure · function · L187-L212 — fn reconfigure(&mut self)
+- retune · function · L215-L235 — fn retune(&mut self)
+- prepare · function · L239-L242 — fn prepare(&mut self, sample_rate: f32, _channels: usize)
+- process · function · L244-L287 — fn process(&mut self, buffer: &mut [f32], channels: usize)
+- set_params · function · L289-L306 — fn set_params(&mut self, params: &ProcessorParams)
+- tests · module · L310-L414 — mod tests
+- stereo · function · L314-L316 — fn stereo(pairs: &[(f32, f32)]) -> Vec<f32>
+- sine · function · L318-L325 — fn sine(freq: f32, frames: usize) -> Vec<f32>
+- energy · function · L327-L329 — fn energy(b: &[f32]) -> f32
+- state · function · L331-L345 — fn state(enabled: bool, wet: f32, decay: f32, room_size: f32) -> EngineState
+- disabled_is_identity · function · L348-L355 — fn disabled_is_identity()
+- fully_dry_is_identity · function · L358-L365 — fn fully_dry_is_identity()
+- produces_a_decaying_tail · function · L368-L377 — fn produces_a_decaying_tail()
+- fills_both_channels_decorrelated_for_mono · function · L380-L388 — fn fills_both_channels_decorrelated_for_mono()
+- longer_decay_gives_a_longer_tail · function · L391-L404 — fn longer_decay_gives_a_longer_tail()
+- stays_bounded_under_sustained_input · function · L407-L413 — fn stays_bounded_under_sustained_input()

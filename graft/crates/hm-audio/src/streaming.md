@@ -1,0 +1,95 @@
+# crates/hm-audio/src/streaming.rs
+
+- StreamShared · struct · L38-L56 — struct StreamShared
+- duration_secs · function · L59-L64 — fn duration_secs(&self, device_rate: u32) -> f64
+- StreamTuning · struct · L70-L75 — pub struct StreamTuning
+- for_network · function · L79-L87 — pub fn for_network(device_rate: u32, data_saver: bool) -> Self
+- should_buffer · function · L93-L100 — fn should_buffer(
+- RadioStreamSource · struct · L103-L112 — pub struct RadioStreamSource
+- new · function · L116-L125 — pub fn new(url: String, device_rate: u32) -> Self
+- with_headers · function · L133-L181 — pub fn with_headers(
+- download_bps · function · L186-L188 — pub fn download_bps(&self) -> u64
+- rebuffer_count · function · L190-L192 — pub fn rebuffer_count(&self) -> u32
+- is_buffering · function · L194-L196 — pub fn is_buffering(&self) -> bool
+- drop · function · L200-L202 — fn drop(&mut self)
+- CountingReader · struct · L207-L210 — struct CountingReader<R>
+- read · function · L213-L217 — fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>
+- RangeOpener · interface · L223-L226 — trait RangeOpener: Send + Sync
+- open_at · function · L225-L225 — fn open_at(&self, offset: u64) -> std::io::Result<Box<dyn std::io::Read + Send + Sync>>;
+- HttpRanges · struct · L230-L234 — struct HttpRanges
+- open_at · function · L237-L248 — fn open_at(&self, offset: u64) -> std::io::Result<Box<dyn std::io::Read + Send + Sync>>
+- ResumableBody · struct · L266-L281 — struct ResumableBody
+- new · function · L286-L301 — fn new(
+- complete · function · L305-L307 — fn complete(&self) -> bool
+- reopen · function · L313-L335 — fn reopen(&mut self) -> std::io::Result<()>
+- read · function · L339-L361 — fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>
+- start · function · L365-L367 — fn start(&mut self, _format: crate::StreamFormat) -> Result<(), AudioError>
+- read · function · L369-L433 — fn read(&mut self, out: &mut [f32], channels: usize) -> usize
+- stop · function · L435-L437 — fn stop(&mut self)
+- seek · function · L439-L454 — fn seek(&mut self, frame: usize)
+- position · function · L456-L458 — fn position(&self) -> usize
+- total_frames · function · L460-L462 — fn total_frames(&self) -> usize
+- seekable · function · L464-L467 — fn seekable(&self) -> bool
+- is_live · function · L469-L473 — fn is_live(&self) -> bool
+- buffering · function · L475-L477 — fn buffering(&self) -> bool
+- download_bps · function · L478-L480 — fn download_bps(&self) -> u64
+- rebuffer_count · function · L481-L483 — fn rebuffer_count(&self) -> u32
+- Stop · enum · L488-L500 — enum Stop
+- stop_for · function · L507-L515 — fn stop_for(shared: &StreamShared, err: SymError) -> Stop
+- MAX_STALLS · constant · L520-L520 — const MAX_STALLS: u32 = 3;
+- retry_backoff · function · L524-L526 — fn retry_backoff(attempt: u32) -> Duration
+- connection_progress · function · L537-L542 — fn connection_progress(stop: &Stop, conn_bytes: u64) -> (u64, bool)
+- ResumeDecision · enum · L546-L552 — enum ResumeDecision
+- resume_decision · function · L557-L568 — fn resume_decision(content_bytes: u64, consumed: u64, progressed: bool, stalls: u32) -> ResumeDecision
+- shared_client · function · L582-L590 — pub(crate) fn shared_client() -> &'static reqwest::blocking::Client
+- CLIENT · constant · L583-L583 — static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+- stream_worker · function · L594-L739 — fn stream_worker(
+- META_PREFIX_SMALL · constant · L743-L743 — const META_PREFIX_SMALL: u64 = 2 * 1024 * 1024;
+- META_PREFIX_LARGE · constant · L747-L747 — const META_PREFIX_LARGE: u64 = 24 * 1024 * 1024;
+- fetch_stream_metadata · function · L758-L778 — pub fn fetch_stream_metadata(
+- meta_useful · function · L780-L782 — fn meta_useful(m: &hm_core::TrackMeta) -> bool
+- meta_request · function · L784-L800 — fn meta_request(
+- meta_from_format · function · L802-L811 — fn meta_from_format(mss: MediaSourceStream, ext: Option<&str>) -> Option<hm_core::TrackMeta>
+- probe_stream · function · L814-L826 — fn probe_stream(
+- probe_buffered · function · L831-L858 — fn probe_buffered(
+- parse_id3v1 · function · L863-L883 — fn parse_id3v1(buf: &[u8]) -> Option<hm_core::TrackMeta>
+- open · function · L893-L917 — fn open(
+- record_content_length · function · L920-L944 — fn record_content_length(
+- byte_offset · function · L948-L957 — fn byte_offset(shared: &StreamShared, device_rate: u32, target: u64) -> u64
+- decode_connection · function · L967-L1073 — fn decode_connection(
+- to_stereo · function · L1075-L1093 — fn to_stereo(interleaved: &[f32], channels: usize) -> Vec<f32>
+- PushResult · enum · L1095-L1099 — enum PushResult
+- push_all · function · L1103-L1121 — fn push_all(producer: &mut Producer<f32>, samples: &[f32], shared: &StreamShared) -> PushResult
+- for_test · function · L1127-L1147 — fn for_test(consumer: rtrb::Consumer<f32>, prebuffer_frames: usize) -> Self
+- tests · module · L1151-L1668 — mod tests
+- Serve · enum · L1159-L1167 — enum Serve
+- FakeBody · struct · L1170-L1175 — struct FakeBody
+- read · function · L1178-L1196 — fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>
+- FakeRanges · struct · L1202-L1207 — struct FakeRanges
+- new · function · L1210-L1219 — fn new(len: usize, script: &[Serve]) -> Arc<Self>
+- opens · function · L1220-L1222 — fn opens(&self) -> Vec<u64>
+- open_at · function · L1226-L1245 — fn open_at(&self, offset: u64) -> std::io::Result<Box<dyn Read + Send + Sync>>
+- resumable · function · L1249-L1252 — fn resumable(ranges: Arc<FakeRanges>, content_bytes: u64) -> ResumableBody
+- resumable_body_splices_a_dropped_connection_invisibly · function · L1255-L1266 — fn resumable_body_splices_a_dropped_connection_invisibly()
+- resumable_body_reranges_at_the_absolute_offset_after_a_premature_eof · function · L1269-L1281 — fn resumable_body_reranges_at_the_absolute_offset_after_a_premature_eof()
+- resumable_body_errors_rather_than_faking_an_end_when_retries_run_out · function · L1284-L1298 — fn resumable_body_errors_rather_than_faking_an_end_when_retries_run_out()
+- resumable_body_leaves_an_open_ended_stream_alone · function · L1301-L1310 — fn resumable_body_leaves_an_open_ended_stream_alone()
+- resumable_body_stops_when_the_stream_is_cancelled · function · L1313-L1323 — fn resumable_body_stops_when_the_stream_is_cancelled()
+- end_of_stream_is_an_end_but_a_broken_socket_is_a_fault · function · L1326-L1339 — fn end_of_stream_is_an_end_but_a_broken_socket_is_a_fault()
+- a_failed_probe_counts_as_no_progress_so_stalls_engage · function · L1342-L1371 — fn a_failed_probe_counts_as_no_progress_so_stalls_engage()
+- counting_reader_counts_bytes_read · function · L1374-L1384 — fn counting_reader_counts_bytes_read()
+- id3v1 · function · L1387-L1399 — fn id3v1(title: &str, artist: &str, album: &str) -> Vec<u8>
+- parses_id3v1_tail · function · L1402-L1411 — fn parses_id3v1_tail()
+- no_id3v1_without_tag · function · L1414-L1418 — fn no_id3v1_without_tag()
+- shared · function · L1420-L1432 — fn shared(total_frames: u64, content_bytes: u64) -> StreamShared
+- byte_offset_maps_time_to_bytes_proportionally · function · L1435-L1445 — fn byte_offset_maps_time_to_bytes_proportionally()
+- byte_offset_is_zero_without_a_known_length · function · L1448-L1453 — fn byte_offset_is_zero_without_a_known_length()
+- to_stereo_upmixes_mono_and_passes_stereo_through · function · L1456-L1460 — fn to_stereo_upmixes_mono_and_passes_stereo_through()
+- resume_decision_distinguishes_drop_from_end · function · L1463-L1485 — fn resume_decision_distinguishes_drop_from_end()
+- should_buffer_gates_until_prebuffer_then_releases · function · L1488-L1495 — fn should_buffer_gates_until_prebuffer_then_releases()
+- for_network_uses_larger_buffers_in_data_saver · function · L1498-L1504 — fn for_network_uses_larger_buffers_in_data_saver()
+- read_holds_silence_until_prebuffered_then_plays · function · L1507-L1520 — fn read_holds_silence_until_prebuffered_then_plays()
+- read_counts_rebuffer_events · function · L1523-L1530 — fn read_counts_rebuffer_events()
+- the_first_open_asks_for_the_body_as_a_range · function · L1538-L1591 — fn the_first_open_asks_for_the_body_as_a_range()
+- a_200_at_byte_zero_is_still_accepted · function · L1596-L1629 — fn a_200_at_byte_zero_is_still_accepted()
+- a_200_at_an_offset_is_still_rejected · function · L1634-L1667 — fn a_200_at_an_offset_is_still_rejected()

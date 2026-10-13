@@ -1,0 +1,43 @@
+# crates/hm-dsp/src/bass_boost.rs
+
+- SHELF_HZ · constant · L21-L21 — const SHELF_HZ: f32 = 110.0;
+- SHELF_Q · constant · L22-L22 — const SHELF_Q: f32 = 0.707;
+- HARMONIC_LP_HZ · constant · L23-L23 — const HARMONIC_LP_HZ: f32 = 160.0;
+- ADAPT_LP_HZ · constant · L28-L28 — const ADAPT_LP_HZ: f32 = 120.0;
+- ADAPT_ATTACK_MS · constant · L33-L33 — const ADAPT_ATTACK_MS: f32 = 10.0;
+- ADAPT_RELEASE_MS · constant · L34-L34 — const ADAPT_RELEASE_MS: f32 = 150.0;
+- ADAPT_FLOOR · constant · L45-L45 — const ADAPT_FLOOR: f32 = 0.25;
+- T_LO · constant · L46-L46 — const T_LO: f32 = 0.05; // below this → factor = 1.0
+- T_HI · constant · L47-L47 — const T_HI: f32 = 0.40; // above this → factor = ADAPT_FLOOR
+- flush · function · L52-L58 — fn flush(x: f32) -> f32
+- adapt_factor · function · L65-L75 — fn adapt_factor(env: f32) -> f32
+- BassBoost · struct · L77-L97 — pub struct BassBoost
+- new · function · L100-L119 — pub fn new(sample_rate: f32, channels: usize) -> Self
+- reconfigure · function · L121-L135 — fn reconfigure(&mut self)
+- retune · function · L137-L141 — fn retune(&mut self)
+- prepare · function · L145-L149 — fn prepare(&mut self, sample_rate: f32, channels: usize)
+- process · function · L151-L202 — fn process(&mut self, buffer: &mut [f32], channels: usize)
+- set_params · function · L204-L212 — fn set_params(&mut self, params: &ProcessorParams)
+- tests · module · L216-L445 — mod tests
+- bass_state · function · L220-L230 — fn bass_state(enabled: bool, amount: f32, harmonics: bool, adaptive: bool) -> EngineState
+- disabled_is_identity · function · L235-L242 — fn disabled_is_identity()
+- enabled_boosts_low_frequencies · function · L245-L267 — fn enabled_boosts_low_frequencies()
+- adaptive_on_quiet_matches_static · function · L275-L311 — fn adaptive_on_quiet_matches_static()
+- SR · constant · L276-L276 — const SR: f32 = 48_000.0;
+- FREQ · constant · L277-L277 — const FREQ: f32 = 60.0;
+- AMP · constant · L279-L279 — const AMP: f32 = 0.03;
+- WARMUP · constant · L280-L280 — const WARMUP: usize = SR as usize; // 1 second warm-up for envelope settle
+- MEASURE · constant · L281-L281 — const MEASURE: usize = SR as usize / 10; // 100 ms measurement window
+- adaptive_reduces_boost_on_loud_bass · function · L316-L363 — fn adaptive_reduces_boost_on_loud_bass()
+- SR · constant · L317-L317 — const SR: f32 = 48_000.0;
+- FREQ · constant · L318-L318 — const FREQ: f32 = 60.0;
+- AMP · constant · L319-L319 — const AMP: f32 = 0.9;
+- WARMUP · constant · L322-L322 — const WARMUP: usize = SR as usize * 2; // 2 seconds
+- MEASURE · constant · L323-L323 — const MEASURE: usize = SR as usize / 10; // 100 ms measurement window
+- adaptive_full_boost_on_quiet_bass · function · L368-L414 — fn adaptive_full_boost_on_quiet_bass()
+- SR · constant · L369-L369 — const SR: f32 = 48_000.0;
+- FREQ · constant · L370-L370 — const FREQ: f32 = 60.0;
+- AMP · constant · L372-L372 — const AMP: f32 = 0.04;
+- WARMUP · constant · L373-L373 — const WARMUP: usize = SR as usize; // 1 second warm-up
+- MEASURE · constant · L374-L374 — const MEASURE: usize = SR as usize / 10;
+- stays_bounded · function · L418-L444 — fn stays_bounded()

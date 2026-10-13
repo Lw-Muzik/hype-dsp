@@ -1,0 +1,57 @@
+# crates/hm-ytmusic/src/cookies.rs
+
+- SERVICE · constant · L23-L23 — const SERVICE: &str = "com.lwmuzik.hypemuzik";
+- ACCOUNT · constant · L24-L24 — const ACCOUNT: &str = "ytmusic-cookies";
+- COOKIE_DOMAINS · constant · L29-L29 — pub const COOKIE_DOMAINS: &[&str] = &["youtube.com", "google.com"];
+- base_index · function · L36-L41 — fn base_index(domain: &str) -> Option<usize>
+- wanted_domain · function · L45-L47 — pub fn wanted_domain(domain: &str) -> bool
+- domain_rank · function · L57-L59 — pub fn domain_rank(domain: &str) -> usize
+- REQUIRED_ANY · constant · L63-L66 — const REQUIRED_ANY: &[&[&str]] = &[
+- YtCookie · struct · L70-L79 — pub struct YtCookie
+- header · function · L86-L94 — pub fn header(cookies: &[YtCookie]) -> String
+- netscape · function · L101-L119 — pub fn netscape(cookies: &[YtCookie]) -> String
+- is_signed_in · function · L125-L131 — pub fn is_signed_in(cookies: &[YtCookie]) -> bool
+- prune_expired · function · L136-L141 — pub fn prune_expired(cookies: Vec<YtCookie>, now: i64) -> Vec<YtCookie>
+- now_secs · function · L143-L148 — pub fn now_secs() -> i64
+- CHUNK_UTF16_UNITS · constant · L159-L159 — const CHUNK_UTF16_UNITS: usize = 1024;
+- entry_at · function · L161-L163 — fn entry_at(account: &str) -> Result<keyring::Entry, String>
+- chunk_account · function · L166-L168 — fn chunk_account(base: &str, i: usize) -> String
+- split_chunks · function · L174-L191 — fn split_chunks(s: &str, max_units: usize) -> Vec<String>
+- save_at · function · L193-L217 — fn save_at(account: &str, cookies: &[YtCookie]) -> Result<(), String>
+- load_at · function · L219-L245 — fn load_at(account: &str) -> Result<Option<Vec<YtCookie>>, String>
+- clear_at · function · L247-L260 — fn clear_at(account: &str) -> Result<(), String>
+- save · function · L263-L265 — pub fn save(cookies: &[YtCookie]) -> Result<(), String>
+- load · function · L268-L270 — pub fn load() -> Result<Option<Vec<YtCookie>>, String>
+- clear · function · L273-L275 — pub fn clear() -> Result<(), String>
+- CookieFile · struct · L285-L287 — pub struct CookieFile
+- new · function · L291-L310 — pub fn new(cookies: &[YtCookie]) -> Result<Self, String>
+- path · function · L312-L314 — pub fn path(&self) -> &Path
+- drop · function · L318-L320 — fn drop(&mut self)
+- tests · module · L324-L645 — mod tests
+- cookie · function · L327-L337 — fn cookie(name: &str, value: &str) -> YtCookie
+- header_joins_pairs · function · L340-L343 — fn header_joins_pairs()
+- header_dedups_by_name · function · L346-L353 — fn header_dedups_by_name()
+- netscape_has_expected_columns · function · L356-L368 — fn netscape_has_expected_columns()
+- netscape_marks_http_only · function · L371-L375 — fn netscape_marks_http_only()
+- netscape_session_cookie_expires_zero · function · L378-L383 — fn netscape_session_cookie_expires_zero()
+- netscape_host_only_cookie_excludes_subdomains · function · L386-L391 — fn netscape_host_only_cookie_excludes_subdomains()
+- wanted_domain_accepts_the_domains_the_session_lives_on · function · L394-L401 — fn wanted_domain_accepts_the_domains_the_session_lives_on()
+- wanted_domain_accepts_subdomains · function · L404-L408 — fn wanted_domain_accepts_subdomains()
+- wanted_domain_rejects_lookalikes · function · L411-L419 — fn wanted_domain_rejects_lookalikes()
+- youtube_cookies_outrank_google_ones · function · L422-L429 — fn youtube_cookies_outrank_google_ones()
+- sorting_by_rank_makes_the_youtube_value_win_dedup · function · L432-L443 — fn sorting_by_rank_makes_the_youtube_value_win_dedup()
+- signed_in_needs_both_groups · function · L446-L453 — fn signed_in_needs_both_groups()
+- signed_out_when_a_group_is_missing · function · L456-L460 — fn signed_out_when_a_group_is_missing()
+- empty_value_does_not_count_as_signed_in · function · L463-L465 — fn empty_value_does_not_count_as_signed_in()
+- split_chunks_respects_the_unit_budget_and_reassembles · function · L468-L476 — fn split_chunks_respects_the_unit_budget_and_reassembles()
+- split_chunks_exact_boundary_makes_no_empty_tail · function · L479-L484 — fn split_chunks_exact_boundary_makes_no_empty_tail()
+- split_chunks_short_input_is_one_chunk · function · L487-L489 — fn split_chunks_short_input_is_one_chunk()
+- split_chunks_empty_input_is_one_empty_chunk · function · L492-L496 — fn split_chunks_empty_input_is_one_empty_chunk()
+- split_chunks_never_splits_a_surrogate_pair · function · L499-L509 — fn split_chunks_never_splits_a_surrogate_pair()
+- a_realistic_cookie_jar_needs_chunking · function · L512-L526 — fn a_realistic_cookie_jar_needs_chunking()
+- prune_drops_expired_keeps_session · function · L529-L537 — fn prune_drops_expired_keeps_session()
+- keychain_round_trips · function · L554-L590 — fn keychain_round_trips()
+- TEST_ACCOUNT · constant · L555-L555 — const TEST_ACCOUNT: &str = "ytmusic-cookies-selftest";
+- keychain_legacy_single_entry_still_loads_and_migrates · function · L597-L626 — fn keychain_legacy_single_entry_still_loads_and_migrates()
+- TEST_ACCOUNT · constant · L598-L598 — const TEST_ACCOUNT: &str = "ytmusic-cookies-selftest-legacy";
+- cookie_file_writes_then_deletes · function · L629-L644 — fn cookie_file_writes_then_deletes()

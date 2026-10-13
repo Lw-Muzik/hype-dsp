@@ -1498,7 +1498,7 @@ export type UpdaterStatus =
   | { state: "idle" }
   | { state: "checking" }
   /** `total` is null for a chunked response — show indeterminate, not 0%. */
-  | { state: "downloading"; received: number; total: number | null }
+  | { state: "downloading"; version: string; received: number; total: number | null }
   | { state: "ready"; version: string; notes: string | null }
   | { state: "failed"; message: string };
 

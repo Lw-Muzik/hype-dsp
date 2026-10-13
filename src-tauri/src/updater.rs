@@ -69,7 +69,8 @@ pub enum Status {
     /// Downloading, with progress when the server sent a length. `total` is
     /// `None` for a chunked response — the bar has to degrade to indeterminate
     /// rather than pretend.
-    Downloading { received: u64, total: Option<u64> },
+    /// `version` is what is coming, so the UI can name it before it is ready.
+    Downloading { version: String, received: u64, total: Option<u64> },
     /// Downloaded, verified, and waiting for the app to quit.
     Ready { version: String, notes: Option<String> },
     /// The last attempt failed. Held for the UI; the next tick retries.
@@ -194,8 +195,10 @@ async fn check_and_stage(app: &AppHandle) {
         .download(
             |chunk, total| {
                 received += chunk as u64;
-                app.state::<UpdaterState>()
-                    .set_status(app, Status::Downloading { received, total });
+                app.state::<UpdaterState>().set_status(
+                    app,
+                    Status::Downloading { version: version.clone(), received, total },
+                );
             },
             || {},
         )
@@ -285,20 +288,35 @@ mod tests {
         assert_eq!(json, r#"{"state":"idle"}"#);
 
         let json = serde_json::to_string(&Status::Downloading {
+            version: "0.1.30".into(),
             received: 10,
             total: Some(100),
         })
         .unwrap();
-        assert!(json.contains(r#""state":"downloading""#), "{json}");
-        assert!(json.contains(r#""received":10"#), "{json}");
+        assert_eq!(
+            json,
+            r#"{"state":"downloading","version":"0.1.30","received":10,"total":100}"#
+        );
     }
 
     /// A chunked response has no length. The UI must be able to tell "no total"
     /// from "zero", or a progress bar sits at 0% for the whole download.
     #[test]
     fn an_unknown_total_is_null_rather_than_zero() {
-        let json = serde_json::to_string(&Status::Downloading { received: 5, total: None }).unwrap();
+        let json = serde_json::to_string(&Status::Downloading {
+            version: "0.1.30".into(),
+            received: 5,
+            total: None,
+        })
+        .unwrap();
         assert!(json.contains(r#""total":null"#), "{json}");
+    }
+
+    /// The banner and Settings both render off this shape.
+    #[test]
+    fn ready_serializes_version_and_nullable_notes() {
+        let json = serde_json::to_string(&Status::Ready { version: "0.1.30".into(), notes: None }).unwrap();
+        assert_eq!(json, r#"{"state":"ready","version":"0.1.30","notes":null}"#);
     }
 
     /// "No update available" is the common case and must not read as a failure.

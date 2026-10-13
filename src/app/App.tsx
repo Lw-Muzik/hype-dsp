@@ -4,7 +4,7 @@ import { toast } from "@/stores/toast";
 import ThemeBackdrop from "@/features/theme/ThemeBackdrop";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
-import { TrialBanner } from "@/components/TrialBanner";
+import { UpdateBanner } from "@/features/update/UpdateBanner";
 import { Toaster } from "@/components/Toaster";
 import { SupporterUpsellModal } from "@/components/PremiumGate";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
@@ -13,6 +13,7 @@ import { ResizeHandle } from "@/components/ResizeHandle";
 import { Router } from "@/app/router";
 import { useSystemEqStore } from "@/stores/systemEq";
 import { useMusicLibraryStore } from "@/stores/musicLibrary";
+import { useUpdateStore } from "@/stores/update";
 import {
   linkDiscoverStart,
   onPairedOnline,
@@ -21,6 +22,11 @@ import {
 
 /** The application shell: sidebar + top bar + the active view + now-playing. */
 export function App() {
+  // Mirror the updater's status for the banner and top-bar pill. Idempotent.
+  useEffect(() => {
+    useUpdateStore.getState().init();
+  }, []);
+
   // If the user left system-wide EQ on last session, re-engage it on launch.
   const resumeSystemEq = useSystemEqStore((s) => s.resume);
   useEffect(() => {
@@ -97,7 +103,7 @@ export function App() {
       <ResizeHandle side="left" />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <TrialBanner />
+        <UpdateBanner />
         <div className="flex min-h-0 flex-1">
           <main className="min-h-0 flex-1 overflow-y-auto p-6">
             <Router />

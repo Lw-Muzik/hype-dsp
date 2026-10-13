@@ -7,6 +7,7 @@ import { Slider } from "@/components/Slider";
 import { LevelMeter } from "@/components/LevelMeter";
 import { ScrollingWaveform } from "@/features/player/ScrollingWaveform";
 import { TITLEBAR_INSET } from "@/lib/platform";
+import { UpdatePill } from "@/features/update/UpdatePill";
 
 /**
  * Top bar: current view, master volume, live output meters, and the global
@@ -47,6 +48,7 @@ export function TopBar() {
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-5">
+        <UpdatePill />
         <div className="flex items-center gap-2.5">
           <Volume2 className="size-4 text-text-muted" aria-hidden="true" />
           <Slider

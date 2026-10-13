@@ -14,21 +14,21 @@
 - shuffleInPlace · function · L303-L309 — function shuffleInPlace<T>(arr: T[]): T[]
 - buildOrder · function · L312-L322 — function buildOrder( len: number, shuffle: boolean, start: number, ): { order: number[]; orderPos: number }
 - stepOrder · function · L325-L336 — function stepOrder( pos: number, len: number, repeat: RepeatMode, dir: 1 | -1, ): number | null
-- EngineStore · interface · L338-L459 — interface EngineStore
-- pushEq · function · L496-L498 — pushEq = (eq: EngineState["eq"])
-- idleState · function · L501-L513 — idleState = ()
-- startPlayback · function · L520-L683 — startPlayback = (pos: number)
-- onError · function · L542-L543 — onError = (e: unknown)
-- cloudNeedsMeta · function · L687-L692 — cloudNeedsMeta = (it: QueueItem): boolean
-- fillNowPlayingCover · function · L698-L714 — fillNowPlayingCover = (item: QueueItem): void
-- enrichCloudQueue · function · L726-L804 — enrichCloudQueue = (items: QueueItem[]): void
-- flush · function · L734-L778 — flush = ()
-- scheduleFlush · function · L780-L782 — scheduleFlush = ()
-- worker · function · L784-L798 — worker = async ()
-- setQueueAndPlay · function · L807-L822 — setQueueAndPlay = (items: QueueItem[], index: number)
-- resetRadioSession · function · L833-L841 — resetRadioSession = ()
-- appendQueueItems · function · L846-L854 — appendQueueItems = (items: QueueItem[])
-- resumeIfEndedNaturally · function · L857-L864 — resumeIfEndedNaturally = ()
-- fetchRadio · function · L869-L898 — fetchRadio = (step: NonNullable<ReturnType<typeof radioStep>>)
-- maybeExtendRadio · function · L901-L916 — maybeExtendRadio = ()
-- advanceOnEnd · function · L919-L958 — advanceOnEnd = ()
+- EngineStore · interface · L338-L466 — interface EngineStore
+- pushEq · function · L509-L511 — pushEq = (eq: EngineState["eq"])
+- idleState · function · L514-L526 — idleState = ()
+- startPlayback · function · L533-L697 — startPlayback = (pos: number)
+- onError · function · L555-L556 — onError = (e: unknown)
+- cloudNeedsMeta · function · L701-L706 — cloudNeedsMeta = (it: QueueItem): boolean
+- fillNowPlayingCover · function · L712-L728 — fillNowPlayingCover = (item: QueueItem): void
+- enrichCloudQueue · function · L740-L818 — enrichCloudQueue = (items: QueueItem[]): void
+- flush · function · L748-L792 — flush = ()
+- scheduleFlush · function · L794-L796 — scheduleFlush = ()
+- worker · function · L798-L812 — worker = async ()
+- setQueueAndPlay · function · L821-L836 — setQueueAndPlay = (items: QueueItem[], index: number)
+- resetRadioSession · function · L847-L855 — resetRadioSession = ()
+- appendQueueItems · function · L860-L868 — appendQueueItems = (items: QueueItem[])
+- resumeIfEndedNaturally · function · L871-L878 — resumeIfEndedNaturally = ()
+- fetchRadio · function · L883-L912 — fetchRadio = (step: NonNullable<ReturnType<typeof radioStep>>)
+- maybeExtendRadio · function · L915-L930 — maybeExtendRadio = ()
+- advanceOnEnd · function · L933-L978 — advanceOnEnd = ()

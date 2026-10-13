@@ -17,34 +17,40 @@
 - save · function · L153-L160 — fn save(&self, s: &Stored)
 - store_session · function · L162-L170 — fn store_session(&self, dto: AuthDto)
 - clear · function · L172-L176 — fn clear(&self)
-- post · function · L178-L184 — fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::blocking::Response, String>
-- refresh_after_401 · function · L198-L238 — fn refresh_after_401(&self, stale_access: &str) -> bool
-- auth_get · function · L241-L249 — fn auth_get(&self, path: &str) -> Option<reqwest::blocking::Response>
-- auth_post · function · L254-L278 — fn auth_post(
-- signup · function · L281-L288 — pub fn signup(&self, email: &str, name: Option<&str>) -> Result<(), String>
-- request_otp · function · L291-L298 — pub fn request_otp(&self, email: &str) -> Result<(), String>
-- verify · function · L301-L314 — pub fn verify(&self, email: &str, code: &str) -> Result<(), String>
-- bootstrap_anonymous · function · L321-L344 — pub fn bootstrap_anonymous(
-- claim_request · function · L348-L358 — pub fn claim_request(&self, email: &str) -> Result<(), String>
-- claim_verify · function · L363-L379 — pub fn claim_verify(&self, email: &str, code: &str, name: Option<&str>) -> Result<(), String>
-- entitlements · function · L386-L395 — pub fn entitlements(&self) -> Result<bool, String>
-- support_checkout · function · L403-L419 — pub fn support_checkout(
-- support_restore · function · L424-L434 — pub fn support_restore(&self, install_id: &str, email: &str) -> Result<bool, String>
-- logout · function · L436-L446 — pub fn logout(&self)
-- status · function · L448-L484 — pub fn status(&self) -> AccountStatus
-- heartbeat · function · L486-L506 — pub fn heartbeat(&self, platform: &str, app_version: &str)
-- account_status · function · L512-L514 — pub fn account_status(account: State<'_, AccountState>) -> AccountStatus
-- account_signup · function · L517-L525 — pub fn account_signup(
-- account_request_otp · function · L528-L535 — pub fn account_request_otp(
-- account_verify · function · L538-L547 — pub fn account_verify(
-- account_logout · function · L550-L552 — pub fn account_logout(account: State<'_, AccountState>)
-- account_heartbeat · function · L555-L561 — pub fn account_heartbeat(
-- account_bootstrap_anonymous · function · L569-L579 — pub fn account_bootstrap_anonymous(
-- account_claim_request · function · L584-L591 — pub fn account_claim_request(
-- account_claim_verify · function · L595-L605 — pub fn account_claim_verify(
-- account_entitlements · function · L612-L616 — pub fn account_entitlements(account: State<'_, AccountState>) -> Result<bool, IpcError>
-- account_support_checkout · function · L626-L636 — pub fn account_support_checkout(
-- account_support_restore · function · L643-L652 — pub fn account_support_restore(
-- open_external_url · function · L659-L661 — pub fn open_external_url(url: String)
-- tests · module · L664-L682 — mod tests
-- me_dto_admin_derivation · function · L670-L681 — fn me_dto_admin_derivation()
+- post · function · L178-L188 — pub(crate) fn post(
+- refresh_after_401 · function · L202-L242 — fn refresh_after_401(&self, stale_access: &str) -> bool
+- auth_get · function · L245-L253 — fn auth_get(&self, path: &str) -> Option<reqwest::blocking::Response>
+- auth_post · function · L258-L282 — fn auth_post(
+- auth_send · function · L287-L312 — pub(crate) fn auth_send(
+- api_base · function · L316-L318 — pub fn api_base(&self) -> &str
+- access_token · function · L321-L323 — pub fn access_token(&self) -> Option<String>
+- renew_access · function · L329-L338 — pub fn renew_access(&self, rejected: &str) -> hm_connect::Renewal
+- adopt_session · function · L345-L368 — pub fn adopt_session(&self, access: String, refresh: String)
+- drop_session · function · L374-L376 — pub fn drop_session(&self)
+- signup · function · L379-L386 — pub fn signup(&self, email: &str, name: Option<&str>) -> Result<(), String>
+- request_otp · function · L389-L396 — pub fn request_otp(&self, email: &str) -> Result<(), String>
+- verify · function · L399-L412 — pub fn verify(&self, email: &str, code: &str) -> Result<(), String>
+- bootstrap_anonymous · function · L419-L442 — pub fn bootstrap_anonymous(
+- claim_request · function · L446-L456 — pub fn claim_request(&self, email: &str) -> Result<(), String>
+- claim_verify · function · L461-L477 — pub fn claim_verify(&self, email: &str, code: &str, name: Option<&str>) -> Result<(), String>
+- entitlements · function · L484-L493 — pub fn entitlements(&self) -> Result<bool, String>
+- support_checkout · function · L501-L517 — pub fn support_checkout(
+- support_restore · function · L522-L532 — pub fn support_restore(&self, install_id: &str, email: &str) -> Result<bool, String>
+- logout · function · L534-L544 — pub fn logout(&self)
+- status · function · L546-L582 — pub fn status(&self) -> AccountStatus
+- heartbeat · function · L584-L604 — pub fn heartbeat(&self, platform: &str, app_version: &str)
+- account_status · function · L610-L612 — pub fn account_status(account: State<'_, AccountState>) -> AccountStatus
+- account_signup · function · L615-L623 — pub fn account_signup(
+- account_request_otp · function · L626-L633 — pub fn account_request_otp(
+- account_verify · function · L636-L645 — pub fn account_verify(
+- account_logout · function · L648-L650 — pub fn account_logout(account: State<'_, AccountState>)
+- account_heartbeat · function · L653-L659 — pub fn account_heartbeat(
+- account_bootstrap_anonymous · function · L667-L677 — pub fn account_bootstrap_anonymous(
+- account_claim_request · function · L682-L689 — pub fn account_claim_request(
+- account_claim_verify · function · L693-L703 — pub fn account_claim_verify(
+- account_entitlements · function · L710-L714 — pub fn account_entitlements(account: State<'_, AccountState>) -> Result<bool, IpcError>
+- account_support_checkout · function · L724-L734 — pub fn account_support_checkout(
+- account_support_restore · function · L741-L750 — pub fn account_support_restore(
+- open_external_url · function · L757-L759 — pub fn open_external_url(url: String)
+- tests · module · L762-L780 — mod tests
+- me_dto_admin_derivation · function · L768-L779 — fn me_dto_admin_derivation()

@@ -1,5 +1,5 @@
 # src/components/NowPlayingBar.tsx
 
-- Cover · function · L30-L50 — function Cover({ cover, seed }: { cover: string | null; seed: string })
-- NowPlayingBar · function · L102-L316 — function NowPlayingBar()
-- onIdentify · function · L150-L163 — onIdentify = async ()
+- NowPlayingBar · function · L82-L87 — function NowPlayingBar()
+- LocalBar · function · L89-L304 — function LocalBar()
+- onIdentify · function · L137-L150 — onIdentify = async ()

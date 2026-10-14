@@ -1,15 +1,15 @@
 # src/features/player/MusicLibrary.tsx
 
-- SourceFilter · type · L35-L35 — type SourceFilter = "all" | "local" | "phone" | "cloud";
-- Facet · type · L36-L36 — type Facet = "songs" | "albums" | "artists" | "folders" | "genres";
-- ViewMode · type · L37-L37 — type ViewMode = "list" | "grid";
-- Group · interface · L47-L55 — interface Group
-- groupTracks · function · L58-L91 — function groupTracks(tracks: MusicTrack[], facet: Facet): Group[]
-- pickDeck · function · L99-L122 — function pickDeck(tracks: MusicTrack[]): DeckItem[]
-- isUnavailable · function · L127-L129 — function isUnavailable(t: MusicTrack): boolean
-- matches · function · L131-L138 — function matches(t: MusicTrack, q: string): boolean
-- MusicLibrary · function · L152-L475 — function MusicLibrary()
-- playAt · function · L224-L236 — playAt = (list: MusicTrack[], index: number)
+- SourceFilter · type · L36-L36 — type SourceFilter = "all" | "local" | "phone" | "cloud";
+- Facet · type · L37-L37 — type Facet = "songs" | "albums" | "artists" | "folders" | "genres";
+- ViewMode · type · L38-L38 — type ViewMode = "list" | "grid";
+- Group · interface · L48-L56 — interface Group
+- groupTracks · function · L59-L92 — function groupTracks(tracks: MusicTrack[], facet: Facet): Group[]
+- pickDeck · function · L100-L123 — function pickDeck(tracks: MusicTrack[]): DeckItem[]
+- isUnavailable · function · L128-L130 — function isUnavailable(t: MusicTrack): boolean
+- matches · function · L132-L139 — function matches(t: MusicTrack, q: string): boolean
+- MusicLibrary · function · L153-L475 — function MusicLibrary()
+- playAt · function · L225-L236 — playAt = (list: MusicTrack[], index: number)
 - SourcePill · function · L477-L511 — function SourcePill({ icon: Icon, label, count, dot, active, onClick, }: { icon?: LucideIcon; label: string; count?: number; dot?: boolean; active: boolean; onClick: () => void; })
 - FacetTabs · function · L513-L544 — function FacetTabs({ facet, onSelect }: { facet: Facet; onSelect: (f: Facet) => void })
 - GroupRow · function · L546-L585 — function GroupRow({ group, facetIcon: Icon, showArt, onOpen, }: { group: Group; facetIcon: LucideIcon; showArt: boolean; onOpen: () => void; })

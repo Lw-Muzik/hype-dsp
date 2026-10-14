@@ -1,4 +1,4 @@
 # src/components/RightSidebar.tsx
 
-- RightSidebar · function · L25-L145 — function RightSidebar()
-- Tab · function · L147-L173 — function Tab({ icon: Icon, label, active, onClick, }: { icon: LucideIcon; label: string; active: boolean; onClick: () => void; })
+- RightSidebar · function · L26-L148 — function RightSidebar()
+- Tab · function · L150-L176 — function Tab({ icon: Icon, label, active, onClick, }: { icon: LucideIcon; label: string; active: boolean; onClick: () => void; })

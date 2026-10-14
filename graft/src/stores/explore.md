@@ -1,6 +1,6 @@
 # src/stores/explore.ts
 
-- SearchFilter · type · L41-L41 — type SearchFilter = (typeof SEARCH_FILTERS)[number];
-- ExploreStore · interface · L43-L104 — interface ExploreStore
-- isStale · function · L150-L150 — isStale = ()
-- isStale · function · L242-L242 — isStale = ()
+- SearchFilter · type · L42-L42 — type SearchFilter = (typeof SEARCH_FILTERS)[number];
+- ExploreStore · interface · L44-L105 — interface ExploreStore
+- isStale · function · L151-L151 — isStale = ()
+- isStale · function · L250-L250 — isStale = ()

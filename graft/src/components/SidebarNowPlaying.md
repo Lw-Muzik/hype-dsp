@@ -1,3 +1,3 @@
 # src/components/SidebarNowPlaying.tsx
 
-- SidebarNowPlaying · function · L11-L71 — function SidebarNowPlaying({ collapsed }: { collapsed: boolean })
+- SidebarNowPlaying · function · L12-L79 — function SidebarNowPlaying({ collapsed }: { collapsed: boolean })

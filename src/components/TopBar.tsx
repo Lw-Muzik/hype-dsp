@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Settings, Volume2 } from "lucide-react";
+import { Cast, Settings, Volume2 } from "lucide-react";
 import { routeById } from "@/app/routes";
 import { useUiStore } from "@/stores/ui";
 import { useEngineStore } from "@/stores/engine";
@@ -7,10 +7,13 @@ import { PowerToggle } from "@/components/PowerToggle";
 import { Slider } from "@/components/Slider";
 import { LevelMeter } from "@/components/LevelMeter";
 import { ScrollingWaveform } from "@/features/player/ScrollingWaveform";
+import { cn } from "@/lib/cn";
 import { TITLEBAR_INSET, isMac } from "@/lib/platform";
 import { openSettings } from "@/lib/ipc";
 import { UpdatePill } from "@/features/update/UpdatePill";
 import { ModeSwitch } from "@/features/mode/ModeSwitch";
+import { useRemoteStore } from "@/features/connect/remote/store";
+import { useRemoteVolume } from "@/features/connect/remote/ui/useRemoteVolume";
 
 /**
  * Top bar: current view, master volume, live output meters, and the global
@@ -27,7 +30,14 @@ export function TopBar() {
   const masterVolume = useEngineStore((s) => s.state.masterVolume);
   const setMasterVolume = useEngineStore((s) => s.setMasterVolume);
 
-  const volumePct = Math.round(masterVolume * 100);
+  // While another device is the player, the volume group steers that device
+  // (0..1, no boost) instead of this computer's silent output.
+  const remote = useRemoteStore((s) => s.view);
+  const remoteVolume = useRemoteVolume(remote?.volume ?? 0);
+  const volume = remote ? remoteVolume.value : masterVolume;
+  const volumePct = Math.round(volume * 100);
+  const volumeLabel = remote ? `Volume on ${remote.device.name}` : "Master volume";
+  const VolumeIcon = remote ? Cast : Volume2;
 
   // Cmd/Ctrl+, opens Settings. The app menu carries the same accelerator; opening
   // twice just focuses the window, so the two paths can't conflict.
@@ -68,14 +78,20 @@ export function TopBar() {
       <div className="ml-auto flex shrink-0 items-center gap-5">
         <UpdatePill />
         <div className="flex items-center gap-2.5">
-          <Volume2 className="size-4 text-text-muted" aria-hidden="true" />
+          <span title={volumeLabel} className="grid shrink-0 place-items-center">
+            <VolumeIcon
+              className={cn("size-4", remote ? "text-accent" : "text-text-muted")}
+              aria-hidden="true"
+            />
+          </span>
           <Slider
-            label="Master volume"
+            label={volumeLabel}
             min={0}
-            max={2}
+            max={remote ? 1 : 2}
             step={0.01}
-            value={masterVolume}
-            onChange={setMasterVolume}
+            value={volume}
+            onChange={remote ? remoteVolume.onChange : setMasterVolume}
+            onCommit={remote ? remoteVolume.onCommit : undefined}
             formatValue={(v) => `${Math.round(v * 100)} percent`}
             className="w-32"
           />

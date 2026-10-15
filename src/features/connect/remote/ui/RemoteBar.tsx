@@ -1,4 +1,3 @@
-import { useRef, useState } from "react";
 import {
   Cast,
   ListMusic,
@@ -23,32 +22,9 @@ import { sendRemote } from "../control";
 import type { RemoteView } from "../session";
 import { DevicePicker } from "./DevicePicker";
 import { useRemotePosition } from "./useRemotePosition";
+import { useRemoteVolume } from "./useRemoteVolume";
 
 const NEXT_REPEAT: Record<RepeatMode, RepeatMode> = { off: "all", all: "one", one: "off" };
-const VOLUME_SEND_GAP_MS = 120;
-
-/** Volume that follows the drag locally and reaches the device at most every
- *  120 ms, plus the final value on release. */
-function useRemoteVolume(volume: number) {
-  const [drag, setDrag] = useState<number | null>(null);
-  const lastSent = useRef(0);
-  const send = (v: number) => {
-    lastSent.current = Date.now();
-    void sendRemote({ type: "volume", value: v });
-  };
-  return {
-    value: drag ?? volume,
-    onChange: (v: number) => {
-      setDrag(v);
-      if (Date.now() - lastSent.current >= VOLUME_SEND_GAP_MS) send(v);
-    },
-    onCommit: (v: number) => {
-      send(v);
-      setDrag(null);
-    },
-  };
-}
-
 /**
  * The now-playing bar while another device is the player: that device's art,
  * title and live progress, with every control sent to it as a command. Same

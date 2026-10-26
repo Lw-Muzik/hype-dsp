@@ -1,8 +1,8 @@
 {
   "meta": {
     "version": 1,
-    "nodeCount": 5944,
-    "edgeCount": 9233,
+    "nodeCount": 5972,
+    "edgeCount": 9302,
     "languages": [
       "cpp",
       "javascript",
@@ -58864,6 +58864,63 @@
       "crux": null
     },
     {
+      "id": "src/components/IntroSplash.tsx",
+      "name": "IntroSplash.tsx",
+      "kind": "file",
+      "path": "src/components/IntroSplash.tsx",
+      "span": "L1-L89",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "ba6e90f97e1c45fa47db6bfea33aacf29074e1f51bd04ff1dc831634981989fb",
+      "chars": 2964,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/components/IntroSplash.tsx#IntroSplash",
+      "name": "IntroSplash",
+      "kind": "function",
+      "path": "src/components/IntroSplash.tsx",
+      "span": "L18-L88",
+      "signature": "function IntroSplash()",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "184f5cef2eac328c24a83ca751b1990453a02f0c9647e1ad5c30ba2eaefd5ada",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/components/IntroSplash.tsx#IntroSplash.css",
+      "name": "css",
+      "kind": "function",
+      "path": "src/components/IntroSplash.tsx",
+      "span": "L34-L34",
+      "signature": "css = (v: string, d: string)",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "381cef839ed4e083d10e097799d7f16736e742171d5b9cd209a7110b464cdcda",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/components/IntroSplash.tsx#IntroSplash.frame",
+      "name": "frame",
+      "kind": "function",
+      "path": "src/components/IntroSplash.tsx",
+      "span": "L52-L72",
+      "signature": "frame = (now: number)",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "f6ca87d48b383992b981d1da06a438c4ffc1e0e06c60c635e446a696bf9b56be",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
       "id": "src/components/LayoutToggle.tsx",
       "name": "LayoutToggle.tsx",
       "kind": "file",
@@ -59751,12 +59808,54 @@
       "name": "SidebarNowPlaying.tsx",
       "kind": "file",
       "path": "src/components/SidebarNowPlaying.tsx",
-      "span": "L1-L80",
+      "span": "L1-L110",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "bd9dd97a8886530a4d70b5971beaa429f39515d1ba0c301ef262478832886f3b",
-      "chars": 2841,
+      "body_hash": "b36c831643dec3f4dbaf317007131741ad9c3c2e0e938ffd8c1c1f08741ed884",
+      "chars": 4115,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/components/SidebarNowPlaying.tsx#LocalProgress",
+      "name": "LocalProgress",
+      "kind": "function",
+      "path": "src/components/SidebarNowPlaying.tsx",
+      "span": "L99-L103",
+      "signature": "function LocalProgress()",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "51a54e04a260979815bf823a31b6c18a866aaa932c8845bc2c962b2869e72516",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/components/SidebarNowPlaying.tsx#ProgressLine",
+      "name": "ProgressLine",
+      "kind": "function",
+      "path": "src/components/SidebarNowPlaying.tsx",
+      "span": "L82-L97",
+      "signature": "function ProgressLine({ position, duration }: { position: number; duration: number })",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "8f9489fdc35809737e3928ac553ea986d06987b6498075173cc0175686db6c30",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/components/SidebarNowPlaying.tsx#RemoteProgress",
+      "name": "RemoteProgress",
+      "kind": "function",
+      "path": "src/components/SidebarNowPlaying.tsx",
+      "span": "L105-L109",
+      "signature": "function RemoteProgress({ view }: { view: RemoteView })",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "b1269da68a5e1a046360cd4d851dc153bb609a6d041bdf9524f82971ec160340",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -59766,11 +59865,11 @@
       "name": "SidebarNowPlaying",
       "kind": "function",
       "path": "src/components/SidebarNowPlaying.tsx",
-      "span": "L12-L79",
+      "span": "L15-L79",
       "signature": "function SidebarNowPlaying({ collapsed }: { collapsed: boolean })",
       "exported": true,
       "origin": "ast",
-      "body_hash": "82f307d9e51cff9d2d3bcedb7f1212fcf4d5e9582fce598a1d250c511d81e753",
+      "body_hash": "526b4f1e026b2ebb76dfc339ebaaf885e337bc2557ccaa44297a17376296dfe4",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -62856,6 +62955,134 @@
       "exported": true,
       "origin": "ast",
       "body_hash": "a0388ed3744e404834ca86057694fe4d6f7532a421099ea4bc8b9a074eaa173c",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/nowPlaying.test.ts",
+      "name": "nowPlaying.test.ts",
+      "kind": "file",
+      "path": "src/features/connect/remote/nowPlaying.test.ts",
+      "span": "L1-L73",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "54297f422941b7a59d1ac81a530dd4cd60dda0245d2760709bb911488d9d3094",
+      "chars": 2929,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/nowPlaying.test.ts#view",
+      "name": "view",
+      "kind": "function",
+      "path": "src/features/connect/remote/nowPlaying.test.ts",
+      "span": "L9-L24",
+      "signature": "function view(over: Partial<RemoteView> = {}): RemoteView",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "2c1b83288bfd9019579400190bc6ad7a287348a6db80e4d7c59e5619a9205649",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/nowPlaying.ts",
+      "name": "nowPlaying.ts",
+      "kind": "file",
+      "path": "src/features/connect/remote/nowPlaying.ts",
+      "span": "L1-L53",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "d0b888881c650cd8654d99e448e1c8efbb968d617dce7a239c7f5707bbe1fc17",
+      "chars": 2252,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/nowPlaying.ts#NowPlaying",
+      "name": "NowPlaying",
+      "kind": "interface",
+      "path": "src/features/connect/remote/nowPlaying.ts",
+      "span": "L13-L20",
+      "signature": "interface NowPlaying",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "911112aa3def524988b934a2957059f756ff7267b589e14b903e5d28d665f000",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/nowPlaying.ts#NowProgress",
+      "name": "NowProgress",
+      "kind": "interface",
+      "path": "src/features/connect/remote/nowPlaying.ts",
+      "span": "L36-L39",
+      "signature": "interface NowProgress",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "3feb9e01567b2eb3384550ca31cd082d9798dd00c0acc60fe68fae9a49eeb5b8",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/nowPlaying.ts#remoteMeta",
+      "name": "remoteMeta",
+      "kind": "function",
+      "path": "src/features/connect/remote/nowPlaying.ts",
+      "span": "L23-L27",
+      "signature": "function remoteMeta(view: RemoteView): TrackMeta | null",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "652f1088ac616f85562530fbf9a018f60a54cba4dd90a5265ec0c57f77c92b72",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/nowPlaying.ts#remoteProgress",
+      "name": "remoteProgress",
+      "kind": "function",
+      "path": "src/features/connect/remote/nowPlaying.ts",
+      "span": "L42-L46",
+      "signature": "function remoteProgress(view: RemoteView, hubNowMs: number): NowProgress",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "d02b28db28c8e299217eb247849037f68dbf6b2bce6881e8276bb1a82c36f3b6",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/nowPlaying.ts#selectNowPlaying",
+      "name": "selectNowPlaying",
+      "kind": "function",
+      "path": "src/features/connect/remote/nowPlaying.ts",
+      "span": "L30-L33",
+      "signature": "function selectNowPlaying(localMeta: TrackMeta | null, remote: RemoteView | null): NowPlaying",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "3871fea25e3ba32c1e1a33045408aa89f3574da99b136ec4ddd49cfd1e07cbb1",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/nowPlaying.ts#useNowPlaying",
+      "name": "useNowPlaying",
+      "kind": "function",
+      "path": "src/features/connect/remote/nowPlaying.ts",
+      "span": "L48-L52",
+      "signature": "function useNowPlaying(): NowPlaying",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "e2c8589144e9b7e568d5623d47bda2e12756773511ba51bb31039f1d168a31b4",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -73201,12 +73428,12 @@
       "name": "ThemeBackdrop.tsx",
       "kind": "file",
       "path": "src/features/theme/ThemeBackdrop.tsx",
-      "span": "L1-L283",
+      "span": "L1-L284",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "6f25fabcb5d63c14349ee0e74ca92dd82a4981d647341b0f3d2cb4b597fdb124",
-      "chars": 13418,
+      "body_hash": "12373ab9c1c3c9a34917f3bb1898ef5bbec855480e258a9f1ef5b2954da7be9b",
+      "chars": 13500,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -73216,7 +73443,7 @@
       "name": "keyOf",
       "kind": "function",
       "path": "src/features/theme/ThemeBackdrop.tsx",
-      "span": "L279-L282",
+      "span": "L280-L283",
       "signature": "function keyOf(s: BackdropSource | null): string",
       "exported": false,
       "origin": "ast",
@@ -73258,11 +73485,11 @@
       "name": "ThemeBackdrop",
       "kind": "function",
       "path": "src/features/theme/ThemeBackdrop.tsx",
-      "span": "L119-L277",
+      "span": "L119-L278",
       "signature": "function ThemeBackdrop()",
       "exported": true,
       "origin": "ast",
-      "body_hash": "2ecf57711a6368616390b7a1eaf53a72e5637c6f0af9c5ad365d40593f5309be",
+      "body_hash": "c73fa01a56346be228974c6eac2f8571b7303bca3196c4fad1dcff1b3f4fbb47",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -73272,7 +73499,7 @@
       "name": "cancel",
       "kind": "function",
       "path": "src/features/theme/ThemeBackdrop.tsx",
-      "span": "L174-L178",
+      "span": "L175-L179",
       "signature": "cancel = (id: number | null)",
       "exported": true,
       "origin": "ast",
@@ -73286,7 +73513,7 @@
       "name": "commit",
       "kind": "function",
       "path": "src/features/theme/ThemeBackdrop.tsx",
-      "span": "L186-L206",
+      "span": "L187-L207",
       "signature": "commit = (source: BackdropSource, sourceKey: string)",
       "exported": true,
       "origin": "ast",
@@ -73300,7 +73527,7 @@
       "name": "pruneBelow",
       "kind": "function",
       "path": "src/features/theme/ThemeBackdrop.tsx",
-      "span": "L193-L200",
+      "span": "L194-L201",
       "signature": "pruneBelow = ()",
       "exported": true,
       "origin": "ast",
@@ -73314,7 +73541,7 @@
       "name": "schedule",
       "kind": "function",
       "path": "src/features/theme/ThemeBackdrop.tsx",
-      "span": "L166-L173",
+      "span": "L167-L174",
       "signature": "schedule = (fn: () => void, ms: number): number",
       "exported": true,
       "origin": "ast",
@@ -73572,12 +73799,12 @@
       "name": "useTray.ts",
       "kind": "file",
       "path": "src/features/tray/useTray.ts",
-      "span": "L1-L134",
+      "span": "L1-L140",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "21a4fed77d937a53fc476fa8d700149d94a8fe77aebd67672d82c09a17688aa8",
-      "chars": 4126,
+      "body_hash": "6eeec4364e4adf550a302f29a0c53b1558eeb736a512375708d0b718c1330004",
+      "chars": 4548,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -73587,11 +73814,11 @@
       "name": "useTray",
       "kind": "function",
       "path": "src/features/tray/useTray.ts",
-      "span": "L19-L133",
+      "span": "L20-L139",
       "signature": "function useTray(): void",
       "exported": true,
       "origin": "ast",
-      "body_hash": "0d6eddad2d00f62006d078735cbdbe5c7e633c2c1aae61f50def44097348a2a2",
+      "body_hash": "2de97f5d21bdcd8582a2d07f33cea77740066cca49ecbacf5675586c94e63db1",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -73601,11 +73828,11 @@
       "name": "build",
       "kind": "function",
       "path": "src/features/tray/useTray.ts",
-      "span": "L28-L45",
+      "span": "L29-L48",
       "signature": "build = (): TrayModel",
       "exported": true,
       "origin": "ast",
-      "body_hash": "316bf20fb2d545e1b319882aa1e80eca3f41c2af78c9dac47f4c2b8b23d9e461",
+      "body_hash": "8ab8ebf20c7b21a69b8f2f75a170cd34f0edcedb5639c690e0791cbd6198d2fb",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -73615,7 +73842,7 @@
       "name": "loadPresets",
       "kind": "function",
       "path": "src/features/tray/useTray.ts",
-      "span": "L73-L81",
+      "span": "L76-L84",
       "signature": "loadPresets = ()",
       "exported": true,
       "origin": "ast",
@@ -73629,7 +73856,7 @@
       "name": "onFocus",
       "kind": "function",
       "path": "src/features/tray/useTray.ts",
-      "span": "L103-L103",
+      "span": "L109-L109",
       "signature": "onFocus = ()",
       "exported": true,
       "origin": "ast",
@@ -73643,7 +73870,7 @@
       "name": "push",
       "kind": "function",
       "path": "src/features/tray/useTray.ts",
-      "span": "L47-L61",
+      "span": "L50-L64",
       "signature": "push = (force: boolean)",
       "exported": true,
       "origin": "ast",
@@ -73657,7 +73884,7 @@
       "name": "schedule",
       "kind": "function",
       "path": "src/features/tray/useTray.ts",
-      "span": "L65-L71",
+      "span": "L68-L74",
       "signature": "schedule = ()",
       "exported": true,
       "origin": "ast",
@@ -75441,6 +75668,176 @@
       "exported": true,
       "origin": "ast",
       "body_hash": "d3c731af466d355acc8f7a584ee2255298c49de1aea22c228755eeae4132d994",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.test.ts",
+      "name": "introCanvas.test.ts",
+      "kind": "file",
+      "path": "src/lib/introCanvas.test.ts",
+      "span": "L1-L29",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "d8c04c80222ee43f68c15f6f9307256784f571680bce64ec19a6c0692a783bfd",
+      "chars": 1279,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts",
+      "name": "introCanvas.ts",
+      "kind": "file",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L1-L143",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "60bd529c24c606215f5c3540ed050726a13a409792c6cea09969af4de9e07a1c",
+      "chars": 4700,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts#blob",
+      "name": "blob",
+      "kind": "function",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L38-L52",
+      "signature": "function blob( ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, phase: number, lobes: number, amp: number, )",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "4d146ffcd6a1f5aa147c41123547b33c1329aae1362e3524d7faf192f71635ee",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts#clamp",
+      "name": "clamp",
+      "kind": "function",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L19-L19",
+      "signature": "clamp = (v: number)",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "1d7e328a2c6dee9803ea04bf54e29d4851b97c10e360e623352be95299677c67",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts#drawIntro",
+      "name": "drawIntro",
+      "kind": "function",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L55-L142",
+      "signature": "function drawIntro( ctx: CanvasRenderingContext2D, w: number, h: number, t: number, th: IntroTheme, reduced = false, )",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "56340a12698fa656f1285ee8f4908d563f8a28744d2a7d1c6c6d7c4d90a7d02b",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts#drawIntro.gold",
+      "name": "gold",
+      "kind": "function",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L63-L63",
+      "signature": "gold = (a: number)",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "7ec62797bc1dd01fd7e246f7a8ccdaf4a7044c7839544ea692b39030fbf80b0a",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts#easeIn",
+      "name": "easeIn",
+      "kind": "function",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L21-L21",
+      "signature": "easeIn = (x: number)",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "7398e3dc50c7bde28c17bd3f6a102bef5ec9022c32e8dc0dfbf6c780e24da32a",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts#easeOut",
+      "name": "easeOut",
+      "kind": "function",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L20-L20",
+      "signature": "easeOut = (x: number)",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "a79cb3feb32cd6b30f013c58da796933f138369a1112bf2f974fce5ab2c601aa",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts#IntroTheme",
+      "name": "IntroTheme",
+      "kind": "interface",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L10-L17",
+      "signature": "interface IntroTheme",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "ed09cffbe9da3dda654edd193164b47883ae517d480c437843cda3d955ddf392",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts#lerp",
+      "name": "lerp",
+      "kind": "function",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L23-L23",
+      "signature": "lerp = (a: number, b: number, k: number)",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "a186a900d18b2062d8b4abc914e9170c031799b92663d47d149480d3e6b7f968",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts#out3",
+      "name": "out3",
+      "kind": "function",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L22-L22",
+      "signature": "out3 = (x: number)",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "3cb26887369e976ced6d781db2bebe8cd85f185cb72522c2eccda5110770f578",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/introCanvas.ts#toRgb",
+      "name": "toRgb",
+      "kind": "function",
+      "path": "src/lib/introCanvas.ts",
+      "span": "L26-L36",
+      "signature": "function toRgb(css: string, fallback: string): string",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "0d28084b9b7b9482b63a96c65146500de170a7aeca54e5be90c0795d1e18b032",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -80865,12 +81262,12 @@
       "name": "main.tsx",
       "kind": "file",
       "path": "src/main.tsx",
-      "span": "L1-L48",
+      "span": "L1-L50",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "6b0d0569bb7d9de828a5fe7c0a1b8625e81987f37820d4754b1a4635d4fb6b8e",
-      "chars": 1519,
+      "body_hash": "3c4b72b26aef47e421f4946980ce78ccb522cf48ed5372523caf7aa3115b349d",
+      "chars": 1599,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -113970,6 +114367,66 @@
       "confidence": "inferred"
     },
     {
+      "source": "src/components/IntroSplash.tsx",
+      "target": "src/components/IntroSplash.tsx#IntroSplash",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/IntroSplash.tsx",
+      "target": "@/assets/logo.png",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/IntroSplash.tsx",
+      "target": "@/lib/introCanvas",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/IntroSplash.tsx",
+      "target": "@/stores/account",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/IntroSplash.tsx",
+      "target": "react",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/IntroSplash.tsx#IntroSplash",
+      "target": "src/components/IntroSplash.tsx#IntroSplash.css",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/IntroSplash.tsx#IntroSplash",
+      "target": "src/lib/introCanvas.ts#toRgb",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/components/IntroSplash.tsx#IntroSplash",
+      "target": "src/components/IntroSplash.tsx#IntroSplash.css",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/IntroSplash.tsx#IntroSplash",
+      "target": "src/components/IntroSplash.tsx#IntroSplash.frame",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/IntroSplash.tsx#IntroSplash.frame",
+      "target": "src/lib/introCanvas.ts#drawIntro",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
       "source": "src/components/LayoutToggle.tsx",
       "target": "src/components/LayoutToggle.tsx#LayoutMode",
       "relation": "contains",
@@ -115039,13 +115496,49 @@
     },
     {
       "source": "src/components/SidebarNowPlaying.tsx",
+      "target": "src/components/SidebarNowPlaying.tsx#LocalProgress",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/SidebarNowPlaying.tsx",
+      "target": "src/components/SidebarNowPlaying.tsx#ProgressLine",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/SidebarNowPlaying.tsx",
+      "target": "src/components/SidebarNowPlaying.tsx#RemoteProgress",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/SidebarNowPlaying.tsx",
       "target": "src/components/SidebarNowPlaying.tsx#SidebarNowPlaying",
       "relation": "contains",
       "confidence": "extracted"
     },
     {
       "source": "src/components/SidebarNowPlaying.tsx",
+      "target": "@/features/connect/remote/nowPlaying",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/SidebarNowPlaying.tsx",
+      "target": "@/features/connect/remote/session",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/SidebarNowPlaying.tsx",
       "target": "@/features/connect/remote/store",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/SidebarNowPlaying.tsx",
+      "target": "@/features/connect/remote/ui/useRemotePosition",
       "relation": "imports",
       "confidence": "extracted"
     },
@@ -115066,6 +115559,18 @@
       "target": "@/stores/ui",
       "relation": "imports",
       "confidence": "extracted"
+    },
+    {
+      "source": "src/components/SidebarNowPlaying.tsx#RemoteProgress",
+      "target": "src/features/connect/remote/ui/useRemotePosition.ts#useRemotePosition",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/components/SidebarNowPlaying.tsx#SidebarNowPlaying",
+      "target": "src/features/connect/remote/nowPlaying.ts#selectNowPlaying",
+      "relation": "calls",
+      "confidence": "inferred"
     },
     {
       "source": "src/components/SidebarNowPlaying.tsx#SidebarNowPlaying",
@@ -118600,6 +119105,150 @@
       "target": "src/features/connect/remote/router.ts#ackMessage",
       "relation": "calls",
       "confidence": "inferred"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "src/features/connect/remote/nowPlaying.test.ts#view",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "src/features/connect/remote/nowPlaying.ts#remoteMeta",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "src/features/connect/remote/nowPlaying.ts#remoteProgress",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "src/features/connect/remote/nowPlaying.ts#selectNowPlaying",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "src/features/theme/backdropSource.ts#backdropSource",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "src/features/connect/remote/nowPlaying.test.ts#view",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "@/features/theme/backdropSource",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "@/lib/types",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "src/features/connect/remote/nowPlaying.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "src/features/connect/remote/session.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.test.ts",
+      "target": "vitest",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts",
+      "target": "src/features/connect/remote/nowPlaying.ts#NowPlaying",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts",
+      "target": "src/features/connect/remote/nowPlaying.ts#NowProgress",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts",
+      "target": "src/features/connect/remote/nowPlaying.ts#remoteMeta",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts",
+      "target": "src/features/connect/remote/nowPlaying.ts#remoteProgress",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts",
+      "target": "src/features/connect/remote/nowPlaying.ts#selectNowPlaying",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts",
+      "target": "src/features/connect/remote/nowPlaying.ts#useNowPlaying",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts",
+      "target": "@/lib/types",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts",
+      "target": "@/stores/engine",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts",
+      "target": "src/features/connect/remote/session.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts",
+      "target": "src/features/connect/remote/store.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts#remoteProgress",
+      "target": "src/features/connect/remote/session.ts#positionNow",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts#selectNowPlaying",
+      "target": "src/features/connect/remote/nowPlaying.ts#remoteMeta",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/nowPlaying.ts#useNowPlaying",
+      "target": "src/features/connect/remote/nowPlaying.ts#selectNowPlaying",
+      "relation": "calls",
+      "confidence": "extracted"
     },
     {
       "source": "src/features/connect/remote/router.test.ts",
@@ -130819,13 +131468,13 @@
     },
     {
       "source": "src/features/theme/ThemeBackdrop.tsx",
-      "target": "@/lib/reducedMotion",
+      "target": "@/features/connect/remote/nowPlaying",
       "relation": "imports",
       "confidence": "extracted"
     },
     {
       "source": "src/features/theme/ThemeBackdrop.tsx",
-      "target": "@/stores/engine",
+      "target": "@/lib/reducedMotion",
       "relation": "imports",
       "confidence": "extracted"
     },
@@ -130846,6 +131495,12 @@
       "target": "src/features/theme/backdropSource.ts",
       "relation": "imports",
       "confidence": "extracted"
+    },
+    {
+      "source": "src/features/theme/ThemeBackdrop.tsx#ThemeBackdrop",
+      "target": "src/features/connect/remote/nowPlaying.ts#useNowPlaying",
+      "relation": "calls",
+      "confidence": "inferred"
     },
     {
       "source": "src/features/theme/ThemeBackdrop.tsx#ThemeBackdrop",
@@ -131283,6 +131938,12 @@
       "source": "src/features/tray/useTray.ts",
       "target": "src/features/tray/useTray.ts#useTray",
       "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/tray/useTray.ts",
+      "target": "@/features/connect/remote/store",
+      "relation": "imports",
       "confidence": "extracted"
     },
     {
@@ -133215,6 +133876,150 @@
       "source": "src/lib/format.ts",
       "target": "src/lib/format.ts#formatTime",
       "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.test.ts",
+      "target": "src/lib/introCanvas.ts#drawIntro",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/lib/introCanvas.test.ts",
+      "target": "src/lib/introCanvas.ts#toRgb",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/lib/introCanvas.test.ts",
+      "target": "src/lib/introCanvas.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.test.ts",
+      "target": "vitest",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts",
+      "target": "src/lib/introCanvas.ts#blob",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts",
+      "target": "src/lib/introCanvas.ts#clamp",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts",
+      "target": "src/lib/introCanvas.ts#drawIntro",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts",
+      "target": "src/lib/introCanvas.ts#easeIn",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts",
+      "target": "src/lib/introCanvas.ts#easeOut",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts",
+      "target": "src/lib/introCanvas.ts#IntroTheme",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts",
+      "target": "src/lib/introCanvas.ts#lerp",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts",
+      "target": "src/lib/introCanvas.ts#out3",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts",
+      "target": "src/lib/introCanvas.ts#toRgb",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#drawIntro",
+      "target": "src/lib/introCanvas.ts#blob",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#drawIntro",
+      "target": "src/lib/introCanvas.ts#clamp",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#drawIntro",
+      "target": "src/lib/introCanvas.ts#drawIntro.gold",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#drawIntro",
+      "target": "src/lib/introCanvas.ts#easeIn",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#drawIntro",
+      "target": "src/lib/introCanvas.ts#easeOut",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#drawIntro",
+      "target": "src/lib/introCanvas.ts#lerp",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#drawIntro",
+      "target": "src/lib/introCanvas.ts#out3",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#drawIntro",
+      "target": "src/lib/introCanvas.ts#drawIntro.gold",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#easeIn",
+      "target": "src/lib/introCanvas.ts#clamp",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#easeOut",
+      "target": "src/lib/introCanvas.ts#clamp",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/introCanvas.ts#out3",
+      "target": "src/lib/introCanvas.ts#clamp",
+      "relation": "calls",
       "confidence": "extracted"
     },
     {
@@ -135926,6 +136731,12 @@
     {
       "source": "src/main.tsx",
       "target": "@/app/windowSyncSetup",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/main.tsx",
+      "target": "@/components/IntroSplash",
       "relation": "imports",
       "confidence": "extracted"
     },

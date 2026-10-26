@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "@/app/App";
 import { SessionGate } from "@/app/SessionGate";
 import { OnboardingGate } from "@/app/OnboardingGate";
+import { IntroSplash } from "@/components/IntroSplash";
 import { Providers } from "@/app/providers";
 import { startMainWindowSync, startSettingsWindowSync } from "@/app/windowSyncSetup";
 import { SettingsWindow } from "@/features/settings/window/SettingsWindow";
@@ -41,6 +42,7 @@ if (isSettingsWindow) {
             <App />
           </SessionGate>
         </OnboardingGate>
+        <IntroSplash />
       </Providers>
     </StrictMode>
   );

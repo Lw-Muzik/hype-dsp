@@ -19,18 +19,23 @@ describe("appMode", () => {
     );
   });
 
-  it("Equalizer mode shows exactly the four audio-tuning routes, in order", () => {
+  it("Equalizer mode shows exactly the three audio-tuning routes, in order", () => {
     expect(visibleRoutes("equalizer").map((r) => r.id)).toEqual([
       "equalizer",
       "enhancer",
-      "stems",
       "visuals",
     ]);
-    expect(EQUALIZER_ROUTES).toEqual(["equalizer", "enhancer", "stems", "visuals"]);
+    expect(EQUALIZER_ROUTES).toEqual(["equalizer", "enhancer", "visuals"]);
+  });
+
+  it("Stems lives in Player mode only: it separates the app's player, not system audio", () => {
+    expect(visibleRoutes("player").map((r) => r.id)).toContain("stems");
+    expect(visibleRoutes("equalizer").map((r) => r.id)).not.toContain("stems");
   });
 
   it("routeForMode keeps visible routes and falls back otherwise", () => {
-    expect(routeForMode("equalizer", "stems")).toBe("stems");
+    expect(routeForMode("equalizer", "stems")).toBe("equalizer");
+    expect(routeForMode("player", "stems")).toBe("stems");
     expect(routeForMode("equalizer", "player")).toBe("equalizer");
     expect(routeForMode("equalizer", "mixer")).toBe("equalizer");
     expect(routeForMode("player", "mixer")).toBe("mixer");

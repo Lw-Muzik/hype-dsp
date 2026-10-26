@@ -21,7 +21,7 @@ function deps(o: Partial<TrayActionDeps> = {}): TrayActionDeps {
     applyPreset: vi.fn(async () => {}),
     setRoute: vi.fn(),
     isRouteVisible: vi.fn((r, m) =>
-      m === "equalizer" ? ["equalizer", "enhancer", "stems", "visuals"].includes(r) : true,
+      m === "equalizer" ? ["equalizer", "enhancer", "visuals"].includes(r) : true,
     ),
     toggleVisualizer: vi.fn(),
     restartUpdate: vi.fn(async () => {}),

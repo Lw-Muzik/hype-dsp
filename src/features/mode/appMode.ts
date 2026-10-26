@@ -8,11 +8,13 @@ export type AppMode = "player" | "equalizer";
 export const modeFromSystemEq = (enabled: boolean): AppMode =>
   enabled ? "equalizer" : "player";
 
-/** Routes shown in Equalizer mode, in sidebar order. */
+/**
+ * Routes shown in Equalizer mode, in sidebar order. No Stems: it separates
+ * the app's own player, not system-wide audio, so it stays in Player mode.
+ */
 export const EQUALIZER_ROUTES: readonly Route[] = [
   "equalizer",
   "enhancer",
-  "stems",
   "visuals",
 ];
 

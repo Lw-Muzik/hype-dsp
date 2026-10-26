@@ -36,7 +36,7 @@ describe("buildTrayModel", () => {
     const p = buildTrayModel(base({ mode: "player" })).routes.map((r) => r.id);
     const e = buildTrayModel(base({ mode: "equalizer" })).routes.map((r) => r.id);
     expect(p).toContain("mixer");
-    expect(e).toEqual(["equalizer", "enhancer", "stems", "visuals"]);
+    expect(e).toEqual(["equalizer", "enhancer", "visuals"]);
     expect(e).not.toContain("mixer");
     expect(buildTrayModel(base({ mode: "equalizer" })).mode).toBe("equalizer");
   });

@@ -71,11 +71,11 @@ describe("shell modes", () => {
     expect(screen.getByTestId("snp")).toBeInTheDocument();
   });
 
-  it("Equalizer mode shows only the four tuning views and no player chrome", async () => {
+  it("Equalizer mode shows only the three tuning views and no player chrome", async () => {
     useSystemEqStore.setState({ enabled: true });
     useUiStore.setState({ route: "equalizer" });
     render(<App />);
-    expect(navLabels()).toEqual(["Equalizer", "Enhancer", "Stems", "Visuals"]);
+    expect(navLabels()).toEqual(["Equalizer", "Enhancer", "Visuals"]);
     expect(screen.queryByTestId("npbar")).toBeNull();
     expect(screen.queryByTestId("rsb")).toBeNull();
     expect(screen.queryByTestId("snp")).toBeNull();

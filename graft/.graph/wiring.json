@@ -1,8 +1,8 @@
 {
   "meta": {
     "version": 1,
-    "nodeCount": 5941,
-    "edgeCount": 9209,
+    "nodeCount": 5944,
+    "edgeCount": 9233,
     "languages": [
       "cpp",
       "javascript",
@@ -59905,16 +59905,45 @@
       "crux": null
     },
     {
+      "id": "src/components/TopBar.test.tsx",
+      "name": "TopBar.test.tsx",
+      "kind": "file",
+      "path": "src/components/TopBar.test.tsx",
+      "span": "L1-L99",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "5be9a1d8a46c7c2259a2c7a403f53b1fcc47ddf6027ae41a4ae6bac2bacd10b6",
+      "chars": 4535,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/components/TopBar.test.tsx#view",
+      "name": "view",
+      "kind": "function",
+      "path": "src/components/TopBar.test.tsx",
+      "span": "L25-L28",
+      "signature": "view = (over: Partial<RemoteView> = {}): RemoteView",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "0eb6768b0eb9c4656e34fd8bcb250e2faf3aaa857defb3ea504de350ad48af2c",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
       "id": "src/components/TopBar.tsx",
       "name": "TopBar.tsx",
       "kind": "file",
       "path": "src/components/TopBar.tsx",
-      "span": "L1-L106",
+      "span": "L1-L122",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "cbb7905259e696814aa8068f6dd805bed59648e41a99758cd22a1355bcd7f920",
-      "chars": 4121,
+      "body_hash": "b376312ef1797f8ceeedf882f42b27c63362e685a0a61ddf53c0e5a97ae99a46",
+      "chars": 5022,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -59924,11 +59953,11 @@
       "name": "TopBar",
       "kind": "function",
       "path": "src/components/TopBar.tsx",
-      "span": "L20-L105",
+      "span": "L23-L121",
       "signature": "function TopBar()",
       "exported": true,
       "origin": "ast",
-      "body_hash": "75899f7bd1c011ddee833897034844c42dd8400b25c1543523b6068c31d3f5f7",
+      "body_hash": "4c3b81d647b762e8a700c8b4550ee31f68e720e14e6f6d1ed0c46ad87a47d407",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -59938,7 +59967,7 @@
       "name": "onKey",
       "kind": "function",
       "path": "src/components/TopBar.tsx",
-      "span": "L35-L40",
+      "span": "L45-L50",
       "signature": "onKey = (e: KeyboardEvent)",
       "exported": true,
       "origin": "ast",
@@ -64331,12 +64360,12 @@
       "name": "RemoteBar.tsx",
       "kind": "file",
       "path": "src/features/connect/remote/ui/RemoteBar.tsx",
-      "span": "L1-L212",
+      "span": "L1-L188",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "5342a570ce4a5ffe07bac0dbf8fc5753cad15bbe620167a8e1b9cb4521088275",
-      "chars": 7813,
+      "body_hash": "6ace4f65c8739d6841596370a927256d70597a4c8d939ca4e9f20a08fff5b946",
+      "chars": 7164,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -64346,39 +64375,11 @@
       "name": "RemoteBar",
       "kind": "function",
       "path": "src/features/connect/remote/ui/RemoteBar.tsx",
-      "span": "L57-L211",
+      "span": "L33-L187",
       "signature": "function RemoteBar({ view }: { view: RemoteView })",
       "exported": true,
       "origin": "ast",
       "body_hash": "7c460b8ff10fdb61b2fbbab2b2b311026356eac4f50b1111a69a4f7c6f30befe",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/connect/remote/ui/RemoteBar.tsx#useRemoteVolume",
-      "name": "useRemoteVolume",
-      "kind": "function",
-      "path": "src/features/connect/remote/ui/RemoteBar.tsx",
-      "span": "L32-L50",
-      "signature": "function useRemoteVolume(volume: number)",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "a76e26522194c09aa4156f0ce7a8acd1307cd682d1d3a9643e6e8f2893bf8169",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/connect/remote/ui/RemoteBar.tsx#useRemoteVolume.send",
-      "name": "send",
-      "kind": "function",
-      "path": "src/features/connect/remote/ui/RemoteBar.tsx",
-      "span": "L35-L38",
-      "signature": "send = (v: number)",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "afa9b44e7d85460a3e765e841d15007f34c59815e3ca0eec35e51f0a49edf48f",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -64565,6 +64566,49 @@
       "exported": true,
       "origin": "ast",
       "body_hash": "c6b65e57cd0b90329d2dd057ce4ff98fd9a54fef31086b5c36a40360fa205d18",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/ui/useRemoteVolume.ts",
+      "name": "useRemoteVolume.ts",
+      "kind": "file",
+      "path": "src/features/connect/remote/ui/useRemoteVolume.ts",
+      "span": "L1-L28",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "35fd8f92d058d5c8d21899d819dcd14a93c75b40e04160ea3d1f51694c39307e",
+      "chars": 845,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume",
+      "name": "useRemoteVolume",
+      "kind": "function",
+      "path": "src/features/connect/remote/ui/useRemoteVolume.ts",
+      "span": "L9-L27",
+      "signature": "function useRemoteVolume(volume: number)",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "a76e26522194c09aa4156f0ce7a8acd1307cd682d1d3a9643e6e8f2893bf8169",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume.send",
+      "name": "send",
+      "kind": "function",
+      "path": "src/features/connect/remote/ui/useRemoteVolume.ts",
+      "span": "L12-L15",
+      "signature": "send = (v: number)",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "afa9b44e7d85460a3e765e841d15007f34c59815e3ca0eec35e51f0a49edf48f",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -67854,12 +67898,12 @@
       "name": "appMode.test.ts",
       "kind": "file",
       "path": "src/features/mode/appMode.test.ts",
-      "span": "L1-L40",
+      "span": "L1-L45",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "8cd5a071142431f1e890b4836bcb084e7a03abe53ee959f021cbfb56bcdd40b8",
-      "chars": 1300,
+      "body_hash": "3f58fecc92fe46408234a360b8ebaeac160f1f9942c83b3478f213f97704150d",
+      "chars": 1597,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -67869,12 +67913,12 @@
       "name": "appMode.ts",
       "kind": "file",
       "path": "src/features/mode/appMode.ts",
-      "span": "L1-L34",
+      "span": "L1-L36",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "83acadd9b230bced7e3ba98a019ab4e64dd923253bffc4b21526a7c8683af7df",
-      "chars": 1180,
+      "body_hash": "01946ca5960dc815dd11f441c1e3d696a4212817ef8e52713e2b30b9d008d17e",
+      "chars": 1272,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -67912,7 +67956,7 @@
       "name": "routeForMode",
       "kind": "function",
       "path": "src/features/mode/appMode.ts",
-      "span": "L30-L33",
+      "span": "L32-L35",
       "signature": "function routeForMode(mode: AppMode, route: Route): Route",
       "exported": true,
       "origin": "ast",
@@ -67926,7 +67970,7 @@
       "name": "shown",
       "kind": "function",
       "path": "src/features/mode/appMode.ts",
-      "span": "L19-L19",
+      "span": "L21-L21",
       "signature": "shown = (r: NavRoute): boolean",
       "exported": false,
       "origin": "ast",
@@ -67940,7 +67984,7 @@
       "name": "visibleRoutes",
       "kind": "function",
       "path": "src/features/mode/appMode.ts",
-      "span": "L22-L27",
+      "span": "L24-L29",
       "signature": "function visibleRoutes(mode: AppMode): NavRoute[]",
       "exported": true,
       "origin": "ast",
@@ -68030,8 +68074,8 @@
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "aa7b151d488f477b2b045d46c3023b13e1c1c791397b251f497d755c33736acc",
-      "chars": 3946,
+      "body_hash": "cb42263b014d05c68963659d2d999d595a107b20c4d6d32b61da30355eb3d3a8",
+      "chars": 3938,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -73317,8 +73361,8 @@
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "ed2ef5a15d9c706bf58dae38a52180726fa074d18f8972c5ca401e08b11501ec",
-      "chars": 4993,
+      "body_hash": "9ae872d41e34b34d7d3e7112160087e4316282b6128a9e34059d0ed727d72580",
+      "chars": 4984,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -73332,7 +73376,7 @@
       "signature": "function deps(o: Partial<TrayActionDeps> = {}): TrayActionDeps",
       "exported": false,
       "origin": "ast",
-      "body_hash": "4ff01cdf83769b38dd46be1c55c6cae560f873ebff3fd05435843399febeba74",
+      "body_hash": "1cc0b4954471dc1042e683eae3c6d223247c08ba7075375b331a7b0ae06c0b7a",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -73389,8 +73433,8 @@
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "5623ac12aabc653cf0626a4a46edef91a2ea8ace2d27d1b6d1a1cf54ccef2ca1",
-      "chars": 4504,
+      "body_hash": "16d008afcb70486bb4f885951ad271e9cb35ece14448d56b88d5157bbc420cf8",
+      "chars": 4495,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -115144,6 +115188,108 @@
       "confidence": "inferred"
     },
     {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "src/components/TopBar.test.tsx#view",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "src/features/connect/remote/control.ts#configureRemote",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "src/features/equalizer/EqVisualizer.tsx#EqVisualizer.render",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "src/components/TopBar.test.tsx#view",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "@/features/connect/protocol",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "@/features/connect/remote/control",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "@/features/connect/remote/session",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "@/features/connect/remote/store",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "@/features/connect/remote/ui/useRemoteVolume",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "@/features/connect/testKit",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "@/stores/engine",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "@testing-library/jest-dom/vitest",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "@testing-library/react",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "src/components/TopBar.tsx",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx",
+      "target": "vitest",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.test.tsx#view",
+      "target": "src/features/connect/testKit.ts#ytRef",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
       "source": "src/components/TopBar.tsx",
       "target": "src/components/TopBar.tsx#TopBar",
       "relation": "contains",
@@ -115175,6 +115321,18 @@
     },
     {
       "source": "src/components/TopBar.tsx",
+      "target": "@/features/connect/remote/store",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.tsx",
+      "target": "@/features/connect/remote/ui/useRemoteVolume",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.tsx",
       "target": "@/features/mode/ModeSwitch",
       "relation": "imports",
       "confidence": "extracted"
@@ -115188,6 +115346,12 @@
     {
       "source": "src/components/TopBar.tsx",
       "target": "@/features/update/UpdatePill",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.tsx",
+      "target": "@/lib/cn",
       "relation": "imports",
       "confidence": "extracted"
     },
@@ -115230,6 +115394,18 @@
     {
       "source": "src/components/TopBar.tsx#TopBar",
       "target": "src/app/routes.ts#routeById",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/components/TopBar.tsx#TopBar",
+      "target": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/components/TopBar.tsx#TopBar",
+      "target": "src/lib/cn.ts#cn",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -119801,12 +119977,6 @@
     },
     {
       "source": "src/features/connect/remote/ui/RemoteBar.tsx",
-      "target": "src/features/connect/remote/ui/RemoteBar.tsx#useRemoteVolume",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/connect/remote/ui/RemoteBar.tsx",
       "target": "@/components/BarParts",
       "relation": "imports",
       "confidence": "extracted"
@@ -119849,12 +120019,6 @@
     },
     {
       "source": "src/features/connect/remote/ui/RemoteBar.tsx",
-      "target": "react",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/connect/remote/ui/RemoteBar.tsx",
       "target": "src/features/connect/protocol.ts",
       "relation": "imports",
       "confidence": "extracted"
@@ -119884,6 +120048,12 @@
       "confidence": "extracted"
     },
     {
+      "source": "src/features/connect/remote/ui/RemoteBar.tsx",
+      "target": "src/features/connect/remote/ui/useRemoteVolume.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
       "source": "src/features/connect/remote/ui/RemoteBar.tsx#RemoteBar",
       "target": "src/features/connect/remote/control.ts#sendRemote",
       "relation": "calls",
@@ -119891,13 +120061,13 @@
     },
     {
       "source": "src/features/connect/remote/ui/RemoteBar.tsx#RemoteBar",
-      "target": "src/features/connect/remote/ui/RemoteBar.tsx#useRemoteVolume",
+      "target": "src/features/connect/remote/ui/useRemotePosition.ts#useRemotePosition",
       "relation": "calls",
-      "confidence": "extracted"
+      "confidence": "inferred"
     },
     {
       "source": "src/features/connect/remote/ui/RemoteBar.tsx#RemoteBar",
-      "target": "src/features/connect/remote/ui/useRemotePosition.ts#useRemotePosition",
+      "target": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -119910,24 +120080,6 @@
     {
       "source": "src/features/connect/remote/ui/RemoteBar.tsx#RemoteBar",
       "target": "src/lib/format.ts#formatTime",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/features/connect/remote/ui/RemoteBar.tsx#useRemoteVolume",
-      "target": "src/features/connect/remote/ui/RemoteBar.tsx#useRemoteVolume.send",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/connect/remote/ui/RemoteBar.tsx#useRemoteVolume",
-      "target": "src/features/connect/remote/ui/RemoteBar.tsx#useRemoteVolume.send",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/connect/remote/ui/RemoteBar.tsx#useRemoteVolume.send",
-      "target": "src/features/connect/remote/control.ts#sendRemote",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -120252,6 +120404,42 @@
     {
       "source": "src/features/connect/remote/ui/useRemotePosition.ts#useRemotePosition.read",
       "target": "src/features/connect/remote/session.ts#positionNow",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/connect/remote/ui/useRemoteVolume.ts",
+      "target": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/ui/useRemoteVolume.ts",
+      "target": "react",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/ui/useRemoteVolume.ts",
+      "target": "src/features/connect/remote/control.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume",
+      "target": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume.send",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume",
+      "target": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume.send",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/connect/remote/ui/useRemoteVolume.ts#useRemoteVolume.send",
+      "target": "src/features/connect/remote/control.ts#sendRemote",
       "relation": "calls",
       "confidence": "inferred"
     },

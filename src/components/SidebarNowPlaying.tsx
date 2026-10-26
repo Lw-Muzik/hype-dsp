@@ -1,6 +1,9 @@
 import { useEngineStore } from "@/stores/engine";
 import { useUiStore } from "@/stores/ui";
 import { useRemoteStore } from "@/features/connect/remote/store";
+import { selectNowPlaying } from "@/features/connect/remote/nowPlaying";
+import { useRemotePosition } from "@/features/connect/remote/ui/useRemotePosition";
+import type { RemoteView } from "@/features/connect/remote/session";
 import { coverGradient, coverInitials } from "@/lib/cover";
 
 /**
@@ -13,11 +16,7 @@ export function SidebarNowPlaying({ collapsed }: { collapsed: boolean }) {
   const localMeta = useEngineStore((s) => s.nowPlayingMeta);
   // While another device plays (Hype Connect remote mode) show its track.
   const remote = useRemoteStore((s) => s.view);
-  const meta = remote
-    ? remote.track
-      ? { title: remote.track.title, artist: remote.track.artist, album: remote.track.album, cover: remote.track.artUrl }
-      : null
-    : localMeta;
+  const { meta } = selectNowPlaying(localMeta, remote);
   const setRoute = useUiStore((s) => s.setRoute);
 
   if (!meta) return null;
@@ -74,6 +73,37 @@ export function SidebarNowPlaying({ collapsed }: { collapsed: boolean }) {
       {subtitle && (
         <p className="truncate text-xs text-text-muted">{subtitle}</p>
       )}
+      {remote ? <RemoteProgress view={remote} /> : <LocalProgress />}
     </button>
   );
+}
+
+/** Thin progress line under the card; the bar itself is the full control. */
+function ProgressLine({ position, duration }: { position: number; duration: number }) {
+  if (!(duration > 0)) return null;
+  const pct = Math.min(100, Math.max(0, (position / duration) * 100));
+  return (
+    <div
+      role="progressbar"
+      aria-label="Playback progress"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration)}
+      aria-valuenow={Math.round(position)}
+      className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/10"
+    >
+      <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function LocalProgress() {
+  const position = useEngineStore((s) => s.positionSecs);
+  const duration = useEngineStore((s) => s.durationSecs);
+  return <ProgressLine position={position} duration={duration ?? 0} />;
+}
+
+function RemoteProgress({ view }: { view: RemoteView }) {
+  const ms = useRemotePosition(view);
+  const durationMs = view.durationMs ?? view.track?.durationMs ?? 0;
+  return <ProgressLine position={ms / 1000} duration={durationMs / 1000} />;
 }

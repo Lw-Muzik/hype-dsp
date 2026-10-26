@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useEngineStore } from "@/stores/engine";
+import { useNowPlaying } from "@/features/connect/remote/nowPlaying";
 import { useThemeStore } from "@/stores/theme";
 import { prefersReducedMotion } from "@/lib/reducedMotion";
 import { backdropSource, type BackdropSource } from "./backdropSource";
@@ -118,7 +118,8 @@ function Layer({ source, animate }: { source: BackdropSource; animate: boolean }
  */
 export default function ThemeBackdrop() {
   const resolved = useThemeStore((s) => s.resolved);
-  const meta = useEngineStore((s) => s.nowPlayingMeta);
+  // Local engine track, or the remote device's while controlling another player.
+  const { meta } = useNowPlaying();
   const next = backdropSource(meta);
   const nextKey = keyOf(next);
 

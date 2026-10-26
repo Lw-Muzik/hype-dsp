@@ -3,6 +3,7 @@ import { modeFromSystemEq } from "@/features/mode/appMode";
 import { onTrayAction, systemAudioStatus, trayUpdate, eqListPresets } from "@/lib/ipc";
 import type { TrayModel } from "@/lib/ipc";
 import type { EqPreset } from "@/lib/types";
+import { useRemoteStore } from "@/features/connect/remote/store";
 import { useEngineStore } from "@/stores/engine";
 import { useSystemEqStore } from "@/stores/systemEq";
 import { useUpdateStore } from "@/stores/update";
@@ -28,10 +29,12 @@ export function useTray(): void {
     const build = (): TrayModel => {
       const e = useEngineStore.getState();
       const v = useVisualizerStore.getState();
+      // Remote mode: the tray shows what the other device plays.
+      const r = useRemoteStore.getState().view;
       return buildTrayModel({
-        nowPlaying: e.nowPlaying,
-        playing: e.playing,
-        paused: e.paused,
+        nowPlaying: r ? (r.track?.title ?? null) : e.nowPlaying,
+        playing: r ? r.playing : e.playing,
+        paused: r ? !r.playing && r.track !== null : e.paused,
         queueLength: e.queue.length,
         queueIndex: e.queueIndex,
         mode: modeFromSystemEq(useSystemEqStore.getState().enabled),
@@ -94,6 +97,9 @@ export function useTray(): void {
         ) {
           schedule();
         }
+      }),
+      useRemoteStore.subscribe((s, prev) => {
+        if (s.view?.track !== prev.view?.track || s.view?.playing !== prev.view?.playing) schedule();
       }),
       useSystemEqStore.subscribe(schedule),
       useVisualizerStore.subscribe(schedule),

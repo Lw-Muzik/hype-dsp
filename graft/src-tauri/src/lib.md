@@ -13,4 +13,4 @@
 - ytmusic · module · L19-L19 — mod ytmusic;
 - Progress · struct · L37-L49 — struct Progress
 - forward_frames · function · L56-L186 — fn forward_frames(
-- run · function · L189-L1008 — pub fn run()
+- run · function · L189-L1016 — pub fn run()

@@ -265,3 +265,8 @@
 - onTrayAction · function · L1804-L1806 — function onTrayAction(handler: (action: string) => void): Promise<UnlistenFn>
 - sessionLoad · function · L1811-L1813 — function sessionLoad(): Promise<string | null>
 - sessionSave · function · L1816-L1818 — function sessionSave(json: string | null): Promise<void>
+- AppNotification · interface · L1823-L1831 — interface AppNotification
+- notificationsList · function · L1834-L1836 — function notificationsList(): Promise<AppNotification[]>
+- notificationsOpen · function · L1840-L1842 — function notificationsOpen(id: string): Promise<AppNotification[]>
+- notificationsMarkAllRead · function · L1844-L1846 — function notificationsMarkAllRead(): Promise<AppNotification[]>
+- onNotificationsUpdated · function · L1849-L1851 — function onNotificationsUpdated(handler: (count: number) => void): Promise<UnlistenFn>

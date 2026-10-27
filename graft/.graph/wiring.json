@@ -1,8 +1,8 @@
 {
   "meta": {
     "version": 1,
-    "nodeCount": 5972,
-    "edgeCount": 9302,
+    "nodeCount": 6030,
+    "edgeCount": 9390,
     "languages": [
       "cpp",
       "javascript",
@@ -49400,12 +49400,12 @@
       "name": "install.rs",
       "kind": "file",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L1-L139",
+      "span": "L1-L142",
       "signature": null,
       "exported": true,
       "origin": "generic",
-      "body_hash": "315afc5afb1a3d125797aea09584477fa819cf463a9646e44600c2c53ade507a",
-      "chars": 5198,
+      "body_hash": "fc1fdf80195a3cc8f508fdfcd2c0187b1f20a89ac49a3189bdfb7d8f7d7354a4",
+      "chars": 5381,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -49415,11 +49415,11 @@
       "name": "api_base",
       "kind": "function",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L27-L29",
-      "signature": "fn api_base() -> String",
+      "span": "L29-L31",
+      "signature": "pub(crate) fn api_base() -> String",
       "exported": true,
       "origin": "generic",
-      "body_hash": "e96ea30933f3d25898bc980aece3a1f60a8fdb017f6a2174f271203b8fabe0c5",
+      "body_hash": "176119c4e580457a71f9ec7821a29d4a86ded698bd96f711986360d15c2c8458",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -49443,7 +49443,7 @@
       "name": "HEARTBEAT_INTERVAL",
       "kind": "constant",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L25-L25",
+      "span": "L27-L27",
       "signature": "const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);",
       "exported": true,
       "origin": "generic",
@@ -49457,7 +49457,7 @@
       "name": "id_file",
       "kind": "function",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L35-L37",
+      "span": "L37-L39",
       "signature": "fn id_file(app: &AppHandle) -> Option<PathBuf>",
       "exported": true,
       "origin": "generic",
@@ -49471,7 +49471,7 @@
       "name": "is_uuid",
       "kind": "function",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L31-L33",
+      "span": "L33-L35",
       "signature": "fn is_uuid(s: &str) -> bool",
       "exported": true,
       "origin": "generic",
@@ -49499,7 +49499,7 @@
       "name": "kc_service",
       "kind": "function",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L58-L63",
+      "span": "L60-L65",
       "signature": "fn kc_service() -> String",
       "exported": true,
       "origin": "generic",
@@ -49527,7 +49527,7 @@
       "name": "keychain_id",
       "kind": "function",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L65-L71",
+      "span": "L67-L73",
       "signature": "fn keychain_id() -> Option<String>",
       "exported": true,
       "origin": "generic",
@@ -49537,11 +49537,25 @@
       "crux": null
     },
     {
+      "id": "src-tauri/src/commands/install.rs#PLATFORM",
+      "name": "PLATFORM",
+      "kind": "constant",
+      "path": "src-tauri/src/commands/install.rs",
+      "span": "L26-L26",
+      "signature": "const PLATFORM: &str = \"desktop\";",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "7dc9c9844828d127bf2278bf1dfc6a531b2718df6a1d336d61a9d579adb9abb8",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
       "id": "src-tauri/src/commands/install.rs#read_file_id",
       "name": "read_file_id",
       "kind": "function",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L39-L44",
+      "span": "L41-L46",
       "signature": "fn read_file_id(app: &AppHandle) -> Option<String>",
       "exported": true,
       "origin": "generic",
@@ -49555,7 +49569,7 @@
       "name": "resolve_install_id",
       "kind": "function",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L86-L100",
+      "span": "L88-L102",
       "signature": "pub fn resolve_install_id(app: &AppHandle) -> String",
       "exported": true,
       "origin": "generic",
@@ -49569,11 +49583,11 @@
       "name": "spawn_tracking",
       "kind": "function",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L104-L138",
+      "span": "L106-L141",
       "signature": "pub fn spawn_tracking(app: AppHandle)",
       "exported": true,
       "origin": "generic",
-      "body_hash": "062514239973e703150111c7a94c3264b4a2aab7da90a22cac59fd62b40e82d6",
+      "body_hash": "b89afd5a5c4114505441f1ea56846c22640aeadc9f3456f1f034af9ead1acdc5",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -49583,7 +49597,7 @@
       "name": "write_file_id",
       "kind": "function",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L46-L53",
+      "span": "L48-L55",
       "signature": "fn write_file_id(app: &AppHandle, id: &str)",
       "exported": true,
       "origin": "generic",
@@ -49597,7 +49611,7 @@
       "name": "write_keychain_id",
       "kind": "function",
       "path": "src-tauri/src/commands/install.rs",
-      "span": "L73-L77",
+      "span": "L75-L79",
       "signature": "fn write_keychain_id(id: &str)",
       "exported": true,
       "origin": "generic",
@@ -51367,12 +51381,12 @@
       "name": "mod.rs",
       "kind": "file",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L1-L40",
+      "span": "L1-L41",
       "signature": null,
       "exported": true,
       "origin": "generic",
-      "body_hash": "61aa070b3a77a9ab3199ba358fe0a31a5d0b4b95b24cb9564214a0e1a0a9e6ef",
-      "chars": 879,
+      "body_hash": "53c3f7c2de80f6476849a2a4429a71139e26850d0131ed8af8029c7d02634f33",
+      "chars": 902,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -51648,7 +51662,7 @@
       "name": "movies_yt",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L27-L27",
+      "span": "L28-L28",
       "signature": "pub mod movies_yt;",
       "exported": true,
       "origin": "generic",
@@ -51658,11 +51672,25 @@
       "crux": null
     },
     {
+      "id": "src-tauri/src/commands/mod.rs#notifications",
+      "name": "notifications",
+      "kind": "module",
+      "path": "src-tauri/src/commands/mod.rs",
+      "span": "L27-L27",
+      "signature": "pub mod notifications;",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "376fd754b285b6aeeef5ba693fb30d9182620fc68e9f7d05f2c6168c9b0b31b7",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
       "id": "src-tauri/src/commands/mod.rs#open_with",
       "name": "open_with",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L28-L28",
+      "span": "L29-L29",
       "signature": "pub mod open_with;",
       "exported": true,
       "origin": "generic",
@@ -51676,7 +51704,7 @@
       "name": "presets",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L29-L29",
+      "span": "L30-L30",
       "signature": "pub mod presets;",
       "exported": true,
       "origin": "generic",
@@ -51690,7 +51718,7 @@
       "name": "profiles",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L30-L30",
+      "span": "L31-L31",
       "signature": "pub mod profiles;",
       "exported": true,
       "origin": "generic",
@@ -51704,7 +51732,7 @@
       "name": "radio",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L31-L31",
+      "span": "L32-L32",
       "signature": "pub mod radio;",
       "exported": true,
       "origin": "generic",
@@ -51718,7 +51746,7 @@
       "name": "scenes",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L32-L32",
+      "span": "L33-L33",
       "signature": "pub mod scenes;",
       "exported": true,
       "origin": "generic",
@@ -51732,7 +51760,7 @@
       "name": "session",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L33-L33",
+      "span": "L34-L34",
       "signature": "pub mod session;",
       "exported": true,
       "origin": "generic",
@@ -51746,7 +51774,7 @@
       "name": "settings_window",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L34-L34",
+      "span": "L35-L35",
       "signature": "pub mod settings_window;",
       "exported": true,
       "origin": "generic",
@@ -51760,7 +51788,7 @@
       "name": "stems",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L35-L35",
+      "span": "L36-L36",
       "signature": "pub mod stems;",
       "exported": true,
       "origin": "generic",
@@ -51774,7 +51802,7 @@
       "name": "tv",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L36-L36",
+      "span": "L37-L37",
       "signature": "pub mod tv;",
       "exported": true,
       "origin": "generic",
@@ -51788,7 +51816,7 @@
       "name": "visualizer",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L37-L37",
+      "span": "L38-L38",
       "signature": "pub mod visualizer;",
       "exported": true,
       "origin": "generic",
@@ -51802,7 +51830,7 @@
       "name": "ytmusic",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L38-L38",
+      "span": "L39-L39",
       "signature": "pub mod ytmusic;",
       "exported": true,
       "origin": "generic",
@@ -51816,7 +51844,7 @@
       "name": "ytmusic_setup",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L39-L39",
+      "span": "L40-L40",
       "signature": "pub mod ytmusic_setup;",
       "exported": true,
       "origin": "generic",
@@ -52999,6 +53027,567 @@
       "exported": true,
       "origin": "generic",
       "body_hash": "d286bcc071c397e435f2f4590b69869940e111bc36e3c6ca4dd2749497cbf78a",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs",
+      "name": "notifications.rs",
+      "kind": "file",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L1-L419",
+      "signature": null,
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "5104fb926d75344ed97d87f3937ae3da9b989116c5429c150f757e69c3075178",
+      "chars": 14745,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#an_empty_poll_keeps_since",
+      "name": "an_empty_poll_keeps_since",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L381-L385",
+      "signature": "fn an_empty_poll_keeps_since()",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "a89c085e0938f89ff30cc6331825ec9170e8de5a60f6d3e26f7dd3ac0682d853",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#apply",
+      "name": "apply",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L127-L149",
+      "signature": "fn apply(stored: &mut Stored, items: Vec<FeedItem>) -> Vec<FeedItem>",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "fafb5215716201c4697dcb01684975e545d80ac5988aae06626d1fa95bfffad0",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#CACHE_MAX",
+      "name": "CACHE_MAX",
+      "kind": "constant",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L35-L35",
+      "signature": "const CACHE_MAX: usize = 50;",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "49ec7a33984606e44109b0f4510ecec3c56d25697ad2564c15a43c6bb054be46",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#CachedItem",
+      "name": "CachedItem",
+      "kind": "struct",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L61-L69",
+      "signature": "pub struct CachedItem",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "5491f674c178879e5b70a48e0dffbd719953ce9aae64381b2db66375a5b7a4a5",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#ensure_permission",
+      "name": "ensure_permission",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L190-L207",
+      "signature": "fn ensure_permission(app: &AppHandle) -> bool",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "29c77d47c74ecd2ef72e12e5d465ef8524cad75f9921d75fc69267a51391031c",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#event_body",
+      "name": "event_body",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L180-L182",
+      "signature": "fn event_body(install_id: &str, kind: &str) -> serde_json::Value",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "343dcfcdbafedb9a1142f4c58870fa6701de8f80ba8a59fcfdb7d326abd37d01",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#event_body_matches_contract",
+      "name": "event_body_matches_contract",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L412-L417",
+      "signature": "fn event_body_matches_contract()",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "99e74314f7f6fe116a8d8544b26e934612bd51f45ba33e7f524a4f9872238344",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#feed_url",
+      "name": "feed_url",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L93-L102",
+      "signature": "fn feed_url(base: &str, since: Option<&str>) -> String",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "4c0b394cc3c0d962eabc80070f95739c601f51b25f4f3d17509f7622fae77ac7",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#feed_url_encodes_since",
+      "name": "feed_url_encodes_since",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L340-L346",
+      "signature": "fn feed_url_encodes_since()",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "b6eefd28820061175e0164b6c6d741323e18d9a326aef65b4ddf763b02c49ea8",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#feed_url_without_since_uses_server_default",
+      "name": "feed_url_without_since_uses_server_default",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L331-L337",
+      "signature": "fn feed_url_without_since_uses_server_default()",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "747796f173441fdfa753714afe3c33805857de06bf0901e2f5f0b8fe5c07c7bd",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#FeedItem",
+      "name": "FeedItem",
+      "kind": "struct",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L43-L50",
+      "signature": "struct FeedItem",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "6806f3eb35aeadf8039c4de56d740bfbb9020f504802b900cfc5cc93042645d4",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#FeedResponse",
+      "name": "FeedResponse",
+      "kind": "struct",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L53-L56",
+      "signature": "struct FeedResponse",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "60a82d8c469d83cc52807fddd434f3400ba53b766225941e21794477da41c118",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#FILE_NAME",
+      "name": "FILE_NAME",
+      "kind": "constant",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L29-L29",
+      "signature": "const FILE_NAME: &str = \"notifications.json\";",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "eceef0a94eab6002778325ad9fcb2437baaa97d5e1feae1601212e62ec755407",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#FIRST_POLL_DELAY",
+      "name": "FIRST_POLL_DELAY",
+      "kind": "constant",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L30-L30",
+      "signature": "const FIRST_POLL_DELAY: Duration = Duration::from_secs(10);",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "b11386cd1a057d3714d01924f1be36f4dda6612cbe6aa106cb2a86c0e3b66260",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#http",
+      "name": "http",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L173-L178",
+      "signature": "fn http() -> reqwest::blocking::Client",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "8c6b29b02c3ce61bb68d74bf638d2f22448018b886742eb47e046410c4cf83a0",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#item",
+      "name": "item",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L320-L328",
+      "signature": "fn item(id: &str, at: &str) -> FeedItem",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "853f79550b08a282f10e43537950f8358180a03a60447463efed353f0fb8b5e4",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#load",
+      "name": "load",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L155-L160",
+      "signature": "fn load(app: &AppHandle) -> Stored",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "5fc7973df552c34e2ba83667539fcbb356ae308924e504800aafd38db8ee4bc1",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#notifications_list",
+      "name": "notifications_list",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L269-L274",
+      "signature": "pub fn notifications_list(app: AppHandle) -> Vec<CachedItem>",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "6da40339c6a1ec2f5773050ba55d04cfd26f7963e2b076dce167d4a2aa862997",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#notifications_mark_all_read",
+      "name": "notifications_mark_all_read",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L306-L314",
+      "signature": "pub fn notifications_mark_all_read(app: AppHandle) -> Vec<CachedItem>",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "2efa2642a7fbfcc396befde5ebe9fe3c00cc36dde77c6564049a15b529887270",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#notifications_open",
+      "name": "notifications_open",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L279-L302",
+      "signature": "pub fn notifications_open(app: AppHandle, id: String) -> Vec<CachedItem>",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "4a5fb7b3c7a65feb466d3073ca59ed1f7d9985f4f952e9e8fa5fe675e8ab6ce8",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#only_https_links_open",
+      "name": "only_https_links_open",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L403-L409",
+      "signature": "fn only_https_links_open()",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "a38de8a24829b2139e5a11b99889facc38773124d0d1cebfbceb9e772a8789d9",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#parse_feed",
+      "name": "parse_feed",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L104-L106",
+      "signature": "fn parse_feed(body: &str) -> Result<Vec<FeedItem>, serde_json::Error>",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "57f1baf62a4074e3d801f403bbba3f5dccd4a22bb5d374305ecb372a2bd71291",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#parses_the_contract_payload",
+      "name": "parses_the_contract_payload",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L349-L359",
+      "signature": "fn parses_the_contract_payload()",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "a2c3764016dea8520211a1566c9e5b11b08cbce99a91b4c2744dca12eee0ad88",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#POLL_INTERVAL",
+      "name": "POLL_INTERVAL",
+      "kind": "constant",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L31-L31",
+      "signature": "const POLL_INTERVAL: Duration = Duration::from_secs(15 * 60);",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "0faedb462b8c9ad92398ca035192ba08f4345fb27000962107ab5a60230231d6",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#poll_once",
+      "name": "poll_once",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L209-L249",
+      "signature": "fn poll_once(app: &AppHandle, client: &reqwest::blocking::Client, base: &str)",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "b40a2b56d413dcbd072a667ffc4b6c0b6274379e01948b51c072e45e5039804b",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#report",
+      "name": "report",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L184-L187",
+      "signature": "fn report(client: &reqwest::blocking::Client, base: &str, app: &AppHandle, id: &str, kind: &str)",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "35cae2fab9d48eebfbe0150e0ab2d7c74e346030f4ae67a4a635bbe5a7fbef2c",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#safe_link",
+      "name": "safe_link",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L109-L112",
+      "signature": "fn safe_link(link: &Option<String>) -> Option<&str>",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "b41b568954e01147f624d536c09a726122f87e536b75da59431b29a9dd719c13",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#save",
+      "name": "save",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L162-L171",
+      "signature": "fn save(app: &AppHandle, s: &Stored)",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "0be543d942e53a3014fb85fffde9733bed12d2fb8ce8294d67c7c19a0e6cbf86",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#since_persists_as_newest_created_at_and_dedupes",
+      "name": "since_persists_as_newest_created_at_and_dedupes",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L362-L378",
+      "signature": "fn since_persists_as_newest_created_at_and_dedupes()",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "cda77ee7ec9ad8a8b47a7cc2d9e9ab371eb0c7ae710068084478b193aa5ae63d",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#spawn_poller",
+      "name": "spawn_poller",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L252-L265",
+      "signature": "pub fn spawn_poller(app: AppHandle)",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "8c1c6eb895c156e3b8a1a36af274e79ad6a0db75e3668bc76c462bbf693fa15a",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#STATE_LOCK",
+      "name": "STATE_LOCK",
+      "kind": "constant",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L38-L38",
+      "signature": "static STATE_LOCK: Mutex<()> = Mutex::new(());",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "b681f3adaa261c43403ee467c8c167f03f8501c388389dbf83640d7b2cbbca2b",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#state_path",
+      "name": "state_path",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L151-L153",
+      "signature": "fn state_path(app: &AppHandle) -> Option<PathBuf>",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "7f875d6126964713795a8de00e599c7365bc59e5911f257f49fd93cd84e0d07e",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#Stored",
+      "name": "Stored",
+      "kind": "struct",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L74-L84",
+      "signature": "struct Stored",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "80bb53f325098d1da8daedbb8b86048fde98eb35996e7661b75321ec39614b32",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#SUMMARY_ABOVE",
+      "name": "SUMMARY_ABOVE",
+      "kind": "constant",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L33-L33",
+      "signature": "const SUMMARY_ABOVE: usize = 3;",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "4b0709551941216b7f4bedbdebf47e8a38c8c10c65b2075b430404325f1e562b",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#summary_only_above_three",
+      "name": "summary_only_above_three",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L388-L400",
+      "signature": "fn summary_only_above_three()",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "cf4604e2a517c683d22196ba3a04a593889d3876cdc8b560d465d73c25f1513b",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#tests",
+      "name": "tests",
+      "kind": "module",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L317-L418",
+      "signature": "mod tests",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "2fd537122bfcbf324fd6316562f708f281462c8b03d964a3f58dd3fb4670d3de",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#Toasts",
+      "name": "Toasts",
+      "kind": "enum",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L88-L91",
+      "signature": "enum Toasts",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "2f7b38c584dfb2c6991975d7a65d765046ea2dfe58aab7fcbdd7444938a4456d",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#toasts_for",
+      "name": "toasts_for",
+      "kind": "function",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L114-L122",
+      "signature": "fn toasts_for(new: &[FeedItem]) -> Option<Toasts>",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "2b4eb42e9deb346323e2a0e2e918f0e3807ee0cc3bbf59a135b0191e46a880c6",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/commands/notifications.rs#UPDATED_EVENT",
+      "name": "UPDATED_EVENT",
+      "kind": "constant",
+      "path": "src-tauri/src/commands/notifications.rs",
+      "span": "L36-L36",
+      "signature": "pub const UPDATED_EVENT: &str = \"notifications://updated\";",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "ef1f83be14da17c6852472ea53cd6fafc3e56bd895e2932e4b7424688ff58e02",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -56031,12 +56620,12 @@
       "name": "lib.rs",
       "kind": "file",
       "path": "src-tauri/src/lib.rs",
-      "span": "L1-L1009",
+      "span": "L1-L1017",
       "signature": null,
       "exported": true,
       "origin": "generic",
-      "body_hash": "d22511cda7198907d7165116def8791b6fd2f56135c77b97e3fd537249564d80",
-      "chars": 47515,
+      "body_hash": "4433ba293e20589ca790c38e458223c679ef597b23298f3791593ec95f7b14cb",
+      "chars": 47977,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -56172,11 +56761,11 @@
       "name": "run",
       "kind": "function",
       "path": "src-tauri/src/lib.rs",
-      "span": "L189-L1008",
+      "span": "L189-L1016",
       "signature": "pub fn run()",
       "exported": true,
       "origin": "generic",
-      "body_hash": "18f8f0039d0332de85b4425268ef70787871bce575a33e13377f483bbe2b6bda",
+      "body_hash": "459ead747e3547af7263f96d30369695e74eb507eec6f56f51afe1c6990355d0",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -60008,12 +60597,12 @@
       "name": "TopBar.test.tsx",
       "kind": "file",
       "path": "src/components/TopBar.test.tsx",
-      "span": "L1-L99",
+      "span": "L1-L100",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "5be9a1d8a46c7c2259a2c7a403f53b1fcc47ddf6027ae41a4ae6bac2bacd10b6",
-      "chars": 4535,
+      "body_hash": "64df2ab34d3ea3f854c49cf50d7325a51b29862a6eb5c5bfef57c607c53197ee",
+      "chars": 4631,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -60023,7 +60612,7 @@
       "name": "view",
       "kind": "function",
       "path": "src/components/TopBar.test.tsx",
-      "span": "L25-L28",
+      "span": "L26-L29",
       "signature": "view = (over: Partial<RemoteView> = {}): RemoteView",
       "exported": false,
       "origin": "ast",
@@ -60037,12 +60626,12 @@
       "name": "TopBar.tsx",
       "kind": "file",
       "path": "src/components/TopBar.tsx",
-      "span": "L1-L122",
+      "span": "L1-L125",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "b376312ef1797f8ceeedf882f42b27c63362e685a0a61ddf53c0e5a97ae99a46",
-      "chars": 5022,
+      "body_hash": "67bd6cab1b9dc71b35b6a0025b81a4d26b0dda80e78949dd8edaec67be561175",
+      "chars": 5130,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -60052,11 +60641,11 @@
       "name": "TopBar",
       "kind": "function",
       "path": "src/components/TopBar.tsx",
-      "span": "L23-L121",
+      "span": "L24-L124",
       "signature": "function TopBar()",
       "exported": true,
       "origin": "ast",
-      "body_hash": "4c3b81d647b762e8a700c8b4550ee31f68e720e14e6f6d1ed0c46ad87a47d407",
+      "body_hash": "0b450672549273e5cd228ac4a5514f476eef938b109b1f55bf12f2f4ef012091",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -60066,7 +60655,7 @@
       "name": "onKey",
       "kind": "function",
       "path": "src/components/TopBar.tsx",
-      "span": "L45-L50",
+      "span": "L46-L51",
       "signature": "onKey = (e: KeyboardEvent)",
       "exported": true,
       "origin": "ast",
@@ -69376,6 +69965,162 @@
       "crux": null
     },
     {
+      "id": "src/features/notifications/NotificationBell.test.tsx",
+      "name": "NotificationBell.test.tsx",
+      "kind": "file",
+      "path": "src/features/notifications/NotificationBell.test.tsx",
+      "span": "L1-L80",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "2bfc8dc80f9662781f2665c20bed37d9cca303872e17c2bef1d308c8089657f1",
+      "chars": 3475,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/notifications/NotificationBell.test.tsx#iso",
+      "name": "iso",
+      "kind": "function",
+      "path": "src/features/notifications/NotificationBell.test.tsx",
+      "span": "L17-L17",
+      "signature": "iso = (daysAgo: number)",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "dc64067b701556cd3bb71a01f4bf877eaf108a391cb51397975330f265aa411a",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/notifications/NotificationBell.test.tsx#n",
+      "name": "n",
+      "kind": "function",
+      "path": "src/features/notifications/NotificationBell.test.tsx",
+      "span": "L18-L20",
+      "signature": "n = (id: string, over: Partial<AppNotification> = {}): AppNotification",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "2260e3199bdaba6efa4aafd158e054b0e5b70da76512e94e30375dacb8804ce4",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/notifications/NotificationBell.tsx",
+      "name": "NotificationBell.tsx",
+      "kind": "file",
+      "path": "src/features/notifications/NotificationBell.tsx",
+      "span": "L1-L193",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "d87de3266a0ad702f18be58e92068827eb7536079c14081eaf6d1ee00cf5a3e0",
+      "chars": 6715,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/notifications/NotificationBell.tsx#ago",
+      "name": "ago",
+      "kind": "function",
+      "path": "src/features/notifications/NotificationBell.tsx",
+      "span": "L24-L33",
+      "signature": "function ago(iso: string, now = Date.now()): string",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "3bd915679fbab29f02c794c7d82a95d44ca67802de365a22f4171b084f660b4a",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "name": "NotificationBell",
+      "kind": "function",
+      "path": "src/features/notifications/NotificationBell.tsx",
+      "span": "L41-L192",
+      "signature": "function NotificationBell()",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "a55a40bf0ec2487365aef8021b6ec12e91fbc8ca0e810973462060c7fd09cc13",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/notifications/NotificationBell.tsx#NotificationBell.markAll",
+      "name": "markAll",
+      "kind": "function",
+      "path": "src/features/notifications/NotificationBell.tsx",
+      "span": "L91-L95",
+      "signature": "markAll = ()",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "73d89d979e577117691f9b96eafd7b37261ae59fbbc8b216d6aa02d0d6c5fe2b",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/notifications/NotificationBell.tsx#NotificationBell.onDown",
+      "name": "onDown",
+      "kind": "function",
+      "path": "src/features/notifications/NotificationBell.tsx",
+      "span": "L68-L70",
+      "signature": "onDown = (e: MouseEvent)",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "0cb7c2e4bf24c632ffa6fccc628bdf5ad8e169457ff5b288858d7a6c687f8f70",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/notifications/NotificationBell.tsx#NotificationBell.onKey",
+      "name": "onKey",
+      "kind": "function",
+      "path": "src/features/notifications/NotificationBell.tsx",
+      "span": "L71-L71",
+      "signature": "onKey = (e: KeyboardEvent)",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "524867c9d46fff5264d627df07d521ad36c6865115083985c90dd62ef49173af",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/notifications/NotificationBell.tsx#NotificationBell.openItem",
+      "name": "openItem",
+      "kind": "function",
+      "path": "src/features/notifications/NotificationBell.tsx",
+      "span": "L83-L89",
+      "signature": "openItem = (n: AppNotification)",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "c0021c5ddeccb55e59f13236f4f92710c2fddcc57bcd1621319e4d9edf4de951",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/notifications/NotificationBell.tsx#recent",
+      "name": "recent",
+      "kind": "function",
+      "path": "src/features/notifications/NotificationBell.tsx",
+      "span": "L15-L22",
+      "signature": "function recent(items: AppNotification[], now = Date.now()): AppNotification[]",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "92ea6ebead20739394e7e9dfe7407b8b61df010e185db92395ce08f8f5429c95",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
       "id": "src/features/player/AlbumDeck.tsx",
       "name": "AlbumDeck.tsx",
       "kind": "file",
@@ -75847,12 +76592,12 @@
       "name": "ipc.ts",
       "kind": "file",
       "path": "src/lib/ipc.ts",
-      "span": "L1-L1819",
+      "span": "L1-L1852",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "ea625210770b75fd0e15ba0460ecfcffb7d6fab1ac72973f11eba2bf3b9700c5",
-      "chars": 66472,
+      "body_hash": "3f1d35893b2e91a239a7356ae26ac19c98f0d88aabd04e4c2250ff2b9f624c58",
+      "chars": 67603,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -76091,6 +76836,20 @@
       "exported": true,
       "origin": "ast",
       "body_hash": "be9806231c3b03ba575d4e8aa012ab97d518cad6a8eb02a4a5f5eab97bee9861",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/ipc.ts#AppNotification",
+      "name": "AppNotification",
+      "kind": "interface",
+      "path": "src/lib/ipc.ts",
+      "span": "L1823-L1831",
+      "signature": "interface AppNotification",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "d8221def2f1c5d7bf7ef9f7469ad4d97cea21b7e7b43e51d7df7593b1becb887",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -77664,6 +78423,48 @@
       "crux": null
     },
     {
+      "id": "src/lib/ipc.ts#notificationsList",
+      "name": "notificationsList",
+      "kind": "function",
+      "path": "src/lib/ipc.ts",
+      "span": "L1834-L1836",
+      "signature": "function notificationsList(): Promise<AppNotification[]>",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "7173b6d8e993ec1af6b7f20782e5f9ddfbd123be980af99d412ea227cd68eda5",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/ipc.ts#notificationsMarkAllRead",
+      "name": "notificationsMarkAllRead",
+      "kind": "function",
+      "path": "src/lib/ipc.ts",
+      "span": "L1844-L1846",
+      "signature": "function notificationsMarkAllRead(): Promise<AppNotification[]>",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "a324a48f8f91b410a7e32638aa662bacbf4c89018f554e80c19c3f6c7630e234",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/ipc.ts#notificationsOpen",
+      "name": "notificationsOpen",
+      "kind": "function",
+      "path": "src/lib/ipc.ts",
+      "span": "L1840-L1842",
+      "signature": "function notificationsOpen(id: string): Promise<AppNotification[]>",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "2b0246d5a2bb5490b4c9ac5ba70991a4640ae47dc2c2d61f0ebc4b3f7634b8eb",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
       "id": "src/lib/ipc.ts#onConnectInbound",
       "name": "onConnectInbound",
       "kind": "function",
@@ -77743,6 +78544,20 @@
       "exported": true,
       "origin": "ast",
       "body_hash": "d8b77f49cb8560b6a93e1ea92d315176deb1ac8a8bc7b18b7502eb57f8866ad4",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/lib/ipc.ts#onNotificationsUpdated",
+      "name": "onNotificationsUpdated",
+      "kind": "function",
+      "path": "src/lib/ipc.ts",
+      "span": "L1849-L1851",
+      "signature": "function onNotificationsUpdated(handler: (count: number) => void): Promise<UnlistenFn>",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "c4a4f1369299fa8343393efe8265498ccfcfb6122e8cd7742799915106f1624b",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -110443,6 +111258,282 @@
       "confidence": "inferred"
     },
     {
+      "source": "src-tauri/src/commands/notifications.rs#ensure_permission",
+      "target": "src-tauri/src/commands/notifications.rs#load",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#ensure_permission",
+      "target": "src-tauri/src/commands/notifications.rs#save",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#event_body",
+      "target": "crates/hm-connect/tests/client.rs#json",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#event_body_matches_contract",
+      "target": "src-tauri/src/commands/notifications.rs#event_body",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#feed_url",
+      "target": "crates/hm-audio/src/device.rs#collect",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#feed_url_encodes_since",
+      "target": "src-tauri/src/commands/notifications.rs#feed_url",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#http",
+      "target": "crates/hm-dsp/src/convolver.rs#build",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#load",
+      "target": "src-tauri/src/commands/notifications.rs#state_path",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_list",
+      "target": "src-tauri/src/commands/notifications.rs#load",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_mark_all_read",
+      "target": "src-tauri/src/commands/notifications.rs#load",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_mark_all_read",
+      "target": "src-tauri/src/commands/notifications.rs#save",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_open",
+      "target": "crates/hm-link/src/lib.rs#find",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_open",
+      "target": "src-tauri/src/cloud_list.rs#map",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_open",
+      "target": "src-tauri/src/cloud.rs#open_url",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_open",
+      "target": "src-tauri/src/commands/notifications.rs#http",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_open",
+      "target": "src-tauri/src/commands/notifications.rs#load",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_open",
+      "target": "src-tauri/src/commands/notifications.rs#report",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_open",
+      "target": "src-tauri/src/commands/notifications.rs#safe_link",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#notifications_open",
+      "target": "src-tauri/src/commands/notifications.rs#save",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#parse_feed",
+      "target": "src-tauri/src/cloud_list.rs#map",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#parses_the_contract_payload",
+      "target": "src-tauri/src/commands/notifications.rs#parse_feed",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#poll_once",
+      "target": "src-tauri/src/commands/identify.rs#title",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#poll_once",
+      "target": "src-tauri/src/commands/notifications.rs#apply",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#poll_once",
+      "target": "src-tauri/src/commands/notifications.rs#ensure_permission",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#poll_once",
+      "target": "src-tauri/src/commands/notifications.rs#feed_url",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#poll_once",
+      "target": "src-tauri/src/commands/notifications.rs#load",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#poll_once",
+      "target": "src-tauri/src/commands/notifications.rs#parse_feed",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#poll_once",
+      "target": "src-tauri/src/commands/notifications.rs#report",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#poll_once",
+      "target": "src-tauri/src/commands/notifications.rs#save",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#poll_once",
+      "target": "src-tauri/src/commands/notifications.rs#toasts_for",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#report",
+      "target": "crates/hm-connect/tests/client.rs#json",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#report",
+      "target": "src-tauri/src/commands/account.rs#post",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#report",
+      "target": "src-tauri/src/commands/install.rs#resolve_install_id",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#report",
+      "target": "src-tauri/src/commands/notifications.rs#event_body",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#save",
+      "target": "src-tauri/src/commands/notifications.rs#state_path",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#since_persists_as_newest_created_at_and_dedupes",
+      "target": "src-tauri/src/commands/notifications.rs#apply",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#spawn_poller",
+      "target": "crates/hm-ytmusic/src/innertube.rs#name",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#spawn_poller",
+      "target": "src-tauri/src/commands/notifications.rs#http",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#spawn_poller",
+      "target": "src-tauri/src/commands/notifications.rs#poll_once",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#state_path",
+      "target": "src-tauri/src/cloud_list.rs#map",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#summary_only_above_three",
+      "target": "crates/hm-audio/src/device.rs#collect",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#summary_only_above_three",
+      "target": "src-tauri/src/cloud_list.rs#map",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#summary_only_above_three",
+      "target": "src-tauri/src/commands/notifications.rs#item",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#summary_only_above_three",
+      "target": "src-tauri/src/commands/notifications.rs#toasts_for",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#toasts_for",
+      "target": "crates/hm-audio/src/device.rs#collect",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/notifications.rs#toasts_for",
+      "target": "src-tauri/src/cloud_list.rs#map",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
       "source": "src-tauri/src/commands/open_with.rs",
       "target": "src-tauri/src/commands/library.rs",
       "relation": "imports",
@@ -112316,6 +113407,12 @@
     },
     {
       "source": "src-tauri/src/control.rs#start",
+      "target": "src-tauri/src/commands/notifications.rs#http",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/control.rs#start",
       "target": "src-tauri/src/control.rs#handle",
       "relation": "calls",
       "confidence": "extracted"
@@ -112527,6 +113624,12 @@
     {
       "source": "src-tauri/src/lib.rs#run",
       "target": "src-tauri/src/commands/linux_audio_setup.rs#auto_setup_on_launch",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/lib.rs#run",
+      "target": "src-tauri/src/commands/notifications.rs#spawn_poller",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -112929,6 +114032,12 @@
     {
       "source": "src-tauri/src/tv_proxy.rs#start",
       "target": "crates/hm-ytmusic/src/innertube.rs#name",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/tv_proxy.rs#start",
+      "target": "src-tauri/src/commands/notifications.rs#http",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -115839,6 +116948,12 @@
     {
       "source": "src/components/TopBar.tsx",
       "target": "@/features/mode/ModeSwitch",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.tsx",
+      "target": "@/features/notifications/NotificationBell",
       "relation": "imports",
       "confidence": "extracted"
     },
@@ -126991,6 +128106,198 @@
       "confidence": "extracted"
     },
     {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "src/features/equalizer/EqVisualizer.tsx#EqVisualizer.render",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "src/features/notifications/NotificationBell.test.tsx#iso",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "src/features/notifications/NotificationBell.test.tsx#n",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "src/features/notifications/NotificationBell.tsx#recent",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "src/features/notifications/NotificationBell.test.tsx#iso",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "src/features/notifications/NotificationBell.test.tsx#n",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "@/lib/ipc",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "@testing-library/jest-dom/vitest",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "@testing-library/react",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "src/features/notifications/NotificationBell.tsx",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx",
+      "target": "vitest",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.test.tsx#n",
+      "target": "src/features/notifications/NotificationBell.test.tsx#iso",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx",
+      "target": "src/features/notifications/NotificationBell.tsx#ago",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx",
+      "target": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx",
+      "target": "src/features/notifications/NotificationBell.tsx#recent",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx",
+      "target": "@/lib/cn",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx",
+      "target": "@/lib/ipc",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx",
+      "target": "lucide-react",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx",
+      "target": "react",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/features/notifications/NotificationBell.tsx#ago",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/features/notifications/NotificationBell.tsx#NotificationBell.openItem",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/features/notifications/NotificationBell.tsx#recent",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/lib/cn.ts#cn",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/lib/ipc.ts#notificationsList",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/lib/ipc.ts#onNotificationsUpdated",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/styles/palette.test.ts#luminance.f",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/features/notifications/NotificationBell.tsx#NotificationBell.markAll",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/features/notifications/NotificationBell.tsx#NotificationBell.onDown",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/features/notifications/NotificationBell.tsx#NotificationBell.onKey",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell",
+      "target": "src/features/notifications/NotificationBell.tsx#NotificationBell.openItem",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell.markAll",
+      "target": "src/lib/ipc.ts#notificationsMarkAllRead",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/notifications/NotificationBell.tsx#NotificationBell.openItem",
+      "target": "src/lib/ipc.ts#notificationsOpen",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
       "source": "src/features/player/AlbumDeck.tsx",
       "target": "src/features/player/AlbumDeck.tsx#AlbumDeck",
       "relation": "contains",
@@ -134126,6 +135433,12 @@
     },
     {
       "source": "src/lib/ipc.ts",
+      "target": "src/lib/ipc.ts#AppNotification",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/ipc.ts",
       "target": "src/lib/ipc.ts#autoeqFetchApply",
       "relation": "contains",
       "confidence": "extracted"
@@ -134798,6 +136111,24 @@
     },
     {
       "source": "src/lib/ipc.ts",
+      "target": "src/lib/ipc.ts#notificationsList",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/ipc.ts",
+      "target": "src/lib/ipc.ts#notificationsMarkAllRead",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/ipc.ts",
+      "target": "src/lib/ipc.ts#notificationsOpen",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/ipc.ts",
       "target": "src/lib/ipc.ts#onConnectInbound",
       "relation": "contains",
       "confidence": "extracted"
@@ -134829,6 +136160,12 @@
     {
       "source": "src/lib/ipc.ts",
       "target": "src/lib/ipc.ts#onMediaCommand",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/lib/ipc.ts",
+      "target": "src/lib/ipc.ts#onNotificationsUpdated",
       "relation": "contains",
       "confidence": "extracted"
     },
@@ -135680,6 +137017,12 @@
     },
     {
       "source": "src/lib/ipc.ts#onMediaCommand",
+      "target": "src/stores/theme.ts#watchPrefersDark.handler",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/lib/ipc.ts#onNotificationsUpdated",
       "target": "src/stores/theme.ts#watchPrefersDark.handler",
       "relation": "calls",
       "confidence": "inferred"

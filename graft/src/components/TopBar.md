@@ -1,4 +1,4 @@
 # src/components/TopBar.tsx
 
-- TopBar · function · L23-L121 — function TopBar()
-- onKey · function · L45-L50 — onKey = (e: KeyboardEvent)
+- TopBar · function · L24-L124 — function TopBar()
+- onKey · function · L46-L51 — onKey = (e: KeyboardEvent)

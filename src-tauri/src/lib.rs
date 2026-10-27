@@ -234,6 +234,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
@@ -731,9 +732,16 @@ pub fn run() {
             // with no signup. Fire-and-forget; never affects the app.
             commands::install::spawn_tracking(app.handle().clone());
 
+            // Admin broadcast notifications: poll the feed, show native toasts,
+            // feed the top-bar bell. Fire-and-forget; silent when offline.
+            commands::notifications::spawn_poller(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::notifications::notifications_list,
+            commands::notifications::notifications_open,
+            commands::notifications::notifications_mark_all_read,
             commands::app::app_info,
             commands::audio::audio_output_devices,
             commands::audio::audio_set_default_output,

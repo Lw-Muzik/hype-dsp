@@ -22,9 +22,11 @@ const FILE_NAME: &str = "install-id";
 // Management API base: the same default and env override as `account.rs`.
 use super::account::DEFAULT_API;
 /// How often to heartbeat while running (the server rolls these up per-day).
+/// Which client this is, for the per-platform install base in the admin.
+const PLATFORM: &str = "desktop";
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 
-fn api_base() -> String {
+pub(crate) fn api_base() -> String {
     std::env::var("HM_MANAGEMENT_API").unwrap_or_else(|_| DEFAULT_API.to_string())
 }
 
@@ -118,6 +120,7 @@ pub fn spawn_tracking(app: AppHandle) {
                 .post(format!("{base}/installs"))
                 .json(&serde_json::json!({
                     "installId": id,
+                    "platform": PLATFORM,
                     "os": std::env::consts::OS,
                     "arch": std::env::consts::ARCH,
                     "appVersion": version,
@@ -129,7 +132,7 @@ pub fn spawn_tracking(app: AppHandle) {
             loop {
                 let _ = client
                     .post(&ping_url)
-                    .json(&serde_json::json!({ "appVersion": version }))
+                    .json(&serde_json::json!({ "platform": PLATFORM, "appVersion": version }))
                     .send();
                 std::thread::sleep(HEARTBEAT_INTERVAL);
             }

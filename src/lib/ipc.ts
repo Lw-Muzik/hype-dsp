@@ -1816,3 +1816,36 @@ export function sessionLoad(): Promise<string | null> {
 export function sessionSave(json: string | null): Promise<void> {
   return invoke<void>("session_save", { json });
 }
+
+/* ------------------------------------------------------- Notifications ---- */
+
+/** An admin broadcast cached on this computer, with its read state. */
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  link: string | null;
+  /** ISO 8601 UTC. */
+  createdAt: string;
+  read: boolean;
+}
+
+/** The cached feed, newest first. */
+export function notificationsList(): Promise<AppNotification[]> {
+  return invoke<AppNotification[]>("notifications_list");
+}
+
+/** Mark an item read, report `opened`, and open its https link in the browser.
+ *  Returns the updated list. */
+export function notificationsOpen(id: string): Promise<AppNotification[]> {
+  return invoke<AppNotification[]>("notifications_open", { id });
+}
+
+export function notificationsMarkAllRead(): Promise<AppNotification[]> {
+  return invoke<AppNotification[]>("notifications_mark_all_read");
+}
+
+/** The background poll found new items (payload: how many). */
+export function onNotificationsUpdated(handler: (count: number) => void): Promise<UnlistenFn> {
+  return listen<number>("notifications://updated", (e) => handler(e.payload));
+}

@@ -16,11 +16,11 @@ compression: lzo
 
 apps:
   lw-ziki-amp:
-    command: usr/bin/lw-ziki-amp
+    command: usr/bin/hypemuzik
     # Provides the GTK/WebKitGTK runtime + desktop integration the Tauri
     # webview needs, and fixes up the bundled .desktop file.
     extensions: [gnome]
-    desktop: usr/share/applications/lw-ziki-amp.desktop
+    desktop: usr/share/applications/HypeMuzik.desktop
     plugs:
       - home            # open/play files from the user's folders
       - removable-media # ...and from mounted drives

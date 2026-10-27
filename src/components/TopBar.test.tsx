@@ -17,6 +17,7 @@ vi.mock("@/components/LevelMeter", () => ({ LevelMeter: () => null }));
 vi.mock("@/components/PowerToggle", () => ({ PowerToggle: () => null }));
 vi.mock("@/features/update/UpdatePill", () => ({ UpdatePill: () => null }));
 vi.mock("@/features/mode/ModeSwitch", () => ({ ModeSwitch: () => null }));
+vi.mock("@/features/notifications/NotificationBell", () => ({ NotificationBell: () => null }));
 
 const PHONE: DeviceInfo = {
   id: "phone", kind: "mobile", name: "Pixel", platform: null, appVersion: null,

@@ -12,6 +12,7 @@
     "core:window:allow-close",
     "core:window:allow-set-fullscreen",
     "opener:default",
+    "notification:default",
     "store:default",
     "dialog:default",
     "dialog:allow-open",

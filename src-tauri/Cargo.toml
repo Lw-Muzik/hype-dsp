@@ -21,6 +21,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2.11.3", features = ["tray-icon", "image-png"] }
 libc = "0.2"
 tauri-plugin-opener = "2.5.4"
+tauri-plugin-notification = "2"
 tauri-plugin-store = "2.4.3"
 tauri-plugin-dialog = "2.7.1"
 # Forwards a "open this file" second launch (Windows/Linux) to the running

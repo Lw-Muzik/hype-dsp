@@ -12,6 +12,7 @@ import { TITLEBAR_INSET, isMac } from "@/lib/platform";
 import { openSettings } from "@/lib/ipc";
 import { UpdatePill } from "@/features/update/UpdatePill";
 import { ModeSwitch } from "@/features/mode/ModeSwitch";
+import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { useRemoteStore } from "@/features/connect/remote/store";
 import { useRemoteVolume } from "@/features/connect/remote/ui/useRemoteVolume";
 
@@ -105,6 +106,8 @@ export function TopBar() {
         </div>
 
         <PowerToggle on={power} onToggle={setPower} />
+
+        <NotificationBell />
 
         <button
           type="button"

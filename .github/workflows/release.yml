@@ -6,11 +6,20 @@ name: Release
 #   the installers to a DRAFT GitHub Release for that tag.
 # - Run manually (workflow_dispatch) → builds all three and uploads the
 #   installers as downloadable workflow artifacts (no release).
+# - The Linux .snap is also published to the Snap Store as `hype-muzik-app`:
+#   tag pushes release it to `stable`; manual runs release it only to the
+#   channel picked below (default: none = build only).
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      snap_channel:
+        description: "Snap Store channel to release the .snap to (none = build only)"
+        type: choice
+        options: [none, edge, beta, candidate, stable]
+        default: none
 
 permissions:
   contents: write
@@ -215,7 +224,7 @@ jobs:
       - name: Upload the .snap as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lw-ziki-amp
+          name: hype-muzik-app
           if-no-files-found: error
           retention-days: 14
           path: ${{ steps.snap.outputs.snap }}
@@ -231,6 +240,38 @@ jobs:
           # published when draft is false.
           draft: false
           files: ${{ steps.snap.outputs.snap }}
+
+      # Same secret-guard pattern as publish-crabnebula below: the `secrets`
+      # context isn't usable in `if:`, so the check runs in the shell. A missing
+      # secret is a visible warning rather than a failure, because the GitHub
+      # release (and the attached .snap) has already shipped by this point.
+      - name: Resolve the Snap Store channel
+        id: store
+        shell: bash
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          CHANNEL: ${{ github.event_name == 'push' && 'stable' || inputs.snap_channel }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CHANNEL:-}" ] || [ "$CHANNEL" = "none" ]; then
+            echo "No Snap Store channel selected — build only."
+            exit 0
+          fi
+          if [ -z "${SNAPCRAFT_STORE_CREDENTIALS:-}" ]; then
+            echo "::warning::SNAPCRAFT_STORE_CREDENTIALS is not set — the snap was NOT published to the Snap Store."
+            exit 0
+          fi
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "Publishing to the Snap Store channel: $CHANNEL"
+
+      - name: Publish to the Snap Store
+        if: steps.store.outputs.channel != ''
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.snap.outputs.snap }}
+          release: ${{ steps.store.outputs.channel }}
 
   # The updater's manifest must carry a key for every platform we ship, or that
   # platform's users are told "no update available" forever. A universal macOS

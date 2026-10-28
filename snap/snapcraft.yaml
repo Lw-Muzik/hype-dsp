@@ -1,4 +1,6 @@
-name: lw-ziki-amp
+# Must match the name registered in the Snap Store (dashboard.snapcraft.io).
+name: hype-muzik-app
+title: HypeMuzik
 # core24 (not core22): the release .deb is built on ubuntu-24.04 (glibc 2.39, for
 # a libpipewire new enough for the system-EQ backend), so the snap runtime must
 # match or the binary won't load. core24 also supplies a modern libpipewire.
@@ -10,12 +12,17 @@ description: |
   HypeMuzik is a desktop audio enhancer and player: a real-time DSP chain
   (EQ, bass boost, surround, room reverb), local / cloud / phone music
   libraries, MilkDrop and in-app visualizers, lyrics, and more.
+# Store listing icon (256×256 PNG).
+icon: src-tauri/icons/128x128@2x.png
+website: https://hypemuzik.com
+source-code: https://github.com/Lw-Muzik/hype-dsp
+issues: https://github.com/Lw-Muzik/hype-dsp/issues
 grade: stable
 confinement: strict
 compression: lzo
 
 apps:
-  lw-ziki-amp:
+  hype-muzik-app:
     command: usr/bin/hypemuzik
     # Provides the GTK/WebKitGTK runtime + desktop integration the Tauri
     # webview needs, and fixes up the bundled .desktop file.
@@ -32,7 +39,7 @@ apps:
       - avahi-observe   # mDNS discovery for Phone Link
 
 parts:
-  lw-ziki-amp:
+  hype-muzik-app:
     plugin: nil
     # The release build's Linux .deb is staged next to this file as `app.deb`
     # by CI; extract its payload (binary + desktop file + icons + visualizer

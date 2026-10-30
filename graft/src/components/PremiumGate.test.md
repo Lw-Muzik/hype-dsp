@@ -1,3 +1,3 @@
 # src/components/PremiumGate.test.tsx
 
-- isUnlockToast · function · L333-L333 — isUnlockToast = (m: string)
+_No extracted symbols in this file._

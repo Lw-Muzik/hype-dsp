@@ -1,3 +1,3 @@
 # src/components/Sidebar.tsx
 
-- Sidebar · function · L15-L101 — function Sidebar()
+- Sidebar · function · L17-L112 — function Sidebar()

@@ -1,272 +1,272 @@
 # src/lib/ipc.ts
 
-- appInfo · function · L77-L79 — function appInfo(): Promise<AppInfo>
-- outputDevices · function · L82-L84 — function outputDevices(): Promise<OutputDevice[]>
-- setDefaultOutput · function · L88-L90 — function setDefaultOutput(uid: string): Promise<void>
-- listInputDevices · function · L93-L95 — function listInputDevices(): Promise<DeviceInfo[]>
-- engineGetState · function · L98-L100 — function engineGetState(): Promise<EngineState>
-- engineSetPower · function · L103-L105 — function engineSetPower(power: boolean): Promise<void>
-- engineSetMasterVolume · function · L108-L110 — function engineSetMasterVolume(volume: number): Promise<void>
-- engineSetEq · function · L113-L119 — function engineSetEq( bands: number[], preGain: number, enabled: boolean, ): Promise<void>
-- engineSetBass · function · L122-L129 — function engineSetBass( enabled: boolean, amount: number, harmonics: boolean, adaptive: boolean, ): Promise<void>
-- engineSetSpatializer · function · L132-L138 — function engineSetSpatializer( enabled: boolean, amount: number, mode: SpatialMode, ): Promise<void>
-- engineSetSurround3d · function · L141-L153 — function engineSetSurround3d( enabled: boolean, intensity: number, subwoofer: number, speakers: SurroundSpeakers, ): Promise<void>
-- engineSetRoom · function · L156-L158 — function engineSetRoom(room: RoomState): Promise<void>
-- engineSetConvolver · function · L161-L163 — function engineSetConvolver(convolver: ConvolverState): Promise<void>
-- engineSetCompander · function · L166-L168 — function engineSetCompander(compander: CompanderState): Promise<void>
-- engineSetOutput · function · L171-L173 — function engineSetOutput(output: OutputState): Promise<void>
-- engineSetSaturation · function · L175-L177 — function engineSetSaturation(saturation: SaturationState): Promise<void>
-- engineScriptCompile · function · L185-L187 — function engineScriptCompile(source: string): Promise<void>
-- engineSetScript · function · L190-L192 — function engineSetScript(enabled: boolean): Promise<void>
-- ConvolverIrInfo · interface · L194-L199 — interface ConvolverIrInfo
-- engineConvolverLoadIr · function · L202-L204 — function engineConvolverLoadIr(path: string): Promise<ConvolverIrInfo>
-- cloudStatus · function · L209-L211 — function cloudStatus(): Promise<CloudStatus>
-- cloudConnect · function · L215-L217 — function cloudConnect(provider: CloudProvider): Promise<CloudAccount>
-- cloudDisconnect · function · L220-L222 — function cloudDisconnect(accountId: string): Promise<void>
-- cloudList · function · L225-L230 — function cloudList( accountId: string, folder: string, ): Promise<CloudEntry[]>
-- cloudAllAudio · function · L237-L242 — function cloudAllAudio( accountId: string, refresh = false, ): Promise<CloudAudioPage>
-- cloudCachedTags · function · L248-L254 — function cloudCachedTags( accountId: string, ): Promise<Record<string, CloudTrackMeta>>
-- cloudTrackMetadata · function · L258-L268 — function cloudTrackMetadata( accountId: string, fileId: string, name: string, ): Promise<CloudTrackMeta | null>
-- cloudTrackTags · function · L273-L283 — function cloudTrackTags( accountId: string, fileId: string, name: string, ): Promise<CloudTrackMeta | null>
-- cloudTrackCover · function · L287-L297 — function cloudTrackCover( accountId: string, fileId: string, name: string, ): Promise<string | null>
-- cloudPlay · function · L300-L302 — function cloudPlay(accountId: string, fileId: string): Promise<void>
-- CloudQueueItem · interface · L305-L308 — interface CloudQueueItem
-- playerPlayCloudQueue · function · L312-L318 — function playerPlayCloudQueue( accountId: string, items: CloudQueueItem[], start: number, ): Promise<void>
-- ytmusicStatus · function · L323-L325 — function ytmusicStatus(): Promise<YtMusicStatus>
-- ytmusicSignIn · function · L329-L331 — function ytmusicSignIn(): Promise<YtMusicStatus>
-- ytmusicSignOut · function · L334-L336 — function ytmusicSignOut(): Promise<void>
-- ytmusicSetup · function · L342-L344 — function ytmusicSetup(): Promise<YtMusicStatus>
-- ytmusicAllTracks · function · L349-L351 — function ytmusicAllTracks(refresh = false): Promise<YtMusicPage>
-- ytmusicExploreCategories · function · L354-L356 — function ytmusicExploreCategories(): Promise<ExploreSection[]>
-- ytmusicExplorePage · function · L360-L362 — function ytmusicExplorePage(params: string): Promise<ExploreShelf[]>
-- ytmusicExploreTracks · function · L366-L368 — function ytmusicExploreTracks(item: ExploreItem): Promise<YtTrack[]>
-- ytmusicSearch · function · L375-L377 — function ytmusicSearch(query: string, filter: string): Promise<ExploreShelf[]>
-- ytmusicSearchSuggestions · function · L384-L386 — function ytmusicSearchSuggestions(query: string): Promise<string[]>
-- ytmusicRadio · function · L389-L391 — function ytmusicRadio(videoId: string): Promise<RadioBatch>
-- ytmusicRadioContinue · function · L394-L396 — function ytmusicRadioContinue(videoId: string, token: string): Promise<RadioBatch>
-- ytmusicArtistPage · function · L399-L401 — function ytmusicArtistPage(browseId: string): Promise<ExploreShelf[]>
-- ytmusicVideoUrl · function · L410-L412 — function ytmusicVideoUrl(videoId: string): Promise<string>
-- ytmusicPrefetch · function · L423-L425 — function ytmusicPrefetch(videoId: string): Promise<void>
-- ytmusicPrefetchBatch · function · L429-L431 — function ytmusicPrefetchBatch(videoIds: string[]): Promise<void>
-- ytmusicVideoPrefetch · function · L436-L438 — function ytmusicVideoPrefetch(videoId: string): Promise<void>
-- ytmusicPlay · function · L442-L450 — function ytmusicPlay( videoId: string, durationSecs?: number | null, ): Promise<void>
-- YtQueueItem · interface · L453-L460 — interface YtQueueItem
-- playerPlayYtmusicQueue · function · L464-L469 — function playerPlayYtmusicQueue( items: YtQueueItem[], start: number, ): Promise<void>
-- ytmusicDownload · function · L473-L475 — function ytmusicDownload(videoId: string): Promise<string>
-- ytmusicDownloadToPhone · function · L478-L483 — function ytmusicDownloadToPhone( videoId: string, deviceId: string, ): Promise<void>
-- linkUpload · function · L486-L488 — function linkUpload(deviceId: string, path: string): Promise<void>
-- ytmusicDownloadDir · function · L491-L493 — function ytmusicDownloadDir(): Promise<string>
-- ytmusicSetDownloadDir · function · L497-L499 — function ytmusicSetDownloadDir(dir: string | null): Promise<string>
-- onYtDownload · function · L503-L507 — function onYtDownload( handler: (p: YtDownloadProgress) => void, ): Promise<UnlistenFn>
-- linkDiscover · function · L512-L514 — function linkDiscover(): Promise<PhoneDevice[]>
-- linkPaired · function · L517-L519 — function linkPaired(): Promise<PhoneDevice[]>
-- linkDiscoverStart · function · L522-L524 — function linkDiscoverStart(): Promise<void>
-- linkDiscoverStop · function · L527-L529 — function linkDiscoverStop(): Promise<void>
-- onPhoneFound · function · L532-L536 — function onPhoneFound( handler: (device: PhoneDevice) => void, ): Promise<UnlistenFn>
-- onPairedOnline · function · L541-L545 — function onPairedOnline( handler: (deviceId: string) => void, ): Promise<UnlistenFn>
-- linkPair · function · L548-L556 — function linkPair( host: string, port: number, name: string, deviceId: string, pin: string, ): Promise<PhoneDevice>
-- linkPairAddress · function · L560-L566 — function linkPairAddress( host: string, port: number, pin: string, ): Promise<PhoneDevice>
-- linkUnpair · function · L569-L571 — function linkUnpair(deviceId: string): Promise<void>
-- RemotePairingInfo · interface · L576-L580 — interface RemotePairingInfo
-- RemotePhoneStatus · interface · L583-L588 — interface RemotePhoneStatus
-- linkRemoteQr · function · L591-L593 — function linkRemoteQr(): Promise<RemotePairingInfo>
-- linkRemoteCancel · function · L596-L598 — function linkRemoteCancel(): Promise<void>
-- linkRemoteStatus · function · L601-L603 — function linkRemoteStatus(): Promise<RemotePhoneStatus[]>
-- linkRemoteConnect · function · L606-L608 — function linkRemoteConnect(): Promise<RemotePhoneStatus[]>
-- linkRemoteForget · function · L611-L613 — function linkRemoteForget(deviceId: string): Promise<void>
-- onRemoteConnected · function · L616-L620 — function onRemoteConnected( handler: (deviceId: string) => void, ): Promise<UnlistenFn>
-- linkLibrary · function · L623-L625 — function linkLibrary(deviceId: string): Promise<PhoneTrack[]>
-- linkArtwork · function · L628-L633 — function linkArtwork( deviceId: string, trackId: string, ): Promise<string | null>
-- linkLyrics · function · L637-L642 — function linkLyrics( deviceId: string, trackId: string, ): Promise<string | null>
-- linkPlay · function · L647-L659 — function linkPlay( deviceId: string, trackId: string, ext: string, durationSecs?: number | null, ): Promise<void>
-- PhoneQueueItem · interface · L662-L665 — interface PhoneQueueItem
-- linkPlayQueue · function · L668-L674 — function linkPlayQueue( deviceId: string, items: PhoneQueueItem[], start: number, ): Promise<void>
-- LinkNowPlaying · interface · L677-L681 — interface LinkNowPlaying
-- onLinkNowPlaying · function · L684-L688 — function onLinkNowPlaying( handler: (np: LinkNowPlaying) => void, ): Promise<UnlistenFn>
-- profileList · function · L691-L693 — function profileList(): Promise<HeadphoneProfile[]>
-- profileSetActive · function · L696-L698 — function profileSetActive(id: string): Promise<HeadphoneProfile>
-- profileClear · function · L701-L703 — function profileClear(): Promise<void>
-- eqListPresets · function · L706-L708 — function eqListPresets(): Promise<EqPreset[]>
-- eqApplyPreset · function · L711-L713 — function eqApplyPreset(id: string): Promise<EqPreset>
-- eqSaveCustom · function · L716-L722 — function eqSaveCustom( name: string, bands: number[], preGain: number, ): Promise<EqPreset>
-- eqUpdate · function · L725-L727 — function eqUpdate(preset: EqPreset): Promise<void>
-- eqDelete · function · L730-L732 — function eqDelete(id: string): Promise<void>
-- playerPlayFile · function · L735-L737 — function playerPlayFile(path: string): Promise<void>
-- playerPlayRadio · function · L740-L742 — function playerPlayRadio(url: string): Promise<void>
-- playerPlayQueue · function · L745-L747 — function playerPlayQueue(paths: string[], start: number): Promise<void>
-- engineSetPlayback · function · L750-L755 — function engineSetPlayback( gapless: boolean, crossfadeSecs: number, ): Promise<void>
-- engineSetDataSaver · function · L758-L760 — function engineSetDataSaver(on: boolean): Promise<void>
-- engineSetAutoplay · function · L763-L765 — function engineSetAutoplay(on: boolean): Promise<void>
-- onQueueIndex · function · L768-L772 — function onQueueIndex( handler: (index: number) => void, ): Promise<UnlistenFn>
-- playerStop · function · L775-L777 — function playerStop(): Promise<void>
-- playerPause · function · L780-L782 — function playerPause(): Promise<void>
-- playerResume · function · L785-L787 — function playerResume(): Promise<void>
-- playerSeek · function · L790-L792 — function playerSeek(secs: number): Promise<void>
-- playerPlayCapture · function · L795-L797 — function playerPlayCapture(): Promise<void>
-- captureVirtualAvailable · function · L800-L802 — function captureVirtualAvailable(): Promise<boolean>
-- playerPlaySystemAudio · function · L806-L808 — function playerPlaySystemAudio(): Promise<void>
-- stopSystemAudio · function · L811-L813 — function stopSystemAudio(): Promise<void>
-- systemAudioAvailable · function · L817-L819 — function systemAudioAvailable(): Promise<boolean>
-- SystemAudioStatus · interface · L822-L839 — interface SystemAudioStatus
-- systemAudioStatus · function · L842-L844 — function systemAudioStatus(): Promise<SystemAudioStatus>
-- ApoSetupOutcome · type · L847-L847 — type ApoSetupOutcome = "needsReboot";
-- apoSetup · function · L852-L854 — function apoSetup(): Promise<ApoSetupOutcome>
-- apoUninstall · function · L857-L859 — function apoUninstall(): Promise<void>
-- apoRepair · function · L863-L865 — function apoRepair(): Promise<void>
-- SystemEqRuntimeStatus · type · L871-L871 — type SystemEqRuntimeStatus = "active" | "recovering" | "disabled";
-- systemEqStatus · function · L875-L877 — function systemEqStatus(): Promise<SystemEqRuntimeStatus>
-- systemAudioInstallDriver · function · L882-L884 — function systemAudioInstallDriver(): Promise<void>
-- RoutingSetupPhase · type · L888-L888 — type RoutingSetupPhase = "downloading" | "installing" | "detecting";
-- RoutingSetupOutcome · type · L893-L893 — type RoutingSetupOutcome = "ready" | "needsReboot";
-- systemAudioSetupRouting · function · L899-L901 — function systemAudioSetupRouting(): Promise<RoutingSetupOutcome>
-- LinuxSetupResult · type · L907-L912 — type LinuxSetupResult = | { kind: "alreadyReady" } | { kind: "installed" } | { kind: "needsManual"; command: string } | { kind: "notApplicable" } | { kind: "failed"; message: string; command: string };
-- linuxSystemAudioSetup · function · L919-L921 — function linuxSystemAudioSetup(): Promise<LinuxSetupResult>
-- systemEqSetScope · function · L925-L927 — function systemEqSetScope(scope: SystemEqScope): Promise<void>
-- visualizerAvailable · function · L930-L932 — function visualizerAvailable(): Promise<boolean>
-- visualizerPresetNames · function · L935-L937 — function visualizerPresetNames(): Promise<string[]>
-- visualizerStart · function · L941-L953 — function visualizerStart(opts?: { fps?: number; beat?: number; presetSecs?: number; preset?: string; }): Promise<void>
-- visualizerSetPreset · function · L956-L958 — function visualizerSetPreset(preset: string): Promise<void>
-- visualizerStop · function · L961-L963 — function visualizerStop(): Promise<void>
-- visualizerIsOpen · function · L966-L968 — function visualizerIsOpen(): Promise<boolean>
-- SceneInfo · interface · L973-L978 — interface SceneInfo
-- sceneList · function · L981-L983 — function sceneList(): Promise<SceneInfo[]>
-- sceneSelected · function · L986-L988 — function sceneSelected(): Promise<string>
-- sceneSelect · function · L991-L993 — function sceneSelect(id: string): Promise<void>
-- playerIsPlaying · function · L996-L998 — function playerIsPlaying(): Promise<boolean>
-- mixerListSessions · function · L1002-L1004 — function mixerListSessions(): Promise<MixerSnapshot>
-- mixerSetVolume · function · L1005-L1007 — function mixerSetVolume(id: string, gain: number): Promise<void>
-- mixerSetMuted · function · L1008-L1010 — function mixerSetMuted(id: string, muted: boolean): Promise<void>
-- licenseStatus · function · L1014-L1016 — function licenseStatus(): Promise<LicenseStatus>
-- licenseActivate · function · L1017-L1019 — function licenseActivate(key: string): Promise<LicenseStatus>
-- licenseDeactivate · function · L1020-L1022 — function licenseDeactivate(): Promise<void>
-- accountStatus · function · L1026-L1028 — function accountStatus(): Promise<AccountStatus>
-- accountSignup · function · L1030-L1032 — function accountSignup(email: string, name?: string): Promise<void>
-- accountRequestOtp · function · L1034-L1036 — function accountRequestOtp(email: string): Promise<void>
-- accountVerify · function · L1038-L1043 — function accountVerify( email: string, code: string, ): Promise<AccountStatus>
-- accountLogout · function · L1044-L1046 — function accountLogout(): Promise<void>
-- accountHeartbeat · function · L1047-L1052 — function accountHeartbeat( platform: string, appVersion: string, ): Promise<void>
-- accountBootstrapAnonymous · function · L1057-L1059 — function accountBootstrapAnonymous(): Promise<AccountStatus>
-- accountClaimRequest · function · L1064-L1066 — function accountClaimRequest(email: string): Promise<void>
-- accountClaimVerify · function · L1070-L1080 — function accountClaimVerify( email: string, code: string, name?: string, ): Promise<AccountStatus>
-- accountEntitlements · function · L1086-L1088 — function accountEntitlements(): Promise<boolean>
-- accountSupportCheckout · function · L1094-L1102 — function accountSupportCheckout( amount: number, currency?: string, ): Promise<string>
-- accountSupportRestore · function · L1108-L1110 — function accountSupportRestore(email: string): Promise<boolean>
-- openExternalUrl · function · L1114-L1116 — function openExternalUrl(url: string): Promise<void>
-- StemSource · type · L1121-L1123 — type StemSource = | { kind: "file"; path: string } | { kind: "ytmusic"; videoId: string };
-- StemStatus · interface · L1125-L1132 — interface StemStatus
-- stemsStatus · function · L1134-L1136 — function stemsStatus(source: StemSource | null): Promise<StemStatus>
-- stemsInstall · function · L1138-L1140 — function stemsInstall(): Promise<void>
-- stemsInstallCancel · function · L1141-L1143 — function stemsInstallCancel(): Promise<void>
-- stemsArm · function · L1147-L1149 — function stemsArm(source: StemSource): Promise<void>
-- stemsSetGain · function · L1151-L1153 — function stemsSetGain(stem: number, gain: number): Promise<void>
-- stemsReset · function · L1155-L1157 — function stemsReset(): Promise<void>
-- stemsGains · function · L1158-L1160 — function stemsGains(): Promise<number[]>
-- onStemsProgress · function · L1162-L1166 — function onStemsProgress( handler: (value: number) => void, ): Promise<UnlistenFn>
-- onStemsError · function · L1168-L1172 — function onStemsError( handler: (message: string) => void, ): Promise<UnlistenFn>
-- onStemsDownload · function · L1174-L1180 — function onStemsDownload( handler: (p: { done: number; total: number }) => void, ): Promise<UnlistenFn>
-- libraryScan · function · L1185-L1187 — function libraryScan(dir: string): Promise<number>
-- libraryRefreshTags · function · L1191-L1193 — function libraryRefreshTags(): Promise<number>
-- RecognitionResult · interface · L1196-L1202 — interface RecognitionResult
-- identifyTrack · function · L1205-L1207 — function identifyTrack(path: string): Promise<RecognitionResult | null>
-- libraryIdentifyMissing · function · L1211-L1213 — function libraryIdentifyMissing(): Promise<number>
-- libraryList · function · L1216-L1218 — function libraryList(): Promise<LibraryTrack[]>
-- libraryCount · function · L1221-L1223 — function libraryCount(): Promise<number>
-- libraryAvailableCount · function · L1227-L1229 — function libraryAvailableCount(): Promise<number>
-- libraryListPage · function · L1233-L1235 — function libraryListPage(offset: number, limit: number): Promise<LibraryPage>
-- openFiles · function · L1242-L1244 — function openFiles(paths: string[]): Promise<LibraryTrack[]>
-- takePendingOpenFiles · function · L1248-L1250 — function takePendingOpenFiles(): Promise<string[]>
-- onOpenFiles · function · L1253-L1257 — function onOpenFiles( handler: (paths: string[]) => void, ): Promise<UnlistenFn>
-- libraryRemove · function · L1260-L1262 — function libraryRemove(path: string): Promise<void>
-- libraryArtwork · function · L1266-L1268 — function libraryArtwork(path: string): Promise<string | null>
-- lyricsFetch · function · L1272-L1284 — function lyricsFetch( title: string, artist: string | null, durationSecs: number | null, path: string | null, ): Promise<string | null>
-- LibraryScanProgress · interface · L1287-L1290 — interface LibraryScanProgress
-- onLibraryScanProgress · function · L1293-L1299 — function onLibraryScanProgress( handler: (p: LibraryScanProgress) => void, ): Promise<UnlistenFn>
-- playlistList · function · L1301-L1303 — function playlistList(): Promise<Playlist[]>
-- playlistCreate · function · L1304-L1306 — function playlistCreate(name: string): Promise<Playlist>
-- playlistRename · function · L1307-L1309 — function playlistRename(id: string, name: string): Promise<void>
-- playlistDelete · function · L1310-L1312 — function playlistDelete(id: string): Promise<void>
-- playlistTracks · function · L1313-L1315 — function playlistTracks(id: string): Promise<LibraryTrack[]>
-- playlistAdd · function · L1316-L1318 — function playlistAdd(id: string, path: string): Promise<void>
-- playlistRemove · function · L1319-L1321 — function playlistRemove(id: string, path: string): Promise<void>
-- playlistReorder · function · L1322-L1324 — function playlistReorder(id: string, paths: string[]): Promise<void>
-- radioSearch · function · L1329-L1331 — function radioSearch(query: string): Promise<RadioStation[]>
-- radioAfricanCountries · function · L1334-L1336 — function radioAfricanCountries(): Promise<RadioCountry[]>
-- radioByCountry · function · L1339-L1341 — function radioByCountry(code: string): Promise<RadioStation[]>
-- radioFavoritesList · function · L1342-L1344 — function radioFavoritesList(): Promise<RadioStation[]>
-- radioFavoriteAdd · function · L1345-L1347 — function radioFavoriteAdd(station: RadioStation): Promise<void>
-- radioFavoriteRemove · function · L1348-L1350 — function radioFavoriteRemove(id: string): Promise<void>
-- tvSearch · function · L1355-L1357 — function tvSearch(query: string): Promise<TvChannel[]>
-- tvCheckAlive · function · L1361-L1363 — function tvCheckAlive(channels: TvChannel[]): Promise<string[]>
-- tvByCountry · function · L1366-L1368 — function tvByCountry(code: string): Promise<TvChannel[]>
-- tvByCategory · function · L1371-L1373 — function tvByCategory(id: string): Promise<TvChannel[]>
-- tvCategories · function · L1376-L1378 — function tvCategories(): Promise<TvCategory[]>
-- tvCountries · function · L1381-L1383 — function tvCountries(): Promise<TvCountry[]>
-- tvFavoritesList · function · L1385-L1387 — function tvFavoritesList(): Promise<TvChannel[]>
-- tvFavoriteAdd · function · L1389-L1391 — function tvFavoriteAdd(channel: TvChannel): Promise<void>
-- tvFavoriteRemove · function · L1393-L1395 — function tvFavoriteRemove(id: string): Promise<void>
-- tvStreamUrl · function · L1399-L1401 — function tvStreamUrl(channel: TvChannel): Promise<string>
-- toArchiveMovie · function · L1409-L1411 — function toArchiveMovie(raw: Omit<ArchiveMovie, "source">): ArchiveMovie
-- moviesBrowse · function · L1414-L1418 — function moviesBrowse(collection: string, page: number): Promise<Movie[]>
-- moviesSearch · function · L1424-L1428 — function moviesSearch(query: string, page: number): Promise<Movie[]>
-- moviesResolve · function · L1431-L1433 — function moviesResolve(identifier: string): Promise<MovieDetail>
-- ytMoviesChannel · function · L1441-L1454 — function ytMoviesChannel(channelId: string, limit: number): Promise<Movie[]>
-- pickFolder · function · L1457-L1460 — async function pickFolder(): Promise<string | null>
-- onProgress · function · L1463-L1467 — function onProgress( handler: (p: TransportProgress) => void, ): Promise<UnlistenFn>
-- MediaCommand · interface · L1470-L1475 — interface MediaCommand
-- onMediaCommand · function · L1478-L1482 — function onMediaCommand( handler: (cmd: MediaCommand) => void, ): Promise<UnlistenFn>
-- onEngineFrame · function · L1487-L1491 — function onEngineFrame( handler: (frame: EngineFrame) => void, ): Promise<UnlistenFn>
-- UpdaterStatus · type · L1497-L1503 — type UpdaterStatus = | { state: "idle" } | { state: "checking" } /** `total` is null for a chunked response — show indeterminate, not 0%. */ | { state: "downloading"; version: string; received: number; total: number | null } | { state: "ready"; version: string; notes: string | null } | { state: "failed"; message: string };
-- updaterStatus · function · L1506-L1508 — function updaterStatus(): Promise<UpdaterStatus>
-- updaterCheckNow · function · L1512-L1514 — function updaterCheckNow(): Promise<void>
-- updaterRestartNow · function · L1518-L1520 — function updaterRestartNow(): Promise<void>
-- onUpdaterStatus · function · L1523-L1527 — function onUpdaterStatus( handler: (status: UpdaterStatus) => void, ): Promise<UnlistenFn>
-- onTransport · function · L1530-L1534 — function onTransport( handler: (playing: boolean) => void, ): Promise<UnlistenFn>
-- onNowPlaying · function · L1537-L1541 — function onNowPlaying( handler: (meta: TrackMeta) => void, ): Promise<UnlistenFn>
-- EqImportResult · interface · L1546-L1549 — interface EqImportResult
-- engineEqImportGraphic · function · L1551-L1553 — function engineEqImportGraphic(curve: string): Promise<EqImportResult>
-- engineEqImportVdc · function · L1556-L1558 — function engineEqImportVdc(path: string): Promise<EqImportResult>
-- ddcList · function · L1561-L1563 — function ddcList(): Promise<string[]>
-- engineEqApplyDdc · function · L1566-L1568 — function engineEqApplyDdc(name: string): Promise<EqImportResult>
-- autoeqSearch · function · L1571-L1573 — function autoeqSearch(query: string, limit?: number): Promise<AutoEqEntry[]>
-- autoeqFetchApply · function · L1576-L1578 — function autoeqFetchApply(url: string): Promise<EqImportResult>
-- pickAudioFile · function · L1582-L1589 — async function pickAudioFile(): Promise<string | null>
-- chainPresetList · function · L1594-L1596 — function chainPresetList(): Promise<ChainPreset[]>
-- chainPresetSave · function · L1599-L1601 — function chainPresetSave(name: string): Promise<ChainPreset>
-- chainPresetApply · function · L1604-L1606 — function chainPresetApply(id: string): Promise<void>
-- chainPresetDelete · function · L1609-L1611 — function chainPresetDelete(id: string): Promise<void>
-- chainPresetExport · function · L1614-L1616 — function chainPresetExport(id: string, path: string): Promise<void>
-- chainPresetImport · function · L1619-L1621 — function chainPresetImport(path: string): Promise<ChainPreset>
-- ConnectConnection · type · L1628-L1633 — type ConnectConnection = | { state: "connecting"; attempt: number } | { state: "connected"; deviceId: string } | { state: "waiting"; attempt: number; retryInMs: number; reason: string } | { state: "no_session" } | { state: "stopped"; reason: "unlinked" | "replaced" | "shutdown" | "tls_unavailable" };
-- ConnectStatus · interface · L1635-L1643 — interface ConnectStatus
-- ConnectLinkTicket · interface · L1646-L1651 — interface ConnectLinkTicket
-- ConnectLinkPollStatus · type · L1653-L1653 — type ConnectLinkPollStatus = "pending" | "approved" | "denied" | "expired";
-- ConnectLinkPreview · interface · L1656-L1661 — interface ConnectLinkPreview
-- ConnectDevices · interface · L1663-L1666 — interface ConnectDevices
-- connectStatus · function · L1668-L1670 — function connectStatus(): Promise<ConnectStatus>
-- connectSetEnabled · function · L1673-L1675 — function connectSetEnabled(enabled: boolean): Promise<ConnectStatus>
-- connectSend · function · L1678-L1680 — function connectSend(frame: ConnectFrame): Promise<void>
-- connectLinkStart · function · L1683-L1685 — function connectLinkStart(): Promise<ConnectLinkTicket>
-- connectLinkPoll · function · L1689-L1691 — function connectLinkPoll(): Promise<{ status: ConnectLinkPollStatus }>
-- connectLinkCancel · function · L1693-L1695 — function connectLinkCancel(): Promise<void>
-- connectLinkPreview · function · L1698-L1700 — function connectLinkPreview(code: string): Promise<ConnectLinkPreview>
-- connectLinkApprove · function · L1702-L1704 — function connectLinkApprove(code: string): Promise<void>
-- connectLinkDeny · function · L1706-L1708 — function connectLinkDeny(code: string): Promise<void>
-- connectDevices · function · L1711-L1713 — function connectDevices(): Promise<ConnectDevices>
-- connectRevoke · function · L1715-L1717 — function connectRevoke(id: string): Promise<void>
-- onConnectInbound · function · L1721-L1723 — function onConnectInbound(handler: (frame: unknown) => void): Promise<UnlistenFn>
-- onConnectStatus · function · L1725-L1727 — function onConnectStatus(handler: (status: ConnectStatus) => void): Promise<UnlistenFn>
-- isIpcError · function · L1732-L1741 — function isIpcError(value: unknown): value is IpcError
-- ipcErrorMessage · function · L1744-L1749 — function ipcErrorMessage(value: unknown): string
-- SettingsSection · type · L1755-L1766 — type SettingsSection = | "about" | "appearance" | "library" | "devices" | "cloud" | "youtube-music" | "playback" | "output" | "account" | "system-audio" | "visualizer";
-- openSettings · function · L1769-L1771 — function openSettings(section?: SettingsSection): Promise<void>
-- onSettingsSection · function · L1774-L1778 — function onSettingsSection( handler: (section: string) => void, ): Promise<UnlistenFn>
-- TrayModel · interface · L1784-L1796 — interface TrayModel
-- trayUpdate · function · L1799-L1801 — function trayUpdate(model: TrayModel): Promise<void>
-- onTrayAction · function · L1804-L1806 — function onTrayAction(handler: (action: string) => void): Promise<UnlistenFn>
-- sessionLoad · function · L1811-L1813 — function sessionLoad(): Promise<string | null>
-- sessionSave · function · L1816-L1818 — function sessionSave(json: string | null): Promise<void>
-- AppNotification · interface · L1823-L1831 — interface AppNotification
-- notificationsList · function · L1834-L1836 — function notificationsList(): Promise<AppNotification[]>
-- notificationsOpen · function · L1840-L1842 — function notificationsOpen(id: string): Promise<AppNotification[]>
-- notificationsMarkAllRead · function · L1844-L1846 — function notificationsMarkAllRead(): Promise<AppNotification[]>
-- onNotificationsUpdated · function · L1849-L1851 — function onNotificationsUpdated(handler: (count: number) => void): Promise<UnlistenFn>
+- appInfo · function · L78-L80 — function appInfo(): Promise<AppInfo>
+- outputDevices · function · L83-L85 — function outputDevices(): Promise<OutputDevice[]>
+- setDefaultOutput · function · L89-L91 — function setDefaultOutput(uid: string): Promise<void>
+- listInputDevices · function · L94-L96 — function listInputDevices(): Promise<DeviceInfo[]>
+- engineGetState · function · L99-L101 — function engineGetState(): Promise<EngineState>
+- engineSetPower · function · L104-L106 — function engineSetPower(power: boolean): Promise<void>
+- engineSetMasterVolume · function · L109-L111 — function engineSetMasterVolume(volume: number): Promise<void>
+- engineSetEq · function · L114-L120 — function engineSetEq( bands: number[], preGain: number, enabled: boolean, ): Promise<void>
+- engineSetBass · function · L123-L130 — function engineSetBass( enabled: boolean, amount: number, harmonics: boolean, adaptive: boolean, ): Promise<void>
+- engineSetSpatializer · function · L133-L139 — function engineSetSpatializer( enabled: boolean, amount: number, mode: SpatialMode, ): Promise<void>
+- engineSetSurround3d · function · L142-L154 — function engineSetSurround3d( enabled: boolean, intensity: number, subwoofer: number, speakers: SurroundSpeakers, ): Promise<void>
+- engineSetRoom · function · L157-L159 — function engineSetRoom(room: RoomState): Promise<void>
+- engineSetConvolver · function · L162-L164 — function engineSetConvolver(convolver: ConvolverState): Promise<void>
+- engineSetCompander · function · L167-L169 — function engineSetCompander(compander: CompanderState): Promise<void>
+- engineSetOutput · function · L172-L174 — function engineSetOutput(output: OutputState): Promise<void>
+- engineSetSaturation · function · L176-L178 — function engineSetSaturation(saturation: SaturationState): Promise<void>
+- engineScriptCompile · function · L186-L188 — function engineScriptCompile(source: string): Promise<void>
+- engineSetScript · function · L191-L193 — function engineSetScript(enabled: boolean): Promise<void>
+- ConvolverIrInfo · interface · L195-L200 — interface ConvolverIrInfo
+- engineConvolverLoadIr · function · L203-L205 — function engineConvolverLoadIr(path: string): Promise<ConvolverIrInfo>
+- cloudStatus · function · L210-L212 — function cloudStatus(): Promise<CloudStatus>
+- cloudConnect · function · L216-L218 — function cloudConnect(provider: CloudProvider): Promise<CloudAccount>
+- cloudDisconnect · function · L221-L223 — function cloudDisconnect(accountId: string): Promise<void>
+- cloudList · function · L226-L231 — function cloudList( accountId: string, folder: string, ): Promise<CloudEntry[]>
+- cloudAllAudio · function · L238-L243 — function cloudAllAudio( accountId: string, refresh = false, ): Promise<CloudAudioPage>
+- cloudCachedTags · function · L249-L255 — function cloudCachedTags( accountId: string, ): Promise<Record<string, CloudTrackMeta>>
+- cloudTrackMetadata · function · L259-L269 — function cloudTrackMetadata( accountId: string, fileId: string, name: string, ): Promise<CloudTrackMeta | null>
+- cloudTrackTags · function · L274-L284 — function cloudTrackTags( accountId: string, fileId: string, name: string, ): Promise<CloudTrackMeta | null>
+- cloudTrackCover · function · L288-L298 — function cloudTrackCover( accountId: string, fileId: string, name: string, ): Promise<string | null>
+- cloudPlay · function · L301-L303 — function cloudPlay(accountId: string, fileId: string): Promise<void>
+- CloudQueueItem · interface · L306-L309 — interface CloudQueueItem
+- playerPlayCloudQueue · function · L313-L319 — function playerPlayCloudQueue( accountId: string, items: CloudQueueItem[], start: number, ): Promise<void>
+- ytmusicStatus · function · L324-L326 — function ytmusicStatus(): Promise<YtMusicStatus>
+- ytmusicSignIn · function · L330-L332 — function ytmusicSignIn(): Promise<YtMusicStatus>
+- ytmusicSignOut · function · L335-L337 — function ytmusicSignOut(): Promise<void>
+- ytmusicSetup · function · L343-L345 — function ytmusicSetup(): Promise<YtMusicStatus>
+- ytmusicAllTracks · function · L350-L352 — function ytmusicAllTracks(refresh = false): Promise<YtMusicPage>
+- ytmusicExploreCategories · function · L355-L357 — function ytmusicExploreCategories(): Promise<ExploreSection[]>
+- ytmusicExplorePage · function · L361-L363 — function ytmusicExplorePage(params: string): Promise<ExploreShelf[]>
+- ytmusicExploreTracks · function · L367-L369 — function ytmusicExploreTracks(item: ExploreItem): Promise<YtTrack[]>
+- ytmusicSearch · function · L376-L378 — function ytmusicSearch(query: string, filter: string): Promise<ExploreShelf[]>
+- ytmusicSearchSuggestions · function · L385-L387 — function ytmusicSearchSuggestions(query: string): Promise<string[]>
+- ytmusicRadio · function · L390-L392 — function ytmusicRadio(videoId: string): Promise<RadioBatch>
+- ytmusicRadioContinue · function · L395-L397 — function ytmusicRadioContinue(videoId: string, token: string): Promise<RadioBatch>
+- ytmusicArtistPage · function · L400-L402 — function ytmusicArtistPage(browseId: string): Promise<ExploreShelf[]>
+- ytmusicVideoUrl · function · L411-L413 — function ytmusicVideoUrl(videoId: string): Promise<string>
+- ytmusicPrefetch · function · L424-L426 — function ytmusicPrefetch(videoId: string): Promise<void>
+- ytmusicPrefetchBatch · function · L430-L432 — function ytmusicPrefetchBatch(videoIds: string[]): Promise<void>
+- ytmusicVideoPrefetch · function · L437-L439 — function ytmusicVideoPrefetch(videoId: string): Promise<void>
+- ytmusicPlay · function · L443-L451 — function ytmusicPlay( videoId: string, durationSecs?: number | null, ): Promise<void>
+- YtQueueItem · interface · L454-L461 — interface YtQueueItem
+- playerPlayYtmusicQueue · function · L465-L470 — function playerPlayYtmusicQueue( items: YtQueueItem[], start: number, ): Promise<void>
+- ytmusicDownload · function · L474-L476 — function ytmusicDownload(videoId: string): Promise<string>
+- ytmusicDownloadToPhone · function · L479-L484 — function ytmusicDownloadToPhone( videoId: string, deviceId: string, ): Promise<void>
+- linkUpload · function · L487-L489 — function linkUpload(deviceId: string, path: string): Promise<void>
+- ytmusicDownloadDir · function · L492-L494 — function ytmusicDownloadDir(): Promise<string>
+- ytmusicSetDownloadDir · function · L498-L500 — function ytmusicSetDownloadDir(dir: string | null): Promise<string>
+- onYtDownload · function · L504-L508 — function onYtDownload( handler: (p: YtDownloadProgress) => void, ): Promise<UnlistenFn>
+- linkDiscover · function · L513-L515 — function linkDiscover(): Promise<PhoneDevice[]>
+- linkPaired · function · L518-L520 — function linkPaired(): Promise<PhoneDevice[]>
+- linkDiscoverStart · function · L523-L525 — function linkDiscoverStart(): Promise<void>
+- linkDiscoverStop · function · L528-L530 — function linkDiscoverStop(): Promise<void>
+- onPhoneFound · function · L533-L537 — function onPhoneFound( handler: (device: PhoneDevice) => void, ): Promise<UnlistenFn>
+- onPairedOnline · function · L542-L546 — function onPairedOnline( handler: (deviceId: string) => void, ): Promise<UnlistenFn>
+- linkPair · function · L549-L557 — function linkPair( host: string, port: number, name: string, deviceId: string, pin: string, ): Promise<PhoneDevice>
+- linkPairAddress · function · L561-L567 — function linkPairAddress( host: string, port: number, pin: string, ): Promise<PhoneDevice>
+- linkUnpair · function · L570-L572 — function linkUnpair(deviceId: string): Promise<void>
+- RemotePairingInfo · interface · L577-L581 — interface RemotePairingInfo
+- RemotePhoneStatus · interface · L584-L589 — interface RemotePhoneStatus
+- linkRemoteQr · function · L592-L594 — function linkRemoteQr(): Promise<RemotePairingInfo>
+- linkRemoteCancel · function · L597-L599 — function linkRemoteCancel(): Promise<void>
+- linkRemoteStatus · function · L602-L604 — function linkRemoteStatus(): Promise<RemotePhoneStatus[]>
+- linkRemoteConnect · function · L607-L609 — function linkRemoteConnect(): Promise<RemotePhoneStatus[]>
+- linkRemoteForget · function · L612-L614 — function linkRemoteForget(deviceId: string): Promise<void>
+- onRemoteConnected · function · L617-L621 — function onRemoteConnected( handler: (deviceId: string) => void, ): Promise<UnlistenFn>
+- linkLibrary · function · L624-L626 — function linkLibrary(deviceId: string): Promise<PhoneTrack[]>
+- linkArtwork · function · L629-L634 — function linkArtwork( deviceId: string, trackId: string, ): Promise<string | null>
+- linkLyrics · function · L638-L643 — function linkLyrics( deviceId: string, trackId: string, ): Promise<string | null>
+- linkPlay · function · L648-L660 — function linkPlay( deviceId: string, trackId: string, ext: string, durationSecs?: number | null, ): Promise<void>
+- PhoneQueueItem · interface · L663-L666 — interface PhoneQueueItem
+- linkPlayQueue · function · L669-L675 — function linkPlayQueue( deviceId: string, items: PhoneQueueItem[], start: number, ): Promise<void>
+- LinkNowPlaying · interface · L678-L682 — interface LinkNowPlaying
+- onLinkNowPlaying · function · L685-L689 — function onLinkNowPlaying( handler: (np: LinkNowPlaying) => void, ): Promise<UnlistenFn>
+- profileList · function · L692-L694 — function profileList(): Promise<HeadphoneProfile[]>
+- profileSetActive · function · L697-L699 — function profileSetActive(id: string): Promise<HeadphoneProfile>
+- profileClear · function · L702-L704 — function profileClear(): Promise<void>
+- eqListPresets · function · L707-L709 — function eqListPresets(): Promise<EqPreset[]>
+- eqApplyPreset · function · L712-L714 — function eqApplyPreset(id: string): Promise<EqPreset>
+- eqSaveCustom · function · L717-L723 — function eqSaveCustom( name: string, bands: number[], preGain: number, ): Promise<EqPreset>
+- eqUpdate · function · L726-L728 — function eqUpdate(preset: EqPreset): Promise<void>
+- eqDelete · function · L731-L733 — function eqDelete(id: string): Promise<void>
+- playerPlayFile · function · L736-L738 — function playerPlayFile(path: string): Promise<void>
+- playerPlayRadio · function · L741-L743 — function playerPlayRadio(url: string): Promise<void>
+- playerPlayQueue · function · L746-L748 — function playerPlayQueue(paths: string[], start: number): Promise<void>
+- engineSetPlayback · function · L751-L756 — function engineSetPlayback( gapless: boolean, crossfadeSecs: number, ): Promise<void>
+- engineSetDataSaver · function · L759-L761 — function engineSetDataSaver(on: boolean): Promise<void>
+- engineSetAutoplay · function · L764-L766 — function engineSetAutoplay(on: boolean): Promise<void>
+- onQueueIndex · function · L769-L773 — function onQueueIndex( handler: (index: number) => void, ): Promise<UnlistenFn>
+- playerStop · function · L776-L778 — function playerStop(): Promise<void>
+- playerPause · function · L781-L783 — function playerPause(): Promise<void>
+- playerResume · function · L786-L788 — function playerResume(): Promise<void>
+- playerSeek · function · L791-L793 — function playerSeek(secs: number): Promise<void>
+- playerPlayCapture · function · L796-L798 — function playerPlayCapture(): Promise<void>
+- captureVirtualAvailable · function · L801-L803 — function captureVirtualAvailable(): Promise<boolean>
+- playerPlaySystemAudio · function · L807-L809 — function playerPlaySystemAudio(): Promise<void>
+- stopSystemAudio · function · L812-L814 — function stopSystemAudio(): Promise<void>
+- systemAudioAvailable · function · L818-L820 — function systemAudioAvailable(): Promise<boolean>
+- SystemAudioStatus · interface · L823-L840 — interface SystemAudioStatus
+- systemAudioStatus · function · L843-L845 — function systemAudioStatus(): Promise<SystemAudioStatus>
+- ApoSetupOutcome · type · L848-L848 — type ApoSetupOutcome = "needsReboot";
+- apoSetup · function · L853-L855 — function apoSetup(): Promise<ApoSetupOutcome>
+- apoUninstall · function · L858-L860 — function apoUninstall(): Promise<void>
+- apoRepair · function · L864-L866 — function apoRepair(): Promise<void>
+- SystemEqRuntimeStatus · type · L872-L872 — type SystemEqRuntimeStatus = "active" | "recovering" | "disabled";
+- systemEqStatus · function · L876-L878 — function systemEqStatus(): Promise<SystemEqRuntimeStatus>
+- systemAudioInstallDriver · function · L883-L885 — function systemAudioInstallDriver(): Promise<void>
+- RoutingSetupPhase · type · L889-L889 — type RoutingSetupPhase = "downloading" | "installing" | "detecting";
+- RoutingSetupOutcome · type · L894-L894 — type RoutingSetupOutcome = "ready" | "needsReboot";
+- systemAudioSetupRouting · function · L900-L902 — function systemAudioSetupRouting(): Promise<RoutingSetupOutcome>
+- LinuxSetupResult · type · L908-L913 — type LinuxSetupResult = | { kind: "alreadyReady" } | { kind: "installed" } | { kind: "needsManual"; command: string } | { kind: "notApplicable" } | { kind: "failed"; message: string; command: string };
+- linuxSystemAudioSetup · function · L920-L922 — function linuxSystemAudioSetup(): Promise<LinuxSetupResult>
+- systemEqSetScope · function · L926-L928 — function systemEqSetScope(scope: SystemEqScope): Promise<void>
+- visualizerAvailable · function · L931-L933 — function visualizerAvailable(): Promise<boolean>
+- visualizerPresetNames · function · L936-L938 — function visualizerPresetNames(): Promise<string[]>
+- visualizerStart · function · L942-L954 — function visualizerStart(opts?: { fps?: number; beat?: number; presetSecs?: number; preset?: string; }): Promise<void>
+- visualizerSetPreset · function · L957-L959 — function visualizerSetPreset(preset: string): Promise<void>
+- visualizerStop · function · L962-L964 — function visualizerStop(): Promise<void>
+- visualizerIsOpen · function · L967-L969 — function visualizerIsOpen(): Promise<boolean>
+- SceneInfo · interface · L974-L979 — interface SceneInfo
+- sceneList · function · L982-L984 — function sceneList(): Promise<SceneInfo[]>
+- sceneSelected · function · L987-L989 — function sceneSelected(): Promise<string>
+- sceneSelect · function · L992-L994 — function sceneSelect(id: string): Promise<void>
+- playerIsPlaying · function · L997-L999 — function playerIsPlaying(): Promise<boolean>
+- mixerListSessions · function · L1003-L1005 — function mixerListSessions(): Promise<MixerSnapshot>
+- mixerSetVolume · function · L1006-L1008 — function mixerSetVolume(id: string, gain: number): Promise<void>
+- mixerSetMuted · function · L1009-L1011 — function mixerSetMuted(id: string, muted: boolean): Promise<void>
+- licenseStatus · function · L1015-L1017 — function licenseStatus(): Promise<LicenseStatus>
+- licenseActivate · function · L1018-L1020 — function licenseActivate(key: string): Promise<LicenseStatus>
+- licenseDeactivate · function · L1021-L1023 — function licenseDeactivate(): Promise<void>
+- accountStatus · function · L1027-L1029 — function accountStatus(): Promise<AccountStatus>
+- accountSignup · function · L1031-L1033 — function accountSignup(email: string, name?: string): Promise<void>
+- accountRequestOtp · function · L1035-L1037 — function accountRequestOtp(email: string): Promise<void>
+- accountVerify · function · L1039-L1044 — function accountVerify( email: string, code: string, ): Promise<AccountStatus>
+- accountLogout · function · L1045-L1047 — function accountLogout(): Promise<void>
+- accountHeartbeat · function · L1048-L1053 — function accountHeartbeat( platform: string, appVersion: string, ): Promise<void>
+- accountBootstrapAnonymous · function · L1058-L1060 — function accountBootstrapAnonymous(): Promise<AccountStatus>
+- accountClaimRequest · function · L1065-L1067 — function accountClaimRequest(email: string): Promise<void>
+- accountClaimVerify · function · L1071-L1081 — function accountClaimVerify( email: string, code: string, name?: string, ): Promise<AccountStatus>
+- accountEntitlements · function · L1088-L1090 — function accountEntitlements(): Promise<Entitlements>
+- accountSupportCheckout · function · L1096-L1104 — function accountSupportCheckout( amount: number, currency?: string, ): Promise<string>
+- accountSupportRestore · function · L1110-L1112 — function accountSupportRestore(email: string): Promise<boolean>
+- openExternalUrl · function · L1116-L1118 — function openExternalUrl(url: string): Promise<void>
+- StemSource · type · L1123-L1125 — type StemSource = | { kind: "file"; path: string } | { kind: "ytmusic"; videoId: string };
+- StemStatus · interface · L1127-L1134 — interface StemStatus
+- stemsStatus · function · L1136-L1138 — function stemsStatus(source: StemSource | null): Promise<StemStatus>
+- stemsInstall · function · L1140-L1142 — function stemsInstall(): Promise<void>
+- stemsInstallCancel · function · L1143-L1145 — function stemsInstallCancel(): Promise<void>
+- stemsArm · function · L1149-L1151 — function stemsArm(source: StemSource): Promise<void>
+- stemsSetGain · function · L1153-L1155 — function stemsSetGain(stem: number, gain: number): Promise<void>
+- stemsReset · function · L1157-L1159 — function stemsReset(): Promise<void>
+- stemsGains · function · L1160-L1162 — function stemsGains(): Promise<number[]>
+- onStemsProgress · function · L1164-L1168 — function onStemsProgress( handler: (value: number) => void, ): Promise<UnlistenFn>
+- onStemsError · function · L1170-L1174 — function onStemsError( handler: (message: string) => void, ): Promise<UnlistenFn>
+- onStemsDownload · function · L1176-L1182 — function onStemsDownload( handler: (p: { done: number; total: number }) => void, ): Promise<UnlistenFn>
+- libraryScan · function · L1187-L1189 — function libraryScan(dir: string): Promise<number>
+- libraryRefreshTags · function · L1193-L1195 — function libraryRefreshTags(): Promise<number>
+- RecognitionResult · interface · L1198-L1204 — interface RecognitionResult
+- identifyTrack · function · L1207-L1209 — function identifyTrack(path: string): Promise<RecognitionResult | null>
+- libraryIdentifyMissing · function · L1213-L1215 — function libraryIdentifyMissing(): Promise<number>
+- libraryList · function · L1218-L1220 — function libraryList(): Promise<LibraryTrack[]>
+- libraryCount · function · L1223-L1225 — function libraryCount(): Promise<number>
+- libraryAvailableCount · function · L1229-L1231 — function libraryAvailableCount(): Promise<number>
+- libraryListPage · function · L1235-L1237 — function libraryListPage(offset: number, limit: number): Promise<LibraryPage>
+- openFiles · function · L1244-L1246 — function openFiles(paths: string[]): Promise<LibraryTrack[]>
+- takePendingOpenFiles · function · L1250-L1252 — function takePendingOpenFiles(): Promise<string[]>
+- onOpenFiles · function · L1255-L1259 — function onOpenFiles( handler: (paths: string[]) => void, ): Promise<UnlistenFn>
+- libraryRemove · function · L1262-L1264 — function libraryRemove(path: string): Promise<void>
+- libraryArtwork · function · L1268-L1270 — function libraryArtwork(path: string): Promise<string | null>
+- lyricsFetch · function · L1274-L1286 — function lyricsFetch( title: string, artist: string | null, durationSecs: number | null, path: string | null, ): Promise<string | null>
+- LibraryScanProgress · interface · L1289-L1292 — interface LibraryScanProgress
+- onLibraryScanProgress · function · L1295-L1301 — function onLibraryScanProgress( handler: (p: LibraryScanProgress) => void, ): Promise<UnlistenFn>
+- playlistList · function · L1303-L1305 — function playlistList(): Promise<Playlist[]>
+- playlistCreate · function · L1306-L1308 — function playlistCreate(name: string): Promise<Playlist>
+- playlistRename · function · L1309-L1311 — function playlistRename(id: string, name: string): Promise<void>
+- playlistDelete · function · L1312-L1314 — function playlistDelete(id: string): Promise<void>
+- playlistTracks · function · L1315-L1317 — function playlistTracks(id: string): Promise<LibraryTrack[]>
+- playlistAdd · function · L1318-L1320 — function playlistAdd(id: string, path: string): Promise<void>
+- playlistRemove · function · L1321-L1323 — function playlistRemove(id: string, path: string): Promise<void>
+- playlistReorder · function · L1324-L1326 — function playlistReorder(id: string, paths: string[]): Promise<void>
+- radioSearch · function · L1331-L1333 — function radioSearch(query: string): Promise<RadioStation[]>
+- radioAfricanCountries · function · L1336-L1338 — function radioAfricanCountries(): Promise<RadioCountry[]>
+- radioByCountry · function · L1341-L1343 — function radioByCountry(code: string): Promise<RadioStation[]>
+- radioFavoritesList · function · L1344-L1346 — function radioFavoritesList(): Promise<RadioStation[]>
+- radioFavoriteAdd · function · L1347-L1349 — function radioFavoriteAdd(station: RadioStation): Promise<void>
+- radioFavoriteRemove · function · L1350-L1352 — function radioFavoriteRemove(id: string): Promise<void>
+- tvSearch · function · L1357-L1359 — function tvSearch(query: string): Promise<TvChannel[]>
+- tvCheckAlive · function · L1363-L1365 — function tvCheckAlive(channels: TvChannel[]): Promise<string[]>
+- tvByCountry · function · L1368-L1370 — function tvByCountry(code: string): Promise<TvChannel[]>
+- tvByCategory · function · L1373-L1375 — function tvByCategory(id: string): Promise<TvChannel[]>
+- tvCategories · function · L1378-L1380 — function tvCategories(): Promise<TvCategory[]>
+- tvCountries · function · L1383-L1385 — function tvCountries(): Promise<TvCountry[]>
+- tvFavoritesList · function · L1387-L1389 — function tvFavoritesList(): Promise<TvChannel[]>
+- tvFavoriteAdd · function · L1391-L1393 — function tvFavoriteAdd(channel: TvChannel): Promise<void>
+- tvFavoriteRemove · function · L1395-L1397 — function tvFavoriteRemove(id: string): Promise<void>
+- tvStreamUrl · function · L1401-L1403 — function tvStreamUrl(channel: TvChannel): Promise<string>
+- toArchiveMovie · function · L1411-L1413 — function toArchiveMovie(raw: Omit<ArchiveMovie, "source">): ArchiveMovie
+- moviesBrowse · function · L1416-L1420 — function moviesBrowse(collection: string, page: number): Promise<Movie[]>
+- moviesSearch · function · L1426-L1430 — function moviesSearch(query: string, page: number): Promise<Movie[]>
+- moviesResolve · function · L1433-L1435 — function moviesResolve(identifier: string): Promise<MovieDetail>
+- ytMoviesChannel · function · L1443-L1456 — function ytMoviesChannel(channelId: string, limit: number): Promise<Movie[]>
+- pickFolder · function · L1459-L1462 — async function pickFolder(): Promise<string | null>
+- onProgress · function · L1465-L1469 — function onProgress( handler: (p: TransportProgress) => void, ): Promise<UnlistenFn>
+- MediaCommand · interface · L1472-L1477 — interface MediaCommand
+- onMediaCommand · function · L1480-L1484 — function onMediaCommand( handler: (cmd: MediaCommand) => void, ): Promise<UnlistenFn>
+- onEngineFrame · function · L1489-L1493 — function onEngineFrame( handler: (frame: EngineFrame) => void, ): Promise<UnlistenFn>
+- UpdaterStatus · type · L1499-L1505 — type UpdaterStatus = | { state: "idle" } | { state: "checking" } /** `total` is null for a chunked response — show indeterminate, not 0%. */ | { state: "downloading"; version: string; received: number; total: number | null } | { state: "ready"; version: string; notes: string | null } | { state: "failed"; message: string };
+- updaterStatus · function · L1508-L1510 — function updaterStatus(): Promise<UpdaterStatus>
+- updaterCheckNow · function · L1514-L1516 — function updaterCheckNow(): Promise<void>
+- updaterRestartNow · function · L1520-L1522 — function updaterRestartNow(): Promise<void>
+- onUpdaterStatus · function · L1525-L1529 — function onUpdaterStatus( handler: (status: UpdaterStatus) => void, ): Promise<UnlistenFn>
+- onTransport · function · L1532-L1536 — function onTransport( handler: (playing: boolean) => void, ): Promise<UnlistenFn>
+- onNowPlaying · function · L1539-L1543 — function onNowPlaying( handler: (meta: TrackMeta) => void, ): Promise<UnlistenFn>
+- EqImportResult · interface · L1548-L1551 — interface EqImportResult
+- engineEqImportGraphic · function · L1553-L1555 — function engineEqImportGraphic(curve: string): Promise<EqImportResult>
+- engineEqImportVdc · function · L1558-L1560 — function engineEqImportVdc(path: string): Promise<EqImportResult>
+- ddcList · function · L1563-L1565 — function ddcList(): Promise<string[]>
+- engineEqApplyDdc · function · L1568-L1570 — function engineEqApplyDdc(name: string): Promise<EqImportResult>
+- autoeqSearch · function · L1573-L1575 — function autoeqSearch(query: string, limit?: number): Promise<AutoEqEntry[]>
+- autoeqFetchApply · function · L1578-L1580 — function autoeqFetchApply(url: string): Promise<EqImportResult>
+- pickAudioFile · function · L1584-L1591 — async function pickAudioFile(): Promise<string | null>
+- chainPresetList · function · L1596-L1598 — function chainPresetList(): Promise<ChainPreset[]>
+- chainPresetSave · function · L1601-L1603 — function chainPresetSave(name: string): Promise<ChainPreset>
+- chainPresetApply · function · L1606-L1608 — function chainPresetApply(id: string): Promise<void>
+- chainPresetDelete · function · L1611-L1613 — function chainPresetDelete(id: string): Promise<void>
+- chainPresetExport · function · L1616-L1618 — function chainPresetExport(id: string, path: string): Promise<void>
+- chainPresetImport · function · L1621-L1623 — function chainPresetImport(path: string): Promise<ChainPreset>
+- ConnectConnection · type · L1630-L1635 — type ConnectConnection = | { state: "connecting"; attempt: number } | { state: "connected"; deviceId: string } | { state: "waiting"; attempt: number; retryInMs: number; reason: string } | { state: "no_session" } | { state: "stopped"; reason: "unlinked" | "replaced" | "shutdown" | "tls_unavailable" };
+- ConnectStatus · interface · L1637-L1645 — interface ConnectStatus
+- ConnectLinkTicket · interface · L1648-L1653 — interface ConnectLinkTicket
+- ConnectLinkPollStatus · type · L1655-L1655 — type ConnectLinkPollStatus = "pending" | "approved" | "denied" | "expired";
+- ConnectLinkPreview · interface · L1658-L1663 — interface ConnectLinkPreview
+- ConnectDevices · interface · L1665-L1668 — interface ConnectDevices
+- connectStatus · function · L1670-L1672 — function connectStatus(): Promise<ConnectStatus>
+- connectSetEnabled · function · L1675-L1677 — function connectSetEnabled(enabled: boolean): Promise<ConnectStatus>
+- connectSend · function · L1680-L1682 — function connectSend(frame: ConnectFrame): Promise<void>
+- connectLinkStart · function · L1685-L1687 — function connectLinkStart(): Promise<ConnectLinkTicket>
+- connectLinkPoll · function · L1691-L1693 — function connectLinkPoll(): Promise<{ status: ConnectLinkPollStatus }>
+- connectLinkCancel · function · L1695-L1697 — function connectLinkCancel(): Promise<void>
+- connectLinkPreview · function · L1700-L1702 — function connectLinkPreview(code: string): Promise<ConnectLinkPreview>
+- connectLinkApprove · function · L1704-L1706 — function connectLinkApprove(code: string): Promise<void>
+- connectLinkDeny · function · L1708-L1710 — function connectLinkDeny(code: string): Promise<void>
+- connectDevices · function · L1713-L1715 — function connectDevices(): Promise<ConnectDevices>
+- connectRevoke · function · L1717-L1719 — function connectRevoke(id: string): Promise<void>
+- onConnectInbound · function · L1723-L1725 — function onConnectInbound(handler: (frame: unknown) => void): Promise<UnlistenFn>
+- onConnectStatus · function · L1727-L1729 — function onConnectStatus(handler: (status: ConnectStatus) => void): Promise<UnlistenFn>
+- isIpcError · function · L1734-L1743 — function isIpcError(value: unknown): value is IpcError
+- ipcErrorMessage · function · L1746-L1751 — function ipcErrorMessage(value: unknown): string
+- SettingsSection · type · L1757-L1768 — type SettingsSection = | "about" | "appearance" | "library" | "devices" | "cloud" | "youtube-music" | "playback" | "output" | "account" | "system-audio" | "visualizer";
+- openSettings · function · L1771-L1773 — function openSettings(section?: SettingsSection): Promise<void>
+- onSettingsSection · function · L1776-L1780 — function onSettingsSection( handler: (section: string) => void, ): Promise<UnlistenFn>
+- TrayModel · interface · L1786-L1798 — interface TrayModel
+- trayUpdate · function · L1801-L1803 — function trayUpdate(model: TrayModel): Promise<void>
+- onTrayAction · function · L1806-L1808 — function onTrayAction(handler: (action: string) => void): Promise<UnlistenFn>
+- sessionLoad · function · L1813-L1815 — function sessionLoad(): Promise<string | null>
+- sessionSave · function · L1818-L1820 — function sessionSave(json: string | null): Promise<void>
+- AppNotification · interface · L1825-L1833 — interface AppNotification
+- notificationsList · function · L1836-L1838 — function notificationsList(): Promise<AppNotification[]>
+- notificationsOpen · function · L1842-L1844 — function notificationsOpen(id: string): Promise<AppNotification[]>
+- notificationsMarkAllRead · function · L1846-L1848 — function notificationsMarkAllRead(): Promise<AppNotification[]>
+- onNotificationsUpdated · function · L1851-L1853 — function onNotificationsUpdated(handler: (count: number) => void): Promise<UnlistenFn>

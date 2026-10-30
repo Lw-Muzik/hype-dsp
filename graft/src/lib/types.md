@@ -31,45 +31,46 @@
 - AppSession · interface · L275-L282 — interface AppSession
 - LicenseStatus · type · L284-L287 — type LicenseStatus = | { kind: "trial"; daysLeft: number } | { kind: "licensed" } | { kind: "expired" };
 - LicenseInfo · interface · L290-L296 — interface LicenseInfo
-- AccountStatus · interface · L299-L312 — interface AccountStatus
-- MixerSnapshot · interface · L314-L318 — interface MixerSnapshot
-- MeterFrame · interface · L320-L325 — interface MeterFrame
-- EngineFrame · interface · L327-L333 — interface EngineFrame
-- LibraryTrack · interface · L335-L343 — interface LibraryTrack
-- LibraryPage · interface · L348-L351 — interface LibraryPage
-- Playlist · interface · L353-L356 — interface Playlist
-- TransportProgress · interface · L358-L367 — interface TransportProgress
-- TrackMeta · interface · L370-L376 — interface TrackMeta
-- DeviceInfo · interface · L378-L381 — interface DeviceInfo
-- OutputTransport · type · L384-L394 — type OutputTransport = | "builtin" | "usb" | "bluetooth" | "hdmi" | "displayport" | "airplay" | "aggregate" | "virtual" | "thunderbolt" | "other";
-- OutputDevice · interface · L397-L406 — interface OutputDevice
-- StreamFormat · interface · L408-L411 — interface StreamFormat
-- IpcError · interface · L414-L417 — interface IpcError
-- CloudProvider · type · L419-L419 — type CloudProvider = "googleDrive" | "dropbox";
-- CloudAccount · interface · L424-L428 — interface CloudAccount
-- CloudEntry · interface · L431-L442 — interface CloudEntry
-- CloudAudioPage · interface · L446-L449 — interface CloudAudioPage
-- CloudTrackMeta · interface · L452-L458 — interface CloudTrackMeta
-- CloudStatus · interface · L460-L466 — interface CloudStatus
-- YtPlaylist · interface · L471-L478 — interface YtPlaylist
-- YtTrack · interface · L482-L501 — interface YtTrack
-- RadioBatch · interface · L505-L508 — interface RadioBatch
-- YtDlpInfo · interface · L512-L518 — interface YtDlpInfo
-- YtMusicStatus · interface · L520-L523 — interface YtMusicStatus
-- ExploreSection · interface · L526-L529 — interface ExploreSection
-- ExploreCategory · interface · L531-L535 — interface ExploreCategory
-- ExploreShelf · interface · L538-L541 — interface ExploreShelf
-- ExploreKind · type · L545-L545 — type ExploreKind = "playlist" | "album" | "artist" | "song" | "video";
-- ExploreItem · interface · L549-L567 — interface ExploreItem
-- YtMusicPage · interface · L571-L575 — interface YtMusicPage
-- YtDownloadProgress · interface · L578-L587 — interface YtDownloadProgress
-- PhoneDevice · interface · L592-L598 — interface PhoneDevice
-- PhoneTrack · interface · L601-L613 — interface PhoneTrack
-- MovieSource · type · L623-L623 — type MovieSource = "archive" | "youtube";
-- ArchiveMovie · interface · L629-L636 — interface ArchiveMovie
-- YoutubeMovie · interface · L642-L649 — interface YoutubeMovie
-- Movie · type · L652-L652 — type Movie = ArchiveMovie | YoutubeMovie;
-- YtMovieEntry · interface · L658-L664 — interface YtMovieEntry
-- MovieStream · interface · L668-L673 — interface MovieStream
-- MovieDetail · interface · L678-L688 — interface MovieDetail
-- AutoEqEntry · interface · L691-L698 — interface AutoEqEntry
+- Entitlements · interface · L299-L303 — interface Entitlements
+- AccountStatus · interface · L306-L319 — interface AccountStatus
+- MixerSnapshot · interface · L321-L325 — interface MixerSnapshot
+- MeterFrame · interface · L327-L332 — interface MeterFrame
+- EngineFrame · interface · L334-L340 — interface EngineFrame
+- LibraryTrack · interface · L342-L350 — interface LibraryTrack
+- LibraryPage · interface · L355-L358 — interface LibraryPage
+- Playlist · interface · L360-L363 — interface Playlist
+- TransportProgress · interface · L365-L374 — interface TransportProgress
+- TrackMeta · interface · L377-L383 — interface TrackMeta
+- DeviceInfo · interface · L385-L388 — interface DeviceInfo
+- OutputTransport · type · L391-L401 — type OutputTransport = | "builtin" | "usb" | "bluetooth" | "hdmi" | "displayport" | "airplay" | "aggregate" | "virtual" | "thunderbolt" | "other";
+- OutputDevice · interface · L404-L413 — interface OutputDevice
+- StreamFormat · interface · L415-L418 — interface StreamFormat
+- IpcError · interface · L421-L424 — interface IpcError
+- CloudProvider · type · L426-L426 — type CloudProvider = "googleDrive" | "dropbox";
+- CloudAccount · interface · L431-L435 — interface CloudAccount
+- CloudEntry · interface · L438-L449 — interface CloudEntry
+- CloudAudioPage · interface · L453-L456 — interface CloudAudioPage
+- CloudTrackMeta · interface · L459-L465 — interface CloudTrackMeta
+- CloudStatus · interface · L467-L473 — interface CloudStatus
+- YtPlaylist · interface · L478-L485 — interface YtPlaylist
+- YtTrack · interface · L489-L508 — interface YtTrack
+- RadioBatch · interface · L512-L515 — interface RadioBatch
+- YtDlpInfo · interface · L519-L525 — interface YtDlpInfo
+- YtMusicStatus · interface · L527-L530 — interface YtMusicStatus
+- ExploreSection · interface · L533-L536 — interface ExploreSection
+- ExploreCategory · interface · L538-L542 — interface ExploreCategory
+- ExploreShelf · interface · L545-L548 — interface ExploreShelf
+- ExploreKind · type · L552-L552 — type ExploreKind = "playlist" | "album" | "artist" | "song" | "video";
+- ExploreItem · interface · L556-L574 — interface ExploreItem
+- YtMusicPage · interface · L578-L582 — interface YtMusicPage
+- YtDownloadProgress · interface · L585-L594 — interface YtDownloadProgress
+- PhoneDevice · interface · L599-L605 — interface PhoneDevice
+- PhoneTrack · interface · L608-L620 — interface PhoneTrack
+- MovieSource · type · L630-L630 — type MovieSource = "archive" | "youtube";
+- ArchiveMovie · interface · L636-L643 — interface ArchiveMovie
+- YoutubeMovie · interface · L649-L656 — interface YoutubeMovie
+- Movie · type · L659-L659 — type Movie = ArchiveMovie | YoutubeMovie;
+- YtMovieEntry · interface · L665-L671 — interface YtMovieEntry
+- MovieStream · interface · L675-L680 — interface MovieStream
+- MovieDetail · interface · L685-L695 — interface MovieDetail
+- AutoEqEntry · interface · L698-L705 — interface AutoEqEntry

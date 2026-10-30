@@ -1,7 +1,7 @@
 # src/stores/entitlement.ts
 
-- loadCachedPremium · function · L20-L26 — function loadCachedPremium(): boolean
-- saveCachedPremium · function · L28-L34 — function saveCachedPremium(premium: boolean): void
-- PremiumFeature · type · L51-L51 — type PremiumFeature = keyof typeof PREMIUM_FEATURES;
-- EntitlementStore · interface · L53-L61 — interface EntitlementStore
-- usePremium · function · L84-L86 — function usePremium(): boolean
+- loadCached · function · L23-L29 — function loadCached(key: string): boolean
+- saveCached · function · L31-L37 — function saveCached(key: string, value: boolean): void
+- PremiumFeature · type · L53-L53 — type PremiumFeature = keyof typeof PREMIUM_FEATURES;
+- EntitlementStore · interface · L55-L65 — interface EntitlementStore
+- useSupporter · function · L88-L90 — function useSupporter(): boolean

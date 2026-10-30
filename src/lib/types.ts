@@ -295,6 +295,13 @@ export interface LicenseInfo {
   licensedUntil: string | null;
 }
 
+/** `GET /me/entitlements`, as returned by the `account_entitlements` command. */
+export interface Entitlements {
+  premium: boolean;
+  /** True only when the account owns the Supporter pack. */
+  supporter: boolean;
+}
+
 /** The signed-in account + its current entitlement. */
 export interface AccountStatus {
   authenticated: boolean;

@@ -64,6 +64,7 @@ import type {
   SystemEqScope,
   TrackMeta,
   TransportProgress,
+  Entitlements,
 } from "./types";
 import type {
   DeviceInfo as ConnectDeviceInfo,
@@ -1079,12 +1080,13 @@ export function accountClaimVerify(
   });
 }
 
-/** Whether the account is entitled to Supporter/premium features. Rejects
- *  (rather than resolving `false`) when the check couldn't be completed
- *  (offline, no session yet) — callers should keep a cached last-known value
- *  rather than treat a rejection as "not a supporter". */
-export function accountEntitlements(): Promise<boolean> {
-  return invoke<boolean>("account_entitlements");
+/** The account's entitlements: `supporter` (owns the Supporter pack — drives
+ *  the badge; false from an older backend) and `premium` (also true for
+ *  admin/trial/licensed). Rejects (rather than resolving false) when the check
+ *  couldn't be completed (offline, no session yet) — callers should keep the
+ *  cached last-known values rather than treat a rejection as "not a supporter". */
+export function accountEntitlements(): Promise<Entitlements> {
+  return invoke<Entitlements>("account_entitlements");
 }
 
 /** Start a Paddle "Supporter" checkout for this install; resolves to the

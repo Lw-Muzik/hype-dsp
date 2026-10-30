@@ -2,30 +2,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * `useEntitlementStore`'s initial `premium` value is read from localStorage
- * synchronously at module-load time (`loadCachedPremium()` inside `create()`),
- * so — like the module-scope IPC calls in `musicLibrary.test.ts` — "what does
- * a fresh launch see" needs a genuinely fresh module instance per scenario.
- * `refresh()`'s runtime behaviour, on the other hand, doesn't depend on
- * import timing at all, so those tests share one store instance and just
- * reset its state + mock between cases (`vi.resetModules()` would otherwise
- * risk the re-imported store and this file's `accountEntitlements` mock
- * resolving to two different `vi.fn()` instances).
+ * Initial `premium`/`supporter` values are read from localStorage
+ * synchronously at module-load time, so "what does a fresh launch see" needs a
+ * genuinely fresh module instance per scenario. `refresh()`'s runtime
+ * behaviour doesn't depend on import timing, so those tests share one store
+ * instance and reset its state + mock between cases.
  */
 vi.mock("@/lib/ipc", () => ({
   accountEntitlements: vi.fn(),
 }));
 
-// Payments are currently switched OFF app-wide (`@/config/payments`), which
-// short-circuits this store to "always premium, never fetch". Force the flag
-// back on so the real entitlement logic stays under test while it's dormant —
-// delete when payments are resumed. Off-state is covered by
-// `payments-disabled.test.tsx`.
-vi.mock("@/config/payments", () => ({ PAYMENTS_ENABLED: true }));
+const LS_PREMIUM = "hm.premium";
+const LS_SUPPORTER = "hm.supporter";
 
-const LS_KEY = "hm.premium";
-
-describe("useEntitlementStore — initial (cached) value", () => {
+describe("useEntitlementStore — initial (cached) values", () => {
   beforeEach(() => {
     localStorage.clear();
   });
@@ -36,94 +26,118 @@ describe("useEntitlementStore — initial (cached) value", () => {
     return useEntitlementStore;
   }
 
-  it("defaults locked when the feature has never been fetched", async () => {
-    const useEntitlementStore = await freshStore();
-    expect(useEntitlementStore.getState().premium).toBe(false);
+  it("defaults to not-a-supporter when nothing was ever fetched", async () => {
+    const s = (await freshStore()).getState();
+    expect(s.premium).toBe(false);
+    expect(s.supporter).toBe(false);
   });
 
   it("boots as a Supporter when the last known value was true", async () => {
-    localStorage.setItem(LS_KEY, "1");
-    const useEntitlementStore = await freshStore();
-    expect(useEntitlementStore.getState().premium).toBe(true);
+    localStorage.setItem(LS_SUPPORTER, "1");
+    const s = (await freshStore()).getState();
+    expect(s.supporter).toBe(true);
+    expect(s.premium).toBe(false);
   });
 
-  it("boots locked when the last known value was explicitly false", async () => {
-    localStorage.setItem(LS_KEY, "0");
-    const useEntitlementStore = await freshStore();
-    expect(useEntitlementStore.getState().premium).toBe(false);
+  it("caches premium and supporter independently", async () => {
+    localStorage.setItem(LS_PREMIUM, "1");
+    localStorage.setItem(LS_SUPPORTER, "0");
+    const s = (await freshStore()).getState();
+    expect(s.premium).toBe(true);
+    expect(s.supporter).toBe(false);
   });
 
   it("ignores garbage in storage rather than throwing", async () => {
-    localStorage.setItem(LS_KEY, "not-a-boolean");
-    const useEntitlementStore = await freshStore();
-    expect(useEntitlementStore.getState().premium).toBe(false);
+    localStorage.setItem(LS_SUPPORTER, "not-a-boolean");
+    expect((await freshStore()).getState().supporter).toBe(false);
   });
 });
 
 describe("useEntitlementStore.refresh()", () => {
-  // Static import (no resetModules): `refresh()`'s behaviour doesn't depend
-  // on module-load timing, so one instance — reset between tests — is both
-  // simpler and immune to the mock-identity hazard noted above.
   const storePromise = import("@/stores/entitlement");
   const ipcPromise = import("@/lib/ipc");
 
   beforeEach(async () => {
     localStorage.clear();
     const { useEntitlementStore } = await storePromise;
-    useEntitlementStore.setState({ premium: false, loading: true });
+    useEntitlementStore.setState({ premium: false, supporter: false, loading: true });
     const ipc = await ipcPromise;
     vi.mocked(ipc.accountEntitlements).mockReset();
   });
 
-  it("adopts a genuine server answer and persists it to the cache", async () => {
+  it("adopts a genuine server answer and persists both flags", async () => {
     const { useEntitlementStore } = await storePromise;
     const ipc = await ipcPromise;
-    vi.mocked(ipc.accountEntitlements).mockResolvedValue(true);
+    vi.mocked(ipc.accountEntitlements).mockResolvedValue({ premium: true, supporter: true });
+
+    await useEntitlementStore.getState().refresh();
+
+    expect(useEntitlementStore.getState().supporter).toBe(true);
+    expect(useEntitlementStore.getState().premium).toBe(true);
+    expect(useEntitlementStore.getState().loading).toBe(false);
+    expect(localStorage.getItem(LS_SUPPORTER)).toBe("1");
+    expect(localStorage.getItem(LS_PREMIUM)).toBe("1");
+  });
+
+  it("premium without supporter (admin/trial) does NOT make a supporter", async () => {
+    const { useEntitlementStore } = await storePromise;
+    const ipc = await ipcPromise;
+    vi.mocked(ipc.accountEntitlements).mockResolvedValue({ premium: true, supporter: false });
 
     await useEntitlementStore.getState().refresh();
 
     expect(useEntitlementStore.getState().premium).toBe(true);
-    expect(useEntitlementStore.getState().loading).toBe(false);
-    expect(localStorage.getItem(LS_KEY)).toBe("1");
+    expect(useEntitlementStore.getState().supporter).toBe(false);
+    expect(localStorage.getItem(LS_SUPPORTER)).toBe("0");
   });
 
-  it("downgrades to false only on a genuine (reachable) false answer", async () => {
+  it("treats a missing supporter field (older backend) as false", async () => {
     const { useEntitlementStore } = await storePromise;
-    useEntitlementStore.setState({ premium: true });
-    localStorage.setItem(LS_KEY, "1");
     const ipc = await ipcPromise;
-    vi.mocked(ipc.accountEntitlements).mockResolvedValue(false);
+    useEntitlementStore.setState({ supporter: true });
+    vi.mocked(ipc.accountEntitlements).mockResolvedValue({ premium: true } as never);
 
     await useEntitlementStore.getState().refresh();
 
-    expect(useEntitlementStore.getState().premium).toBe(false);
-    expect(localStorage.getItem(LS_KEY)).toBe("0");
+    expect(useEntitlementStore.getState().supporter).toBe(false);
+    expect(localStorage.getItem(LS_SUPPORTER)).toBe("0");
   });
 
-  it("keeps a cached Supporter's premium when the check fails offline", async () => {
+  it("downgrades only on a genuine (reachable) false answer", async () => {
     const { useEntitlementStore } = await storePromise;
-    useEntitlementStore.setState({ premium: true });
-    localStorage.setItem(LS_KEY, "1");
+    useEntitlementStore.setState({ supporter: true });
+    localStorage.setItem(LS_SUPPORTER, "1");
+    const ipc = await ipcPromise;
+    vi.mocked(ipc.accountEntitlements).mockResolvedValue({ premium: false, supporter: false });
+
+    await useEntitlementStore.getState().refresh();
+
+    expect(useEntitlementStore.getState().supporter).toBe(false);
+    expect(localStorage.getItem(LS_SUPPORTER)).toBe("0");
+  });
+
+  it("keeps a cached Supporter's badge when the check fails offline", async () => {
+    const { useEntitlementStore } = await storePromise;
+    useEntitlementStore.setState({ supporter: true });
+    localStorage.setItem(LS_SUPPORTER, "1");
     const ipc = await ipcPromise;
     vi.mocked(ipc.accountEntitlements).mockRejectedValue(new Error("couldn't reach the server"));
 
     await useEntitlementStore.getState().refresh();
 
-    // A blip must never downgrade a supporter mid-session (or on a first,
-    // offline launch after a previous online one).
-    expect(useEntitlementStore.getState().premium).toBe(true);
+    expect(useEntitlementStore.getState().supporter).toBe(true);
     expect(useEntitlementStore.getState().loading).toBe(false);
-    expect(localStorage.getItem(LS_KEY)).toBe("1");
+    expect(localStorage.getItem(LS_SUPPORTER)).toBe("1");
   });
 
-  it("stays locked (never fabricates true) when a never-fetched account is offline", async () => {
+  it("never fabricates a supporter when a never-fetched account is offline", async () => {
     const { useEntitlementStore } = await storePromise;
     const ipc = await ipcPromise;
     vi.mocked(ipc.accountEntitlements).mockRejectedValue(new Error("couldn't reach the server"));
 
     await useEntitlementStore.getState().refresh();
 
-    expect(useEntitlementStore.getState().premium).toBe(false);
+    expect(useEntitlementStore.getState().supporter).toBe(false);
     expect(useEntitlementStore.getState().loading).toBe(false);
   });
 
@@ -131,7 +145,7 @@ describe("useEntitlementStore.refresh()", () => {
     const { useEntitlementStore } = await storePromise;
     expect(useEntitlementStore.getState().loading).toBe(true);
     const ipc = await ipcPromise;
-    vi.mocked(ipc.accountEntitlements).mockResolvedValue(false);
+    vi.mocked(ipc.accountEntitlements).mockResolvedValue({ premium: false, supporter: false });
 
     await useEntitlementStore.getState().refresh();
 

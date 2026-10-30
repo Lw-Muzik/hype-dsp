@@ -2,6 +2,8 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useUiStore } from "@/stores/ui";
 import { NavItem } from "@/components/NavItem";
 import { Logo } from "@/components/Logo";
+import { SupporterBadge } from "@/components/SupporterBadge";
+import { useSupporter } from "@/stores/entitlement";
 import { SidebarNowPlaying } from "@/components/SidebarNowPlaying";
 import { useSystemEqStore } from "@/stores/systemEq";
 import { modeFromSystemEq, visibleRoutes } from "@/features/mode/appMode";
@@ -19,6 +21,7 @@ export function Sidebar() {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const leftWidth = useUiStore((s) => s.leftWidth);
   const resizing = useUiStore((s) => s.resizing);
+  const supporter = useSupporter();
 
   const mode = modeFromSystemEq(useSystemEqStore((s) => s.enabled));
   const main = visibleRoutes(mode);
@@ -46,11 +49,19 @@ export function Sidebar() {
           collapsed && "justify-center px-0",
         )}
       >
-        <Logo />
+        <div className="relative">
+          <Logo />
+          {collapsed && supporter && (
+            <SupporterBadge compact className="absolute -bottom-1 -right-2" />
+          )}
+        </div>
         {!collapsed && (
-          <span className="text-[15px] font-medium tracking-tight">
-            HypeMuzik
-          </span>
+          <>
+            <span className="text-[15px] font-medium tracking-tight">
+              HypeMuzik
+            </span>
+            {supporter && <SupporterBadge />}
+          </>
         )}
       </div>
 

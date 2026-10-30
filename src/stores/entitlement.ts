@@ -1,40 +1,42 @@
 import { create } from "zustand";
 import { accountEntitlements } from "@/lib/ipc";
-import { PAYMENTS_ENABLED } from "@/config/payments";
+import { SUPPORTER_ENABLED } from "@/config/payments";
 
 /**
- * Supporter entitlement — the single source of truth the premium gate
- * consumes (`usePremium`, `PremiumGate`, `requirePremium`).
+ * Entitlement store. Two independent facts from `GET /me/entitlements`:
  *
- * Unlike the account store, this is deliberately **cached**: a Supporter who
- * opens the app offline must keep every premium feature working, so the last
- * server answer is persisted to `localStorage` and used until a fresh one
- * arrives. A failed/offline check never downgrades it — only a genuine `200`
- * response (true *or* false) updates the cache. A user who has never
- * successfully checked defaults to locked (`false`), matching "Advanced DSP,
- * stems, and cloud require Supporter" being the safe default.
+ *  - `supporter` — the account owns the (optional, one-time) Supporter pack.
+ *    It drives the Supporter badge and nothing else; no feature is gated on it.
+ *  - `premium` — also true for admin/trial/licensed accounts. Kept only for
+ *    the (permanently off) feature-gate plumbing; it must NOT drive the badge.
+ *
+ * Both are **cached**: a Supporter who opens the app offline keeps their
+ * badge, so the last server answer is persisted to `localStorage` and used
+ * until a fresh one arrives. A failed/offline check never downgrades either
+ * flag — only a genuine `200` response (true *or* false) updates the cache.
+ * A backend that predates `supporter` reports it as false.
  */
 
-const LS_KEY = "hm.premium";
+const LS_PREMIUM = "hm.premium";
+const LS_SUPPORTER = "hm.supporter";
 
-function loadCachedPremium(): boolean {
+function loadCached(key: string): boolean {
   try {
-    return localStorage.getItem(LS_KEY) === "1";
+    return localStorage.getItem(key) === "1";
   } catch {
     return false;
   }
 }
 
-function saveCachedPremium(premium: boolean): void {
+function saveCached(key: string, value: boolean): void {
   try {
-    localStorage.setItem(LS_KEY, premium ? "1" : "0");
+    localStorage.setItem(key, value ? "1" : "0");
   } catch {
     // Private mode / no storage — just won't persist across relaunches.
   }
 }
 
-/** Gated feature keys, grouped as in the spec: Advanced DSP suite, stem
- *  separation, and cloud music. Value is the human label for upsell copy. */
+/** Labels for the (ungated) feature keys, kept for the gate plumbing. */
 export const PREMIUM_FEATURES = {
   SYSTEM_EQ: "System-wide EQ",
   SURROUND_3D: "3D Surround",
@@ -52,35 +54,37 @@ export type PremiumFeature = keyof typeof PREMIUM_FEATURES;
 
 interface EntitlementStore {
   premium: boolean;
+  /** Owns the Supporter pack — the only thing the badge reads. */
+  supporter: boolean;
   /** True only until the very first check of this session settles (success or
    *  failure) — a brief "checking…" window, not a persistent spinner. */
   loading: boolean;
-  /** Fetch the real entitlement and refresh the cache; a failure (offline,
-   *  no session yet, server error) is swallowed and leaves `premium` as-is. */
+  /** Fetch the real entitlements and refresh the cache; a failure (offline,
+   *  no session yet, server error) is swallowed and leaves flags as-is. */
   refresh: () => Promise<void>;
 }
 
 export const useEntitlementStore = create<EntitlementStore>((set) => ({
-  // Payments off ⇒ there is no entitlement to hold: everything is unlocked
-  // from the first render, with no "Checking…" window and no server round
-  // trip. See `@/config/payments`.
-  premium: PAYMENTS_ENABLED ? loadCachedPremium() : true,
-  loading: PAYMENTS_ENABLED,
+  premium: SUPPORTER_ENABLED ? loadCached(LS_PREMIUM) : false,
+  supporter: SUPPORTER_ENABLED ? loadCached(LS_SUPPORTER) : false,
+  loading: SUPPORTER_ENABLED,
   refresh: async () => {
-    if (!PAYMENTS_ENABLED) return;
+    if (!SUPPORTER_ENABLED) return;
     try {
-      const premium = await accountEntitlements();
-      saveCachedPremium(premium);
-      set({ premium, loading: false });
+      const e = await accountEntitlements();
+      const premium = !!e.premium;
+      // Missing/older-backend `supporter` is false.
+      const supporter = e.supporter === true;
+      saveCached(LS_PREMIUM, premium);
+      saveCached(LS_SUPPORTER, supporter);
+      set({ premium, supporter, loading: false });
     } catch {
       set({ loading: false });
     }
   },
 }));
 
-/** Whether the account can use Supporter-gated features right now (cached
- *  offline-safe). Use inside components; for imperative checks in event
- *  handlers, read `useEntitlementStore.getState().premium` instead. */
-export function usePremium(): boolean {
-  return useEntitlementStore((s) => s.premium);
+/** Whether the account owns the Supporter pack (cached, offline-safe). */
+export function useSupporter(): boolean {
+  return useEntitlementStore((s) => s.supporter);
 }

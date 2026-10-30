@@ -1,28 +1,30 @@
 /**
- * Master kill switch for everything monetisation-related.
+ * Product model: HypeMuzik is free forever with every feature unlocked. The
+ * only thing sold is the optional one-time "Supporter pack" (pay what you
+ * want from $3), which gets the buyer a Supporter badge. Nothing is ever
+ * locked behind it.
  *
- * While this is `false` the app behaves as fully free software: every
- * Supporter-gated feature is unlocked, no checkout/restore UI is reachable,
- * and no entitlement request is made to the backend. The Paddle checkout
- * flow, the restore-by-email flow and the entitlement store all still exist
- * in the tree — they are simply unreachable — so payments can be resumed
- * without rewriting anything.
- *
- * TO RESUME PAYMENTS:
- *   1. Flip this to `true`.
- *   2. Delete the `vi.mock("@/config/payments", ...)` line at the top of
- *      `PremiumGate.test.tsx`, `entitlement.test.ts` and `AccountCard.test.tsx`
- *      (they force it back on so the payment logic stays under test while it
- *      is switched off), and drop `payments-disabled.test.tsx`.
- *
- * Turning this back on restores, with no other change:
- *   - `<PremiumGate>` / `requirePremium()` gating of the 10 premium features
- *   - the Supporter upsell + Paddle checkout modal and the unlock toast
- *   - the `/me/entitlements` check and its offline-safe cache
- *   - the Settings → Account plan badge, trial note and "Become a Supporter" CTA
- *
- * Note: the backend (`hypemuzik-management`) still serves `/support/checkout`,
- * `/support/restore` and `/webhooks/paddle`. This switch only stops the
- * desktop app from calling them.
+ * Two independent switches express that:
  */
-export const PAYMENTS_ENABLED = false;
+
+/**
+ * Feature gating. PERMANENTLY `false` — `<PremiumGate>` and `requirePremium()`
+ * always pass and no feature ever triggers an upsell. Do not flip this to
+ * re-lock the 10 "premium" features; the gate plumbing only remains so the
+ * call sites don't need rewriting.
+ */
+export const FEATURE_GATING_ENABLED = false;
+
+/**
+ * Supporter features: the `/me/entitlements` fetch (offline-cached), the
+ * "Become a Supporter" sheet (checkout + restore), the Supporter badge and
+ * the thank-you toast.
+ */
+export const SUPPORTER_ENABLED = true;
+
+/** Minimum pay-what-you-want amount, in whole dollars. */
+export const SUPPORTER_MIN_AMOUNT = 3;
+/** Quick-pick amounts, in whole dollars. */
+export const SUPPORTER_QUICK_AMOUNTS = [3, 5, 10, 25] as const;
+/** Pre-selected quick pick. */
+export const SUPPORTER_DEFAULT_AMOUNT = 5;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Toaster } from "@/components/Toaster";
-import { SupporterUpsellModal } from "@/components/PremiumGate";
+import { SupporterSheet } from "@/components/SupporterSheet";
 import { SettingsView } from "@/features/settings/SettingsView";
 import { useApplyTheme } from "@/features/theme/useApplyTheme";
 import { onSettingsSection, type SettingsSection } from "@/lib/ipc";
@@ -171,7 +171,7 @@ export function SettingsWindow() {
       </div>
 
       <Toaster />
-      <SupporterUpsellModal unlockToast={false} />
+      <SupporterSheet thanksToast={false} />
     </div>
   );
 }

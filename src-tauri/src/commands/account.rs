@@ -72,10 +72,22 @@ struct UserDto {
     email_verified: bool,
 }
 
-/// `GET /me/entitlements` response — the one thing the premium gate consumes.
+/// `GET /me/entitlements` response. `supporter` is true only when the account
+/// owns the Supporter pack (it drives the badge); `premium` is also true for
+/// admins/trial/licensed accounts and must NOT drive the badge. An older
+/// backend omits `supporter`, which reads as `false`.
 #[derive(Deserialize)]
 struct EntitlementsDto {
     premium: bool,
+    #[serde(default)]
+    supporter: bool,
+}
+
+/// What the front-end gets back from `account_entitlements`.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Entitlements {
+    pub premium: bool,
+    pub supporter: bool,
 }
 
 /// `GET /me` response — we only read the role, to tell the **admin** account
@@ -483,7 +495,7 @@ impl AccountState {
     /// unauthenticated, or a server error) — callers should fall back to a
     /// cached last-known value rather than treat that as a hard "no", since a
     /// blip must never downgrade a supporter mid-session.
-    pub fn entitlements(&self) -> Result<bool, String> {
+    pub fn entitlements(&self) -> Result<Entitlements, String> {
         let resp = self
             .auth_get("/me/entitlements")
             .ok_or_else(|| "couldn't reach the server".to_string())?;
@@ -491,7 +503,10 @@ impl AccountState {
             return Err(format!("Entitlement check failed ({})", resp.status().as_u16()));
         }
         let dto: EntitlementsDto = resp.json().map_err(|e| e.to_string())?;
-        Ok(dto.premium)
+        Ok(Entitlements {
+            premium: dto.premium,
+            supporter: dto.supporter,
+        })
     }
 
     /// Start a Paddle "Supporter" checkout for this install. Public — no
@@ -727,7 +742,7 @@ pub fn account_claim_verify(
 /// the front-end's entitlement store can fall back to its cached last-known
 /// value instead of wrongly downgrading a supporter who is offline.
 #[tauri::command(async)]
-pub fn account_entitlements(account: State<'_, AccountState>) -> Result<bool, IpcError> {
+pub fn account_entitlements(account: State<'_, AccountState>) -> Result<Entitlements, IpcError> {
     crate::blocking::io(|| {
         account
             .entitlements()
@@ -788,7 +803,7 @@ pub fn open_external_url(url: String) {
 
 #[cfg(test)]
 mod tests {
-    use super::MeDto;
+    use super::{EntitlementsDto, MeDto};
 
     /// The admin account (role `"ADMIN"`) is the only one flagged admin; every
     /// other role — and a `/me` payload that omits the field entirely — is not.
@@ -804,5 +819,16 @@ mod tests {
         // role defaults to non-admin (safe: never grants exemption by accident).
         let missing: MeDto = serde_json::from_str(r#"{"email":"x@y.z"}"#).unwrap();
         assert!(!missing.is_admin(), "absent role must not be admin");
+    }
+
+    /// A backend that predates `supporter` must read as "not a supporter";
+    /// `premium` alone never makes the badge.
+    #[test]
+    fn entitlements_dto_supporter_defaults_false() {
+        let old: EntitlementsDto = serde_json::from_str(r#"{"premium":true}"#).unwrap();
+        assert!(old.premium && !old.supporter);
+        let new: EntitlementsDto =
+            serde_json::from_str(r#"{"premium":true,"supporter":true}"#).unwrap();
+        assert!(new.supporter);
     }
 }

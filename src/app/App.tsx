@@ -7,7 +7,7 @@ import { TopBar } from "@/components/TopBar";
 import { UpdateBanner } from "@/features/update/UpdateBanner";
 import { ConfirmHost } from "@/components/ConfirmHost";
 import { Toaster } from "@/components/Toaster";
-import { SupporterUpsellModal } from "@/components/PremiumGate";
+import { SupporterSheet } from "@/components/SupporterSheet";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
 import { RightSidebar } from "@/components/RightSidebar";
 import { ResizeHandle } from "@/components/ResizeHandle";
@@ -140,7 +140,7 @@ export function App() {
       </div>
       <Toaster />
       <ConfirmHost />
-      <SupporterUpsellModal />
+      <SupporterSheet />
     </div>
   );
 }

@@ -3,11 +3,11 @@ import type { FormEvent } from "react";
 import { ArrowLeft, KeyRound, LogOut, Mail, Sparkles } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
-import { openSupporterUpsell } from "@/components/PremiumGate";
+import { openSupporterSheet } from "@/components/SupporterSheet";
 import { useAccountStore } from "@/stores/account";
-import { useEntitlementStore, usePremium } from "@/stores/entitlement";
+import { useEntitlementStore, useSupporter } from "@/stores/entitlement";
 import { ipcErrorMessage } from "@/lib/ipc";
-import { PAYMENTS_ENABLED } from "@/config/payments";
+import { SUPPORTER_ENABLED } from "@/config/payments";
 
 const inputCls =
   "rounded-control border border-border bg-surface px-3 py-2 text-sm outline-none placeholder:text-text-faint focus-visible:border-accent";
@@ -19,12 +19,12 @@ type Step = "details" | "code";
  * Account — the free-tier session is always signed in (a frictionless
  * anonymous account provisioned by `SessionGate`, no wall). This card is
  * entirely optional:
- *  - attach a real email in place (sync + donation receipts), or
+ *  - attach a real email in place (sync + receipts), or
  *  - sign in to a different, already-existing account on a new device.
  *
  * Supporter status comes from the entitlement store, not from this account —
- * an anonymous install can be a Supporter too (Donation → Install, no email
- * required), so the badge and upsell show regardless of `emailVerified`.
+ * an anonymous install can be a Supporter too (no email required), so the plan
+ * line and the "Become a Supporter" button show regardless of `emailVerified`.
  */
 export function AccountCard() {
   const account = useAccountStore((s) => s.status);
@@ -33,16 +33,13 @@ export function AccountCard() {
   const claimVerify = useAccountStore((s) => s.claimVerify);
   const requestOtp = useAccountStore((s) => s.requestOtp);
   const verify = useAccountStore((s) => s.verify);
-  const premium = usePremium();
+  const supporter = useSupporter();
   const entitlementLoading = useEntitlementStore((s) => s.loading);
 
-  // Admin → exempt from purchases, full access, no upsell. Trial → premium is
-  // on loan for the first N days (license.state === "trial"); after it lapses
-  // premium re-locks and the upsell returns.
+  // Everything is free, so the plan line is only about the optional Supporter
+  // pack: "Supporter" (owns it), "Admin", or "Free". `premium` (which is also
+  // true for trial/licensed accounts) deliberately plays no part here.
   const isAdmin = account?.isAdmin ?? false;
-  const license = account?.license ?? null;
-  const onTrial = premium && !isAdmin && license?.state === "trial";
-  const daysLeft = license?.daysLeft ?? 0;
 
   const [flow, setFlow] = useState<Flow>("none");
   const [step, setStep] = useState<Step>("details");
@@ -99,13 +96,12 @@ export function AccountCard() {
   const muted = "bg-surface-overlay text-text-muted";
   const { badgeLabel, badgeCls } = ((): { badgeLabel: string; badgeCls: string } => {
     if (isAdmin) return { badgeLabel: "Admin", badgeCls: good };
-    if (entitlementLoading) return { badgeLabel: "Checking…", badgeCls: muted };
-    if (onTrial)
+    if (supporter)
       return {
-        badgeLabel: `Trial · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`,
-        badgeCls: good,
+        badgeLabel: "Supporter",
+        badgeCls: "border border-accent/40 bg-accent-muted text-accent-strong",
       };
-    if (premium) return { badgeLabel: "Supporter", badgeCls: good };
+    if (entitlementLoading) return { badgeLabel: "Checking…", badgeCls: muted };
     return { badgeLabel: "Free", badgeCls: muted };
   })();
   const premiumBadge = (
@@ -114,21 +110,15 @@ export function AccountCard() {
     </span>
   );
 
-  // Payments off ⇒ there are no plans to distinguish, so the whole Plan row
-  // (badge + explainer) and the purchase CTA come out. See
-  // `@/config/payments`.
-  const showPlan = PAYMENTS_ENABLED;
-  // Purchase CTA appears for free users and trial users (convert early), but
-  // never for the admin (exempt) or an established Supporter/licensed account.
-  const showUpsell = PAYMENTS_ENABLED && !isAdmin && (!premium || onTrial);
-  // A one-line explainer under the plan row for the two special states.
-  const planNote = !PAYMENTS_ENABLED
-    ? null
-    : isAdmin
-      ? "Full access to every feature — no purchase needed."
-      : onTrial
-        ? "You're on a free trial of the premium suite. When it ends, premium features return to the free tier — core playback stays free."
-        : null;
+  const showPlan = SUPPORTER_ENABLED;
+  // The CTA is for non-supporters only (never admins) and lives only here —
+  // nothing nags during normal use.
+  const showUpsell = SUPPORTER_ENABLED && !isAdmin && !supporter && !entitlementLoading;
+  const planNote = isAdmin
+    ? "Full access to every feature — no purchase needed."
+    : supporter
+      ? "Thanks for supporting HypeMuzik!"
+      : "Every feature is free. Supporting is optional.";
 
   if (!account?.authenticated) {
     return (
@@ -145,7 +135,7 @@ export function AccountCard() {
           <form onSubmit={(e) => void submitDetails(e)} className="flex flex-col gap-3">
             <p className="text-sm text-text-muted">
               {flow === "attach"
-                ? "Attach an email to sync your library and settings across devices and get donation receipts. We'll send a code — no password needed."
+                ? "Attach an email to sync your library and settings across devices and get receipts. We'll send a code — no password needed."
                 : "Enter the email of an existing HypeMuzik account and we'll send a sign-in code."}
             </p>
             <input
@@ -241,7 +231,7 @@ export function AccountCard() {
               You’re using HypeMuzik anonymously — there’s nothing to sign in
               with yet. Attach an email to sync your library and settings
               across devices
-              {PAYMENTS_ENABLED ? " and get donation receipts." : "."}
+               and get receipts.
             </p>
             {showPlan && (
               <div className="flex items-center gap-2 text-sm">
@@ -255,7 +245,7 @@ export function AccountCard() {
 
         <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
           {showUpsell && (
-            <Button variant="primary" onClick={() => openSupporterUpsell()}>
+            <Button variant="primary" onClick={() => openSupporterSheet()}>
               <Sparkles className="size-4" aria-hidden="true" />
               Become a Supporter
             </Button>

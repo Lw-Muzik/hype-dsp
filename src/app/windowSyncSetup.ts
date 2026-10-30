@@ -33,7 +33,7 @@ function syncAll(): Promise<(() => void)[]> {
       keys: ["available", "running", "settings", "current", "favorites", "autoChangePreset"],
     }),
     syncStore(useAccountStore, "account", { keys: ["status", "loading"] }),
-    syncStore(useEntitlementStore, "entitlement", { keys: ["premium", "loading"] }),
+    syncStore(useEntitlementStore, "entitlement", { keys: ["premium", "supporter", "loading"] }),
     syncStore(useConnectStore, "connect", { keys: ["status", "devices", "activeDeviceId"] }),
     syncStore(useUiStore, "ui", { keys: ["appInfo"] }),
   ]);

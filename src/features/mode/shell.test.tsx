@@ -21,9 +21,12 @@ vi.mock("@/features/theme/ThemeBackdrop", () => ({ default: () => null }));
 vi.mock("@/components/TopBar", () => ({ TopBar: () => null }));
 vi.mock("@/components/Toaster", () => ({ Toaster: () => null }));
 vi.mock("@/components/PremiumGate", () => ({
-  SupporterUpsellModal: () => null,
   requirePremium: () => true,
   PremiumGate: ({ children }: { children: unknown }) => children,
+}));
+vi.mock("@/components/SupporterSheet", () => ({
+  SupporterSheet: () => null,
+  openSupporterSheet: () => {},
 }));
 vi.mock("@/features/update/UpdateBanner", () => ({ UpdateBanner: () => null }));
 vi.mock("@/components/NowPlayingBar", () => ({ NowPlayingBar: () => <div data-testid="npbar" /> }));
@@ -48,6 +51,7 @@ vi.mock("@/stores/update", () => ({
 import { App } from "@/app/App";
 import { useSystemEqStore } from "@/stores/systemEq";
 import { useUiStore } from "@/stores/ui";
+import { useEntitlementStore } from "@/stores/entitlement";
 
 const navLabels = () =>
   Array.from(screen.getByRole("navigation", { name: "Primary" }).querySelectorAll("button")).map(
@@ -57,6 +61,7 @@ const navLabels = () =>
 beforeEach(() => {
   useSystemEqStore.setState({ enabled: false, resumeAttempted: true });
   useUiStore.setState({ route: "player" });
+  useEntitlementStore.setState({ supporter: false, premium: false });
 });
 afterEach(cleanup);
 
@@ -87,5 +92,16 @@ describe("shell modes", () => {
     useUiStore.setState({ route: "mixer" });
     render(<App />);
     await waitFor(() => expect(useUiStore.getState().route).toBe("equalizer"));
+  });
+
+  it("shows the Supporter badge for a supporter, and not for a free or merely-premium account", () => {
+    useEntitlementStore.setState({ supporter: true });
+    const { unmount } = render(<App />);
+    expect(screen.getByTestId("supporter-badge")).toHaveTextContent("Supporter");
+    unmount();
+
+    useEntitlementStore.setState({ supporter: false, premium: true });
+    render(<App />);
+    expect(screen.queryByTestId("supporter-badge")).toBeNull();
   });
 });

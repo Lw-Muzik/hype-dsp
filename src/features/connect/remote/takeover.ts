@@ -21,7 +21,7 @@
  *   Yield on `welcome` only when neither applies; `devices` frames are
  *   unchanged, and a postponed check after a claim runs as a `devices` check.
  *
- * "Playing" is the music engine only; the Movies/TV player never reaches this.
+ * "Playing" is the music engine only; the TV player never reaches this.
  */
 import type { DeviceInfo, PlayerState } from "../protocol";
 

@@ -8,7 +8,6 @@ export type Route =
   | "equalizer"
   | "explore"
   | "mixer"
-  | "movies"
   | "stems"
   | "player"
   | "stations"
@@ -81,7 +80,6 @@ const ROUTE_IDS = [
   "equalizer",
   "explore",
   "mixer",
-  "movies",
   "stems",
   "player",
   "stations",

@@ -69,7 +69,7 @@ describe("shell modes", () => {
   it("Player mode shows everything as before", () => {
     render(<App />);
     expect(navLabels()).toEqual([
-      "Library", "Enhancer", "Equalizer", "Mixer", "Stems", "Explore", "Stations", "Movies", "Visuals",
+      "Library", "Enhancer", "Equalizer", "Mixer", "Stems", "Explore", "Stations", "Visuals",
     ]);
     expect(screen.getByTestId("npbar")).toBeInTheDocument();
     expect(screen.getByTestId("rsb")).toBeInTheDocument();

@@ -25,6 +25,8 @@ describe("ui store remembers where the user was", () => {
   it("falls back safely from an unknown or removed route", async () => {
     localStorage.setItem("hm.route", "settings"); // Settings is a window now
     expect((await freshStore()).getState().route).toBe("player");
+    localStorage.setItem("hm.route", "movies"); // Movies was removed — land on Library
+    expect((await freshStore()).getState().route).toBe("player");
     localStorage.setItem("hm.route", "<script>");
     expect((await freshStore()).getState().route).toBe("player");
   });

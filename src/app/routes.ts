@@ -1,6 +1,5 @@
 import {
   AudioLines,
-  Clapperboard,
   Compass,
   Gauge,
   Layers,
@@ -75,13 +74,6 @@ export const ROUTES: readonly NavRoute[] = [
     icon: Tv,
     group: "main",
     tagline: "Live radio and TV from around the world, streamed natively.",
-  },
-  {
-    id: "movies",
-    label: "Movies",
-    icon: Clapperboard,
-    group: "main",
-    tagline: "Modern hits from licensed YouTube distributors, plus public-domain classics.",
   },
   {
     id: "visuals",

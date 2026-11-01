@@ -13,11 +13,12 @@ vi.mock("@/lib/ipc", async (importOriginal) => {
     linkDiscoverStart: vi.fn(async () => {}),
     onPairedOnline: vi.fn(async () => () => {}),
     onRemoteConnected: vi.fn(async () => () => {}),
-    openSettings: vi.fn(async () => {}),
+    onSettingsOpen: vi.fn(async () => () => {}),
   };
 });
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock("@/features/theme/ThemeBackdrop", () => ({ default: () => null }));
+vi.mock("@/features/settings/SettingsDialog", () => ({ SettingsDialog: () => null }));
 vi.mock("@/components/TopBar", () => ({ TopBar: () => null }));
 vi.mock("@/components/Toaster", () => ({ Toaster: () => null }));
 vi.mock("@/components/PremiumGate", () => ({

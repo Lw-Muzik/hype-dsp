@@ -9,7 +9,7 @@ import { LevelMeter } from "@/components/LevelMeter";
 import { ScrollingWaveform } from "@/features/player/ScrollingWaveform";
 import { cn } from "@/lib/cn";
 import { TITLEBAR_INSET, isMac } from "@/lib/platform";
-import { openSettings } from "@/lib/ipc";
+import { openSettings } from "@/features/settings/settingsDialogStore";
 import { UpdatePill } from "@/features/update/UpdatePill";
 import { ModeSwitch } from "@/features/mode/ModeSwitch";
 import { NotificationBell } from "@/features/notifications/NotificationBell";
@@ -40,8 +40,9 @@ export function TopBar() {
   const volumeLabel = remote ? `Volume on ${remote.device.name}` : "Master volume";
   const VolumeIcon = remote ? Cast : Volume2;
 
-  // Cmd/Ctrl+, opens Settings. The app menu carries the same accelerator; opening
-  // twice just focuses the window, so the two paths can't conflict.
+  // Cmd/Ctrl+, opens Settings. The native app menu carries the same accelerator
+  // and may fire too (it emits `settings://open`); opening is idempotent, so
+  // the two paths can't conflict.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "," && (isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey) {

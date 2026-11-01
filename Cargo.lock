@@ -2854,7 +2854,6 @@ dependencies = [
  "keyring",
  "libc",
  "lofty",
- "objc2-app-kit",
  "reqwest",
  "serde",
  "serde_json",

@@ -130,6 +130,12 @@ describe("palette", () => {
     }
   });
 
+  it("modal surface is always opaque — dialogs must not be see-through in Dynamic", () => {
+    for (const name of ["dark", "light", "dynamic"] as const) {
+      expect(get(theme(name), "--color-surface-modal").a).toBe(1);
+    }
+  });
+
   // The one that matters: Dynamic lifts the background by an unknown amount,
   // because the art is the user's. Both extremes must hold.
   it.each([

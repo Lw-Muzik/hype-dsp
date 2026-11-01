@@ -12,9 +12,22 @@ import {
   UserRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { SettingsSection } from "@/lib/ipc";
 
-/** The Settings window's sections, in page order (ids anchor `SettingsView`). */
+/** Anchors in the Settings dialog (ids anchor `SettingsView`). */
+export type SettingsSection =
+  | "about"
+  | "appearance"
+  | "library"
+  | "devices"
+  | "cloud"
+  | "youtube-music"
+  | "playback"
+  | "output"
+  | "account"
+  | "system-audio"
+  | "visualizer";
+
+/** The Settings dialog's sections, in page order. */
 export const SETTINGS_SECTIONS: readonly { id: SettingsSection; label: string; icon: LucideIcon }[] = [
   { id: "about", label: "About", icon: Info },
   { id: "appearance", label: "Appearance", icon: Palette },

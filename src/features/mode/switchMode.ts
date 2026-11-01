@@ -1,6 +1,7 @@
 import { requirePremium } from "@/components/PremiumGate";
 import { systemAudioAffordance } from "@/features/settings/systemAudioCard";
-import { openSettings, systemAudioStatus, type SystemAudioStatus } from "@/lib/ipc";
+import { openSettings } from "@/features/settings/settingsDialogStore";
+import { systemAudioStatus, type SystemAudioStatus } from "@/lib/ipc";
 import { toast } from "@/stores/toast";
 import { useSystemEqStore } from "@/stores/systemEq";
 import { useUiStore, type Route } from "@/stores/ui";

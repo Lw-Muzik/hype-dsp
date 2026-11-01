@@ -41,7 +41,7 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative z-10 w-full max-w-md rounded-card border border-border bg-surface-raised shadow-xl">
+      <div className="relative z-10 w-full max-w-md rounded-card border border-border bg-surface-modal shadow-xl">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-medium">{title}</h2>
           <button

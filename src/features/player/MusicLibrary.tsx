@@ -19,7 +19,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useEngineStore } from "@/stores/engine";
 import { routePlay } from "@/features/connect/remote/router";
-import { openSettings } from "@/lib/ipc";
+import { openSettings } from "@/features/settings/settingsDialogStore";
 import { trackArt, useMusicLibrary } from "@/features/player/useMusicLibrary";
 import type { MusicTrack } from "@/features/player/useMusicLibrary";
 import type { ArtSource } from "@/lib/useTrackArtwork";

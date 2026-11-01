@@ -3,13 +3,11 @@
   "identifier": "default",
   "description": "Capabilities granted to the main window. App-defined commands are always available; this grants the core and plugin commands the UI needs.",
   "windows": [
-    "main",
-    "settings"
+    "main"
   ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
-    "core:window:allow-close",
     "core:window:allow-set-fullscreen",
     "opener:default",
     "notification:default",

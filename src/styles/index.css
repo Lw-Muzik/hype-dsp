@@ -50,6 +50,9 @@
 
   --color-surface: #0a0b0e;
   --color-surface-raised: #14161c;
+  /* Modal panels (Dialog). Same colour as raised, but never given an alpha by
+     Dynamic: a dialog sits over a dimmed app, so a see-through panel is unreadable. */
+  --color-surface-modal: #14161c;
   --color-surface-overlay: #1b1e26;
   --color-border: #242833;
   --color-border-strong: #313643;
@@ -124,6 +127,7 @@
   --color-canvas: #f4f5f7;
   --color-surface: #f4f5f7; /* a soft grey base; pure white is harsh */
   --color-surface-raised: #ffffff; /* light UIs lift *toward* white */
+  --color-surface-modal: #ffffff;
   --color-surface-overlay: #ffffff;
   --color-border: #e3e5ea;
   --color-border-strong: #cdd1d9;
@@ -221,6 +225,15 @@ input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus-visib
 textarea:focus-visible,
 select:focus-visible {
   outline: none;
+}
+
+/* ...and the Settings modal's panel. It takes focus itself on open so Esc and
+ * Tab start inside it; it is a container, not a control, so it gets no ring.
+ * The blanket rule's radius would also square its corners (this file is
+ * unlayered, so it beats the `rounded-card` utility). */
+[data-settings-panel]:focus-visible {
+  outline: none;
+  border-radius: var(--radius-card);
 }
 
 /* Slim, themed scrollbars for scrollable regions. */

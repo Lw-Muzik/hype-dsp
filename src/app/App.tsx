@@ -8,6 +8,7 @@ import { UpdateBanner } from "@/features/update/UpdateBanner";
 import { ConfirmHost } from "@/components/ConfirmHost";
 import { Toaster } from "@/components/Toaster";
 import { SupporterSheet } from "@/components/SupporterSheet";
+import { SettingsDialog } from "@/features/settings/SettingsDialog";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
 import { RightSidebar } from "@/components/RightSidebar";
 import { ResizeHandle } from "@/components/ResizeHandle";
@@ -138,6 +139,7 @@ export function App() {
         </div>
         {mode === "player" && <NowPlayingBar />}
       </div>
+      <SettingsDialog />
       <Toaster />
       <ConfirmHost />
       <SupporterSheet />

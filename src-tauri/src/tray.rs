@@ -140,14 +140,7 @@ fn tooltip(model: &TrayModel) -> String {
 fn on_menu_item(app: &AppHandle, id: &str) {
     match id {
         "show" => show_main(app),
-        "settings" => {
-            // Off the event-loop thread: building a window from it can deadlock
-            // on Windows (see `settings_window`).
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let _ = crate::commands::settings_window::open(&app, None);
-            });
-        }
+        "settings" => crate::settings::open(app),
         "quit" => app.exit(0),
         _ => {
             // Navigation needs the window on screen to mean anything.

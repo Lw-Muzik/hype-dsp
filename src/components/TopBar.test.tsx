@@ -11,7 +11,9 @@ import { useRemoteVolume } from "@/features/connect/remote/ui/useRemoteVolume";
 import { useEngineStore } from "@/stores/engine";
 import { TopBar } from "./TopBar";
 
-vi.mock("@/lib/ipc", () => ({ openSettings: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/features/settings/settingsDialogStore", () => ({
+  openSettings: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("@/features/player/ScrollingWaveform", () => ({ ScrollingWaveform: () => null }));
 vi.mock("@/components/LevelMeter", () => ({ LevelMeter: () => null }));
 vi.mock("@/components/PowerToggle", () => ({ PowerToggle: () => null }));

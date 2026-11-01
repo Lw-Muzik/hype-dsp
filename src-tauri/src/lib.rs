@@ -13,6 +13,7 @@ mod cloud_meta;
 mod commands;
 mod control;
 mod media;
+mod settings;
 mod tray;
 mod tv_proxy;
 mod updater;
@@ -273,17 +274,11 @@ pub fn run() {
         // ⌘Q (the Quit menu item) still exits normally.
         .on_menu_event(|app, event| {
             if event.id() == "settings" {
-                // Off the event-loop thread: building a window from it can
-                // deadlock on Windows (the reason `settings_open` is async).
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    let _ = commands::settings_window::open(&app, None);
-                });
+                settings::open(app);
             }
         })
         .on_window_event(|window, event| {
-            // Only the main window follows the hide/quit conventions; Settings
-            // is an ordinary child window that really closes.
+            // Only the main window follows the hide/quit conventions.
             if window.label() != "main" {
                 return;
             }
@@ -295,12 +290,6 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
-                commands::settings_window::close(window.app_handle());
-            }
-            // Whenever main goes away, Settings must not outlive it (on
-            // Windows/Linux the app would keep running with only Settings open).
-            if let tauri::WindowEvent::Destroyed = event {
-                commands::settings_window::close(window.app_handle());
             }
         })
         .manage(engine)
@@ -847,7 +836,6 @@ pub fn run() {
             commands::engine::system_eq_status,
             commands::engine::system_audio_install_driver,
             commands::cable::system_audio_setup_routing,
-            commands::settings_window::settings_open,
             commands::session::session_load,
             commands::session::session_save,
             tray::tray_update,

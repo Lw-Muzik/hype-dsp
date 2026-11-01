@@ -22,7 +22,7 @@ import { Artwork } from "@/features/player/Artwork";
 import { TrackRow, TRACK_ROW_H } from "@/features/player/TrackRow";
 import { SEARCH_FILTERS, useExploreStore } from "@/stores/explore";
 import { useEngineStore } from "@/stores/engine";
-import { openSettings } from "@/lib/ipc";
+import { openSettings } from "@/features/settings/settingsDialogStore";
 import type { ExploreItem, ExploreShelf } from "@/lib/types";
 import { cn } from "@/lib/cn";
 

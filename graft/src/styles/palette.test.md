@@ -10,4 +10,4 @@
 - luminance · function · L87-L93 — function luminance({ r, g, b }: Rgba): number
 - f · function · L88-L91 — f = (c: number)
 - ratio · function · L95-L103 — function ratio(a: Rgba, b: Rgba): number
-- tsxFiles · function · L178-L196 — function tsxFiles(dir: string): string[]
+- tsxFiles · function · L184-L202 — function tsxFiles(dir: string): string[]

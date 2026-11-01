@@ -1,8 +1,8 @@
 {
   "meta": {
     "version": 1,
-    "nodeCount": 5870,
-    "edgeCount": 9173,
+    "nodeCount": 5830,
+    "edgeCount": 9095,
     "languages": [
       "cpp",
       "javascript",
@@ -51409,12 +51409,12 @@
       "name": "mod.rs",
       "kind": "file",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L1-L39",
+      "span": "L1-L38",
       "signature": null,
       "exported": true,
       "origin": "generic",
-      "body_hash": "b4629b82cb890827f3789c48e0c5342c81019a29556650e941f6ccbab3d28339",
-      "chars": 867,
+      "body_hash": "6f19a9a4da842ad704e0ef5172944ae5258e3a8efda3dbfcbca30ed76c1d928c",
+      "chars": 842,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -51770,25 +51770,11 @@
       "crux": null
     },
     {
-      "id": "src-tauri/src/commands/mod.rs#settings_window",
-      "name": "settings_window",
-      "kind": "module",
-      "path": "src-tauri/src/commands/mod.rs",
-      "span": "L33-L33",
-      "signature": "pub mod settings_window;",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "32a791d862ef658ce99dedfbc1dd5448225c0a07966eff0e3c029ac726e5bcf6",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
       "id": "src-tauri/src/commands/mod.rs#stems",
       "name": "stems",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L34-L34",
+      "span": "L33-L33",
       "signature": "pub mod stems;",
       "exported": true,
       "origin": "generic",
@@ -51802,7 +51788,7 @@
       "name": "tv",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L35-L35",
+      "span": "L34-L34",
       "signature": "pub mod tv;",
       "exported": true,
       "origin": "generic",
@@ -51816,7 +51802,7 @@
       "name": "visualizer",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L36-L36",
+      "span": "L35-L35",
       "signature": "pub mod visualizer;",
       "exported": true,
       "origin": "generic",
@@ -51830,7 +51816,7 @@
       "name": "ytmusic",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L37-L37",
+      "span": "L36-L36",
       "signature": "pub mod ytmusic;",
       "exported": true,
       "origin": "generic",
@@ -51844,7 +51830,7 @@
       "name": "ytmusic_setup",
       "kind": "module",
       "path": "src-tauri/src/commands/mod.rs",
-      "span": "L38-L38",
+      "span": "L37-L37",
       "signature": "pub mod ytmusic_setup;",
       "exported": true,
       "origin": "generic",
@@ -53130,161 +53116,6 @@
       "exported": true,
       "origin": "generic",
       "body_hash": "1ed8c62d4e4f0e66851547c69d94d10013249368a45910b7ac7f4ca4b4b0acca",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs",
-      "name": "settings_window.rs",
-      "kind": "file",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L1-L147",
-      "signature": null,
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "59b2ba3b5bd0341006f8dcf6acbd32dd1a6361c996d602e2c6ff0298f9585b40",
-      "chars": 4635,
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs#accepts_known_sections_only",
-      "name": "accepts_known_sections_only",
-      "kind": "function",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L132-L137",
-      "signature": "fn accepts_known_sections_only()",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "84033dc6cd71a797006ac20b28f9d438caa7080bc9c9308cdfdec2bcbc26eef4",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs#close",
-      "name": "close",
-      "kind": "function",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L114-L118",
-      "signature": "pub fn close(app: &AppHandle)",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "d174c6f9f0130cdbdba9afaca97773a179ac40dbc0ce3f8097cc59a06269705e",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs#hide_zoom_buttons",
-      "name": "hide_zoom_buttons",
-      "kind": "function",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L96-L111",
-      "signature": "fn hide_zoom_buttons(window: &tauri::WebviewWindow)",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "7b2b1a976d06994b6bc93af9a9bb7fb172c3d5e269d378f27cc29487613b1baa",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs#known_section",
-      "name": "known_section",
-      "kind": "function",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L32-L35",
-      "signature": "fn known_section(section: Option<&str>) -> Option<&'static str>",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "2394111aa30cc2d560e4beecac098ad3dbc552db8cc9b782f3e9bf8f95a70ef0",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs#LABEL",
-      "name": "LABEL",
-      "kind": "constant",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L13-L13",
-      "signature": "pub const LABEL: &str = \"settings\";",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "d8c302fcf955ffdacadd1b8704b3c473a1b9278c2ba3a3aa22199acd645bafa5",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs#open",
-      "name": "open",
-      "kind": "function",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L38-L92",
-      "signature": "pub fn open(app: &AppHandle, section: Option<&str>) -> tauri::Result<()>",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "ced164bacd82e6b92ccc942b9b546a6a296efd345bd95d725b2b735f3878a052",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs#section_ids_are_unique",
-      "name": "section_ids_are_unique",
-      "kind": "function",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L140-L145",
-      "signature": "fn section_ids_are_unique()",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "3880f58f3f919e121d4c1fd01816431325347a6aeb1b61a85f6a32c97545bc53",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs#SECTIONS",
-      "name": "SECTIONS",
-      "kind": "constant",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L17-L29",
-      "signature": "pub const SECTIONS: &[&str] = &[",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "c349a429ff341b5608c5037f1c034e96111a82eba84c25c2323acebd60e320c7",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs#settings_open",
-      "name": "settings_open",
-      "kind": "function",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L123-L125",
-      "signature": "pub async fn settings_open(app: AppHandle, section: Option<String>) -> Result<(), IpcError>",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "7a388bbab937c024e4ce5e64cf0821c66816ccbb95902f96d69fcaa85488dc9c",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src-tauri/src/commands/settings_window.rs#tests",
-      "name": "tests",
-      "kind": "module",
-      "path": "src-tauri/src/commands/settings_window.rs",
-      "span": "L128-L146",
-      "signature": "mod tests",
-      "exported": true,
-      "origin": "generic",
-      "body_hash": "84d1317e5046aa0be580dafa767112ce77ea1590209ef4691c0558214969dcb8",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -55442,12 +55273,12 @@
       "name": "lib.rs",
       "kind": "file",
       "path": "src-tauri/src/lib.rs",
-      "span": "L1-L1013",
+      "span": "L1-L1001",
       "signature": null,
       "exported": true,
       "origin": "generic",
-      "body_hash": "ad8e0cd1008dc8a9019db4e1d0ef9265f037315e50b9851ec3dd16b61a6b7ffa",
-      "chars": 47789,
+      "body_hash": "5ca66610ce09403196de5e3926a077891773ca4aac80abe6c6b48daaeeb39934",
+      "chars": 47001,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -55541,7 +55372,7 @@
       "name": "forward_frames",
       "kind": "function",
       "path": "src-tauri/src/lib.rs",
-      "span": "L56-L186",
+      "span": "L57-L187",
       "signature": "fn forward_frames(",
       "exported": true,
       "origin": "generic",
@@ -55569,7 +55400,7 @@
       "name": "Progress",
       "kind": "struct",
       "path": "src-tauri/src/lib.rs",
-      "span": "L37-L49",
+      "span": "L38-L50",
       "signature": "struct Progress",
       "exported": true,
       "origin": "generic",
@@ -55583,11 +55414,25 @@
       "name": "run",
       "kind": "function",
       "path": "src-tauri/src/lib.rs",
-      "span": "L189-L1012",
+      "span": "L190-L1000",
       "signature": "pub fn run()",
       "exported": true,
       "origin": "generic",
-      "body_hash": "98f098065c6f58eef1988b2b496b12e7b2b1a84b0b544f4348c391b580aa135e",
+      "body_hash": "399494d9a74ade5e2fd44a711214fe925f21efde94ed67d60dff56422905cc30",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/lib.rs#settings",
+      "name": "settings",
+      "kind": "module",
+      "path": "src-tauri/src/lib.rs",
+      "span": "L16-L16",
+      "signature": "mod settings;",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "b278c7138c6d1e761c9ee20a5b606e8eb11bcd02600ba11010541951fd68ccfb",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -55597,7 +55442,7 @@
       "name": "tray",
       "kind": "module",
       "path": "src-tauri/src/lib.rs",
-      "span": "L16-L16",
+      "span": "L17-L17",
       "signature": "mod tray;",
       "exported": true,
       "origin": "generic",
@@ -55611,7 +55456,7 @@
       "name": "tv_proxy",
       "kind": "module",
       "path": "src-tauri/src/lib.rs",
-      "span": "L17-L17",
+      "span": "L18-L18",
       "signature": "mod tv_proxy;",
       "exported": true,
       "origin": "generic",
@@ -55625,7 +55470,7 @@
       "name": "updater",
       "kind": "module",
       "path": "src-tauri/src/lib.rs",
-      "span": "L18-L18",
+      "span": "L19-L19",
       "signature": "mod updater;",
       "exported": true,
       "origin": "generic",
@@ -55639,7 +55484,7 @@
       "name": "ytmusic",
       "kind": "module",
       "path": "src-tauri/src/lib.rs",
-      "span": "L19-L19",
+      "span": "L20-L20",
       "signature": "mod ytmusic;",
       "exported": true,
       "origin": "generic",
@@ -55833,16 +55678,45 @@
       "crux": null
     },
     {
+      "id": "src-tauri/src/settings.rs",
+      "name": "settings.rs",
+      "kind": "file",
+      "path": "src-tauri/src/settings.rs",
+      "span": "L1-L17",
+      "signature": null,
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "21934e245086839f85542d2670cd2b2fc542103539b6f423b5cac7e81aac6341",
+      "chars": 596,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src-tauri/src/settings.rs#open",
+      "name": "open",
+      "kind": "function",
+      "path": "src-tauri/src/settings.rs",
+      "span": "L9-L16",
+      "signature": "pub fn open(app: &AppHandle)",
+      "exported": true,
+      "origin": "generic",
+      "body_hash": "aee58318f39ad32493b68e3f18046412087a2402a684a4a4b697ebfbfb74eea5",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
       "id": "src-tauri/src/tray.rs",
       "name": "tray.rs",
       "kind": "file",
       "path": "src-tauri/src/tray.rs",
-      "span": "L1-L319",
+      "span": "L1-L312",
       "signature": null,
       "exported": true,
       "origin": "generic",
-      "body_hash": "7352ef5972356aaad8ad6aa0d7e7890cf9ddbb48a15ac7da5922013939eaac62",
-      "chars": 12121,
+      "body_hash": "9e0b74b04cb476ea70bf3990b0c049104855c926a9f8be835b11ae41730735a9",
+      "chars": 11825,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -55866,7 +55740,7 @@
       "name": "build_menu",
       "kind": "function",
       "path": "src-tauri/src/tray.rs",
-      "span": "L187-L265",
+      "span": "L180-L258",
       "signature": "fn build_menu(app: &AppHandle, model: &TrayModel) -> tauri::Result<Menu<tauri::Wry>>",
       "exported": true,
       "origin": "generic",
@@ -55880,7 +55754,7 @@
       "name": "deserializes_the_frontend_model",
       "kind": "function",
       "path": "src-tauri/src/tray.rs",
-      "span": "L281-L295",
+      "span": "L274-L288",
       "signature": "fn deserializes_the_frontend_model()",
       "exported": true,
       "origin": "generic",
@@ -55894,7 +55768,7 @@
       "name": "ellipsize",
       "kind": "function",
       "path": "src-tauri/src/tray.rs",
-      "span": "L268-L274",
+      "span": "L261-L267",
       "signature": "fn ellipsize(s: &str, max: usize) -> String",
       "exported": true,
       "origin": "generic",
@@ -55922,7 +55796,7 @@
       "name": "long_titles_are_cut_with_an_ellipsis",
       "kind": "function",
       "path": "src-tauri/src/tray.rs",
-      "span": "L298-L306",
+      "span": "L291-L299",
       "signature": "fn long_titles_are_cut_with_an_ellipsis()",
       "exported": true,
       "origin": "generic",
@@ -55936,11 +55810,11 @@
       "name": "on_menu_item",
       "kind": "function",
       "path": "src-tauri/src/tray.rs",
-      "span": "L140-L160",
+      "span": "L140-L153",
       "signature": "fn on_menu_item(app: &AppHandle, id: &str)",
       "exported": true,
       "origin": "generic",
-      "body_hash": "1197b07a1ae2727c282cdc1ec2b9d54e864ac99054d4550484be16ecc0acf0c4",
+      "body_hash": "bfa858e77be56fba66376230d5e7e0306905952ca3ec0b8f48639a9b8a8f966b",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -55950,7 +55824,7 @@
       "name": "show_main",
       "kind": "function",
       "path": "src-tauri/src/tray.rs",
-      "span": "L164-L172",
+      "span": "L157-L165",
       "signature": "fn show_main(app: &AppHandle)",
       "exported": true,
       "origin": "generic",
@@ -55964,7 +55838,7 @@
       "name": "tests",
       "kind": "module",
       "path": "src-tauri/src/tray.rs",
-      "span": "L277-L318",
+      "span": "L270-L311",
       "signature": "mod tests",
       "exported": true,
       "origin": "generic",
@@ -55992,7 +55866,7 @@
       "name": "tooltip_names_the_track_or_the_mode",
       "kind": "function",
       "path": "src-tauri/src/tray.rs",
-      "span": "L309-L317",
+      "span": "L302-L310",
       "signature": "fn tooltip_names_the_track_or_the_mode()",
       "exported": true,
       "origin": "generic",
@@ -57409,12 +57283,12 @@
       "name": "App.tsx",
       "kind": "file",
       "path": "src/app/App.tsx",
-      "span": "L1-L147",
+      "span": "L1-L149",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "40bfda04c56a76607b4cc91641a3588da3003679e9408e9bf5af816292ebbb47",
-      "chars": 5688,
+      "body_hash": "37f2eef8b62ce3fee41273916ddddf48e881216bfce4a6cc3cb2f284e2c95e92",
+      "chars": 5782,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -57424,11 +57298,11 @@
       "name": "App",
       "kind": "function",
       "path": "src/app/App.tsx",
-      "span": "L29-L146",
+      "span": "L30-L148",
       "signature": "function App()",
       "exported": true,
       "origin": "ast",
-      "body_hash": "ecf8ebea563f0e0c3a034c0007e8acbbfa65cd2d5a5b22886da08760a61a7e3b",
+      "body_hash": "569c391da36d31e6579c6162466e46e790492147ac59db992a8688043186f8f2",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -57438,7 +57312,7 @@
       "name": "onFocus",
       "kind": "function",
       "path": "src/app/App.tsx",
-      "span": "L84-L84",
+      "span": "L85-L85",
       "signature": "onFocus = ()",
       "exported": true,
       "origin": "ast",
@@ -57452,7 +57326,7 @@
       "name": "register",
       "kind": "function",
       "path": "src/app/App.tsx",
-      "span": "L106-L110",
+      "span": "L107-L111",
       "signature": "register = (p: Promise<UnlistenFn>)",
       "exported": true,
       "origin": "ast",
@@ -57466,7 +57340,7 @@
       "name": "scheduleSync",
       "kind": "function",
       "path": "src/app/App.tsx",
-      "span": "L100-L105",
+      "span": "L101-L106",
       "signature": "scheduleSync = ()",
       "exported": true,
       "origin": "ast",
@@ -57672,134 +57546,6 @@
       "exported": true,
       "origin": "ast",
       "body_hash": "2d34ae379b16832798f31441295ca410469d363bbb4444b5d64946ca53447061",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/app/windowSyncSetup.test.ts",
-      "name": "windowSyncSetup.test.ts",
-      "kind": "file",
-      "path": "src/app/windowSyncSetup.test.ts",
-      "span": "L1-L161",
-      "signature": null,
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "5bd1b4366e3ef19f0422b1df363eafe09eb852be2ae09f73c840db1f518142dd",
-      "chars": 6095,
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/app/windowSyncSetup.test.ts#flush",
-      "name": "flush",
-      "kind": "function",
-      "path": "src/app/windowSyncSetup.test.ts",
-      "span": "L55-L55",
-      "signature": "flush = ()",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "b463d261cdde3286ad02c212fcc08fab0004c493a5d9f91b4fa45d62896e24e7",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/app/windowSyncSetup.test.ts#load",
-      "name": "load",
-      "kind": "function",
-      "path": "src/app/windowSyncSetup.test.ts",
-      "span": "L37-L53",
-      "signature": "async function load()",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "bcb0923583ccf01601aed6a4a3e900dfaef3c104e6c3312bdf7831eb34fb472e",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/app/windowSyncSetup.test.ts#run",
-      "name": "run",
-      "kind": "function",
-      "path": "src/app/windowSyncSetup.test.ts",
-      "span": "L142-L143",
-      "signature": "run = (action: string, args: unknown[] = [])",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "29cd674e6de55277f1de6a4d5145cb9ad09bfac126d9121545cafac1fc26e0dd",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/app/windowSyncSetup.ts",
-      "name": "windowSyncSetup.ts",
-      "kind": "file",
-      "path": "src/app/windowSyncSetup.ts",
-      "span": "L1-L106",
-      "signature": null,
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "ffe308f1ad067b2bb0b67dde2253dc1500319eb55ed9029bda371d2f46bf816e",
-      "chars": 4457,
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/app/windowSyncSetup.ts#startMainWindowSync",
-      "name": "startMainWindowSync",
-      "kind": "function",
-      "path": "src/app/windowSyncSetup.ts",
-      "span": "L56-L68",
-      "signature": "function startMainWindowSync(): void",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "18de37008f22cd6378f5470fc45ed480096fae737e5c53f7c4860e9b2825b496",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/app/windowSyncSetup.ts#startSettingsWindowSync",
-      "name": "startSettingsWindowSync",
-      "kind": "function",
-      "path": "src/app/windowSyncSetup.ts",
-      "span": "L74-L105",
-      "signature": "async function startSettingsWindowSync(): Promise<void>",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "eef6069883f2a189d2fdbf584104cc8eebc5c483bb8eabdc69f2595c311c514e",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/app/windowSyncSetup.ts#startSettingsWindowSync.EngineActions",
-      "name": "EngineActions",
-      "kind": "type",
-      "path": "src/app/windowSyncSetup.ts",
-      "span": "L89-L89",
-      "signature": "type EngineActions = typeof engine;",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "1db55fc520a94f7ca798ce8ffe6e822b8ceec2f1ef7c27028aff987c864f6dc2",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/app/windowSyncSetup.ts#syncAll",
-      "name": "syncAll",
-      "kind": "function",
-      "path": "src/app/windowSyncSetup.ts",
-      "span": "L24-L40",
-      "signature": "function syncAll(): Promise<(() => void)[]>",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "beb35178584bca3007e66e42162265b952e32b86d3ad816cccc296033b0f5317",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -58169,8 +57915,8 @@
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "01f0174667cdc55261f08beab3729f9f5d40d7355da59ce7656c54e808efb698",
-      "chars": 1957,
+      "body_hash": "cf04b72afa5ef94eaa8414bd825cd14b53d689926f3e68cbe63150c0ab4a560f",
+      "chars": 1956,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -58184,7 +57930,7 @@
       "signature": "function Dialog({ open, onClose, title, children }: DialogProps)",
       "exported": true,
       "origin": "ast",
-      "body_hash": "71f279d03296e53548a0915bfff17423dcfca7dcf6aa19730c9d2e853ec1efef",
+      "body_hash": "00d88baab8900deba319c8a0ab2f63a7b3c4adb9848a6cf5cb20c4d3c4fe22d5",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -59449,12 +59195,12 @@
       "name": "TopBar.test.tsx",
       "kind": "file",
       "path": "src/components/TopBar.test.tsx",
-      "span": "L1-L100",
+      "span": "L1-L102",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "64df2ab34d3ea3f854c49cf50d7325a51b29862a6eb5c5bfef57c607c53197ee",
-      "chars": 4631,
+      "body_hash": "a5c4227e877e6b3e2c8ee4358f1425b8a2d08a60d8b947f3f801ba649455733f",
+      "chars": 4664,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -59464,7 +59210,7 @@
       "name": "view",
       "kind": "function",
       "path": "src/components/TopBar.test.tsx",
-      "span": "L26-L29",
+      "span": "L28-L31",
       "signature": "view = (over: Partial<RemoteView> = {}): RemoteView",
       "exported": false,
       "origin": "ast",
@@ -59478,12 +59224,12 @@
       "name": "TopBar.tsx",
       "kind": "file",
       "path": "src/components/TopBar.tsx",
-      "span": "L1-L125",
+      "span": "L1-L126",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "67bd6cab1b9dc71b35b6a0025b81a4d26b0dda80e78949dd8edaec67be561175",
-      "chars": 5130,
+      "body_hash": "dead79884d2a2180cd89f709c2528cf6f584e841b2473b3e1a018c85c753f2f1",
+      "chars": 5202,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -59493,11 +59239,11 @@
       "name": "TopBar",
       "kind": "function",
       "path": "src/components/TopBar.tsx",
-      "span": "L24-L124",
+      "span": "L24-L125",
       "signature": "function TopBar()",
       "exported": true,
       "origin": "ast",
-      "body_hash": "0b450672549273e5cd228ac4a5514f476eef938b109b1f55bf12f2f4ef012091",
+      "body_hash": "ecf9ec44ae84c65c7dc5c5916b5f18660d38f7fc583e2e9a7faa60946fb5ca1d",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -59507,7 +59253,7 @@
       "name": "onKey",
       "kind": "function",
       "path": "src/components/TopBar.tsx",
-      "span": "L46-L51",
+      "span": "L47-L52",
       "signature": "onKey = (e: KeyboardEvent)",
       "exported": true,
       "origin": "ast",
@@ -67344,8 +67090,8 @@
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "ce48cb260ddcdba58f57b72e510e92d18d052ab41942a1d0d89657be392d487d",
-      "chars": 21100,
+      "body_hash": "14a2fcd53243e252ba2a3dd26e8d526920c952d9038e43ee36d03332eaf52435",
+      "chars": 21130,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -67738,12 +67484,12 @@
       "name": "shell.test.tsx",
       "kind": "file",
       "path": "src/features/mode/shell.test.tsx",
-      "span": "L1-L108",
+      "span": "L1-L109",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "ae2f363f975a90ffc6391e60392c2e57c7f8ec84351895d8c457fb8dbc609072",
-      "chars": 4598,
+      "body_hash": "8c5a249a09fa25fe547234c32b60c1629a7b3dba207191f93fb5d0ed8569735d",
+      "chars": 4693,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -67753,7 +67499,7 @@
       "name": "navLabels",
       "kind": "function",
       "path": "src/features/mode/shell.test.tsx",
-      "span": "L56-L59",
+      "span": "L57-L60",
       "signature": "navLabels = ()",
       "exported": false,
       "origin": "ast",
@@ -67810,12 +67556,12 @@
       "name": "switchMode.ts",
       "kind": "file",
       "path": "src/features/mode/switchMode.ts",
-      "span": "L1-L84",
+      "span": "L1-L85",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "7abd700b460d5f8de8c9c227c0254111358e01a035741bcd11faf1003aa19517",
-      "chars": 2670,
+      "body_hash": "8224c9cda0e1e5845627261c076017c9fee686486ce126c7faf789af0418fac1",
+      "chars": 2728,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -67825,7 +67571,7 @@
       "name": "SwitchDeps",
       "kind": "interface",
       "path": "src/features/mode/switchMode.ts",
-      "span": "L17-L27",
+      "span": "L18-L28",
       "signature": "interface SwitchDeps",
       "exported": true,
       "origin": "ast",
@@ -67839,7 +67585,7 @@
       "name": "switchMode",
       "kind": "function",
       "path": "src/features/mode/switchMode.ts",
-      "span": "L43-L83",
+      "span": "L44-L84",
       "signature": "async function switchMode( target: AppMode, deps: SwitchDeps = defaultDeps, ): Promise<SwitchOutcome>",
       "exported": true,
       "origin": "ast",
@@ -67853,7 +67599,7 @@
       "name": "SwitchOutcome",
       "kind": "type",
       "path": "src/features/mode/switchMode.ts",
-      "span": "L9-L15",
+      "span": "L10-L16",
       "signature": "type SwitchOutcome = | \"switched\" | \"blocked\" | \"unsupported\" | \"needs-setup\" | \"failed\" | \"busy\";",
       "exported": true,
       "origin": "ast",
@@ -68454,8 +68200,8 @@
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "4dabbb0aad37ac1c5730a62d8916c0be16df19eb56161b908eab4f144620fe55",
-      "chars": 29941,
+      "body_hash": "f9e4bb2dabdc219cfe701537bba7e14b267b88e3b872bc01b79e4a3206522caa",
+      "chars": 29971,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -70160,6 +69906,277 @@
       "crux": null
     },
     {
+      "id": "src/features/settings/sections.ts",
+      "name": "sections.ts",
+      "kind": "file",
+      "path": "src/features/settings/sections.ts",
+      "span": "L1-L47",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "bea9bf27da9011750d4947fc04f9918d7824d35c7fab60960ba51a7e72b1af66",
+      "chars": 1393,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/sections.ts#isSettingsSection",
+      "name": "isSettingsSection",
+      "kind": "function",
+      "path": "src/features/settings/sections.ts",
+      "span": "L45-L46",
+      "signature": "isSettingsSection = (id: string): id is SettingsSection",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "7a1f41c423a71dba612d06969e6d60a6893b906b16eb395af92067493c538dbe",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/sections.ts#SettingsSection",
+      "name": "SettingsSection",
+      "kind": "type",
+      "path": "src/features/settings/sections.ts",
+      "span": "L17-L28",
+      "signature": "type SettingsSection = | \"about\" | \"appearance\" | \"library\" | \"devices\" | \"cloud\" | \"youtube-music\" | \"playback\" | \"output\" | \"account\" | \"system-audio\" | \"visualizer\";",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "c377abc51534581aef96c131e1120acec4c2a73eee280d4a4c2a03a7639a442f",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/SettingsDialog.test.tsx",
+      "name": "SettingsDialog.test.tsx",
+      "kind": "file",
+      "path": "src/features/settings/SettingsDialog.test.tsx",
+      "span": "L1-L163",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "bf675ad82c34bd8789a6ee6132edacc4981e5d8d2efea830bb0c2fff79dc1178",
+      "chars": 5470,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/SettingsDialog.test.tsx#isOpen",
+      "name": "isOpen",
+      "kind": "function",
+      "path": "src/features/settings/SettingsDialog.test.tsx",
+      "span": "L45-L45",
+      "signature": "isOpen = ()",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "125bfdf8bcadf5586641f6226baf75fcdcac89694016231257797a6ba2e65d52",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/SettingsDialog.test.tsx#mount",
+      "name": "mount",
+      "kind": "function",
+      "path": "src/features/settings/SettingsDialog.test.tsx",
+      "span": "L39-L43",
+      "signature": "mount = async ()",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "d650bab4c9bb0616c4c3da88354545fd58ce4a31cc76b1a238a1c7c90737d555",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/SettingsDialog.test.tsx#open",
+      "name": "open",
+      "kind": "function",
+      "path": "src/features/settings/SettingsDialog.test.tsx",
+      "span": "L44-L44",
+      "signature": "open = (section?: Parameters<typeof openSettings>[0])",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "62eef3ea6423cbf0d31c6c97e83192e38b40ad9dea6a1be143acec6aeeaddf29",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/SettingsDialog.tsx",
+      "name": "SettingsDialog.tsx",
+      "kind": "file",
+      "path": "src/features/settings/SettingsDialog.tsx",
+      "span": "L1-L225",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "f6f4e698c039bc1e5d8dc5ae4fe872ee4429e7a69978719fa6d4a479ccb7eb44",
+      "chars": 8665,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/SettingsDialog.tsx#escapeIsClaimed",
+      "name": "escapeIsClaimed",
+      "kind": "function",
+      "path": "src/features/settings/SettingsDialog.tsx",
+      "span": "L18-L26",
+      "signature": "function escapeIsClaimed(): boolean",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "4c89e07260405baba03adb417c846b4fa8d76848937b2a0b81b58f7806a61dd3",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/SettingsDialog.tsx#SettingsDialog",
+      "name": "SettingsDialog",
+      "kind": "function",
+      "path": "src/features/settings/SettingsDialog.tsx",
+      "span": "L37-L54",
+      "signature": "function SettingsDialog()",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "dbd7f70f46ad3811debca17065b7e1a5258b5722ea7399d8014453b14f91875c",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/SettingsDialog.tsx#SettingsPanel",
+      "name": "SettingsPanel",
+      "kind": "function",
+      "path": "src/features/settings/SettingsDialog.tsx",
+      "span": "L56-L224",
+      "signature": "function SettingsPanel()",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "696950c50c50098a34401cf40d52aee1bde6db17d6359f6b5288608793d217e9",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/SettingsDialog.tsx#SettingsPanel.onKey",
+      "name": "onKey",
+      "kind": "function",
+      "path": "src/features/settings/SettingsDialog.tsx",
+      "span": "L146-L154",
+      "signature": "onKey = (e: KeyboardEvent)",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "d1528f12a94152464647ccd74d03efd31f9d87a277ec7a0d7f6968467d855bcc",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/SettingsDialog.tsx#SettingsPanel.onScroll",
+      "name": "onScroll",
+      "kind": "function",
+      "path": "src/features/settings/SettingsDialog.tsx",
+      "span": "L124-L134",
+      "signature": "onScroll = ()",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "5a1eca099b69e094b59970b3eea868576d0f0cd9f83f7256cad51f8df69910c2",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/settingsDialogStore.test.ts",
+      "name": "settingsDialogStore.test.ts",
+      "kind": "file",
+      "path": "src/features/settings/settingsDialogStore.test.ts",
+      "span": "L1-L36",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "238c9e24cd327763620595d685973e4971909b636a4d84b7b81356cd1fcbad2a",
+      "chars": 1080,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/settingsDialogStore.test.ts#state",
+      "name": "state",
+      "kind": "function",
+      "path": "src/features/settings/settingsDialogStore.test.ts",
+      "span": "L4-L4",
+      "signature": "state = ()",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "27a3320fce544e580791dc85bbd3a4a9eca4e749708aa926300cb9267aa02bcb",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/settingsDialogStore.ts",
+      "name": "settingsDialogStore.ts",
+      "kind": "file",
+      "path": "src/features/settings/settingsDialogStore.ts",
+      "span": "L1-L33",
+      "signature": null,
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "5e53e656d25b3ea9800ca1759e63c837ea3fd20f880d43537e5bcc88d198c57b",
+      "chars": 1021,
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/settingsDialogStore.ts#closeSettings",
+      "name": "closeSettings",
+      "kind": "function",
+      "path": "src/features/settings/settingsDialogStore.ts",
+      "span": "L30-L32",
+      "signature": "function closeSettings(): void",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "a50508af2c9c10c1af5402e90f0c930fd63e313d9c5b1fc66186e7ac0024372d",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/settingsDialogStore.ts#openSettings",
+      "name": "openSettings",
+      "kind": "function",
+      "path": "src/features/settings/settingsDialogStore.ts",
+      "span": "L21-L28",
+      "signature": "function openSettings(section?: SettingsSection): Promise<void>",
+      "exported": true,
+      "origin": "ast",
+      "body_hash": "498965dcb6b74136a3c245b9880c0873915e034443a9cc9e67e33a1566ae4a32",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
+      "id": "src/features/settings/settingsDialogStore.ts#SettingsDialogState",
+      "name": "SettingsDialogState",
+      "kind": "interface",
+      "path": "src/features/settings/settingsDialogStore.ts",
+      "span": "L4-L11",
+      "signature": "interface SettingsDialogState",
+      "exported": false,
+      "origin": "ast",
+      "body_hash": "30945b97d32e5e3ab2a964116e933fddd8b676904cd93c4c515a3b7aad340e0b",
+      "summary_state": "pending",
+      "summary": null,
+      "crux": null
+    },
+    {
       "id": "src/features/settings/SettingsView.tsx",
       "name": "SettingsView.tsx",
       "kind": "file",
@@ -70623,149 +70640,6 @@
       "exported": true,
       "origin": "ast",
       "body_hash": "4f0cfcdb60f4eeba6e89936fc5a9cbcd333cf08db5c08d71ef24f2350bbd43a7",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/settings/window/sections.ts",
-      "name": "sections.ts",
-      "kind": "file",
-      "path": "src/features/settings/window/sections.ts",
-      "span": "L1-L34",
-      "signature": null,
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "7a4c839b1371c514a0532f582cace791d2c93238a6ae16e5091574f9b78aa234",
-      "chars": 1205,
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/settings/window/sections.ts#isSettingsSection",
-      "name": "isSettingsSection",
-      "kind": "function",
-      "path": "src/features/settings/window/sections.ts",
-      "span": "L32-L33",
-      "signature": "isSettingsSection = (id: string): id is SettingsSection",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "7a1f41c423a71dba612d06969e6d60a6893b906b16eb395af92067493c538dbe",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/settings/window/SettingsWindow.test.tsx",
-      "name": "SettingsWindow.test.tsx",
-      "kind": "file",
-      "path": "src/features/settings/window/SettingsWindow.test.tsx",
-      "span": "L1-L120",
-      "signature": null,
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "0f7b61e5c62bcd8796255440796acc62472b5fd1c796e78705819dc986196672",
-      "chars": 3791,
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/settings/window/SettingsWindow.test.tsx#mount",
-      "name": "mount",
-      "kind": "function",
-      "path": "src/features/settings/window/SettingsWindow.test.tsx",
-      "span": "L53-L57",
-      "signature": "mount = async ()",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "f78aa472cf47c2d8a58a32f5638ebce0da2b338e6ae30df83eb37b4969f0232c",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/settings/window/SettingsWindow.tsx",
-      "name": "SettingsWindow.tsx",
-      "kind": "file",
-      "path": "src/features/settings/window/SettingsWindow.tsx",
-      "span": "L1-L178",
-      "signature": null,
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "04d3abe145b2eff16357c37bc44716d807d31e1788454544d964a377dd36c363",
-      "chars": 6823,
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/settings/window/SettingsWindow.tsx#closeWindow",
-      "name": "closeWindow",
-      "kind": "function",
-      "path": "src/features/settings/window/SettingsWindow.tsx",
-      "span": "L28-L32",
-      "signature": "closeWindow = ()",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "2f2ef164134f084581527fc5e137376ec5085c2d008c29e8e3ade7070c9add12",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/settings/window/SettingsWindow.tsx#escapeIsClaimed",
-      "name": "escapeIsClaimed",
-      "kind": "function",
-      "path": "src/features/settings/window/SettingsWindow.tsx",
-      "span": "L18-L26",
-      "signature": "function escapeIsClaimed(): boolean",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "90f488aee7e42303f77d924a3db9924d141fccfff278b055fb15f212ca7a066f",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow",
-      "name": "SettingsWindow",
-      "kind": "function",
-      "path": "src/features/settings/window/SettingsWindow.tsx",
-      "span": "L39-L177",
-      "signature": "function SettingsWindow()",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "b95952094c91a3b7c0ee9758b8e738caa751b2767c339a4a6d2325d7973907b4",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow.onKey",
-      "name": "onKey",
-      "kind": "function",
-      "path": "src/features/settings/window/SettingsWindow.tsx",
-      "span": "L119-L127",
-      "signature": "onKey = (e: KeyboardEvent)",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "e725543a668312108579f917f7039607c98a16695a31db62caa410ac29d1e09f",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow.onScroll",
-      "name": "onScroll",
-      "kind": "function",
-      "path": "src/features/settings/window/SettingsWindow.tsx",
-      "span": "L99-L109",
-      "signature": "onScroll = ()",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "5a1eca099b69e094b59970b3eea868576d0f0cd9f83f7256cad51f8df69910c2",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -74675,12 +74549,12 @@
       "name": "ipc.ts",
       "kind": "file",
       "path": "src/lib/ipc.ts",
-      "span": "L1-L1796",
+      "span": "L1-L1774",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "2d02b4dc5d735501842679e0ad2f00c72cb41839716d4f28f61220e09b0428ff",
-      "chars": 65388,
+      "body_hash": "a4c64e602ee0135c094d027ab9a2948f161ef505f19822d40567ffb5fb4995b7",
+      "chars": 64783,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -74928,7 +74802,7 @@
       "name": "AppNotification",
       "kind": "interface",
       "path": "src/lib/ipc.ts",
-      "span": "L1767-L1775",
+      "span": "L1745-L1753",
       "signature": "interface AppNotification",
       "exported": true,
       "origin": "ast",
@@ -76468,7 +76342,7 @@
       "name": "notificationsList",
       "kind": "function",
       "path": "src/lib/ipc.ts",
-      "span": "L1778-L1780",
+      "span": "L1756-L1758",
       "signature": "function notificationsList(): Promise<AppNotification[]>",
       "exported": true,
       "origin": "ast",
@@ -76482,7 +76356,7 @@
       "name": "notificationsMarkAllRead",
       "kind": "function",
       "path": "src/lib/ipc.ts",
-      "span": "L1788-L1790",
+      "span": "L1766-L1768",
       "signature": "function notificationsMarkAllRead(): Promise<AppNotification[]>",
       "exported": true,
       "origin": "ast",
@@ -76496,7 +76370,7 @@
       "name": "notificationsOpen",
       "kind": "function",
       "path": "src/lib/ipc.ts",
-      "span": "L1784-L1786",
+      "span": "L1762-L1764",
       "signature": "function notificationsOpen(id: string): Promise<AppNotification[]>",
       "exported": true,
       "origin": "ast",
@@ -76594,7 +76468,7 @@
       "name": "onNotificationsUpdated",
       "kind": "function",
       "path": "src/lib/ipc.ts",
-      "span": "L1793-L1795",
+      "span": "L1771-L1773",
       "signature": "function onNotificationsUpdated(handler: (count: number) => void): Promise<UnlistenFn>",
       "exported": true,
       "origin": "ast",
@@ -76702,15 +76576,15 @@
       "crux": null
     },
     {
-      "id": "src/lib/ipc.ts#onSettingsSection",
-      "name": "onSettingsSection",
+      "id": "src/lib/ipc.ts#onSettingsOpen",
+      "name": "onSettingsOpen",
       "kind": "function",
       "path": "src/lib/ipc.ts",
-      "span": "L1718-L1722",
-      "signature": "function onSettingsSection( handler: (section: string) => void, ): Promise<UnlistenFn>",
+      "span": "L1698-L1700",
+      "signature": "function onSettingsOpen(handler: () => void): Promise<UnlistenFn>",
       "exported": true,
       "origin": "ast",
-      "body_hash": "84d5f30f39e4501113fa70667864cab9e3a39abf2e04814cde73460cc9f670fe",
+      "body_hash": "c2558bd4c5896e2a6182461e40fcbe8434c116949473351e390b6be33605acec",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -76776,7 +76650,7 @@
       "name": "onTrayAction",
       "kind": "function",
       "path": "src/lib/ipc.ts",
-      "span": "L1748-L1750",
+      "span": "L1726-L1728",
       "signature": "function onTrayAction(handler: (action: string) => void): Promise<UnlistenFn>",
       "exported": true,
       "origin": "ast",
@@ -76837,20 +76711,6 @@
       "exported": true,
       "origin": "ast",
       "body_hash": "141a6cd129051c38f9ab6a83c153d27fcdfcb9ab5619e5dc0c13be733f964b6a",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/ipc.ts#openSettings",
-      "name": "openSettings",
-      "kind": "function",
-      "path": "src/lib/ipc.ts",
-      "span": "L1713-L1715",
-      "signature": "function openSettings(section?: SettingsSection): Promise<void>",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "c9a685f752996ddf4bdd5fef21dedce20088f1ecd0bc562efa2b58d49b1d426a",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -77448,7 +77308,7 @@
       "name": "sessionLoad",
       "kind": "function",
       "path": "src/lib/ipc.ts",
-      "span": "L1755-L1757",
+      "span": "L1733-L1735",
       "signature": "function sessionLoad(): Promise<string | null>",
       "exported": true,
       "origin": "ast",
@@ -77462,7 +77322,7 @@
       "name": "sessionSave",
       "kind": "function",
       "path": "src/lib/ipc.ts",
-      "span": "L1760-L1762",
+      "span": "L1738-L1740",
       "signature": "function sessionSave(json: string | null): Promise<void>",
       "exported": true,
       "origin": "ast",
@@ -77481,20 +77341,6 @@
       "exported": true,
       "origin": "ast",
       "body_hash": "1757324f5d0c79586e7df0222ccbc56e1b4725ed156454435d2dd857e6e62ae4",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/ipc.ts#SettingsSection",
-      "name": "SettingsSection",
-      "kind": "type",
-      "path": "src/lib/ipc.ts",
-      "span": "L1699-L1710",
-      "signature": "type SettingsSection = | \"about\" | \"appearance\" | \"library\" | \"devices\" | \"cloud\" | \"youtube-music\" | \"playback\" | \"output\" | \"account\" | \"system-audio\" | \"visualizer\";",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "c377abc51534581aef96c131e1120acec4c2a73eee280d4a4c2a03a7639a442f",
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -77770,7 +77616,7 @@
       "name": "TrayModel",
       "kind": "interface",
       "path": "src/lib/ipc.ts",
-      "span": "L1728-L1740",
+      "span": "L1706-L1718",
       "signature": "interface TrayModel",
       "exported": true,
       "origin": "ast",
@@ -77784,7 +77630,7 @@
       "name": "trayUpdate",
       "kind": "function",
       "path": "src/lib/ipc.ts",
-      "span": "L1743-L1745",
+      "span": "L1721-L1723",
       "signature": "function trayUpdate(model: TrayModel): Promise<void>",
       "exported": true,
       "origin": "ast",
@@ -78548,21 +78394,6 @@
       "origin": "ast",
       "body_hash": "b6ca8f0cb33eb54acee7e674d88d1c343fcdc117b45185dfe244091662c19bde",
       "chars": 433,
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/settingsSections.test.ts",
-      "name": "settingsSections.test.ts",
-      "kind": "file",
-      "path": "src/lib/settingsSections.test.ts",
-      "span": "L1-L14",
-      "signature": null,
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "eb9d8f6b6cf7fcb5a960d6614a28f3502aa56e6d077bc1f61fd7f156d9404e48",
-      "chars": 659,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -79606,412 +79437,16 @@
       "crux": null
     },
     {
-      "id": "src/lib/windowLabel.ts",
-      "name": "windowLabel.ts",
-      "kind": "file",
-      "path": "src/lib/windowLabel.ts",
-      "span": "L1-L22",
-      "signature": null,
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "2f3f1aff181b4cec86b506f35be3803fb509e6b7cd7b0101f65b98a518155fd9",
-      "chars": 715,
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.test.ts",
-      "name": "windowSync.test.ts",
-      "kind": "file",
-      "path": "src/lib/windowSync.test.ts",
-      "span": "L1-L261",
-      "signature": null,
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "865e2f16a4d248f17c71dd7e85ea48aa83e0ed896dbec1142180ff14e0a72e90",
-      "chars": 9625,
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.test.ts#Bus",
-      "name": "Bus",
-      "kind": "class",
-      "path": "src/lib/windowSync.test.ts",
-      "span": "L13-L37",
-      "signature": "class Bus",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "5f0d90d05a61f83a5338c6b8eadff40d2a49c3052b112c26789f5322239821aa",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.test.ts#Bus.api",
-      "name": "api",
-      "kind": "method",
-      "path": "src/lib/windowSync.test.ts",
-      "span": "L17-L36",
-      "signature": "api(label: string)",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "224540af0a4fa565a9472d0e2df5ba019ccce215d40aebd9914869ae2bf383e0",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null,
-      "owner": "Bus"
-    },
-    {
-      "id": "src/lib/windowSync.test.ts#Bus.api.deliver",
-      "name": "deliver",
-      "kind": "function",
-      "path": "src/lib/windowSync.test.ts",
-      "span": "L18-L24",
-      "signature": "deliver = (event: string, payload: unknown, to?: string)",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "3a685afe9082ed4c25e83cde663321a5faf54a40d2a2c7fba89750918db0b7dc",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.test.ts#engine",
-      "name": "engine",
-      "kind": "function",
-      "path": "src/lib/windowSync.test.ts",
-      "span": "L65-L70",
-      "signature": "engine = (over: Partial<Engine[\"state\"]> = {}): StoreApi<Engine>",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "509e30d95d9637a396b77ddfc0f53153a1a08f2b45662d8894f467c4fc6afa35",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.test.ts#Engine",
-      "name": "Engine",
-      "kind": "interface",
-      "path": "src/lib/windowSync.test.ts",
-      "span": "L54-L58",
-      "signature": "interface Engine",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "f1f0e749d8f66815fffd1e30ebbc23f7218108c90c2e13d4e177d1a4f99f3ee5",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.test.ts#flush",
-      "name": "flush",
-      "kind": "function",
-      "path": "src/lib/windowSync.test.ts",
-      "span": "L39-L39",
-      "signature": "flush = ()",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "b463d261cdde3286ad02c212fcc08fab0004c493a5d9f91b4fa45d62896e24e7",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.test.ts#Listener",
-      "name": "Listener",
-      "kind": "type",
-      "path": "src/lib/windowSync.test.ts",
-      "span": "L11-L11",
-      "signature": "type Listener = { label: string; event: string; cb: (e: { payload: unknown }) => void };",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "4e3ae0b581319298e6f0384f529ed95852edda39cc3e4c610e4f3cb545e3e0e0",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.test.ts#loadWindow",
-      "name": "loadWindow",
-      "kind": "function",
-      "path": "src/lib/windowSync.test.ts",
-      "span": "L41-L52",
-      "signature": "async function loadWindow(bus: Bus, label: string)",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "58cb3ac2e850037782837dbffd7dc41851da7135fed91ed13be68a002fc6743e",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts",
-      "name": "windowSync.ts",
-      "kind": "file",
-      "path": "src/lib/windowSync.ts",
-      "span": "L1-L237",
-      "signature": null,
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "5a5b4843d68c91291d5881461d4b978e25ac3873ffe195e0eae17a9486e2a908",
-      "chars": 8643,
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#applySynced",
-      "name": "applySynced",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L90-L98",
-      "signature": "function applySynced<S extends object>(state: S, patch: Patch, spec: SyncSpec<S>): Partial<S>",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "259b661753e7e5e6420b6a5566abfe64ed21cda74ac9a49cc9fd4ad1b44d58b7",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#asObj",
-      "name": "asObj",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L52-L52",
-      "signature": "asObj = (v: unknown): Obj",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "d59c0b2e47d255fe9e81e84cd934e6e6d33c46ebef47527f4a27f2c682bc6424",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#diffSynced",
-      "name": "diffSynced",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L55-L73",
-      "signature": "function diffSynced<S extends object>(prev: S, next: S, spec: SyncSpec<S>): Patch | null",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "591cf13b392df5c11587e839762e2fa085dabae701bed2b114162393308ca034",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#forwardToMain",
-      "name": "forwardToMain",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L213-L216",
-      "signature": "function forwardToMain(action: string, args: unknown[]): void",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "5af4f1ad909820be1f77e7cd28b6b43f201e6112ba8a1faa227383f6ff7e3c58",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#MainInvocation",
-      "name": "MainInvocation",
-      "kind": "interface",
-      "path": "src/lib/windowSync.ts",
-      "span": "L202-L205",
-      "signature": "interface MainInvocation",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "09b055014fe0f5417ab892a91326e10d5f41c2491c1a2cb3b105e1ee5be7c7e1",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#Obj",
-      "name": "Obj",
-      "kind": "type",
-      "path": "src/lib/windowSync.ts",
-      "span": "L50-L50",
-      "signature": "type Obj = Record<string, unknown>;",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "a09300ede9d699aa17b485d7d0e18210290856e5ffa004c8a44d15e4e88efb41",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#Patch",
-      "name": "Patch",
-      "kind": "type",
-      "path": "src/lib/windowSync.ts",
-      "span": "L29-L29",
-      "signature": "type Patch = Record<string, unknown>;",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "45f44e269c471a22636134a78d6d9da7b94bdfbc99eb02d9e3c4511152bd5b69",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#paths",
-      "name": "paths",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L101-L106",
-      "signature": "function paths(patch: Patch, spec: { merge?: object }): string[]",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "7bd5af16fd68b0ceb5a4326081f063b4beedc78b79b739daa364de52af2ae65d",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#requestSnapshot",
-      "name": "requestSnapshot",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L197-L200",
-      "signature": "async function requestSnapshot(): Promise<void>",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "d7cb1d686632b8b61eb6abbbdefa75a80b480a69089b105b3b7b7c22925a79f1",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#resetWindowSyncForTests",
-      "name": "resetWindowSyncForTests",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L234-L236",
-      "signature": "function resetWindowSyncForTests(): void",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "0b32715a7bb4bbf53bb1129a0fff692f03bf2d8a05ee528d7cde9f43981b7504",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#serveMainInvocations",
-      "name": "serveMainInvocations",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L219-L231",
-      "signature": "function serveMainInvocations( handlers: Readonly<Record<string, (...args: never[]) => unknown>>, ): Promise<() => void>",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "7b47ae610050be60586cb8107dc7d4a746bbd6c8465c3f04848dd2dd371dba52",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#snapshotSynced",
-      "name": "snapshotSynced",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L76-L87",
-      "signature": "function snapshotSynced<S extends object>(state: S, spec: SyncSpec<S>): Patch",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "de5bd0764d26590677b8dc603a74224a84ddae8f375a391072c1b4471fc4df49",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#SyncMessage",
-      "name": "SyncMessage",
-      "kind": "interface",
-      "path": "src/lib/windowSync.ts",
-      "span": "L31-L37",
-      "signature": "interface SyncMessage",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "16488ef04244523f323f8dffb795ce69c6d58d34faf6a87251245a8714639f16",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#SyncSpec",
-      "name": "SyncSpec",
-      "kind": "interface",
-      "path": "src/lib/windowSync.ts",
-      "span": "L39-L48",
-      "signature": "interface SyncSpec<S>",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "6744ed3735341a7fbffdaf44593dff186e99a15a566dbdd75389b3662fe11877",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#syncStore",
-      "name": "syncStore",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L133-L191",
-      "signature": "async function syncStore<S extends object>( store: StoreApi<S>, name: string, spec: SyncSpec<S>, ): Promise<() => void>",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "65865f3675f95533b909def2526dba94d62be18c2a13112f64fdb6b2bb239aa2",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#syncStore.apply",
-      "name": "apply",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L154-L161",
-      "signature": "apply = (patch: Patch)",
-      "exported": true,
-      "origin": "ast",
-      "body_hash": "c1d49f01e8b88f85ff7458f6c199f87713c0678002f8de702ba0b1fff2eef11b",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
-      "id": "src/lib/windowSync.ts#without",
-      "name": "without",
-      "kind": "function",
-      "path": "src/lib/windowSync.ts",
-      "span": "L109-L123",
-      "signature": "function without(patch: Patch, skip: ReadonlySet<string>, spec: { merge?: object }): Patch | null",
-      "exported": false,
-      "origin": "ast",
-      "body_hash": "469e905f1ebaf9f2d728f93a518c1fc7f49cee08449d4db1b9dde654a8055f09",
-      "summary_state": "pending",
-      "summary": null,
-      "crux": null
-    },
-    {
       "id": "src/main.tsx",
       "name": "main.tsx",
       "kind": "file",
       "path": "src/main.tsx",
-      "span": "L1-L50",
+      "span": "L1-L28",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "3c4b72b26aef47e421f4946980ce78ccb522cf48ed5372523caf7aa3115b349d",
-      "chars": 1599,
+      "body_hash": "485d9df5dbd037ebfbcb88939a699a05f61671813d7ea43f24058bc392de94f4",
+      "chars": 727,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -82598,12 +82033,12 @@
       "name": "palette.test.ts",
       "kind": "file",
       "path": "src/styles/palette.test.ts",
-      "span": "L1-L277",
+      "span": "L1-L283",
       "signature": null,
       "exported": true,
       "origin": "ast",
-      "body_hash": "82cf437fc068c5ab627a1d8116a3853280c489f233e1ccb28c539714a94cd1cb",
-      "chars": 11897,
+      "body_hash": "69de6e40bb2b9df5e151e3ab91329dae77a5aa309ff7016938537a81e9d31b3e",
+      "chars": 12133,
       "summary_state": "pending",
       "summary": null,
       "crux": null
@@ -82753,7 +82188,7 @@
       "name": "tsxFiles",
       "kind": "function",
       "path": "src/styles/palette.test.ts",
-      "span": "L178-L196",
+      "span": "L184-L202",
       "signature": "function tsxFiles(dir: string): string[]",
       "exported": false,
       "origin": "ast",
@@ -109105,48 +108540,6 @@
       "confidence": "extracted"
     },
     {
-      "source": "src-tauri/src/commands/settings_window.rs#close",
-      "target": "src-tauri/src/commands/settings_window.rs#close",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src-tauri/src/commands/settings_window.rs#known_section",
-      "target": "crates/hm-link/src/lib.rs#find",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src-tauri/src/commands/settings_window.rs#open",
-      "target": "crates/hm-dsp/src/convolver.rs#build",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src-tauri/src/commands/settings_window.rs#open",
-      "target": "src-tauri/src/commands/identify.rs#title",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src-tauri/src/commands/settings_window.rs#open",
-      "target": "src-tauri/src/commands/settings_window.rs#hide_zoom_buttons",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src-tauri/src/commands/settings_window.rs#open",
-      "target": "src-tauri/src/commands/settings_window.rs#known_section",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src-tauri/src/commands/settings_window.rs#settings_open",
-      "target": "src-tauri/src/commands/settings_window.rs#open",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
       "source": "src-tauri/src/commands/stems.rs#a_failed_worker_ends_the_wait_with_its_error",
       "target": "src-tauri/src/commands/stems.rs#new",
       "relation": "calls",
@@ -110486,6 +109879,12 @@
     },
     {
       "source": "src-tauri/src/commands/ytmusic.rs#ytmusic_sign_in",
+      "target": "crates/hm-connect/tests/client.rs#close",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src-tauri/src/commands/ytmusic.rs#ytmusic_sign_in",
       "target": "crates/hm-dsp/src/convolver.rs#build",
       "relation": "calls",
       "confidence": "inferred"
@@ -111794,6 +111193,12 @@
     },
     {
       "source": "src/app/App.tsx",
+      "target": "@/features/settings/SettingsDialog",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/app/App.tsx",
       "target": "@/features/theme/ThemeBackdrop",
       "relation": "imports",
       "confidence": "extracted"
@@ -112253,216 +111658,6 @@
       "target": "src/app/SessionGate.tsx#SessionGate.onActive",
       "relation": "contains",
       "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts",
-      "target": "src/app/windowSyncSetup.test.ts#flush",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts",
-      "target": "src/app/windowSyncSetup.test.ts#load",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts",
-      "target": "src/app/windowSyncSetup.test.ts#run",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts",
-      "target": "src/app/windowSyncSetup.ts#startMainWindowSync",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts",
-      "target": "src/app/windowSyncSetup.ts#startSettingsWindowSync",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts",
-      "target": "src/app/windowSyncSetup.test.ts#flush",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts",
-      "target": "src/app/windowSyncSetup.test.ts#load",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts",
-      "target": "src/app/windowSyncSetup.test.ts#run",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts",
-      "target": "@/lib/windowSync",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts",
-      "target": "vitest",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.test.ts#run",
-      "target": "src/stores/theme.ts#watchPrefersDark.handler",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "src/app/windowSyncSetup.ts#startMainWindowSync",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "src/app/windowSyncSetup.ts#startSettingsWindowSync",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "src/app/windowSyncSetup.ts#syncAll",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/features/connect/store",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/lib/ipc",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/lib/windowSync",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/stores/account",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/stores/engine",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/stores/entitlement",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/stores/library",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/stores/musicLibrary",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/stores/systemEq",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/stores/theme",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/stores/ui",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts",
-      "target": "@/stores/visualizer",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts#startMainWindowSync",
-      "target": "src/app/windowSyncSetup.ts#syncAll",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts#startMainWindowSync",
-      "target": "src/lib/windowSync.ts#serveMainInvocations",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts#startSettingsWindowSync",
-      "target": "src/app/windowSyncSetup.ts#syncAll",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts#startSettingsWindowSync",
-      "target": "src/lib/ipc.ts#appInfo",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts#startSettingsWindowSync",
-      "target": "src/lib/ipc.ts#engineGetState",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts#startSettingsWindowSync",
-      "target": "src/lib/windowSync.ts#forwardToMain",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts#startSettingsWindowSync",
-      "target": "src/lib/windowSync.ts#requestSnapshot",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts#startSettingsWindowSync",
-      "target": "src/app/windowSyncSetup.ts#startSettingsWindowSync.EngineActions",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/app/windowSyncSetup.ts#syncAll",
-      "target": "src/lib/windowSync.ts#syncStore",
-      "relation": "calls",
-      "confidence": "inferred"
     },
     {
       "source": "src/components/AuthScreen.tsx",
@@ -114362,6 +113557,12 @@
     },
     {
       "source": "src/components/TopBar.tsx",
+      "target": "@/features/settings/settingsDialogStore",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/components/TopBar.tsx",
       "target": "@/features/update/UpdatePill",
       "relation": "imports",
       "confidence": "extracted"
@@ -114369,12 +113570,6 @@
     {
       "source": "src/components/TopBar.tsx",
       "target": "@/lib/cn",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/components/TopBar.tsx",
-      "target": "@/lib/ipc",
       "relation": "imports",
       "confidence": "extracted"
     },
@@ -114422,13 +113617,13 @@
     },
     {
       "source": "src/components/TopBar.tsx#TopBar",
-      "target": "src/lib/cn.ts#cn",
+      "target": "src/features/settings/settingsDialogStore.ts#openSettings",
       "relation": "calls",
       "confidence": "inferred"
     },
     {
       "source": "src/components/TopBar.tsx#TopBar",
-      "target": "src/lib/ipc.ts#openSettings",
+      "target": "src/lib/cn.ts#cn",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -114440,7 +113635,7 @@
     },
     {
       "source": "src/components/TopBar.tsx#TopBar.onKey",
-      "target": "src/lib/ipc.ts#openSettings",
+      "target": "src/features/settings/settingsDialogStore.ts#openSettings",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -115535,12 +114730,6 @@
       "target": "src/features/connect/ConnectCard.tsx#LinkedDevices.revoke",
       "relation": "contains",
       "confidence": "extracted"
-    },
-    {
-      "source": "src/features/connect/ConnectCard.tsx#LinkedDevices.revoke",
-      "target": "src/app/windowSyncSetup.test.ts#load",
-      "relation": "calls",
-      "confidence": "inferred"
     },
     {
       "source": "src/features/connect/ConnectCard.tsx#LinkedDevices.revoke",
@@ -122198,6 +121387,12 @@
     },
     {
       "source": "src/features/enhancer/ConvolverCard.tsx#ConvolverCard.pickIr",
+      "target": "src/features/settings/SettingsDialog.test.tsx#open",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/enhancer/ConvolverCard.tsx#ConvolverCard.pickIr",
       "target": "src/lib/ipc.ts#ipcErrorMessage",
       "relation": "calls",
       "confidence": "inferred"
@@ -122930,6 +122125,12 @@
     },
     {
       "source": "src/features/enhancer/PresetsCard.tsx#PresetsCard.handleImport",
+      "target": "src/features/settings/SettingsDialog.test.tsx#open",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/enhancer/PresetsCard.tsx#PresetsCard.handleImport",
       "target": "src/lib/ipc.ts#chainPresetImport",
       "relation": "calls",
       "confidence": "inferred"
@@ -123650,6 +122851,12 @@
     },
     {
       "source": "src/features/equalizer/EqualizerView.tsx#EqualizerView.importVdcFile",
+      "target": "src/features/settings/SettingsDialog.test.tsx#open",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/equalizer/EqualizerView.tsx#EqualizerView.importVdcFile",
       "target": "src/lib/ipc.ts#ipcErrorMessage",
       "relation": "calls",
       "confidence": "inferred"
@@ -123884,13 +123091,13 @@
     },
     {
       "source": "src/features/explore/ExploreView.tsx",
-      "target": "@/lib/cn",
+      "target": "@/features/settings/settingsDialogStore",
       "relation": "imports",
       "confidence": "extracted"
     },
     {
       "source": "src/features/explore/ExploreView.tsx",
-      "target": "@/lib/ipc",
+      "target": "@/lib/cn",
       "relation": "imports",
       "confidence": "extracted"
     },
@@ -123938,13 +123145,19 @@
     },
     {
       "source": "src/features/explore/ExploreView.tsx#ExploreView",
-      "target": "src/features/visuals/VisualsView.tsx#ScenesPanel.select",
+      "target": "src/features/settings/settingsDialogStore.ts#openSettings",
       "relation": "calls",
       "confidence": "inferred"
     },
     {
       "source": "src/features/explore/ExploreView.tsx#ExploreView",
-      "target": "src/lib/ipc.ts#openSettings",
+      "target": "src/features/visuals/VisualsView.tsx#ScenesPanel.select",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/explore/ExploreView.tsx#Row",
+      "target": "src/features/settings/SettingsDialog.test.tsx#open",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -123965,6 +123178,12 @@
       "target": "src/features/explore/ExploreView.tsx#SearchBar.onType",
       "relation": "contains",
       "confidence": "extracted"
+    },
+    {
+      "source": "src/features/explore/ExploreView.tsx#Tile",
+      "target": "src/features/settings/SettingsDialog.test.tsx#open",
+      "relation": "calls",
+      "confidence": "inferred"
     },
     {
       "source": "src/features/explore/ExploreView.tsx#Tile",
@@ -124454,7 +123673,7 @@
     },
     {
       "source": "src/features/mode/switchMode.ts",
-      "target": "src/lib/ipc.ts#openSettings",
+      "target": "src/features/settings/settingsDialogStore.ts#openSettings",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -124479,6 +123698,12 @@
     {
       "source": "src/features/mode/switchMode.ts",
       "target": "@/components/PremiumGate",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/mode/switchMode.ts",
+      "target": "@/features/settings/settingsDialogStore",
       "relation": "imports",
       "confidence": "extracted"
     },
@@ -125390,6 +124615,12 @@
     },
     {
       "source": "src/features/player/MusicLibrary.tsx",
+      "target": "@/features/settings/settingsDialogStore",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/player/MusicLibrary.tsx",
       "target": "@/features/ytmusic/DownloadAction",
       "relation": "imports",
       "confidence": "extracted"
@@ -125397,12 +124628,6 @@
     {
       "source": "src/features/player/MusicLibrary.tsx",
       "target": "@/lib/cn",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/player/MusicLibrary.tsx",
-      "target": "@/lib/ipc",
       "relation": "imports",
       "confidence": "extracted"
     },
@@ -125492,7 +124717,7 @@
     },
     {
       "source": "src/features/player/MusicLibrary.tsx#MusicLibrary",
-      "target": "src/lib/ipc.ts#openSettings",
+      "target": "src/features/settings/settingsDialogStore.ts#openSettings",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -127045,6 +126270,306 @@
       "confidence": "inferred"
     },
     {
+      "source": "src/features/settings/sections.ts",
+      "target": "src/features/settings/sections.ts#isSettingsSection",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/sections.ts",
+      "target": "src/features/settings/sections.ts#SettingsSection",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/sections.ts",
+      "target": "lucide-react",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "src/features/settings/SettingsDialog.test.tsx#isOpen",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "src/features/settings/SettingsDialog.test.tsx#mount",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "src/features/settings/SettingsDialog.test.tsx#open",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "src/features/settings/settingsDialogStore.ts#closeSettings",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "src/features/settings/SettingsDialog.test.tsx#isOpen",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "src/features/settings/SettingsDialog.test.tsx#mount",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "src/features/settings/SettingsDialog.test.tsx#open",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "@testing-library/jest-dom/vitest",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "@testing-library/react",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "src/features/settings/sections.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "src/features/settings/SettingsDialog.tsx",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "src/features/settings/settingsDialogStore.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx",
+      "target": "vitest",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx#mount",
+      "target": "src/features/equalizer/EqVisualizer.tsx#EqVisualizer.render",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx#open",
+      "target": "src/features/settings/settingsDialogStore.ts#openSettings",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.test.tsx#open",
+      "target": "src/features/settings/settingsDialogStore.ts#openSettings",
+      "relation": "references",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "src/features/settings/SettingsDialog.tsx#escapeIsClaimed",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "src/features/settings/SettingsDialog.tsx#SettingsDialog",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "src/features/settings/SettingsDialog.tsx#SettingsPanel",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "@/features/settings/SettingsView",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "@/lib/cn",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "@/lib/ipc",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "@/lib/reducedMotion",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "lucide-react",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "react",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "src/features/settings/sections.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx",
+      "target": "src/features/settings/settingsDialogStore.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx#SettingsDialog",
+      "target": "src/features/settings/settingsDialogStore.ts#openSettings",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx#SettingsDialog",
+      "target": "src/lib/ipc.ts#onSettingsOpen",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx#SettingsPanel",
+      "target": "src/features/settings/sections.ts#isSettingsSection",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx#SettingsPanel",
+      "target": "src/lib/cn.ts#cn",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx#SettingsPanel",
+      "target": "src/features/settings/SettingsDialog.tsx#SettingsPanel.onKey",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx#SettingsPanel",
+      "target": "src/features/settings/SettingsDialog.tsx#SettingsPanel.onScroll",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx#SettingsPanel",
+      "target": "src/features/settings/settingsDialogStore.ts#closeSettings",
+      "relation": "references",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx#SettingsPanel.onKey",
+      "target": "src/features/settings/SettingsDialog.tsx#escapeIsClaimed",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/SettingsDialog.tsx#SettingsPanel.onKey",
+      "target": "src/features/settings/settingsDialogStore.ts#closeSettings",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.test.ts",
+      "target": "src/features/settings/settingsDialogStore.test.ts#state",
+      "relation": "calls",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.test.ts",
+      "target": "src/features/settings/settingsDialogStore.ts#closeSettings",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.test.ts",
+      "target": "src/features/settings/settingsDialogStore.ts#openSettings",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.test.ts",
+      "target": "src/features/settings/settingsDialogStore.test.ts#state",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.test.ts",
+      "target": "src/features/settings/settingsDialogStore.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.test.ts",
+      "target": "vitest",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.ts",
+      "target": "src/features/settings/settingsDialogStore.ts#closeSettings",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.ts",
+      "target": "src/features/settings/settingsDialogStore.ts#openSettings",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.ts",
+      "target": "src/features/settings/settingsDialogStore.ts#SettingsDialogState",
+      "relation": "contains",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.ts",
+      "target": "src/features/settings/sections.ts",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
+      "source": "src/features/settings/settingsDialogStore.ts",
+      "target": "zustand",
+      "relation": "imports",
+      "confidence": "extracted"
+    },
+    {
       "source": "src/features/settings/SettingsView.tsx",
       "target": "src/features/settings/SettingsView.tsx#DeviceState",
       "relation": "contains",
@@ -127763,204 +127288,6 @@
       "target": "src/lib/ipc.ts#updaterRestartNow",
       "relation": "calls",
       "confidence": "inferred"
-    },
-    {
-      "source": "src/features/settings/window/sections.ts",
-      "target": "src/features/settings/window/sections.ts#isSettingsSection",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/sections.ts",
-      "target": "@/lib/ipc",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/sections.ts",
-      "target": "lucide-react",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.test.tsx",
-      "target": "src/features/settings/window/SettingsWindow.test.tsx#mount",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.test.tsx",
-      "target": "src/features/settings/window/SettingsWindow.test.tsx#mount",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.test.tsx",
-      "target": "@testing-library/jest-dom/vitest",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.test.tsx",
-      "target": "@testing-library/react",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.test.tsx",
-      "target": "src/features/settings/window/sections.ts",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.test.tsx",
-      "target": "src/features/settings/window/SettingsWindow.tsx",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.test.tsx",
-      "target": "vitest",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.test.tsx#mount",
-      "target": "src/features/equalizer/EqVisualizer.tsx#EqVisualizer.render",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "src/features/settings/window/SettingsWindow.tsx#closeWindow",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "src/features/settings/window/SettingsWindow.tsx#escapeIsClaimed",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "@/components/SupporterSheet",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "@/components/Toaster",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "@/features/settings/SettingsView",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "@/features/theme/useApplyTheme",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "@/lib/cn",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "@/lib/ipc",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "@/lib/platform",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "@/lib/reducedMotion",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "@tauri-apps/api/window",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "react",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx",
-      "target": "src/features/settings/window/sections.ts",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow",
-      "target": "src/features/settings/window/sections.ts#isSettingsSection",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow",
-      "target": "src/features/theme/useApplyTheme.ts#useApplyTheme",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow",
-      "target": "src/lib/cn.ts#cn",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow",
-      "target": "src/lib/ipc.ts#onSettingsSection",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow",
-      "target": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow.onKey",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow",
-      "target": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow.onScroll",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow.onKey",
-      "target": "src/features/settings/window/SettingsWindow.tsx#closeWindow",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/features/settings/window/SettingsWindow.tsx#SettingsWindow.onKey",
-      "target": "src/features/settings/window/SettingsWindow.tsx#escapeIsClaimed",
-      "relation": "calls",
-      "confidence": "extracted"
     },
     {
       "source": "src/features/stations/RadioPanel.tsx",
@@ -131636,6 +130963,12 @@
     },
     {
       "source": "src/features/ytmusic/YtMusicView.tsx#YtMusicView.pickDir",
+      "target": "src/features/settings/SettingsDialog.test.tsx#open",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/features/ytmusic/YtMusicView.tsx#YtMusicView.pickDir",
       "target": "src/lib/ipc.ts#ipcErrorMessage",
       "relation": "calls",
       "confidence": "inferred"
@@ -132872,7 +132205,7 @@
     },
     {
       "source": "src/lib/ipc.ts",
-      "target": "src/lib/ipc.ts#onSettingsSection",
+      "target": "src/lib/ipc.ts#onSettingsOpen",
       "relation": "contains",
       "confidence": "extracted"
     },
@@ -132927,12 +132260,6 @@
     {
       "source": "src/lib/ipc.ts",
       "target": "src/lib/ipc.ts#openFiles",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/ipc.ts",
-      "target": "src/lib/ipc.ts#openSettings",
       "relation": "contains",
       "confidence": "extracted"
     },
@@ -133203,12 +132530,6 @@
     {
       "source": "src/lib/ipc.ts",
       "target": "src/lib/ipc.ts#setDefaultOutput",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/ipc.ts",
-      "target": "src/lib/ipc.ts#SettingsSection",
       "relation": "contains",
       "confidence": "extracted"
     },
@@ -133717,7 +133038,7 @@
       "confidence": "inferred"
     },
     {
-      "source": "src/lib/ipc.ts#onSettingsSection",
+      "source": "src/lib/ipc.ts#onSettingsOpen",
       "target": "src/stores/theme.ts#watchPrefersDark.handler",
       "relation": "calls",
       "confidence": "inferred"
@@ -133761,6 +133082,18 @@
     {
       "source": "src/lib/ipc.ts#onYtDownload",
       "target": "src/stores/theme.ts#watchPrefersDark.handler",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/lib/ipc.ts#pickAudioFile",
+      "target": "src/features/settings/SettingsDialog.test.tsx#open",
+      "relation": "calls",
+      "confidence": "inferred"
+    },
+    {
+      "source": "src/lib/ipc.ts#pickFolder",
+      "target": "src/features/settings/SettingsDialog.test.tsx#open",
       "relation": "calls",
       "confidence": "inferred"
     },
@@ -133828,24 +133161,6 @@
       "source": "src/lib/platform.ts",
       "target": "src/lib/platform.ts#HostOs",
       "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/settingsSections.test.ts",
-      "target": "@/features/settings/window/sections",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/settingsSections.test.ts",
-      "target": "node:fs",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/settingsSections.test.ts",
-      "target": "vitest",
-      "relation": "imports",
       "confidence": "extracted"
     },
     {
@@ -134329,336 +133644,6 @@
       "confidence": "extracted"
     },
     {
-      "source": "src/lib/windowLabel.ts",
-      "target": "@tauri-apps/api/webviewWindow",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.test.ts#engine",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.test.ts#flush",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.test.ts#loadWindow",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.ts#applySynced",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.ts#diffSynced",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.ts#snapshotSynced",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.test.ts#Bus",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.test.ts#engine",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.test.ts#Engine",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.test.ts#flush",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.test.ts#Listener",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.test.ts#loadWindow",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "src/lib/windowSync.ts",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "vitest",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts",
-      "target": "zustand/vanilla",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts#Bus",
-      "target": "src/lib/windowSync.test.ts#Bus.api",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts#Bus.api",
-      "target": "src/lib/windowSync.test.ts#Bus.api.deliver",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts#Bus.api",
-      "target": "src/lib/windowSync.test.ts#Bus.api.deliver",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.test.ts#loadWindow",
-      "target": "src/lib/windowSync.test.ts#Bus.api",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#applySynced",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#asObj",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#diffSynced",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#forwardToMain",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#MainInvocation",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#Obj",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#Patch",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#paths",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#requestSnapshot",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#resetWindowSyncForTests",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#serveMainInvocations",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#snapshotSynced",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#SyncMessage",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#SyncSpec",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#syncStore",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "src/lib/windowSync.ts#without",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "@/lib/windowLabel",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "@tauri-apps/api/event",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts",
-      "target": "zustand",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#applySynced",
-      "target": "src/lib/windowSync.ts#asObj",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#diffSynced",
-      "target": "src/lib/windowSync.ts#asObj",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#paths",
-      "target": "src/lib/windowSync.ts#asObj",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#serveMainInvocations",
-      "target": "src/stores/theme.ts#watchPrefersDark.handler",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/lib/windowSync.ts#snapshotSynced",
-      "target": "src/lib/windowSync.ts#asObj",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#syncStore",
-      "target": "src/features/connect/ports.ts#seekWhenReady.unsubscribe",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/lib/windowSync.ts#syncStore",
-      "target": "src/lib/windowSync.ts#diffSynced",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#syncStore",
-      "target": "src/lib/windowSync.ts#paths",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#syncStore",
-      "target": "src/lib/windowSync.ts#snapshotSynced",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#syncStore",
-      "target": "src/lib/windowSync.ts#syncStore.apply",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#syncStore",
-      "target": "src/lib/windowSync.ts#without",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#syncStore",
-      "target": "src/lib/windowSync.ts#syncStore.apply",
-      "relation": "contains",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#syncStore.apply",
-      "target": "src/lib/windowSync.ts#applySynced",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/lib/windowSync.ts#without",
-      "target": "src/lib/windowSync.ts#asObj",
-      "relation": "calls",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/main.tsx",
-      "target": "src/app/windowSyncSetup.ts#startMainWindowSync",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
-      "source": "src/main.tsx",
-      "target": "src/app/windowSyncSetup.ts#startSettingsWindowSync",
-      "relation": "calls",
-      "confidence": "inferred"
-    },
-    {
       "source": "src/main.tsx",
       "target": "@/app/App",
       "relation": "imports",
@@ -134684,25 +133669,7 @@
     },
     {
       "source": "src/main.tsx",
-      "target": "@/app/windowSyncSetup",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/main.tsx",
       "target": "@/components/IntroSplash",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/main.tsx",
-      "target": "@/features/settings/window/SettingsWindow",
-      "relation": "imports",
-      "confidence": "extracted"
-    },
-    {
-      "source": "src/main.tsx",
-      "target": "@/lib/windowLabel",
       "relation": "imports",
       "confidence": "extracted"
     },

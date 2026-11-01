@@ -1,3 +1,3 @@
 # src/stores/entitlement.test.ts
 
-- freshStore · function · L33-L37 — async function freshStore()
+- freshStore · function · L23-L27 — async function freshStore()

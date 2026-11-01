@@ -7,10 +7,11 @@
 - commands · module · L13-L13 — mod commands;
 - control · module · L14-L14 — mod control;
 - media · module · L15-L15 — mod media;
-- tray · module · L16-L16 — mod tray;
-- tv_proxy · module · L17-L17 — mod tv_proxy;
-- updater · module · L18-L18 — mod updater;
-- ytmusic · module · L19-L19 — mod ytmusic;
-- Progress · struct · L37-L49 — struct Progress
-- forward_frames · function · L56-L186 — fn forward_frames(
-- run · function · L189-L1016 — pub fn run()
+- settings · module · L16-L16 — mod settings;
+- tray · module · L17-L17 — mod tray;
+- tv_proxy · module · L18-L18 — mod tv_proxy;
+- updater · module · L19-L19 — mod updater;
+- ytmusic · module · L20-L20 — mod ytmusic;
+- Progress · struct · L38-L50 — struct Progress
+- forward_frames · function · L57-L187 — fn forward_frames(
+- run · function · L190-L1000 — pub fn run()

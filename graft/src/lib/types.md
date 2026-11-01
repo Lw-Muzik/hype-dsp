@@ -66,11 +66,4 @@
 - YtDownloadProgress · interface · L585-L594 — interface YtDownloadProgress
 - PhoneDevice · interface · L599-L605 — interface PhoneDevice
 - PhoneTrack · interface · L608-L620 — interface PhoneTrack
-- MovieSource · type · L630-L630 — type MovieSource = "archive" | "youtube";
-- ArchiveMovie · interface · L636-L643 — interface ArchiveMovie
-- YoutubeMovie · interface · L649-L656 — interface YoutubeMovie
-- Movie · type · L659-L659 — type Movie = ArchiveMovie | YoutubeMovie;
-- YtMovieEntry · interface · L665-L671 — interface YtMovieEntry
-- MovieStream · interface · L675-L680 — interface MovieStream
-- MovieDetail · interface · L685-L695 — interface MovieDetail
-- AutoEqEntry · interface · L698-L705 — interface AutoEqEntry
+- AutoEqEntry · interface · L623-L630 — interface AutoEqEntry

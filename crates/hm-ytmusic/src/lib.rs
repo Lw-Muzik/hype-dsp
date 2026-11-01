@@ -31,6 +31,7 @@ pub mod cookies;
 pub mod explore;
 mod innertube;
 mod nav;
+mod net;
 pub mod playlist;
 mod radio;
 pub mod search;
@@ -59,7 +60,7 @@ use ytmapi_rs::query::{
     GetArtistQuery, GetLibraryPlaylistsQuery, GetMoodPlaylistsQuery, GetPlaylistTracksQuery,
     GetSearchSuggestionsQuery, GetWatchPlaylistQuery, PostMethod, PostQuery, Query,
 };
-use ytmapi_rs::YtMusic;
+use ytmapi_rs::{YtMusic, YtMusicBuilder};
 
 /// The library grid inside a `GetLibraryPlaylistsQuery` response.
 const LIBRARY_GRID_ITEMS: &str = "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer\
@@ -554,9 +555,13 @@ impl YtMusicState {
         let cookies = self
             .cookies_snapshot()
             .ok_or("Not signed in to YouTube Music.")?;
-        let yt = YtMusic::from_cookie(cookies::header(&cookies))
+        // Not `YtMusic::from_cookie`: that builds a client with no timeouts
+        // and no retry, which a lossy link turns into a dead source (`net`).
+        let yt = YtMusicBuilder::new_with_client(net::client()?)
+            .with_browser_token_cookie(cookies::header(&cookies))
+            .build()
             .await
-            .map_err(|e| format!("YouTube Music rejected the session: {e}"))?;
+            .map_err(net::session_error)?;
         let yt = Arc::new(yt);
         *slot = Some(yt.clone());
         Ok(yt)

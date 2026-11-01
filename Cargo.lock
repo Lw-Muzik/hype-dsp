@@ -2747,6 +2747,8 @@ dependencies = [
 name = "hm-ytmusic"
 version = "0.1.37"
 dependencies = [
+ "h2",
+ "http",
  "keyring",
  "reqwest",
  "serde",

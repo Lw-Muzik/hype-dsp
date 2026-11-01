@@ -20,8 +20,11 @@ reqwest = { workspace = true }
 # YouTube Music's internal (youtubei) API — playlists and library metadata.
 # `rustls` matches the workspace's reqwest TLS choice; the default `default-tls`
 # feature would drag in native-tls (and openssl on Linux) alongside it.
+# `reqwest` unlocks `Client::new_from_reqwest_client`: its own client has no
+# timeouts or retries, which a lossy link turns into a dead source (`net.rs`).
 ytmapi-rs = { version = "0.3.2", default-features = false, features = [
     "rustls",
+    "reqwest",
     "simplified-queries",
 ] }
 
@@ -37,4 +40,8 @@ keyring = { version = "4.1.5", features = [
 ] }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros", "net", "io-util"] }
+# A local HTTP/2 server for `net`'s header-size test. Both are already in the
+# tree through reqwest/hyper, at these versions.
+h2 = "0.4.15"
+http = "1.4.2"

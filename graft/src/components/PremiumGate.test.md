@@ -1,3 +1,3 @@
 # src/components/PremiumGate.test.tsx
 
-_No extracted symbols in this file._
+- setEntitlement · function · L20-L23 — function setEntitlement(premium: boolean, supporter: boolean, isAdmin = false)

@@ -35,24 +35,24 @@
 - claim_request · function · L460-L470 — pub fn claim_request(&self, email: &str) -> Result<(), String>
 - claim_verify · function · L475-L491 — pub fn claim_verify(&self, email: &str, code: &str, name: Option<&str>) -> Result<(), String>
 - entitlements · function · L498-L510 — pub fn entitlements(&self) -> Result<Entitlements, String>
-- support_checkout · function · L518-L534 — pub fn support_checkout(
-- support_restore · function · L539-L549 — pub fn support_restore(&self, install_id: &str, email: &str) -> Result<bool, String>
-- logout · function · L551-L561 — pub fn logout(&self)
-- status · function · L563-L599 — pub fn status(&self) -> AccountStatus
-- heartbeat · function · L601-L621 — pub fn heartbeat(&self, platform: &str, app_version: &str)
-- account_status · function · L627-L631 — pub fn account_status(account: State<'_, AccountState>) -> AccountStatus
-- account_signup · function · L634-L644 — pub fn account_signup(
-- account_request_otp · function · L647-L656 — pub fn account_request_otp(
-- account_verify · function · L659-L670 — pub fn account_verify(
-- account_logout · function · L673-L677 — pub fn account_logout(account: State<'_, AccountState>)
-- account_heartbeat · function · L680-L688 — pub fn account_heartbeat(
-- account_bootstrap_anonymous · function · L696-L708 — pub fn account_bootstrap_anonymous(
-- account_claim_request · function · L713-L722 — pub fn account_claim_request(
-- account_claim_verify · function · L726-L738 — pub fn account_claim_verify(
-- account_entitlements · function · L745-L751 — pub fn account_entitlements(account: State<'_, AccountState>) -> Result<Entitlements, IpcError>
-- account_support_checkout · function · L761-L773 — pub fn account_support_checkout(
-- account_support_restore · function · L780-L791 — pub fn account_support_restore(
-- open_external_url · function · L798-L802 — pub fn open_external_url(url: String)
-- tests · module · L805-L834 — mod tests
-- me_dto_admin_derivation · function · L811-L822 — fn me_dto_admin_derivation()
-- entitlements_dto_supporter_defaults_false · function · L827-L833 — fn entitlements_dto_supporter_defaults_false()
+- support_checkout · function · L516-L524 — pub fn support_checkout(&self, install_id: &str) -> Result<String, String>
+- support_restore · function · L529-L539 — pub fn support_restore(&self, install_id: &str, email: &str) -> Result<bool, String>
+- logout · function · L541-L551 — pub fn logout(&self)
+- status · function · L553-L589 — pub fn status(&self) -> AccountStatus
+- heartbeat · function · L591-L611 — pub fn heartbeat(&self, platform: &str, app_version: &str)
+- account_status · function · L617-L621 — pub fn account_status(account: State<'_, AccountState>) -> AccountStatus
+- account_signup · function · L624-L634 — pub fn account_signup(
+- account_request_otp · function · L637-L646 — pub fn account_request_otp(
+- account_verify · function · L649-L660 — pub fn account_verify(
+- account_logout · function · L663-L667 — pub fn account_logout(account: State<'_, AccountState>)
+- account_heartbeat · function · L670-L678 — pub fn account_heartbeat(
+- account_bootstrap_anonymous · function · L686-L698 — pub fn account_bootstrap_anonymous(
+- account_claim_request · function · L703-L712 — pub fn account_claim_request(
+- account_claim_verify · function · L716-L728 — pub fn account_claim_verify(
+- account_entitlements · function · L735-L741 — pub fn account_entitlements(account: State<'_, AccountState>) -> Result<Entitlements, IpcError>
+- account_support_checkout · function · L751-L761 — pub fn account_support_checkout(
+- account_support_restore · function · L768-L779 — pub fn account_support_restore(
+- open_external_url · function · L786-L790 — pub fn open_external_url(url: String)
+- tests · module · L793-L822 — mod tests
+- me_dto_admin_derivation · function · L799-L810 — fn me_dto_admin_derivation()
+- entitlements_dto_supporter_defaults_false · function · L815-L821 — fn entitlements_dto_supporter_defaults_false()

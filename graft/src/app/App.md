@@ -1,6 +1,6 @@
 # src/app/App.tsx
 
-- App · function · L30-L148 — function App()
-- onFocus · function · L85-L85 — onFocus = ()
-- scheduleSync · function · L101-L106 — scheduleSync = ()
-- register · function · L107-L111 — register = (p: Promise<UnlistenFn>)
+- App · function · L31-L151 — function App()
+- onFocus · function · L88-L88 — onFocus = ()
+- scheduleSync · function · L104-L109 — scheduleSync = ()
+- register · function · L110-L114 — register = (p: Promise<UnlistenFn>)

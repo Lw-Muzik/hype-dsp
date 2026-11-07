@@ -1075,8 +1075,8 @@ export function accountClaimVerify(
   });
 }
 
-/** The account's entitlements: `supporter` (owns the Supporter pack — drives
- *  the badge; false from an older backend) and `premium` (also true for
+/** The account's entitlements: `supporter` (owns a HypeMuzik Plus purchase —
+ *  drives the badge; false from an older backend) and `premium` (also true for
  *  admin/trial/licensed). Rejects (rather than resolving false) when the check
  *  couldn't be completed (offline, no session yet) — callers should keep the
  *  cached last-known values rather than treat a rejection as "not a supporter". */
@@ -1084,21 +1084,15 @@ export function accountEntitlements(): Promise<Entitlements> {
   return invoke<Entitlements>("account_entitlements");
 }
 
-/** Start a Paddle "Supporter" checkout for this install; resolves to the
- *  checkout URL to open in the system browser (see {@link openExternalUrl}).
- *  `amount` is whole/fractional dollars (e.g. `10` for $10). Public — works
- *  for the frictionless anonymous session, no sign-in required. */
-export function accountSupportCheckout(
-  amount: number,
-  currency?: string,
-): Promise<string> {
-  return invoke<string>("account_support_checkout", {
-    amount,
-    currency: currency ?? null,
-  });
+/** Start a HypeMuzik Plus checkout for this install; resolves to the checkout
+ *  URL to open in the system browser (see {@link openExternalUrl}). Sends no
+ *  amount: Plus is a fixed-price licence and the backend charges its catalog
+ *  price. Public — works for the frictionless anonymous session. */
+export function accountSupportCheckout(): Promise<string> {
+  return invoke<string>("account_support_checkout");
 }
 
-/** Restore a Supporter entitlement onto this install from a past checkout's
+/** Restore a HypeMuzik Plus purchase onto this install from a past checkout's
  *  receipt email (after a reinstall, or on a second machine). Resolves to
  *  whether a match was found and applied — callers should re-run
  *  {@link accountEntitlements} afterwards to pick up the change. */

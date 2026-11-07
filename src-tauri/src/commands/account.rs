@@ -77,17 +77,23 @@ struct UserDto {
 /// admins/trial/licensed accounts and must NOT drive the badge. An older
 /// backend omits `supporter`, which reads as `false`.
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct EntitlementsDto {
     premium: bool,
     #[serde(default)]
     supporter: bool,
+    /// ISO 8601 end of the free Plus trial; absent from an older backend.
+    #[serde(default)]
+    trial_ends_at: Option<String>,
 }
 
 /// What the front-end gets back from `account_entitlements`.
-#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct Entitlements {
     pub premium: bool,
     pub supporter: bool,
+    pub trial_ends_at: Option<String>,
 }
 
 /// `GET /me` response — we only read the role, to tell the **admin** account
@@ -506,25 +512,16 @@ impl AccountState {
         Ok(Entitlements {
             premium: dto.premium,
             supporter: dto.supporter,
+            trial_ends_at: dto.trial_ends_at,
         })
     }
 
-    /// Start a Paddle "Supporter" checkout for this install. Public — no
-    /// session required, so an anonymous free-tier donor never has to sign in
-    /// first; the amount alone is what a supporter is paying for. `amount` is
-    /// whole/fractional dollars (e.g. `10.0` for $10); `currency` is omitted
-    /// from the request entirely when `None` rather than sent as JSON `null`,
-    /// so the server's own default applies.
-    pub fn support_checkout(
-        &self,
-        install_id: &str,
-        amount: f64,
-        currency: Option<&str>,
-    ) -> Result<String, String> {
-        let mut body = serde_json::json!({ "installId": install_id, "amount": amount });
-        if let Some(currency) = currency {
-            body["currency"] = serde_json::Value::String(currency.to_string());
-        }
+    /// Start a HypeMuzik Plus checkout for this install. Public — no session
+    /// required, so an anonymous install never has to sign in first. No amount
+    /// is sent: Plus is a fixed-price licence and the backend charges its
+    /// catalog price.
+    pub fn support_checkout(&self, install_id: &str) -> Result<String, String> {
+        let body = serde_json::json!({ "installId": install_id });
         let resp = self.post("/support/checkout", body)?;
         if !resp.status().is_success() {
             return Err(format!("Couldn't start checkout ({})", resp.status().as_u16()));
@@ -750,8 +747,8 @@ pub fn account_entitlements(account: State<'_, AccountState>) -> Result<Entitlem
     })
 }
 
-/// Start a Paddle "Supporter" checkout for this install and return the
-/// checkout URL. Resolves the install id the same way
+/// Start a HypeMuzik Plus checkout for this install (fixed catalog price, no
+/// amount) and return the checkout URL. Resolves the install id the same way
 /// `account_bootstrap_anonymous` does — the checkout and the install/account
 /// this app already tracks must always be the same identity. The front end
 /// opens the returned URL itself (see `open_external_url`) once it has it,
@@ -761,13 +758,11 @@ pub fn account_entitlements(account: State<'_, AccountState>) -> Result<Entitlem
 pub fn account_support_checkout(
     app: AppHandle,
     account: State<'_, AccountState>,
-    amount: f64,
-    currency: Option<String>,
 ) -> Result<String, IpcError> {
     crate::blocking::io(|| {
         let install_id = resolve_install_id(&app);
         account
-            .support_checkout(&install_id, amount, currency.as_deref())
+            .support_checkout(&install_id)
             .map_err(|e| IpcError::new("account", e))
     })
 }
@@ -830,5 +825,10 @@ mod tests {
         let new: EntitlementsDto =
             serde_json::from_str(r#"{"premium":true,"supporter":true}"#).unwrap();
         assert!(new.supporter);
+        assert!(new.trial_ends_at.is_none(), "missing trialEndsAt reads as None");
+        let trial: EntitlementsDto =
+            serde_json::from_str(r#"{"premium":true,"trialEndsAt":"2026-11-14T00:00:00Z"}"#)
+                .unwrap();
+        assert_eq!(trial.trial_ends_at.as_deref(), Some("2026-11-14T00:00:00Z"));
     }
 }

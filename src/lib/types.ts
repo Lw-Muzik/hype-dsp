@@ -298,8 +298,10 @@ export interface LicenseInfo {
 /** `GET /me/entitlements`, as returned by the `account_entitlements` command. */
 export interface Entitlements {
   premium: boolean;
-  /** True only when the account owns the Supporter pack. */
+  /** True only when the account owns a HypeMuzik Plus purchase. */
   supporter: boolean;
+  /** ISO 8601 end of the free Plus trial; absent/null from an older backend. */
+  trialEndsAt?: string | null;
 }
 
 /** The signed-in account + its current entitlement. */

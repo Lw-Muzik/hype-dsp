@@ -31,7 +31,7 @@ function escapeIsClaimed(): boolean {
  * open so every open starts at the top.
  *
  * Layered at z-40 inside the app root so toasts (z-50, same stacking context)
- * and the body-level portals (Dialog, Supporter sheet, confirm, popovers) all
+ * and the body-level portals (Dialog, Plus sheet, confirm, popovers) all
  * sit above it.
  */
 export function SettingsDialog() {
@@ -140,7 +140,7 @@ function SettingsPanel() {
   }, []);
 
   // Esc / Cmd+W / Ctrl+W close Settings. Capture phase, so this sees the DOM
-  // before a Dialog's own Escape handler closes it: Esc with the Supporter
+  // before a Dialog's own Escape handler closes it: Esc with the Plus
   // sheet open over Settings closes only the sheet.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

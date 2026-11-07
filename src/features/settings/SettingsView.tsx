@@ -724,7 +724,7 @@ export function SettingsView() {
         </section>
 
         <section id="cloud" className="scroll-mt-4">
-          {/* Cloud music (Google Drive / Dropbox) is a Supporter feature. */}
+          {/* Cloud music (Google Drive / Dropbox) is free: the gate passes it. */}
           <PremiumGate feature="CLOUD">
             <CloudView />
           </PremiumGate>

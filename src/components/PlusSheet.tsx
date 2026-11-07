@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { Check, Loader2, Sparkles } from "lucide-react";
 import { create } from "zustand";
 import { Button } from "@/components/Button";
 import { Dialog } from "@/components/Dialog";
@@ -12,17 +12,24 @@ import {
   ipcErrorMessage,
   openExternalUrl,
 } from "@/lib/ipc";
-import { useEntitlementStore, useSupporter } from "@/stores/entitlement";
 import {
-  SUPPORTER_DEFAULT_AMOUNT,
-  SUPPORTER_ENABLED,
-  SUPPORTER_MIN_AMOUNT,
-  SUPPORTER_QUICK_AMOUNTS,
-} from "@/config/payments";
+  PREMIUM_FEATURES,
+  trialDaysLeft,
+  trialEndsToday,
+  trialHasEnded,
+  useEntitlementStore,
+  useSupporter,
+} from "@/stores/entitlement";
+import { PLUS_FEATURES, SUPPORTER_ENABLED } from "@/config/payments";
 
-/** The sheet's own progression: pick an amount -> wait for Paddle to confirm
- *  the browser payment -> thank-you. */
-type Phase = "select" | "pending" | "success";
+/** The six features Plus unlocks, as plain labels (kept in sync with
+ *  `PLUS_FEATURES`). */
+const PLUS_FEATURE_LABELS = [...PLUS_FEATURES].map((f) => PREMIUM_FEATURES[f]);
+
+/** The sheet's own progression: offer -> wait for Paddle to confirm the
+ *  browser payment -> thank-you. An account that already has Plus opens
+ *  straight on "owned". */
+type Phase = "select" | "pending" | "success" | "owned";
 
 /** While waiting for a payment to confirm, re-check entitlement this often (on
  *  top of the focus-triggered refresh), giving up — and pointing at Restore —
@@ -47,17 +54,22 @@ const useSheetStore = create<SheetStore>((set) => ({
   close: () => set({ open: false }),
 }));
 
-/** The one entry point every "Become a Supporter" button calls. Mounted once
- *  per window via {@link SupporterSheet}. Nothing in normal use calls this —
- *  only an explicit click (Settings -> Account). */
-export function openSupporterSheet(): void {
+/** The one entry point every "Get Plus" button calls. Mounted once per window
+ *  via {@link PlusSheet}. Opened by an explicit click (Settings -> Account) or
+ *  when a locked Plus feature is used. */
+export function openPlusSheet(): void {
   if (!SUPPORTER_ENABLED) return;
   useSheetStore.getState().show();
 }
 
+/** Close the sheet programmatically (used by tests and window teardown). */
+export function closePlusSheet(): void {
+  useSheetStore.getState().close();
+}
+
 /**
  * Fires a single thank-you toast whenever the account transitions into
- * Supporter mid-session (a late webhook, a restore, a sign-in elsewhere).
+ * Plus mid-session (a late webhook, a restore, a sign-in elsewhere).
  * Armed only after the first entitlement check settles, so the cache->server
  * hydration on launch never reads as a fresh purchase.
  */
@@ -76,21 +88,20 @@ function useSupporterThanks(enabled: boolean): void {
       return;
     }
     if (!prev.current && supporter) {
-      toast.success("You're a Supporter — thank you!");
+      toast.success("HypeMuzik Plus is unlocked — thank you!");
     }
     prev.current = supporter;
   }, [supporter, loading, enabled]);
 }
 
 /**
- * The "Become a Supporter" sheet. Mount once per window: `App.tsx` in the main
- * window, and the Settings window (with `thanksToast={false}`, since the main
+ * The "HypeMuzik Plus" sheet. Mount once per window: `App.tsx` in the main
+ * window, and any secondary window (with `thanksToast={false}`, since the main
  * window already toasts and both windows would otherwise).
  */
-export function SupporterSheet({ thanksToast = true }: { thanksToast?: boolean } = {}) {
+export function PlusSheet({ thanksToast = true }: { thanksToast?: boolean } = {}) {
   const open = useSheetStore((s) => s.open);
   const close = useSheetStore((s) => s.close);
-  const supporter = useSupporter();
 
   useSupporterThanks(thanksToast);
 
@@ -100,7 +111,7 @@ export function SupporterSheet({ thanksToast = true }: { thanksToast?: boolean }
     <Dialog
       open={open}
       onClose={close}
-      title={supporter ? "Supporter" : "Become a Supporter"}
+      title="HypeMuzik Plus"
     >
       {/* Remount per open so the phase always starts fresh. */}
       {open && <SheetBody onClose={close} />}
@@ -110,18 +121,16 @@ export function SupporterSheet({ thanksToast = true }: { thanksToast?: boolean }
 
 function SheetBody({ onClose }: { onClose: () => void }) {
   const supporter = useSupporter();
-  const [amount, setAmount] = useState<number>(SUPPORTER_DEFAULT_AMOUNT);
-  const [custom, setCustom] = useState("");
   const [checkingOut, setCheckingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
-  const [phase, setPhase] = useState<Phase>("select");
+  const [phase, setPhase] = useState<Phase>(supporter ? "owned" : "select");
   const [stalled, setStalled] = useState(false);
 
-  // Entitlement flipped to supporter (poll, focus refresh, or Restore) ->
-  // thank-you, from whatever phase we're in.
+  // Entitlement flipped to Plus while the sheet was open (poll, focus refresh,
+  // or Restore) -> thank-you, from whatever phase we're in.
   useEffect(() => {
-    if (supporter && phase !== "success") setPhase("success");
+    if (supporter && phase !== "success" && phase !== "owned") setPhase("success");
   }, [supporter, phase]);
 
   // While confirming, poll entitlement and give up gracefully after the
@@ -140,33 +149,26 @@ function SheetBody({ onClose }: { onClose: () => void }) {
     return () => window.clearInterval(id);
   }, [phase]);
 
-  // A non-empty custom amount always wins over the quick picks — including
-  // when it doesn't parse, so garbage never silently checks out at a quick pick.
-  const trimmedCustom = custom.trim();
-  const usingCustom = trimmedCustom !== "";
-  const selectedAmount = usingCustom ? Number(trimmedCustom) : amount;
-  const validAmount =
-    Number.isFinite(selectedAmount) && selectedAmount >= SUPPORTER_MIN_AMOUNT;
-
   async function handleCheckout() {
-    if (!validAmount || checkingOut) return;
+    if (checkingOut) return;
     setCheckingOut(true);
     setError(null);
     try {
-      const checkoutUrl = await accountSupportCheckout(selectedAmount);
+      // No amount: Plus is a fixed-price licence; the backend charges it.
+      const checkoutUrl = await accountSupportCheckout();
       await openExternalUrl(checkoutUrl);
       setPhase("pending");
     } catch (err) {
-      // Shown plainly in the sheet (checkout is expected to fail until the
-      // payment provider approves the account) — never a silent failure.
+      // Shown plainly in the sheet — never a silent failure.
       setError(ipcErrorMessage(err) || "Checkout couldn't be started. Please try again.");
     } finally {
       setCheckingOut(false);
     }
   }
 
-  if (phase === "success") return <SupporterSuccess onClose={onClose} />;
-  if (phase === "pending") return <SupporterPending stalled={stalled} onClose={onClose} />;
+  if (phase === "success") return <PlusOwned justBought onClose={onClose} />;
+  if (phase === "owned") return <PlusOwned onClose={onClose} />;
+  if (phase === "pending") return <PlusPending stalled={stalled} onClose={onClose} />;
 
   return (
     <div className="flex flex-col gap-4">
@@ -174,62 +176,23 @@ function SheetBody({ onClose }: { onClose: () => void }) {
         <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-from to-brand-to text-on-brand">
           <Sparkles className="size-4" aria-hidden="true" />
         </div>
-        <div className="flex flex-col gap-2 text-sm text-text-muted">
-          <p>
-            HypeMuzik is free, with every feature unlocked — and it stays that way.
-            Supporting is optional: pay what you want and show it with a{" "}
-            <SupporterBadge className="align-middle" /> badge in the app.
+        <div className="flex flex-col gap-1 text-sm">
+          <p className="font-semibold text-text">US$5 · one-time · yours for life</p>
+          <p className="text-text-muted">
+            Unlock the advanced audio tools. No subscription. Everything else in
+            HypeMuzik stays free.
           </p>
-          <p>Nothing is ever locked behind it.</p>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2" role="group" aria-label="Amount">
-          {SUPPORTER_QUICK_AMOUNTS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => {
-                setAmount(value);
-                setCustom("");
-                setError(null);
-              }}
-              className={`flex-1 rounded-control border px-3 py-2 text-sm font-medium transition-colors ${
-                !usingCustom && amount === value
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-border text-text-muted hover:bg-surface-raised"
-              }`}
-            >
-              ${value}
-            </button>
-          ))}
-        </div>
-        <label className="flex items-center gap-2 text-sm text-text-muted">
-          <span>$</span>
-          <input
-            type="number"
-            min={SUPPORTER_MIN_AMOUNT}
-            inputMode="decimal"
-            placeholder={`Custom amount (min $${SUPPORTER_MIN_AMOUNT})`}
-            aria-label="Custom amount"
-            value={custom}
-            onChange={(e) => {
-              setCustom(e.target.value);
-              setError(null);
-            }}
-            className={inputCls}
-          />
-        </label>
-        {usingCustom && !validAmount && (
-          <p className="text-xs text-text-muted">
-            The minimum is ${SUPPORTER_MIN_AMOUNT}.
-          </p>
-        )}
-      </div>
+      <TrialLine />
+
+      <FeatureList />
 
       <p className="text-xs text-text-muted">
-        One-time payment, not a subscription. Refundable within 14 days.
+        Your licence is tied to the email you use at checkout. Refundable within
+        14 days. Plus buyers also get a <SupporterBadge className="align-middle" />{" "}
+        badge in the app.
       </p>
 
       {error && (
@@ -247,23 +210,68 @@ function SheetBody({ onClose }: { onClose: () => void }) {
         </Button>
         <Button
           variant="primary"
-          disabled={!validAmount || checkingOut}
+          disabled={checkingOut}
           onClick={() => void handleCheckout()}
         >
           <Sparkles className="size-4" aria-hidden="true" />
-          {checkingOut ? "Opening checkout…" : validAmount ? `Support $${selectedAmount}` : "Support"}
+          {checkingOut ? "Opening checkout…" : "Get Plus — $5"}
         </Button>
       </div>
 
-      <RestoreSupporter open={restoreOpen} onToggle={() => setRestoreOpen((v) => !v)} />
+      <RestorePlus open={restoreOpen} onToggle={() => setRestoreOpen((v) => !v)} />
     </div>
   );
 }
 
-/** "Already a Supporter?" — a receipt email links a purchase (made here or on
- *  hypemuzik.com/support) to this install. Collapsed by default so it doesn't
+/** Trial status: "Plus trial · N days left" while a trial runs (the buy button
+ *  stays so they can buy early), or a one-line note once it has ended. */
+function TrialLine() {
+  const premium = useEntitlementStore((s) => s.premium);
+  const supporter = useSupporter();
+  const trialEndsAt = useEntitlementStore((s) => s.trialEndsAt);
+  if (supporter) return null;
+  const days = trialDaysLeft(trialEndsAt);
+  if (premium && days !== null) {
+    const label = trialEndsToday(trialEndsAt)
+      ? "Plus trial · ends today"
+      : `Plus trial · ${days} ${days === 1 ? "day" : "days"} left`;
+    return (
+      <p
+        data-testid="plus-trial"
+        className="rounded-control border border-accent/40 bg-accent-muted px-3 py-1.5 text-sm font-medium text-accent-strong"
+      >
+        {label}
+      </p>
+    );
+  }
+  if (!premium && trialHasEnded(trialEndsAt)) {
+    return (
+      <p data-testid="plus-trial" className="text-sm text-text-muted">
+        Your 7-day Plus trial has ended.
+      </p>
+    );
+  }
+  return null;
+}
+
+/** The six Plus features, as a plain checklist. */
+function FeatureList() {
+  return (
+    <ul aria-label="Included with Plus" className="grid grid-cols-1 gap-1.5 text-sm sm:grid-cols-2">
+      {PLUS_FEATURE_LABELS.map((label) => (
+        <li key={label} className="flex items-center gap-2">
+          <Check className="size-4 shrink-0 text-accent" aria-hidden="true" />
+          <span>{label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** "Already bought Plus?" — the checkout email links a purchase (made here or
+ *  on hypemuzik.com) to this install. Collapsed by default so it doesn't
  *  compete with the primary CTA. */
-function RestoreSupporter({
+function RestorePlus({
   open,
   onToggle,
 }: {
@@ -285,7 +293,7 @@ function RestoreSupporter({
         // acknowledges (and drives the sheet's success view).
         void useEntitlementStore.getState().refresh();
       } else {
-        toast.info("No Supporter checkout found for that email.");
+        toast.info("No HypeMuzik Plus purchase found for that email.");
       }
     } catch (err) {
       toast.error(ipcErrorMessage(err));
@@ -302,7 +310,7 @@ function RestoreSupporter({
           onClick={onToggle}
           className="text-sm text-text-muted underline-offset-2 hover:text-text hover:underline"
         >
-          Already a Supporter? Restore purchase
+          Already bought Plus? Restore purchase
         </button>
       </div>
     );
@@ -314,16 +322,15 @@ function RestoreSupporter({
       className="flex flex-col gap-2 border-t border-border pt-3"
     >
       <p className="text-xs text-text-muted">
-        Bought on hypemuzik.com/support? Enter the email on your receipt to link
-        it to this app.
+        Enter the email you used at checkout to link your purchase to this app.
       </p>
       <div className="flex items-center gap-2">
         <input
           type="email"
           required
           autoFocus
-          placeholder="Receipt email"
-          aria-label="Receipt email"
+          placeholder="Checkout email"
+          aria-label="Checkout email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className={inputCls}
@@ -339,7 +346,7 @@ function RestoreSupporter({
 /** Shown after the browser checkout is opened: waiting for the payment to be
  *  confirmed (which flips `supporter`). Restore is the escape hatch, surfaced
  *  automatically once the wait has stalled. */
-function SupporterPending({
+function PlusPending({
   stalled,
   onClose,
 }: {
@@ -356,9 +363,9 @@ function SupporterPending({
         <div className="flex flex-col gap-1 text-sm">
           <p className="font-medium text-text">Confirming your payment…</p>
           <p className="text-text-muted">
-            Finish checkout in your browser if you haven&apos;t yet. Your
-            Supporter badge appears here automatically once the payment is
-            confirmed — usually just a few seconds.
+            Finish checkout in your browser if you haven&apos;t yet. Plus
+            unlocks here automatically once the payment is confirmed — usually
+            just a few seconds.
           </p>
         </div>
       </div>
@@ -366,11 +373,11 @@ function SupporterPending({
       {stalled && (
         <p className="text-sm text-text-muted">
           This is taking longer than usual. If you&apos;ve already completed
-          payment, restore it with your receipt email:
+          payment, restore it with your checkout email:
         </p>
       )}
 
-      <RestoreSupporter
+      <RestorePlus
         open={stalled || restoreOpen}
         onToggle={() => setRestoreOpen((v) => !v)}
       />
@@ -384,19 +391,30 @@ function SupporterPending({
   );
 }
 
-function SupporterSuccess({ onClose }: { onClose: () => void }) {
+/** The "You have Plus" state: shown when the account already owns Plus, and
+ *  (with `justBought`) as the thank-you right after a purchase confirms. */
+function PlusOwned({
+  justBought = false,
+  onClose,
+}: {
+  justBought?: boolean;
+  onClose: () => void;
+}) {
   return (
     <div className="flex flex-col items-center gap-4 py-4 text-center">
       <div className="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-from to-brand-to text-on-brand">
         <Sparkles className="size-7" aria-hidden="true" />
       </div>
       <div className="flex flex-col items-center gap-2">
-        <p className="text-base font-semibold">You&apos;re a Supporter — thank you!</p>
+        <p className="text-base font-semibold">
+          {justBought ? "You have Plus — thank you!" : "You have Plus"}
+        </p>
         <SupporterBadge />
         <p className="text-sm text-text-muted">
-          Your badge is now showing in the app. We genuinely appreciate it.
+          Every Plus feature is unlocked on this account, for life.
         </p>
       </div>
+      <FeatureList />
       <Button variant="primary" onClick={onClose} className="mt-1">
         Done
       </Button>

@@ -16,9 +16,9 @@ const HEARTBEAT_MS = 60 * 1000;
  * are free forever, so this gate never blocks: it silently provisions an
  * anonymous session (keyed off the keychain install id — see
  * `commands::account::account_bootstrap_anonymous`) on first launch, keeps
- * heartbeats and the Supporter-entitlement check current, and always renders
+ * heartbeats and the Plus-entitlement check current, and always renders
  * `children`. It NEVER returns a sign-in screen or a "trial ended" screen —
- * gating for Advanced DSP / stems / cloud happens per-feature via
+ * gating of the HypeMuzik Plus features happens per-feature via
  * `<PremiumGate>` / `requirePremium`, not here. Offline on first launch still
  * opens the app (core needs no network); the bootstrap retries on the next
  * focus or periodic refresh.
@@ -31,7 +31,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
   const refreshEntitlement = useEntitlementStore((s) => s.refresh);
   const appInfo = useUiStore((s) => s.appInfo);
 
-  // Initial + periodic re-check (a claimed email / Supporter status can
+  // Initial + periodic re-check (a claimed email / Plus status can
   // change server-side while running).
   useEffect(() => {
     void refresh();
@@ -61,7 +61,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
 
   // Re-check everything whenever the app regains focus / becomes visible.
   // The interval above is suspended while the machine sleeps, so without this
-  // a claimed-email / Supporter change (or a first-launch offline bootstrap)
+  // a claimed-email / Plus change (or a first-launch offline bootstrap)
   // could sit stale until the next 5-min tick. Throttled so rapid focus
   // changes don't spam the server; the single-flight token refresh makes
   // frequent re-checks safe.

@@ -57,9 +57,9 @@ const META: Record<
 
 const formatMb = (bytes: number) => `${Math.round(bytes / 1_000_000)} MB`;
 
-/** Stem separation is a Supporter feature (it's real CPU work, not just a UI
- *  toggle) — gated at the whole-view level so a non-Supporter never even
- *  triggers the download or the separation pipeline below. */
+/** Stem separation is free. It is still wrapped in `PremiumGate` (a no-op for
+ *  non-Plus features) so the whole view stays behind one guard if that ever
+ *  changes. */
 export function StemsPanel() {
   return (
     <PremiumGate feature="STEMS" variant="page">

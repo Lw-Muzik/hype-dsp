@@ -101,7 +101,7 @@ export function EnhancerView() {
       .catch(() => { });
   };
 
-  // 3D Surround is a Supporter feature — the shared toggle gates turning it
+  // 3D Surround is a HypeMuzik Plus feature — the shared toggle gates turning it
   // on (never off); opening the speaker configurator is gated here.
   const openSurroundConfig = () => {
     if (!requirePremium("SURROUND_3D")) return;

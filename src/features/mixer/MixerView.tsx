@@ -9,7 +9,7 @@ import { ipcErrorMessage, mixerListSessions, mixerSetMuted, mixerSetVolume } fro
 import { toast } from "@/stores/toast";
 import type { AppSession, MixerSnapshot } from "@/lib/types";
 
-/** Per-app volume/mute is a Supporter feature — the page header always shows,
+/** Per-app volume/mute is a HypeMuzik Plus feature — the page header always shows,
  *  but the live session list (and its polling) is gated behind the upsell. */
 export function MixerView() {
   const route = routeById("mixer");

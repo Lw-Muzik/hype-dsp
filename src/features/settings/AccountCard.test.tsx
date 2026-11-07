@@ -51,7 +51,7 @@ function mount(account: AccountStatus, supporter: boolean, premium = supporter) 
 }
 
 const upsellButton = () =>
-  screen.queryByRole("button", { name: /Become a Supporter/i });
+  screen.queryByRole("button", { name: /HypeMuzik Plus/i });
 
 beforeEach(() => {
   useAccountStore.setState({ status: null });
@@ -73,7 +73,7 @@ describe("<AccountCard> plan states", () => {
     expect(upsellButton()).not.toBeInTheDocument();
     expect(screen.getByText(/Full access to every feature/i)).toBeInTheDocument();
     expect(screen.queryByText("Free")).not.toBeInTheDocument();
-    expect(screen.queryByText("Supporter")).not.toBeInTheDocument();
+    expect(screen.queryByText("Plus")).not.toBeInTheDocument();
   });
 
   it("trial: the old trial wording is gone — premium-but-not-supporter reads as Free", () => {
@@ -90,19 +90,19 @@ describe("<AccountCard> plan states", () => {
 
     expect(screen.getByText("Free")).toBeInTheDocument();
     expect(upsellButton()).toBeInTheDocument();
-    expect(screen.getByText(/Every feature is free/i)).toBeInTheDocument();
+    expect(screen.getByText(/Free plan/i)).toBeInTheDocument();
   });
 
-  it("supporter: shows Supporter and hides the purchase CTA", () => {
+  it("supporter: shows Plus and hides the purchase CTA", () => {
     mount(status({ license: license({ state: "licensed" }) }), true);
 
-    expect(screen.getByText("Supporter")).toBeInTheDocument();
+    expect(screen.getByText("Plus")).toBeInTheDocument();
     expect(upsellButton()).not.toBeInTheDocument();
   });
 });
 
 describe("<AccountCard> anonymous install", () => {
-  it("still shows the plan line and the Supporter button", () => {
+  it("still shows the plan line and the Plus button", () => {
     mount(status({ emailVerified: false, email: null, name: null }), false);
 
     expect(screen.getByText("Free")).toBeInTheDocument();

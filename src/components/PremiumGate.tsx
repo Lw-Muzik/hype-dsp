@@ -1,34 +1,58 @@
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Lock, Sparkles } from "lucide-react";
 import { Button } from "@/components/Button";
-import { openSupporterSheet } from "@/components/SupporterSheet";
+import { openPlusSheet } from "@/components/PlusSheet";
 import {
   PREMIUM_FEATURES,
+  markTrialEndedNoticeSeen,
+  trialEndedNoticeSeen,
+  trialHasEnded,
   useEntitlementStore,
   type PremiumFeature,
 } from "@/stores/entitlement";
 import { useAccountStore } from "@/stores/account";
-import { FEATURE_GATING_ENABLED } from "@/config/payments";
+import { PLUS_FEATURES } from "@/config/payments";
 
 /**
- * Feature gating is permanently off (`FEATURE_GATING_ENABLED = false`): every
- * feature is free, so `requirePremium()` always passes and `<PremiumGate>`
- * always renders its children. The plumbing stays only so the ~20 call sites
- * don't need rewriting; nothing here ever surfaces an upsell in normal use.
+ * Per-feature gating. Only the features in `PLUS_FEATURES` need HypeMuzik
+ * Plus; everything else (system EQ, AutoEQ, stems, cloud, ...) always passes.
+ * A Plus feature passes when the account is entitled: backend `premium`
+ * (admin / trial / licence), `supporter` (a Plus purchase) or the local admin
+ * check. Entitlement is cached offline, so it is answered synchronously.
  */
 
-/** Imperative guard for gated toggles/handlers. Always `true` while gating is
- *  off; callers bail out on `false`:
+/** Whether the current account may use Plus features right now. */
+export function isPlusEntitled(): boolean {
+  const s = useEntitlementStore.getState();
+  return s.premium || s.supporter || (useAccountStore.getState().status?.isAdmin ?? false);
+}
+
+/** Reactive {@link isPlusEntitled}. */
+export function usePlusEntitled(): boolean {
+  const entitled = useEntitlementStore((s) => s.premium || s.supporter);
+  const isAdmin = useAccountStore((s) => s.status?.isAdmin ?? false);
+  return entitled || isAdmin;
+}
+
+/** Whether `feature` is currently locked for this account (reactive). */
+export function usePlusLocked(feature: PremiumFeature): boolean {
+  const entitled = usePlusEntitled();
+  return PLUS_FEATURES.has(feature) && !entitled;
+}
+
+/** Imperative guard for gated toggles/handlers. Free features always pass; a
+ *  Plus feature passes only when entitled, otherwise the Plus sheet opens and
+ *  the caller bails out on `false`:
  *
  * ```ts
- * if (!requirePremium("SYSTEM_EQ")) return;
+ * if (!requirePremium("SURROUND_3D")) return;
  * ```
  */
-export function requirePremium(_feature: PremiumFeature): boolean {
-  if (!FEATURE_GATING_ENABLED) return true;
-  const s = useEntitlementStore.getState();
-  if (s.premium || s.supporter || useAccountStore.getState().status?.isAdmin) return true;
-  openSupporterSheet();
+export function requirePremium(feature: PremiumFeature): boolean {
+  if (!PLUS_FEATURES.has(feature)) return true;
+  if (isPlusEntitled()) return true;
+  openPlusSheet();
   return false;
 }
 
@@ -40,11 +64,10 @@ interface PremiumGateProps {
   variant?: "inline" | "page";
 }
 
-/** Renders `children` — always, while gating is off. */
+/** Renders `children`, or the Plus upsell when `feature` is locked. */
 export function PremiumGate({ feature, children, variant = "inline" }: PremiumGateProps) {
-  const premium = useEntitlementStore((s) => s.premium || s.supporter);
-  const isAdmin = useAccountStore((s) => s.status?.isAdmin ?? false);
-  if (!FEATURE_GATING_ENABLED || premium || isAdmin) return <>{children}</>;
+  const locked = usePlusLocked(feature);
+  if (!locked) return <>{children}</>;
   return <UpsellCard feature={feature} variant={variant} />;
 }
 
@@ -55,6 +78,16 @@ function UpsellCard({
   feature: PremiumFeature;
   variant: "inline" | "page";
 }) {
+  // The first time a locked feature is hit after the trial ended, say so once;
+  // afterwards the normal copy. Never shown on launch: this card only exists
+  // where a locked feature is.
+  const trialEndsAt = useEntitlementStore((s) => s.trialEndsAt);
+  const [trialEnded] = useState(
+    () => trialHasEnded(trialEndsAt) && !trialEndedNoticeSeen(trialEndsAt),
+  );
+  useEffect(() => {
+    if (trialEnded) markTrialEndedNoticeSeen(trialEndsAt);
+  }, [trialEnded, trialEndsAt]);
   return (
     <div
       className={
@@ -66,10 +99,14 @@ function UpsellCard({
       <div className="grid size-11 place-items-center rounded-xl bg-gradient-to-br from-brand-from to-brand-to text-on-brand">
         <Lock className="size-5" aria-hidden="true" />
       </div>
-      <p className="text-sm font-medium">{PREMIUM_FEATURES[feature]} is a Supporter feature</p>
-      <Button variant="primary" onClick={() => openSupporterSheet()} className="mt-1">
+      <p className="text-sm font-medium">
+        {trialEnded
+          ? "Your 7-day Plus trial has ended"
+          : `${PREMIUM_FEATURES[feature]} is part of HypeMuzik Plus`}
+      </p>
+      <Button variant="primary" onClick={() => openPlusSheet()} className="mt-1">
         <Sparkles className="size-4" aria-hidden="true" />
-        Become a Supporter
+        Get Plus
       </Button>
     </div>
   );

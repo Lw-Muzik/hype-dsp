@@ -152,3 +152,72 @@ describe("useEntitlementStore.refresh()", () => {
     expect(useEntitlementStore.getState().loading).toBe(false);
   });
 });
+
+describe("trial helpers", () => {
+  const NOW = Date.parse("2026-11-10T12:00:00Z");
+  const inMs = (ms: number) => new Date(NOW + ms).toISOString();
+  const DAY = 86_400_000;
+
+  async function mod() {
+    return import("@/stores/entitlement");
+  }
+
+  it("rounds days left up", async () => {
+    const { trialDaysLeft } = await mod();
+    expect(trialDaysLeft(inMs(3 * DAY), NOW)).toBe(3);
+    expect(trialDaysLeft(inMs(2 * DAY + 1000), NOW)).toBe(3);
+    expect(trialDaysLeft(inMs(60_000), NOW)).toBe(1);
+  });
+
+  it("is null for no trial, garbage, or an ended trial", async () => {
+    const { trialDaysLeft, trialHasEnded } = await mod();
+    expect(trialDaysLeft(null, NOW)).toBeNull();
+    expect(trialDaysLeft(undefined, NOW)).toBeNull();
+    expect(trialDaysLeft("nonsense", NOW)).toBeNull();
+    expect(trialDaysLeft(inMs(-1000), NOW)).toBeNull();
+    expect(trialHasEnded(inMs(-1000), NOW)).toBe(true);
+    expect(trialHasEnded(inMs(DAY), NOW)).toBe(false);
+    expect(trialHasEnded(null, NOW)).toBe(false);
+  });
+
+  it("detects the last day (ends later today, local time)", async () => {
+    const { trialEndsToday } = await mod();
+    const sameDay = new Date(NOW);
+    sameDay.setHours(23, 59, 59, 0);
+    if (sameDay.getTime() > NOW) {
+      expect(trialEndsToday(sameDay.toISOString(), NOW)).toBe(true);
+    }
+    expect(trialEndsToday(inMs(3 * DAY), NOW)).toBe(false);
+    expect(trialEndsToday(inMs(-1000), NOW)).toBe(false);
+  });
+});
+
+describe("trialEndsAt in the store", () => {
+  it("treats a response without the field as null and clears the cache", async () => {
+    localStorage.clear();
+    localStorage.setItem("hm.trialEndsAt", "2030-01-01T00:00:00Z");
+    vi.resetModules();
+    const ipc = await import("@/lib/ipc");
+    vi.mocked(ipc.accountEntitlements).mockResolvedValue({ premium: false, supporter: false });
+    const { useEntitlementStore } = await import("@/stores/entitlement");
+    expect(useEntitlementStore.getState().trialEndsAt).toBe("2030-01-01T00:00:00Z"); // cached
+    await useEntitlementStore.getState().refresh();
+    expect(useEntitlementStore.getState().trialEndsAt).toBeNull();
+    expect(localStorage.getItem("hm.trialEndsAt")).toBeNull();
+  });
+
+  it("stores and caches a trialEndsAt from the backend", async () => {
+    localStorage.clear();
+    vi.resetModules();
+    const ipc = await import("@/lib/ipc");
+    vi.mocked(ipc.accountEntitlements).mockResolvedValue({
+      premium: true,
+      supporter: false,
+      trialEndsAt: "2030-01-08T00:00:00Z",
+    });
+    const { useEntitlementStore } = await import("@/stores/entitlement");
+    await useEntitlementStore.getState().refresh();
+    expect(useEntitlementStore.getState().trialEndsAt).toBe("2030-01-08T00:00:00Z");
+    expect(localStorage.getItem("hm.trialEndsAt")).toBe("2030-01-08T00:00:00Z");
+  });
+});

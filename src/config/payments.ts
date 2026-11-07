@@ -1,30 +1,30 @@
+import type { PremiumFeature } from "@/stores/entitlement";
+
 /**
- * Product model: HypeMuzik is free forever with every feature unlocked. The
- * only thing sold is the optional one-time "Supporter pack" (pay what you
- * want from $3), which gets the buyer a Supporter badge. Nothing is ever
- * locked behind it.
+ * Product model: HypeMuzik is free, and the optional one-time "HypeMuzik Plus"
+ * licence (US$5, lifetime, no subscription) unlocks six advanced features.
+ * Everything else is free forever.
  *
  * Two independent switches express that:
  */
 
 /**
- * Feature gating. PERMANENTLY `false` — `<PremiumGate>` and `requirePremium()`
- * always pass and no feature ever triggers an upsell. Do not flip this to
- * re-lock the 10 "premium" features; the gate plumbing only remains so the
- * call sites don't need rewriting.
+ * The features locked behind HypeMuzik Plus. `<PremiumGate>` and
+ * `requirePremium()` pass immediately for any feature NOT in this set (system
+ * EQ, AutoEQ, stems, cloud, ...); for a feature in it they pass only when the
+ * account is entitled (backend `premium`, `supporter`, or a local admin).
  */
-export const FEATURE_GATING_ENABLED = false;
+export const PLUS_FEATURES: ReadonlySet<PremiumFeature> = new Set<PremiumFeature>([
+  "PER_APP_EQ",
+  "PER_APP_MIXER",
+  "CONVOLVER",
+  "SURROUND_3D",
+  "ROOM_REVERB",
+  "VIPER_DDC",
+]);
 
 /**
- * Supporter features: the `/me/entitlements` fetch (offline-cached), the
- * "Become a Supporter" sheet (checkout + restore), the Supporter badge and
- * the thank-you toast.
+ * Plus support: the `/me/entitlements` fetch (offline-cached), the "HypeMuzik
+ * Plus" sheet (checkout + restore), the badge and the thank-you toast.
  */
 export const SUPPORTER_ENABLED = true;
-
-/** Minimum pay-what-you-want amount, in whole dollars. */
-export const SUPPORTER_MIN_AMOUNT = 3;
-/** Quick-pick amounts, in whole dollars. */
-export const SUPPORTER_QUICK_AMOUNTS = [3, 5, 10, 25] as const;
-/** Pre-selected quick pick. */
-export const SUPPORTER_DEFAULT_AMOUNT = 5;

@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { ArrowLeft, KeyRound, LogOut, Mail, Sparkles } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
-import { openSupporterSheet } from "@/components/SupporterSheet";
+import { openPlusSheet } from "@/components/PlusSheet";
 import { useAccountStore } from "@/stores/account";
 import { useEntitlementStore, useSupporter } from "@/stores/entitlement";
 import { ipcErrorMessage } from "@/lib/ipc";
@@ -23,8 +23,8 @@ type Step = "details" | "code";
  *  - sign in to a different, already-existing account on a new device.
  *
  * Supporter status comes from the entitlement store, not from this account —
- * an anonymous install can be a Supporter too (no email required), so the plan
- * line and the "Become a Supporter" button show regardless of `emailVerified`.
+ * an anonymous install can own Plus too (no email required), so the plan
+ * line and the "HypeMuzik Plus" button show regardless of `emailVerified`.
  */
 export function AccountCard() {
   const account = useAccountStore((s) => s.status);
@@ -34,11 +34,12 @@ export function AccountCard() {
   const requestOtp = useAccountStore((s) => s.requestOtp);
   const verify = useAccountStore((s) => s.verify);
   const supporter = useSupporter();
+  const premium = useEntitlementStore((s) => s.premium);
   const entitlementLoading = useEntitlementStore((s) => s.loading);
 
-  // Everything is free, so the plan line is only about the optional Supporter
-  // pack: "Supporter" (owns it), "Admin", or "Free". `premium` (which is also
-  // true for trial/licensed accounts) deliberately plays no part here.
+  // The plan line is about HypeMuzik Plus: "Plus" (owns it), "Admin", or
+  // "Free". `premium` (which is also true for trial/licensed accounts)
+  // deliberately plays no part here.
   const isAdmin = account?.isAdmin ?? false;
 
   const [flow, setFlow] = useState<Flow>("none");
@@ -98,7 +99,7 @@ export function AccountCard() {
     if (isAdmin) return { badgeLabel: "Admin", badgeCls: good };
     if (supporter)
       return {
-        badgeLabel: "Supporter",
+        badgeLabel: "Plus",
         badgeCls: "border border-accent/40 bg-accent-muted text-accent-strong",
       };
     if (entitlementLoading) return { badgeLabel: "Checking…", badgeCls: muted };
@@ -111,14 +112,16 @@ export function AccountCard() {
   );
 
   const showPlan = SUPPORTER_ENABLED;
-  // The CTA is for non-supporters only (never admins) and lives only here —
+  // The CTA is for non-owners only (never admins) and lives only here —
   // nothing nags during normal use.
   const showUpsell = SUPPORTER_ENABLED && !isAdmin && !supporter && !entitlementLoading;
   const planNote = isAdmin
     ? "Full access to every feature — no purchase needed."
     : supporter
-      ? "Thanks for supporting HypeMuzik!"
-      : "Every feature is free. Supporting is optional.";
+      ? "You have HypeMuzik Plus — thank you!"
+      : premium
+        ? "Plus features are unlocked on your account."
+        : "Free plan. HypeMuzik Plus unlocks 6 advanced audio features — US$5, one-time.";
 
   if (!account?.authenticated) {
     return (
@@ -245,9 +248,9 @@ export function AccountCard() {
 
         <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
           {showUpsell && (
-            <Button variant="primary" onClick={() => openSupporterSheet()}>
+            <Button variant="primary" onClick={() => openPlusSheet()}>
               <Sparkles className="size-4" aria-hidden="true" />
-              Become a Supporter
+              HypeMuzik Plus
             </Button>
           )}
           {!account.emailVerified ? (

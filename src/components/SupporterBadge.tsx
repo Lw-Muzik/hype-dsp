@@ -2,7 +2,7 @@ import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 /**
- * The gold "Supporter" badge. Uses the accent tokens (gold in dark, a deeper
+ * The gold HypeMuzik Plus badge (the owner-facing "thank you" mark). Uses the accent tokens (gold in dark, a deeper
  * gold in light) so it stays legible in every theme.
  */
 export function SupporterBadge({
@@ -16,9 +16,9 @@ export function SupporterBadge({
   if (compact) {
     return (
       <span
-        title="Supporter"
+        title="HypeMuzik Plus"
         role="img"
-        aria-label="Supporter"
+        aria-label="HypeMuzik Plus"
         data-testid="supporter-badge"
         className={cn(
           "grid size-4 place-items-center rounded-full border border-accent/40 bg-accent-muted text-accent-strong",
@@ -38,7 +38,7 @@ export function SupporterBadge({
       )}
     >
       <Sparkles className="size-3" aria-hidden="true" />
-      Supporter
+      Plus
     </span>
   );
 }

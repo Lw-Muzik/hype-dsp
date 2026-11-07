@@ -7,7 +7,8 @@ import { TopBar } from "@/components/TopBar";
 import { UpdateBanner } from "@/features/update/UpdateBanner";
 import { ConfirmHost } from "@/components/ConfirmHost";
 import { Toaster } from "@/components/Toaster";
-import { SupporterSheet } from "@/components/SupporterSheet";
+import { PlusSheet } from "@/components/PlusSheet";
+import { usePlusEnforcement } from "@/features/plus/plusEnforcement";
 import { SettingsDialog } from "@/features/settings/SettingsDialog";
 import { NowPlayingBar } from "@/components/NowPlayingBar";
 import { RightSidebar } from "@/components/RightSidebar";
@@ -48,6 +49,8 @@ export function App() {
   // hides the app's own player chrome. Keep the route valid for the mode — this
   // also covers launching with EQ resumed and EQ turned on from Settings.
   const mode = modeFromSystemEq(useSystemEqStore((s) => s.enabled));
+  // Keep saved Plus effects off while the account is not entitled.
+  usePlusEnforcement();
   const route = useUiStore((s) => s.route);
   const setRoute = useUiStore((s) => s.setRoute);
   useEffect(() => {
@@ -142,7 +145,7 @@ export function App() {
       <SettingsDialog />
       <Toaster />
       <ConfirmHost />
-      <SupporterSheet />
+      <PlusSheet />
     </div>
   );
 }

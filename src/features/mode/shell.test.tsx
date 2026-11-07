@@ -23,11 +23,13 @@ vi.mock("@/components/TopBar", () => ({ TopBar: () => null }));
 vi.mock("@/components/Toaster", () => ({ Toaster: () => null }));
 vi.mock("@/components/PremiumGate", () => ({
   requirePremium: () => true,
+  usePlusEntitled: () => true,
+  isPlusEntitled: () => true,
   PremiumGate: ({ children }: { children: unknown }) => children,
 }));
-vi.mock("@/components/SupporterSheet", () => ({
-  SupporterSheet: () => null,
-  openSupporterSheet: () => {},
+vi.mock("@/components/PlusSheet", () => ({
+  PlusSheet: () => null,
+  openPlusSheet: () => {},
 }));
 vi.mock("@/features/update/UpdateBanner", () => ({ UpdateBanner: () => null }));
 vi.mock("@/components/NowPlayingBar", () => ({ NowPlayingBar: () => <div data-testid="npbar" /> }));
@@ -95,10 +97,10 @@ describe("shell modes", () => {
     await waitFor(() => expect(useUiStore.getState().route).toBe("equalizer"));
   });
 
-  it("shows the Supporter badge for a supporter, and not for a free or merely-premium account", () => {
+  it("shows the Plus badge for a supporter, and not for a free or merely-premium account", () => {
     useEntitlementStore.setState({ supporter: true });
     const { unmount } = render(<App />);
-    expect(screen.getByTestId("supporter-badge")).toHaveTextContent("Supporter");
+    expect(screen.getByTestId("supporter-badge")).toHaveTextContent("Plus");
     unmount();
 
     useEntitlementStore.setState({ supporter: false, premium: true });

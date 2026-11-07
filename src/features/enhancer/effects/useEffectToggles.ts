@@ -15,7 +15,8 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { requirePremium } from "@/components/PremiumGate";
+import { requirePremium, usePlusEntitled } from "@/components/PremiumGate";
+import type { PremiumFeature } from "@/stores/entitlement";
 import { useEngineStore } from "@/stores/engine";
 import type { EngineState } from "@/lib/types";
 
@@ -67,7 +68,16 @@ export const EFFECTS: readonly EffectDescriptor[] = [
   d("limiter", "Limiter", "Limiter on", ShieldCheck),
 ];
 
+/** The Plus feature an effect belongs to, for the effects that need Plus. */
+export const PLUS_EFFECT_FEATURE: Partial<Record<EffectId, PremiumFeature>> = {
+  surround3d: "SURROUND_3D",
+  room: "ROOM_REVERB",
+  convolver: "CONVOLVER",
+};
+
 export interface EffectToggle extends EffectDescriptor {
+  /** True when the effect needs HypeMuzik Plus and the account has none. */
+  locked: boolean;
   /** False for effects with no on/off state (Presets). */
   hasSwitch: boolean;
   enabled: boolean;
@@ -147,10 +157,15 @@ export function toggleEffect(id: EffectId, on: boolean): void {
   }
 }
 
-function toggleFor(descriptor: EffectDescriptor, enabled: boolean): EffectToggle {
+function toggleFor(
+  descriptor: EffectDescriptor,
+  enabled: boolean,
+  entitled: boolean,
+): EffectToggle {
   const { id } = descriptor;
   return {
     ...descriptor,
+    locked: id in PLUS_EFFECT_FEATURE && !entitled,
     hasSwitch: id !== "presets",
     enabled,
     canToggleOn: id !== "presets" && id !== "headphone",
@@ -168,18 +183,19 @@ const byId = (id: EffectId): EffectDescriptor =>
  */
 export function useEffectToggle(id: EffectId): EffectToggle {
   const enabled = useEngineStore((s) => enabledOf(id, s.state));
-  return useMemo(() => toggleFor(byId(id), enabled), [id, enabled]);
+  const entitled = usePlusEntitled();
+  return useMemo(() => toggleFor(byId(id), enabled, entitled), [id, enabled, entitled]);
 }
 
 /** Every effect, for the rack. Re-renders only when an on/off flag flips. */
 export function useEffectToggles(): Record<EffectId, EffectToggle> {
   const flags = useEngineStore(useShallow((s) => EFFECTS.map((e) => enabledOf(e.id, s.state))));
+  const entitled = usePlusEntitled();
   return useMemo(
     () =>
-      Object.fromEntries(EFFECTS.map((e, i) => [e.id, toggleFor(e, flags[i] ?? false)])) as Record<
-        EffectId,
-        EffectToggle
-      >,
-    [flags],
+      Object.fromEntries(
+        EFFECTS.map((e, i) => [e.id, toggleFor(e, flags[i] ?? false, entitled)]),
+      ) as Record<EffectId, EffectToggle>,
+    [flags, entitled],
   );
 }

@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { useUiStore } from "@/stores/ui";
 import { Switch } from "@/components/Switch";
 import { cn } from "@/lib/cn";
@@ -51,7 +52,9 @@ function Tile({ fx }: { fx: EffectToggle }) {
       <button
         type="button"
         onClick={jump}
-        title={isEq ? "Open the Equalizer" : `Go to ${fx.label}`}
+        title={
+          fx.locked ? `${fx.label} is part of HypeMuzik Plus` : isEq ? "Open the Equalizer" : `Go to ${fx.label}`
+        }
         className={cn(
           "flex min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 py-2 text-left text-sm",
           "focus-visible:outline-2 focus-visible:outline-accent",
@@ -60,6 +63,13 @@ function Tile({ fx }: { fx: EffectToggle }) {
       >
         <Icon className="size-4 shrink-0" aria-hidden="true" />
         <span className="truncate font-medium">{fx.label}</span>
+        {fx.locked && (
+          <Lock
+            className="size-3 shrink-0"
+            role="img"
+            aria-label="Needs HypeMuzik Plus"
+          />
+        )}
       </button>
       {fx.hasSwitch && (
         <span

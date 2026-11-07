@@ -7,7 +7,10 @@ vi.mock("@/lib/ipc", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/ipc")>();
   return { ...actual };
 });
-vi.mock("@/components/PremiumGate", () => ({ requirePremium: vi.fn(() => true) }));
+vi.mock("@/components/PremiumGate", () => ({
+  requirePremium: vi.fn(() => true),
+  usePlusEntitled: () => true,
+}));
 
 import { requirePremium } from "@/components/PremiumGate";
 import { useEngineStore } from "@/stores/engine";
